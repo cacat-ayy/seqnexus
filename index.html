@@ -1,0 +1,1265 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SeqNexus: Browser-Based Molecular Biology Sequence Editor</title>
+<meta name="description" content="A free, open-source molecular biology sequence editor that runs entirely in your browser. Edit DNA, view chromatograms, run BLAST. No installation, no sign-up.">
+<meta name="keywords" content="sequence editor, DNA editor, molecular biology, GenBank, FASTA, chromatogram, Sanger, BLAST, cloning, restriction enzymes, bioinformatics tool, open source">
+<meta name="author" content="Christopher Acatay">
+<meta name="theme-color" content="#0b5f58">
+
+<link rel="canonical" href="https://seqnexus.app/">
+
+<!-- Open Graph -->
+<meta property="og:type" content="website">
+<meta property="og:url" content="https://seqnexus.app/">
+<meta property="og:title" content="SeqNexus: Browser-Based Molecular Biology Sequence Editor">
+<meta property="og:description" content="A free, open-source molecular biology sequence editor that runs entirely in your browser. Edit DNA, view chromatograms, run BLAST. No installation, no sign-up.">
+<meta property="og:image" content="https://seqnexus.app/og-image.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:site_name" content="SeqNexus">
+
+<!-- Twitter -->
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="SeqNexus: Browser-Based Molecular Biology Sequence Editor">
+<meta name="twitter:description" content="A free, open-source molecular biology sequence editor that runs entirely in your browser. Edit DNA, view chromatograms, run BLAST. No installation, no sign-up.">
+<meta name="twitter:image" content="https://seqnexus.app/og-image.png">
+
+<!-- Structured Data -->
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@graph": [
+    {
+      "@type": "WebSite",
+      "name": "SeqNexus",
+      "url": "https://seqnexus.app/",
+      "description": "A free, open-source molecular biology sequence editor that runs entirely in your browser."
+    },
+    {
+      "@type": "SoftwareApplication",
+      "name": "SeqNexus",
+      "url": "https://seqnexus.app/app.html",
+      "applicationCategory": "ScienceApplication",
+      "operatingSystem": "Any (Web Browser)",
+      "offers": {
+        "@type": "Offer",
+        "price": "0",
+        "priceCurrency": "USD"
+      },
+      "description": "Browser-based molecular biology sequence editor. Supports GenBank, FASTA, SnapGene, AB1 import, NCBI BLAST, restriction analysis, primer design, and sequence alignment.",
+      "author": {
+        "@type": "Person",
+        "name": "Christopher Acatay",
+        "url": "https://github.com/cacat-ayy"
+      },
+      "screenshot": "https://seqnexus.app/og-image.png",
+      "featureList": [
+        "DNA sequence editing with annotations",
+        "Sanger chromatogram viewer (AB1, SCF)",
+        "NCBI BLAST search",
+        "Restriction enzyme analysis",
+        "Primer design and Tm calculation",
+        "Sequence alignment (Clustal)",
+        "GenBank, FASTA, SnapGene, Geneious import/export",
+        "Fetch from NCBI, Addgene, SnapGene",
+        "Multiple themes including dark mode",
+        "Works offline, no account required"
+      ]
+    },
+    {
+      "@type": "Person",
+      "name": "Christopher Acatay",
+      "url": "https://github.com/cacat-ayy",
+      "sameAs": [
+        "https://github.com/cacat-ayy"
+      ]
+    }
+  ]
+}
+</script>
+
+<link rel="icon" href="assets/favicon.svg" type="image/svg+xml">
+<link rel="icon" href="assets/favicon-48x48.png" sizes="48x48" type="image/png">
+<link rel="icon" href="assets/favicon-96x96.png" sizes="96x96" type="image/png">
+<link rel="icon" href="assets/favicon-144x144.png" sizes="144x144" type="image/png">
+<link rel="icon" href="assets/favicon-192x192.png" sizes="192x192" type="image/png">
+<link rel="apple-touch-icon" href="assets/favicon-192x192.png">
+
+<script>
+// Apply the stored theme before first paint, otherwise a dark-mode visitor
+// gets a white flash on every navigation. Must stay inline and in <head>.
+(function () {
+  try {
+    var stored = localStorage.getItem('seqnexus-landing-dark');
+    var dark = stored !== null
+      ? stored === '1'
+      : window.matchMedia('(prefers-color-scheme: dark)').matches;
+    if (dark) document.documentElement.classList.add('dark');
+  } catch (e) {
+    // localStorage blocked (private mode, cookies disabled), so stay on light.
+  }
+})();
+</script>
+
+<style>
+/* ---------------------------------------------------------------------------
+   SeqNexus landing page
+
+   Tight grotesque display set heavy, monospace for all labels and data,
+   hairline rules as the only structural device. No cards, no gradients, no
+   drop shadows. Light by default; dark is opt-in via the nav toggle.
+
+   System fonts only, deliberately. A webfont from a third-party CDN would
+   contradict the privacy claim this page makes and the Datenschutz page.
+   --------------------------------------------------------------------------- */
+
+:root {
+  --paper:    #fbfaf8;
+  --paper-2:  #f1efea;
+  --ink:      #14161a;
+  --ink-2:    #3d434b;
+  --muted:    #6b7280;
+  --rule:     #e3e1dc;
+  --rule-2:   #c9c6bf;
+  --accent:   #0b5f58;
+  --accent-2: #08443f;
+
+  /* Display is a tight grotesque, not a serif: the serif setting read as the
+     same "quiet editorial" register that several tools in this space use. */
+  --display: system-ui, -apple-system, 'Segoe UI Variable Display', 'Segoe UI',
+             'Helvetica Neue', Helvetica, Arial, sans-serif;
+  --sans:  system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+  --mono:  ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace;
+
+  --measure: 1180px;
+  --gutter: 32px;
+
+  color-scheme: light;
+}
+
+/* Dark mode is class-driven so the nav toggle can override the OS preference.
+   The initial class is set by an inline script in <head> to avoid a flash. */
+html.dark {
+  --paper:    #101214;
+  --paper-2:  #191c1f;
+  --ink:      #eceef0;
+  --ink-2:    #c3c8ce;
+  --muted:    #8b929b;
+  --rule:     #272b2f;
+  --rule-2:   #3a3f45;
+  --accent:   #63c3b8;
+  --accent-2: #8ad6cd;
+
+  color-scheme: dark;
+}
+
+*, *::before, *::after { box-sizing: border-box; }
+
+html { -webkit-text-size-adjust: 100%; }
+
+body {
+  margin: 0;
+  background: var(--paper);
+  color: var(--ink);
+  font-family: var(--sans);
+  font-size: 16px;
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+a { color: inherit; }
+
+::selection { background: var(--accent); color: var(--paper); }
+
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+}
+
+.wrap {
+  max-width: var(--measure);
+  margin: 0 auto;
+  padding: 0 var(--gutter);
+}
+
+/* Small letterspaced label used to title each band. */
+.label {
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  font-weight: 400;
+  color: var(--muted);
+  margin: 0;
+}
+
+/* --- Masthead ------------------------------------------------------------ */
+
+.masthead {
+  border-bottom: 1px solid var(--rule);
+}
+
+.masthead-inner {
+  max-width: var(--measure);
+  margin: 0 auto;
+  padding: 18px var(--gutter);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24px;
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  text-decoration: none;
+  font-family: var(--mono);
+  font-size: 13px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--ink);
+}
+
+.brand svg { display: block; }
+
+.masthead nav {
+  display: flex;
+  align-items: center;
+  gap: 28px;
+  font-size: 14px;
+}
+
+.masthead nav a {
+  text-decoration: none;
+  color: var(--ink-2);
+  padding-bottom: 2px;
+  border-bottom: 1px solid transparent;
+  transition: border-color .15s, color .15s;
+}
+
+.masthead nav a:hover { color: var(--ink); border-bottom-color: var(--rule-2); }
+
+.masthead nav a.open-link {
+  color: var(--accent);
+  border-bottom-color: var(--accent);
+}
+
+.theme-toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  color: var(--ink-2);
+  background: transparent;
+  border: 1px solid var(--rule);
+  cursor: pointer;
+  transition: color .15s, border-color .15s;
+}
+
+.theme-toggle:hover { color: var(--ink); border-color: var(--rule-2); }
+.theme-toggle svg { display: block; }
+.theme-toggle .icon-moon { display: none; }
+html.dark .theme-toggle .icon-sun  { display: none; }
+html.dark .theme-toggle .icon-moon { display: block; }
+
+/* --- Hero ---------------------------------------------------------------- */
+
+.hero { border-bottom: 1px solid var(--rule); overflow: hidden; }
+
+.hero-grid {
+  max-width: var(--measure);
+  margin: 0 auto;
+  padding: 0 0 0 var(--gutter);
+  display: grid;
+  grid-template-columns: minmax(0, 43fr) minmax(0, 57fr);
+  gap: 38px;
+  align-items: center;
+  min-height: 560px;
+}
+
+.hero-text { padding: 88px 0; }
+
+h1 {
+  font-family: var(--display);
+  font-weight: 700;
+  /* Sized so the longest line clears the text column with room to spare.
+     At 4.05rem it fitted only on paper: real metrics are wider than the
+     estimate and "The whole bench," broke after "whole". */
+  font-size: clamp(2.25rem, 4.8vw, 3.6rem);
+  line-height: 1.02;
+  letter-spacing: -0.035em;
+  margin: 22px 0 0;
+  color: var(--ink);
+}
+
+/* Second line of the headline, set in the accent at the same weight: a flat
+   colour shift rather than an italic flourish. */
+h1 span {
+  display: block;
+  color: var(--accent);
+}
+
+.lede {
+  font-family: var(--display);
+  font-size: clamp(1.05rem, 1.5vw, 1.24rem);
+  line-height: 1.55;
+  color: var(--ink-2);
+  max-width: 34em;
+  margin: 26px 0 0;
+}
+
+.hero-actions {
+  margin-top: 38px;
+  display: flex;
+  align-items: center;
+  gap: 26px;
+  flex-wrap: wrap;
+}
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  padding: 11px 22px;
+  background: var(--accent);
+  color: var(--paper);
+  text-decoration: none;
+  font-size: 15px;
+  border: 1px solid var(--accent);
+  transition: background .15s, border-color .15s;
+}
+
+.btn:hover { background: var(--accent-2); border-color: var(--accent-2); }
+
+html.dark .btn { color: #0d1211; }
+
+.btn-quiet {
+  font-size: 14.5px;
+  color: var(--ink-2);
+  text-decoration: none;
+  border-bottom: 1px solid var(--rule-2);
+  padding-bottom: 2px;
+  transition: color .15s, border-color .15s;
+}
+
+.btn-quiet:hover { color: var(--ink); border-bottom-color: var(--ink); }
+
+/* The screenshot runs off the right edge of the viewport rather than sitting
+   in a centred, rounded frame, so it reads as a window onto the tool. */
+/* Vertical padding keeps the screenshot clear of the masthead rule above and
+   the spec strip rule below, instead of butting straight into both. */
+.hero-shot {
+  position: relative;
+  align-self: stretch;
+  display: flex;
+  align-items: center;
+  padding: 30px 0;
+}
+
+.hero-shot img {
+  display: block;
+  /* Widen by exactly the gap between the container edge and the viewport
+     edge, so the image runs out of the page and no further. A flat vw bleed
+     scales with the monitor and blows the screenshot up on wide displays. */
+  width: calc(100% + (100vw - min(100vw, var(--measure))) / 2);
+  max-width: none;
+  height: auto;
+  /* Past this height the screenshot would dominate the hero on wide monitors.
+     Cap it and crop vertically rather than scaling the UI up: the width, and
+     so the feature sidebar on the right, stays intact. */
+  max-height: 600px;
+  object-fit: cover;
+  object-position: center top;
+  /* Dissolve the left edge into the page. The sequence rows on that side are
+     filler; the feature sidebar on the right is the part worth looking at, and
+     the fade removes the hard vertical seam against the hero text. */
+  -webkit-mask-image: linear-gradient(to right, transparent 0%, #000 34%);
+  mask-image: linear-gradient(to right, transparent 0%, #000 34%);
+  /* No side borders: the left is faded out and the right sits on the
+     viewport edge, so both would only show as stray marks. */
+  border-top: 1px solid var(--rule);
+  border-bottom: 1px solid var(--rule);
+  background: var(--paper-2);
+}
+
+/* Scoped to beat `.hero-shot img`, which is (0,1,1) and would otherwise win
+   over a bare `.shot-dark` (0,1,0) and leave both screenshots visible. */
+.hero-shot .shot-dark { display: none; }
+
+html.dark .hero-shot .shot-light { display: none; }
+html.dark .hero-shot .shot-dark  { display: block; }
+
+/* --- Specification strip ------------------------------------------------- */
+
+.specs { border-bottom: 1px solid var(--rule); background: var(--paper-2); }
+
+.specs-grid {
+  max-width: var(--measure);
+  margin: 0 auto;
+  padding: 0 var(--gutter);
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+}
+
+.spec {
+  padding: 26px 26px 26px 0;
+  border-right: 1px solid var(--rule);
+}
+
+.spec:first-child { }
+.spec:last-child { border-right: 0; }
+.spec + .spec { padding-left: 26px; }
+
+.spec dt {
+  font-family: var(--mono);
+  font-size: 10.5px;
+  letter-spacing: 0.13em;
+  text-transform: uppercase;
+  color: var(--muted);
+  margin: 0 0 7px;
+}
+
+.spec dd {
+  margin: 0;
+  font-family: var(--display);
+  font-weight: 680;
+  letter-spacing: -0.02em;
+  font-size: 1.5rem;
+  line-height: 1.1;
+  color: var(--ink);
+}
+
+.spec dd small {
+  font-family: var(--sans);
+  font-size: 12.5px;
+  color: var(--muted);
+  display: block;
+  margin-top: 5px;
+  line-height: 1.4;
+}
+
+/* --- Capabilities -------------------------------------------------------- */
+
+.band { padding: 84px 0; border-bottom: 1px solid var(--rule); }
+
+.band-head {
+  display: grid;
+  grid-template-columns: 180px minmax(0, 1fr);
+  gap: 32px;
+  margin-bottom: 52px;
+}
+
+.band-head h2 {
+  font-family: var(--display);
+  font-weight: 680;
+  font-size: clamp(1.7rem, 3vw, 2.3rem);
+  line-height: 1.15;
+  letter-spacing: -0.028em;
+  margin: 0;
+  max-width: 18em;
+}
+
+.band-head p {
+  margin: 14px 0 0;
+}
+
+.band-head > div > p:first-child {
+  margin-top: 0;
+  color: var(--muted);
+  max-width: 44em;
+  font-size: 15px;
+}
+
+.caps { border-top: 1px solid var(--rule); }
+
+.cap {
+  display: grid;
+  grid-template-columns: 180px minmax(0, 1fr);
+  gap: 32px;
+  padding: 24px 0;
+  border-bottom: 1px solid var(--rule);
+}
+
+.cap-index {
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: 0.12em;
+  color: var(--muted);
+  padding-top: 5px;
+}
+
+.cap h3 {
+  font-family: var(--display);
+  font-weight: 620;
+  font-size: 1.24rem;
+  line-height: 1.25;
+  margin: 0 0 6px;
+  color: var(--ink);
+}
+
+.cap p {
+  margin: 0;
+  color: var(--ink-2);
+  font-size: 15px;
+  max-width: 58em;
+}
+
+/* --- GenBank demo -------------------------------------------------------- */
+
+.demo-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 28px;
+  border-top: 1px solid var(--rule);
+  padding-top: 26px;
+}
+
+.demo-pane { min-width: 0; }
+
+.demo-pane .label { margin-bottom: 10px; }
+
+.demo-file {
+  text-transform: none;
+  letter-spacing: 0;
+  color: var(--ink-2);
+  margin-left: 8px;
+}
+
+.demo-record {
+  margin: 0;
+  padding: 14px 16px;
+  max-height: 420px;
+  overflow: auto;
+  font-family: var(--mono);
+  font-size: 11px;
+  line-height: 1.55;
+  color: var(--ink-2);
+  background: var(--paper-2);
+  border: 1px solid var(--rule);
+  white-space: pre;
+  tab-size: 4;
+}
+
+.demo-out { font-size: 14px; }
+
+.demo-summary {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0 24px;
+  margin: 0 0 18px;
+}
+
+.demo-summary div {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 7px 0;
+  border-bottom: 1px solid var(--rule);
+}
+
+.demo-summary dt {
+  font-family: var(--mono);
+  font-size: 10.5px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.demo-summary dd {
+  margin: 0;
+  font-family: var(--mono);
+  font-size: 12.5px;
+  color: var(--ink);
+}
+
+.demo-feats {
+  width: 100%;
+  border-collapse: collapse;
+  font-family: var(--mono);
+  font-size: 11.5px;
+}
+
+.demo-feats td {
+  padding: 4px 8px 4px 0;
+  border-bottom: 1px solid var(--rule);
+  color: var(--ink-2);
+  vertical-align: baseline;
+}
+
+.demo-feats td:first-child { color: var(--muted); white-space: nowrap; }
+.demo-feats td:nth-child(2) { color: var(--ink); width: 99%; }
+.demo-feats td:last-child { text-align: right; white-space: nowrap; color: var(--muted); }
+
+
+
+.demo-note {
+  margin: 22px 0 0;
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--muted);
+  max-width: 60em;
+}
+
+@media (max-width: 860px) {
+  .demo-grid { grid-template-columns: 1fr; gap: 22px; }
+  .demo-summary { grid-template-columns: 1fr; }
+  .demo-record { max-height: 300px; }
+}
+
+/* --- Formats ------------------------------------------------------------- */
+
+.fmt-table {
+  width: 100%;
+  border-collapse: collapse;
+  border-top: 1px solid var(--rule);
+}
+
+.fmt-table th,
+.fmt-table td {
+  text-align: left;
+  padding: 20px 0;
+  border-bottom: 1px solid var(--rule);
+  vertical-align: baseline;
+}
+
+.fmt-table th {
+  width: 180px;
+  padding-right: 32px;
+  font-family: var(--mono);
+  font-weight: 400;
+  font-size: 11px;
+  letter-spacing: 0.13em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.fmt-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 10px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.fmt-list li {
+  font-family: var(--mono);
+  font-size: 12.5px;
+  color: var(--ink-2);
+  border: 1px solid var(--rule-2);
+  padding: 4px 9px;
+  white-space: nowrap;
+}
+
+.fmt-note {
+  margin: 22px 0 0;
+  font-size: 14px;
+  color: var(--muted);
+}
+
+/* --- Closing ------------------------------------------------------------- */
+
+.closing { padding: 92px 0; }
+
+.closing-inner {
+  display: grid;
+  grid-template-columns: 180px minmax(0, 1fr);
+  gap: 32px;
+  align-items: start;
+}
+
+.closing h2 {
+  font-family: var(--display);
+  font-weight: 680;
+  font-size: clamp(1.8rem, 3.4vw, 2.6rem);
+  line-height: 1.12;
+  letter-spacing: -0.03em;
+  margin: 0;
+  max-width: 15em;
+}
+
+.closing p {
+  margin: 18px 0 30px;
+  color: var(--ink-2);
+  max-width: 40em;
+}
+
+/* --- Footer -------------------------------------------------------------- */
+
+.site-foot {
+  border-top: 1px solid var(--rule);
+  padding: 34px 0;
+  font-size: 13.5px;
+  color: var(--muted);
+}
+
+.foot-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 40px;
+  padding-bottom: 30px;
+  margin-bottom: 26px;
+  border-bottom: 1px solid var(--rule);
+}
+
+.foot-block .label { margin-bottom: 9px; }
+
+/* Selectable in one click, since this is meant to be pasted into a manuscript. */
+.cite-text {
+  margin: 0;
+  font-family: var(--mono);
+  font-size: 12.5px;
+  line-height: 1.6;
+  color: var(--ink-2);
+  user-select: all;
+  cursor: text;
+}
+
+.foot-licence {
+  margin: 0;
+  font-size: 13.5px;
+  line-height: 1.6;
+  color: var(--muted);
+}
+
+.foot-licence strong { color: var(--ink-2); font-weight: 600; }
+
+.foot-author { margin: 0; }
+
+.foot-inner {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px 28px;
+  align-items: baseline;
+  justify-content: space-between;
+}
+
+@media (max-width: 760px) {
+  .foot-grid { grid-template-columns: 1fr; gap: 26px; }
+}
+
+.foot-links { display: flex; flex-wrap: wrap; gap: 22px; }
+
+.site-foot a {
+  color: var(--muted);
+  text-decoration: none;
+  border-bottom: 1px solid transparent;
+}
+
+.site-foot a:hover { color: var(--ink); border-bottom-color: var(--rule-2); }
+
+/* --- Responsive ---------------------------------------------------------- */
+
+@media (max-width: 960px) {
+  .hero-grid {
+    grid-template-columns: 1fr;
+    gap: 0;
+    padding: 0 var(--gutter);
+    min-height: 0;
+  }
+  .hero-text { padding: 64px 0 44px; }
+  /* Stacked: the text block above already supplies the top gap. */
+  .hero-shot { padding: 0 0 30px; }
+  .hero-shot img {
+    width: calc(100% + var(--gutter));
+    /* Stacked layout: the image is full width and has no text beside it, so a
+       deep fade would just eat a third of the screenshot. Keep a short one. */
+    -webkit-mask-image: linear-gradient(to right, transparent 0%, #000 12%);
+    mask-image: linear-gradient(to right, transparent 0%, #000 12%);
+  }
+  .specs-grid { grid-template-columns: repeat(2, 1fr); }
+  .spec:nth-child(2) { border-right: 0; }
+  .spec:nth-child(-n+2) { border-bottom: 1px solid var(--rule); }
+  .band-head, .cap, .closing-inner { grid-template-columns: 1fr; gap: 10px; }
+  .cap-index { padding-top: 0; }
+  .fmt-table th { width: auto; display: block; padding-bottom: 8px; border-bottom: 0; }
+  .fmt-table td { display: block; padding-top: 0; }
+}
+
+@media (max-width: 600px) {
+  :root { --gutter: 20px; }
+  .masthead nav { gap: 18px; font-size: 13.5px; }
+  .masthead nav a:not(.open-link) { display: none; }
+  .specs-grid { grid-template-columns: 1fr; }
+  .spec { border-right: 0; border-bottom: 1px solid var(--rule); padding-left: 0 !important; }
+  .spec:last-child { border-bottom: 0; }
+  .band, .closing { padding: 56px 0; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * { transition: none !important; animation: none !important; }
+}
+</style>
+</head>
+<body>
+
+<header class="masthead">
+  <div class="masthead-inner">
+    <a class="brand" href="/">
+      <svg width="22" height="22" viewBox="-2 -2 28 28" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <circle cx="12" cy="12" r="13" stroke-width="1.5"/>
+        <g stroke-width="2">
+          <path d="m10 16 1.5 1.5"/><path d="m14 8-1.5-1.5"/>
+          <path d="M15 2c-1.798 1.998-2.518 3.995-2.807 5.993"/>
+          <path d="m16.5 10.5 1 1"/><path d="m17 6-2.891-2.891"/>
+          <path d="M2 15c6.667-6 13.333 0 20-6"/><path d="m20 9 .891.891"/>
+          <path d="M3.109 14.109 4 15"/><path d="m6.5 12.5 1 1"/>
+          <path d="m7 18 2.891 2.891"/>
+          <path d="M9 22c1.798-1.998 2.518-3.995 2.807-5.993"/>
+        </g>
+      </svg>
+      SeqNexus
+    </a>
+    <nav aria-label="Primary">
+      <a href="#features">Tools</a>
+      <a href="#formats">Formats</a>
+      <a href="#example">Example</a>
+      <a href="https://github.com/cacat-ayy/seqnexus">Source</a>
+      <a class="open-link" href="app.html">Open the editor&nbsp;&rarr;</a>
+      <button class="theme-toggle" id="theme-toggle" type="button" aria-label="Toggle dark mode" aria-pressed="false">
+        <svg class="icon-sun" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="5"/><path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/></svg>
+        <svg class="icon-moon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+      </button>
+    </nav>
+  </div>
+</header>
+
+<main>
+
+  <section class="hero">
+    <div class="hero-grid">
+      <div class="hero-text">
+        <p class="label">Molecular biology workbench</p>
+        <h1>The whole bench,<span>in a browser tab.</span></h1>
+        <p class="lede">
+          Open a plasmid, read a chromatogram, plan a cloning strategy. Everything
+          is computed on your own machine. No installation, no account, and
+          nothing leaves the device.
+        </p>
+        <div class="hero-actions">
+          <a class="btn" href="app.html">Open the editor &rarr;</a>
+          <a class="btn-quiet" href="https://github.com/cacat-ayy/seqnexus">Read the source</a>
+        </div>
+      </div>
+      <div class="hero-shot">
+        <img class="shot-light" src="assets/hero-screenshot-light.png" alt="The SeqNexus editor showing an annotated DNA sequence with the feature sidebar open" width="1327" height="860" fetchpriority="high">
+        <img class="shot-dark" src="assets/hero-screenshot-dark.png" alt="The SeqNexus editor in dark mode showing an annotated DNA sequence with the feature sidebar open" width="1327" height="860">
+      </div>
+    </div>
+  </section>
+
+  <section class="specs" aria-label="Key specifications">
+    <dl class="specs-grid">
+      <div class="spec">
+        <dt>Installation</dt>
+        <dd>None<small>Open a tab and start working</small></dd>
+      </div>
+      <div class="spec">
+        <dt>Account</dt>
+        <dd>Not required<small>Nothing to sign up for</small></dd>
+      </div>
+      <div class="spec">
+        <dt>Your data</dt>
+        <dd>Never uploaded<small>Stored locally in IndexedDB</small></dd>
+      </div>
+      <div class="spec">
+        <dt>Licence</dt>
+        <dd>MIT<small>Free and open source</small></dd>
+      </div>
+    </dl>
+  </section>
+
+  <section class="band" id="features">
+    <div class="wrap">
+      <div class="band-head">
+        <p class="label">The bench</p>
+        <div>
+          <h2>A full bench of tools, not a viewer.</h2>
+          <p>Everything below runs client-side, from short plasmids up to genome-scale sequences.</p>
+        </div>
+      </div>
+
+      <div class="caps">
+        <article class="cap">
+          <p class="cap-index">Editing</p>
+          <div>
+            <h3>Sequence editor</h3>
+            <p>Linear and circular DNA in a canvas-rendered editor with undo and redo, find and replace, and live complement display.</p>
+          </div>
+        </article>
+
+        <article class="cap">
+          <p class="cap-index">Visualisation</p>
+          <div>
+            <h3>Plasmid map</h3>
+            <p>Interactive circular view carrying annotations, restriction sites and ORFs. Click any feature to jump to it in the sequence.</p>
+          </div>
+        </article>
+
+        <article class="cap">
+          <p class="cap-index">Sanger</p>
+          <div>
+            <h3>Chromatogram viewer</h3>
+            <p>AB1 and SCF traces with quality scores, base-level editing, trim controls and independent undo history per read.</p>
+          </div>
+        </article>
+
+        <article class="cap">
+          <p class="cap-index">Annotation</p>
+          <div>
+            <h3>Features and ORFs</h3>
+            <p>Auto-annotate against a built-in feature database. Six-frame ORF finder with configurable start codons and minimum length.</p>
+          </div>
+        </article>
+
+        <article class="cap">
+          <p class="cap-index">Cloning</p>
+          <div>
+            <h3>In-silico assembly</h3>
+            <p>Digest and ligation, Gibson, Golden Gate, Gateway and TOPO. Simulate a strategy across several source sequences before touching a pipette.</p>
+          </div>
+        </article>
+
+        <article class="cap">
+          <p class="cap-index">Search</p>
+          <div>
+            <h3>NCBI BLAST</h3>
+            <p>Query NCBI databases from inside the editor. Results poll in the background, so the session stays usable while they run.</p>
+          </div>
+        </article>
+
+        <article class="cap">
+          <p class="cap-index">Comparison</p>
+          <div>
+            <h3>Alignment</h3>
+            <p>Pairwise global and local alignment plus MSA, with conservation shading, BLOSUM62 protein scoring and Clustal export.</p>
+          </div>
+        </article>
+
+        <article class="cap">
+          <p class="cap-index">Digestion</p>
+          <div>
+            <h3>Restriction analysis</h3>
+            <p>Filter the full REBASE enzyme set by cut count, overhang type and commercial availability, then check the result on a simulated gel.</p>
+          </div>
+        </article>
+
+        <article class="cap">
+          <p class="cap-index">Primers</p>
+          <div>
+            <h3>Primer design</h3>
+            <p>Nearest-neighbour melting temperatures, penalty scoring and pair finding, with heterodimer and hairpin checks.</p>
+          </div>
+        </article>
+      </div>
+    </div>
+  </section>
+
+  <section class="band" id="formats">
+    <div class="wrap">
+      <div class="band-head">
+        <p class="label">Interchange</p>
+        <div>
+          <h2>Reads and writes the files you already have.</h2>
+          <p>Drag a file onto the window, or fetch a record straight from NCBI, Addgene or SnapGene.</p>
+        </div>
+      </div>
+
+      <table class="fmt-table">
+        <tbody>
+          <tr>
+            <th scope="row">Reads</th>
+            <td>
+              <ul class="fmt-list">
+                <li>GenBank .gb .gbk</li><li>FASTA .fasta .fa</li><li>FASTQ .fastq .fq</li>
+                <li>SnapGene .dna</li><li>Geneious .geneious</li><li>AB1 .ab1</li>
+                <li>SCF .scf</li><li>Plain text</li>
+              </ul>
+            </td>
+          </tr>
+          <tr>
+            <th scope="row">Writes</th>
+            <td>
+              <ul class="fmt-list">
+                <li>GenBank</li><li>FASTA</li><li>FASTQ</li><li>SnapGene .dna</li>
+                <li>GFF3</li><li>CSV</li><li>Clustal .aln</li><li>PHYLIP</li>
+                <li>NEXUS</li><li>PDF</li>
+              </ul>
+            </td>
+          </tr>
+          <tr>
+            <th scope="row">Fetches from</th>
+            <td>
+              <ul class="fmt-list">
+                <li>NCBI</li><li>Addgene</li><li>SnapGene</li>
+              </ul>
+            </td>
+          </tr>
+        </tbody>
+      </table>
+
+      <p class="fmt-note">Sessions can be exported whole and reopened on another machine.</p>
+    </div>
+  </section>
+
+  <section class="band demo" id="example">
+    <div class="wrap">
+      <div class="band-head">
+        <h2 class="label">Example</h2>
+        <div>
+          <p>This is pDONR221, the Gateway donor vector shown in the editor at the top of this page. The file on the left is what you hand the editor; the panel on the right is what it finds in it.</p>
+        </div>
+      </div>
+
+      <div class="demo-grid">
+        <div class="demo-pane">
+          <p class="label">Input <span class="demo-file">pDONR221.gb</span></p>
+          <pre class="demo-record">LOCUS       pDONR221                4762 bp    DNA     circular SYN 01-JAN-2026
+DEFINITION  Gateway donor vector pDONR221, complete sequence.
+ACCESSION   JA808046
+VERSION     JA808046.1
+KEYWORDS    .
+SOURCE      synthetic DNA construct
+  ORGANISM  synthetic DNA construct
+            other sequences; artificial sequences; vectors.
+FEATURES             Location/Qualifiers
+     source          1..4762
+                     /organism="synthetic DNA construct"
+                     /mol_type="other DNA"
+     terminator      268..295
+                     /label="rrnB T2 terminator"
+     terminator      387..473
+                     /label="rrnB T1 terminator"
+                     /note="transcription terminator T1 from the E. coli rrnB gene"
+     primer_bind     537..553
+                     /label="M13 fwd"
+     protein_bind    570..801
+                     /label="attP1"
+                     /bound_moiety="lambda integrase"
+     CDS             complement(1197..1502)
+                     /label="ccdB"
+                     /codon_start=1
+                     /product="CcdB, a bacterial toxin that poisons DNA gyrase"
+     primer_bind     1601..1620
+                     /label="FWD"
+     primer_bind     1712..1732
+                     /label="PRB"
+     primer_bind     complement(1814..1834)
+                     /label="REV"
+     CDS             complement(1852..2505)
+                     /label="cat"
+                     /codon_start=1
+                     /product="chloramphenicol acetyltransferase"
+     promoter        complement(2506..2608)
+                     /label="cat promoter"
+     protein_bind    complement(2753..2984)
+                     /label="attP2"
+                     /bound_moiety="lambda integrase"
+     primer_bind     complement(3026..3042)
+                     /label="M13 rev"
+     CDS             3155..3964
+                     /label="aph(3')-Ia"
+                     /codon_start=1
+                     /product="aminoglycoside phosphotransferase, confers kanamycin resistance"
+     rep_origin      4111..4699
+                     /label="ori"
+                     /note="high-copy-number ColE1/pMB1/pBR322/pUC origin"
+ORIGIN
+        1 ctttcctgcg ttatcccctg attctgtgga taaccgtatt accgcctttg agtgagctga
+       61 taccgctcgc cgcagccgaa cgaccgagcg cagcgagtca gtgagcgagg aagcggaaga
+      121 gcgcccaata cgcaaaccgc ctctccccgc gcgttggccg attcattaat gcagctggca
+      181 cgacaggttt cccgactgga aagcgggcag tgagcgcaac gcaattaata cgcgtaccgc
+      241 tagccaggaa gagtttgtag aaacgcaaaa aggccatccg tcaggatggc cttctgctta
+      301 gtttgatgcc tggcagttta tggcgggcgt cctgcccgcc accctccggg ccgttgcttc
+      361 acaacgttca aatccgctcc cggcggattt gtcctactca ggagagcgtt caccgacaaa
+      421 caacagataa aacgaaaggc ccagtcttcc gactgagcct ttcgttttat ttgatgcctg
+      481 gcagttccct actctcgcgt taacgctagc atggatgttt tcccagtcac gacgttgtaa
+      541 aacgacggcc agtcttaagc tcgggcccca aataatgatt ttattttgac tgatagtgac
+      601 ctgttcgttg caacacattg atgagcaatg cttttttata atgccaactt tgtacaaaaa
+      661 agctgaacga gaaacgtaaa atgatataaa tatcaatata ttaaattaga ttttgcataa
+      721 aaaacagact acataatact gtaaaacaca acatatccag tcactatgaa tcaactactt
+      781 agatggtatt agtgacctgt agtcgaccga cagccttcca aatgttcttc gggtgatgct
+      841 gccaacttag tcgaccgaca gccttccaaa tgttcttctc aaacggaatc gtcgtatcca
+      901 gcctactcgc tattgtcctc aatgccgtat taaatcataa aaagaaataa gaaaaagagg
+      961 tgcgagcctc ttttttgtgt gacaaaataa aaacatctac ctattcatat acgctagtgt
+     1021 catagtcctg aaaatcatct gcatcaagaa caatttcaca actcttatac ttttctctta
+     1081 caagtcgttc ggcttcatct ggattttcag cctctatact tactaaacgt gataaagttt
+     1141 ctgtaatttc tactgtatcg acctgcagac tggctgtgta taagggagcc tgacatttat
+     1201 attccccaga acatcaggtt aatggcgttt ttgatgtcat tttcgcggtg gctgagatca
+     1261 gccacttctt ccccgataac ggagaccggc acactggcca tatcggtggt catcatgcgc
+     1321 cagctttcat ccccgatatg caccaccggg taaagttcac gggagacttt atctgacagc
+     1381 agacgtgcac tggccagggg gatcaccatc cgtcgcccgg gcgtgtcaat aatatcactc
+     1441 tgtacatcca caaacagacg ataacggctc tctcttttat aggtgtaaac cttaaactgc
+     1501 atttcaccag cccctgttct cgtcagcaaa agagccgttc atttcaataa accgggcgac
+     1561 ctcagccatc ccttcctgat tttccgcttt ccagcgttcg gcacgcagac gacgggcttc
+     1621 attctgcatg gttgtgctta ccagaccgga gatattgaca tcatatatgc cttgagcaac
+     1681 tgatagctgt cgctgtcaac tgtcactgta atacgctgct tcatagcata cctctttttg
+     1741 acatacttcg ggtatacata tcagtatata ttcttatacc gcaaaaatca gcgcgcaaat
+     1801 acgcatactg ttatctggct tttagtaagc cggatccacg cggcgtttac gccccgccct
+     1861 gccactcatc gcagtactgt tgtaattcat taagcattct gccgacatgg aagccatcac
+     1921 agacggcatg atgaacctga atcgccagcg gcatcagcac cttgtcgcct tgcgtataat
+     1981 atttgcccat ggtgaaaacg ggggcgaaga agttgtccat attggccacg tttaaatcaa
+     2041 aactggtgaa actcacccag ggattggctg agacgaaaaa catattctca ataaaccctt
+     2101 tagggaaata ggccaggttt tcaccgtaac acgccacatc ttgcgaatat atgtgtagaa
+     2161 actgccggaa atcgtcgtgg tattcactcc agagcgatga aaacgtttca gtttgctcat
+     2221 ggaaaacggt gtaacaaggg tgaacactat cccatatcac cagctcaccg tctttcattg
+     2281 ccatacggaa ttccggatga gcattcatca ggcgggcaag aatgtgaata aaggccggat
+     2341 aaaacttgtg cttatttttc tttacggtct ttaaaaaggc cgtaatatcc agctgaacgg
+     2401 tctggttata ggtacattga gcaactgact gaaatgcctc aaaatgttct ttacgatgcc
+     2461 attgggatat atcaacggtg gtatatccag tgattttttt ctccatttta gcttccttag
+     2521 ctcctgaaaa tctcgataac tcaaaaaata cgcccggtag tgatcttatt tcattatggt
+     2581 gaaagttgga acctcttacg tgccgatcaa cgtctcattt tcgccaaaag ttggcccagg
+     2641 gcttcccggt atcaacaggg acaccaggat ttatttattc tgcgaagtga tcttccgtca
+     2701 caggtattta ttcggcgcaa agtgcgtcgg gtgatgctgc caacttagtc gactacaggt
+     2761 cactaatacc atctaagtag ttgattcata gtgactggat atgttgtgtt ttacagtatt
+     2821 atgtagtctg ttttttatgc aaaatctaat ttaatatatt gatatttata tcattttacg
+     2881 tttctcgttc agctttcttg tacaaagttg gcattataag aaagcattgc ttatcaattt
+     2941 gttgcaacga acaggtcact atcagtcaaa ataaaatcat tatttgccat ccagctgata
+     3001 tcccctatag tgagtcgtat tacatggtca tagctgtttc ctggcagctc tggcccgtgt
+     3061 ctcaaaatct ctgatgttac attgcacaag ataaaataat atcatcatga acaataaaac
+     3121 tgtctgctta cataaacagt aatacaaggg gtgttatgag ccatattcaa cgggaaacgt
+     3181 cgaggccgcg attaaattcc aacatggatg ctgatttata tgggtataaa tgggctcgcg
+     3241 ataatgtcgg gcaatcaggt gcgacaatct atcgcttgta tgggaagccc gatgcgccag
+     3301 agttgtttct gaaacatggc aaaggtagcg ttgccaatga tgttacagat gagatggtca
+     3361 gactaaactg gctgacggaa tttatgcctc ttccgaccat caagcatttt atccgtactc
+     3421 ctgatgatgc atggttactc accactgcga tccccggaaa aacagcattc caggtattag
+     3481 aagaatatcc tgattcaggt gaaaatattg ttgatgcgct ggcagtgttc ctgcgccggt
+     3541 tgcattcgat tcctgtttgt aattgtcctt ttaacagcga tcgcgtattt cgtctcgctc
+     3601 aggcgcaatc acgaatgaat aacggtttgg ttgatgcgag tgattttgat gacgagcgta
+     3661 atggctggcc tgttgaacaa gtctggaaag aaatgcataa acttttgcca ttctcaccgg
+     3721 attcagtcgt cactcatggt gatttctcac ttgataacct tatttttgac gaggggaaat
+     3781 taataggttg tattgatgtt ggacgagtcg gaatcgcaga ccgataccag gatcttgcca
+     3841 tcctatggaa ctgcctcggt gagttttctc cttcattaca gaaacggctt tttcaaaaat
+     3901 atggtattga taatcctgat atgaataaat tgcagtttca tttgatgctc gatgagtttt
+     3961 tctaatcaga attggttaat tggttgtaac actggcagag cattacgctg acttgacggg
+     4021 acggcgcaag ctcatgacca aaatccctta acgtgagtta cgcgtcgttc cactgagcgt
+     4081 cagaccccgt agaaaagatc aaaggatctt cttgagatcc tttttttctg cgcgtaatct
+     4141 gctgcttgca aacaaaaaaa ccaccgctac cagcggtggt ttgtttgccg gatcaagagc
+     4201 taccaactct ttttccgaag gtaactggct tcagcagagc gcagatacca aatactgttc
+     4261 ttctagtgta gccgtagtta ggccaccact tcaagaactc tgtagcaccg cctacatacc
+     4321 tcgctctgct aatcctgtta ccagtggctg ctgccagtgg cgataagtcg tgtcttaccg
+     4381 ggttggactc aagacgatag ttaccggata aggcgcagcg gtcgggctga acggggggtt
+     4441 cgtgcacaca gcccagcttg gagcgaacga cctacaccga actgagatac ctacagcgtg
+     4501 agctatgaga aagcgccacg cttcccgaag ggagaaaggc ggacaggtat ccggtaagcg
+     4561 gcagggtcgg aacaggagag cgcacgaggg agcttccagg gggaaacgcc tggtatcttt
+     4621 atagtcctgt cgggtttcgc cacctctgac ttgagcgtcg atttttgtga tgctcgtcag
+     4681 gggggcggag cctatggaaa aacgccagca acgcggcctt tttacggttc ctggcctttt
+     4741 gctggccttt tgctcacatg tt
+//</pre>
+        </div>
+
+        <div class="demo-pane">
+          <p class="label">What the editor reads from it</p>
+          <div class="demo-out">
+            <dl class="demo-summary">
+              <div><dt>Name</dt><dd>pDONR221</dd></div>
+              <div><dt>Length</dt><dd>4,762 bp</dd></div>
+              <div><dt>Topology</dt><dd>circular</dd></div>
+              <div><dt>GC</dt><dd>45.8 %</dd></div>
+            </dl>
+
+            <table class="demo-feats">
+              <tbody>
+                <tr><td>terminator</td><td>rrnB T2 terminator</td><td>268..295</td></tr>
+                <tr><td>terminator</td><td>rrnB T1 terminator</td><td>387..473</td></tr>
+                <tr><td>primer_bind</td><td>M13 fwd</td><td>537..553</td></tr>
+                <tr><td>protein_bind</td><td>attP1</td><td>570..801</td></tr>
+                <tr><td>CDS</td><td>ccdB</td><td>1,197..1,502 &larr;</td></tr>
+                <tr><td>primer_bind</td><td>FWD</td><td>1,601..1,620</td></tr>
+                <tr><td>primer_bind</td><td>PRB</td><td>1,712..1,732</td></tr>
+                <tr><td>primer_bind</td><td>REV</td><td>1,814..1,834 &larr;</td></tr>
+                <tr><td>CDS</td><td>cat</td><td>1,852..2,505 &larr;</td></tr>
+                <tr><td>promoter</td><td>cat promoter</td><td>2,506..2,608 &larr;</td></tr>
+                <tr><td>protein_bind</td><td>attP2</td><td>2,753..2,984 &larr;</td></tr>
+                <tr><td>primer_bind</td><td>M13 rev</td><td>3,026..3,042 &larr;</td></tr>
+                <tr><td>CDS</td><td>aph(3')-Ia</td><td>3,155..3,964</td></tr>
+                <tr><td>rep_origin</td><td>ori</td><td>4,111..4,699</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <p class="demo-note">
+        Sequence from GenBank accession JA808046.1. Open the editor and drag the
+        file in to get the same result, plus the circular map, cut sites and ORFs.
+      </p>
+    </div>
+  </section>
+
+  <section class="closing">
+    <div class="wrap">
+      <div class="closing-inner">
+        <p class="label">Get started</p>
+        <div>
+          <h2>Nothing to install. Open the tab and drag in a file.</h2>
+          <p>
+            The editor is a single self-contained page. Load it once and it keeps
+            working offline, with your sequences stored on your own device.
+          </p>
+          <a class="btn" href="app.html">Open the editor &rarr;</a>
+        </div>
+      </div>
+    </div>
+  </section>
+
+</main>
+
+<footer class="site-foot">
+  <div class="wrap">
+
+    <div class="foot-grid">
+      <div class="foot-block">
+        <p class="label">Cite SeqNexus</p>
+        <p class="cite-text">Acatay, C. (2026). SeqNexus: a browser-based molecular biology sequence editor. Available at https://seqnexus.app</p>
+      </div>
+      <div class="foot-block">
+        <p class="label">Licence</p>
+        <p class="foot-licence"><strong>Free to use.</strong> SeqNexus is open-source under the MIT licence. All output may be used freely in publications, presentations, theses, and commercial work without restriction or fee.</p>
+      </div>
+    </div>
+
+    <div class="foot-inner">
+      <p class="foot-author">SeqNexus, by Christopher Acatay</p>
+      <div class="foot-links">
+        <a href="app.html">Editor</a>
+        <a href="https://github.com/cacat-ayy/seqnexus">GitHub</a>
+        <a href="mailto:contact@seqnexus.app">Contact</a>
+        <a href="impressum.html">Impressum</a>
+        <a href="datenschutz.html">Datenschutz</a>
+      </div>
+    </div>
+
+  </div>
+</footer>
+
+<script>
+// Theme toggle. The initial class is already set by the inline script in
+// <head>; this only handles clicks and keeps the button's state in sync.
+(function () {
+  var KEY = 'seqnexus-landing-dark';
+  var btn = document.getElementById('theme-toggle');
+  if (!btn) return;
+
+  function sync() {
+    btn.setAttribute('aria-pressed', String(document.documentElement.classList.contains('dark')));
+  }
+  sync();
+
+  btn.addEventListener('click', function () {
+    var dark = document.documentElement.classList.toggle('dark');
+    try { localStorage.setItem(KEY, dark ? '1' : '0'); } catch (e) { /* storage blocked */ }
+    sync();
+  });
+})();
+</script>
+
+</body>
+</html>
