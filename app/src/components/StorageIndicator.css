@@ -1,0 +1,87 @@
+/* --- Storage indicator (status bar) --- */
+.storage-indicator {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--text-muted);
+  font-size: 11px;
+  cursor: default;
+  position: relative;
+}
+.storage-indicator-bar-bg {
+  display: inline-block;
+  width: 36px;
+  height: 6px;
+  background: var(--border);
+  border-radius: 3px;
+  overflow: hidden;
+  vertical-align: middle;
+}
+.storage-indicator-bar-fill {
+  display: block;
+  height: 100%;
+  border-radius: 3px;
+  transition: width 0.3s ease, background 0.3s ease;
+}
+.storage-indicator-label {
+  font-size: 10px;
+  font-weight: 600;
+  min-width: 26px;
+  text-align: right;
+}
+
+/* Storage indicator tooltip */
+.storage-indicator-tooltip {
+  position: absolute;
+  bottom: calc(100% + 8px);
+  right: 0;
+  z-index: 200;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 160px;
+  padding: 8px 10px;
+  background: var(--bg-alt);
+  border: 1px solid var(--border-hover);
+  border-radius: 10px;
+  box-shadow: var(--shadow-popover);
+  font-size: 11px;
+  color: var(--text);
+  pointer-events: none;
+  animation: storage-tip-in .12s ease;
+}
+.storage-indicator-tooltip::after {
+  content: '';
+  position: absolute;
+  bottom: -5px;
+  right: 16px;
+  width: 8px;
+  height: 8px;
+  background: var(--bg-alt);
+  border-right: 1px solid var(--border-hover);
+  border-bottom: 1px solid var(--border-hover);
+  transform: rotate(45deg);
+}
+.storage-indicator-tooltip-header {
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--accent);
+  margin-bottom: 2px;
+}
+.storage-indicator-tooltip-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+}
+.storage-indicator-tooltip-label {
+  color: var(--text-muted);
+  font-weight: 500;
+}
+@keyframes storage-tip-in {
+  from { opacity: 0; transform: translateY(4px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+

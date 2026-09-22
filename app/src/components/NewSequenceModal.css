@@ -1,0 +1,52 @@
+/* --- New Sequence Modal --- */
+.nsm-dialog {
+  width: 520px;
+  max-width: 90vw;
+}
+
+.nsm-label {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-muted);
+  margin-bottom: 14px;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.nsm-optional {
+  font-weight: 400;
+  text-transform: none;
+  letter-spacing: 0;
+}
+
+.nsm-input {
+  border-radius: var(--radius-input);
+  padding: 7px 10px;
+}
+
+.nsm-textarea {
+  font-family: 'SF Mono', 'Fira Code', 'Cascadia Code', 'Consolas', monospace;
+  font-size: 12px;
+  border-radius: var(--radius-input);
+  padding: 8px 10px;
+  resize: vertical;
+  min-height: 120px;
+  line-height: 1.5;
+}
+
+/* Topology toggle: uses shared .toggle-group / .toggle-btn from App.css */
+
+.nsm-base-count {
+  font-weight: 400;
+  font-size: 11px;
+  color: var(--accent);
+  margin-left: auto;
+  text-transform: none;
+  letter-spacing: 0;
+}
+
+
+

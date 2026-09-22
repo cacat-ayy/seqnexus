@@ -1,0 +1,33 @@
+/* ===== Sequence Properties Modal extras ===== */
+
+.nsm-dialog .toggle-group {
+  align-self: flex-start;
+}
+
+.spm-desc {
+  min-height: 60px;
+  resize: vertical;
+}
+
+.spm-checkboxes {
+  display: flex;
+  gap: 16px;
+  margin-top: 6px;
+}
+
+.spm-checkbox {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 12px;
+  color: var(--text);
+  cursor: pointer;
+}
+
+.spm-checkbox input[type="checkbox"] {
+  accent-color: var(--accent);
+  width: 14px;
+  height: 14px;
+  cursor: pointer;
+}
+

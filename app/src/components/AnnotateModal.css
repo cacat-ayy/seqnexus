@@ -1,0 +1,181 @@
+/* --- Annotate Modal --- */
+.ann-modal {
+  width: 580px;
+  max-width: 90vw;
+}
+
+/* Find Features */
+.ann-controls {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.ann-search-box {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: 1;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-input);
+  padding: 4px 8px;
+  color: var(--text-secondary);
+}
+
+.ann-search-box:focus-within {
+  border-color: var(--accent);
+}
+
+.ann-search-input {
+  background: none;
+  border: none;
+  outline: none;
+  color: var(--text);
+  font-size: 12px;
+  flex: 1;
+  min-width: 0;
+}
+
+.ann-similarity-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 10px;
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.ann-similarity-row label {
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.ann-slider {
+  flex: 1;
+  accent-color: var(--accent);
+  height: 4px;
+}
+
+.ann-sim-value {
+  font-weight: 700;
+  color: var(--text);
+  min-width: 32px;
+  text-align: right;
+}
+
+.ann-results-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.ann-scanning {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.ann-spin {
+  animation: spin 1s linear infinite;
+}
+
+.ann-add-all-btn {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.ann-results-list {
+  max-height: 360px;
+  overflow-y: auto;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-input);
+  background: var(--bg);
+}
+
+.ann-result-group {
+  border-bottom: 1px solid var(--border);
+}
+
+.ann-result-group:last-child {
+  border-bottom: none;
+}
+
+.ann-result-name {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  font-size: 12px;
+  font-weight: 600;
+  background: var(--bg-alt);
+  border-bottom: 1px solid var(--border);
+  user-select: none;
+}
+
+.ann-result-name:hover {
+  background: var(--bg-hover);
+}
+
+.ann-result-chevron {
+  display: inline-flex;
+  align-items: center;
+  color: var(--text-muted);
+  flex-shrink: 0;
+}
+
+.ann-swatch {
+  width: 10px;
+  height: 10px;
+  border-radius: var(--radius-sm);
+  flex-shrink: 0;
+}
+
+.ann-result-match {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 10px 4px 26px;
+  font-size: 12px;
+}
+
+.ann-match-pos {
+  font-family: var(--font-mono);
+  color: var(--text);
+  min-width: 100px;
+}
+
+.ann-match-strand {
+  color: var(--text-secondary);
+  min-width: 16px;
+}
+
+.ann-match-sim {
+  color: var(--text-secondary);
+  min-width: 40px;
+  text-align: right;
+}
+
+.ann-add-btn {
+  margin-left: auto;
+  font-size: 11px;
+  padding: 2px 8px;
+  display: flex;
+  align-items: center;
+  gap: 3px;
+}
+
+.ann-add-btn.added {
+  color: var(--accent);
+  opacity: 0.7;
+}
+
+.ann-result-match.duplicate {
+  opacity: 0.45;
+}
+
+

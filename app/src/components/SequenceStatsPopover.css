@@ -1,0 +1,195 @@
+/* ===== Sequence Stats Popover ===== */
+
+.stats-popover {
+  position: fixed;
+  z-index: 300;
+  width: 300px;
+  max-height: calc(100vh - 60px);
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg-alt);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-popover);
+  box-shadow: var(--shadow-popover);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  padding: 0;
+  font-size: 12px;
+  animation: stats-pop-in .15s ease;
+}
+
+@keyframes stats-pop-in {
+  from { opacity: 0; transform: translateY(-4px) scale(.98); }
+  to   { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+.stats-section {
+  padding: 8px 14px;
+  border-bottom: 1px solid var(--border);
+}
+
+.stats-section:last-child {
+  border-bottom: none;
+}
+
+.stats-section-title {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  color: var(--text-muted);
+  margin-bottom: 6px;
+}
+
+.stats-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 2px 0;
+  color: var(--text);
+}
+
+.stats-row-indent {
+  padding-left: 12px;
+  color: var(--text-secondary);
+}
+
+/* Nucleotide color bar */
+
+.stats-nuc-bar {
+  display: flex;
+  height: 8px;
+  border-radius: 4px;
+  overflow: hidden;
+  margin: 6px 0;
+}
+
+.stats-nuc-bar-seg {
+  height: 100%;
+  min-width: 1px;
+}
+
+/* Nucleotide label with colored dot */
+
+.stats-nuc-label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.stats-nuc-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 2px;
+  flex-shrink: 0;
+}
+
+/* Codon usage table */
+
+.stats-codon-table {
+  max-height: 200px;
+  overflow-y: auto;
+}
+
+.stats-codon-header {
+  display: grid;
+  grid-template-columns: 1fr 1fr 0.6fr;
+  gap: 4px;
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--text-muted);
+  padding: 2px 0;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 2px;
+  position: sticky;
+  top: 0;
+  background: var(--bg-alt);
+}
+
+.stats-codon-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr 0.6fr;
+  gap: 4px;
+  padding: 1px 0;
+  color: var(--text);
+  font-size: 11px;
+}
+
+.stats-codon-seq {
+  font-family: monospace;
+  font-weight: 600;
+}
+
+/* Hover tooltip for physical property rows */
+
+.stats-row-tip {
+  position: relative;
+  cursor: help;
+  flex-wrap: wrap;
+}
+
+.stats-tip {
+  display: none;
+  position: absolute;
+  bottom: calc(100% + 6px);
+  left: 0;
+  right: 0;
+  z-index: 10;
+  background: var(--bg-alt);
+  border: 1px solid var(--border-hover);
+  border-radius: var(--radius-sm);
+  box-shadow: var(--shadow-popover);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  padding: 8px 10px;
+  font-size: 11px;
+  line-height: 1.45;
+  color: var(--text-secondary);
+  white-space: normal;
+  pointer-events: none;
+}
+
+.stats-row-tip:hover .stats-tip {
+  display: block;
+}
+
+/* Collapsible section button */
+
+.stats-collapse-btn {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  width: 100%;
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  color: var(--text-muted);
+  font-size: inherit;
+  font-family: inherit;
+  text-align: left;
+  transition: color var(--dur-fast);
+}
+
+.stats-collapse-btn:hover {
+  color: var(--text);
+}
+
+.stats-collapse-count {
+  margin-left: auto;
+  font-size: 10px;
+  font-weight: 400;
+  color: var(--text-muted);
+}
+
+/* Thin scrollbar for stats popover */
+.stats-popover::-webkit-scrollbar,
+.stats-codon-table::-webkit-scrollbar {
+  width: 4px;
+}
+.stats-popover::-webkit-scrollbar-thumb,
+.stats-codon-table::-webkit-scrollbar-thumb {
+  background: var(--border);
+  border-radius: 2px;
+}
+

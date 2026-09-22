@@ -1,0 +1,150 @@
+/* ===== Export Modal ===== */
+
+.export-modal {
+  width: 440px;
+  max-width: 95vw;
+}
+
+/* Format selection */
+.export-format-label,
+.export-filename-label {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin-bottom: 6px;
+}
+
+.export-filename-label {
+  margin-top: 16px;
+}
+
+.export-format-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.export-format-card {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 10px 12px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-input);
+  cursor: pointer;
+  text-align: left;
+  transition: border-color var(--dur-fast), background var(--dur-fast);
+}
+
+.export-format-card:hover {
+  border-color: var(--border-hover);
+  background: var(--bg-hover);
+}
+
+.export-format-card.selected {
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 6%, transparent);
+}
+
+.export-format-icon {
+  flex-shrink: 0;
+  color: var(--text-muted);
+}
+
+.export-format-card.selected .export-format-icon {
+  color: var(--accent);
+}
+
+.export-format-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.export-format-name {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+}
+
+.export-format-ext {
+  font-size: 11px;
+  font-weight: 400;
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+}
+
+.export-format-desc {
+  font-size: 11px;
+  color: var(--text-muted);
+  margin-top: 1px;
+}
+
+/* Annotations-only empty warning */
+.export-format-note {
+  margin-top: 8px;
+  padding: 8px 10px;
+  font-size: 11px;
+  color: var(--warning);
+  background: var(--warning-bg);
+  border-radius: var(--radius-sm);
+  line-height: 1.4;
+}
+
+/* Mixed-kind summary */
+.export-mixed-summary {
+  font-size: 12px;
+  color: var(--text-secondary);
+  margin-bottom: 12px;
+  text-transform: capitalize;
+}
+
+/* Combined / Separate toggle */
+.export-mode-toggle {
+  width: 100%;
+  margin-bottom: 4px;
+}
+
+.export-mode-toggle .toggle-btn {
+  flex: 1;
+}
+
+/* Filename input */
+.export-filename-input {
+  width: 100%;
+  font-family: var(--font-mono);
+  font-size: 13px;
+}
+
+/* Separate files preview */
+.export-file-preview {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 8px 10px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-input);
+  max-height: 120px;
+  overflow-y: auto;
+}
+
+.export-file-preview-item {
+  font-size: 12px;
+  font-family: var(--font-mono);
+  color: var(--text);
+  padding: 2px 0;
+}
+
+.export-file-preview-more {
+  font-size: 11px;
+  color: var(--text-muted);
+  font-style: italic;
+  padding: 2px 0;
+}

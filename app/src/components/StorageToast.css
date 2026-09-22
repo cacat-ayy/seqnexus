@@ -1,0 +1,52 @@
+/* --- Storage toast --- */
+.storage-toast {
+  position: fixed;
+  bottom: 40px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 500;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  max-width: 600px;
+  padding: 10px 16px;
+  background: var(--warning);
+  color: #fff;
+  font-size: 13px;
+  border-radius: var(--radius-input);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
+  animation: toast-in var(--dur-slow) ease;
+}
+.storage-toast-icon {
+  flex-shrink: 0;
+  color: #fff;
+}
+.storage-toast-msg {
+  flex: 1;
+}
+.storage-toast-close {
+  background: none;
+  border: none;
+  color: #fff;
+  cursor: pointer;
+  padding: 0 2px;
+  opacity: 0.7;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+}
+.storage-toast-close:hover {
+  opacity: 1;
+}
+
+.storage-toast-out {
+  animation: toast-out 150ms ease forwards;
+}
+
+@keyframes toast-out {
+  to {
+    opacity: 0;
+    transform: translateX(-50%) translateY(8px);
+  }
+}
+
