@@ -5,9 +5,9 @@
   border: 1px solid var(--border-hover);
   border-radius: var(--radius-popover);
   padding: 0;
-  font-size: 12px;
+  font-size: var(--text-sm);
   box-shadow: var(--shadow-popover);
-  z-index: 200;
+  z-index: var(--z-popover);
   max-width: 240px;
   max-height: calc(100vh - 16px);
   overflow-y: auto;
@@ -15,20 +15,20 @@
 }
 .enzyme-tooltip-title {
   font-weight: 700;
-  font-size: 12px;
+  font-size: var(--text-sm);
   text-transform: uppercase;
   letter-spacing: 0.06em;
   color: var(--accent);
-  padding: 8px 12px;
+  padding: var(--space-2) var(--space-3);
   border-bottom: 1px solid var(--border);
 }
 .enzyme-cut-diagram {
-  margin: 8px 10px;
-  padding: 8px 10px;
+  margin: var(--space-2) var(--space-2-5);
+  padding: var(--space-2) var(--space-2-5);
   background: var(--accent-bg);
   border-radius: var(--radius-sm);
   font-family: monospace;
-  font-size: 12px;
+  font-size: var(--text-sm);
   line-height: 1.4;
   color: var(--text);
   white-space: nowrap;
@@ -41,8 +41,8 @@
   align-items: baseline;
   position: relative;
 }
-.ecd-row-fwd { padding-top: 10px; }
-.ecd-row-rev { padding-bottom: 10px; }
+.ecd-row-fwd { padding-top: var(--space-2-5); }
+.ecd-row-rev { padding-bottom: var(--space-2-5); }
 .ecd-prefix, .ecd-suffix {
   flex-shrink: 0;
   white-space: pre;
@@ -50,23 +50,23 @@
 .ecd-prefix {
   width: 2.5ch;
   text-align: right;
-  margin-right: 2px;
+  margin-right: var(--space-0-5);
 }
 .ecd-suffix {
-  margin-left: 2px;
+  margin-left: var(--space-0-5);
 }
 .ecd-cell {
   display: inline-block;
   text-align: center;
   min-width: 1.2ch;
-  padding: 0 1.5px;
+  padding: 0 1.var(--space-1);
   position: relative;
 }
 .ecd-collapsed {
   min-width: auto;
 }
 .ecd-count {
-  font-size: 9px;
+  font-size: var(--text-2xs);
   color: var(--text-muted);
   vertical-align: super;
 }
@@ -74,7 +74,7 @@
 .ecd-caret {
   position: absolute;
   color: var(--accent);
-  font-size: 10px;
+  font-size: var(--text-2xs);
   line-height: 1;
   left: -1px;
   transform: translateX(-50%);
@@ -92,21 +92,21 @@
 .enzyme-tooltip-table {
   border-collapse: collapse;
   width: 100%;
-  padding: 0 2px;
-  font-size: 12px;
+  padding: 0 var(--space-0-5);
+  font-size: var(--text-sm);
 }
 .enzyme-tooltip-table td {
-  padding: 3px 12px;
+  padding: var(--space-1) var(--space-3);
   vertical-align: top;
 }
-.enzyme-tooltip-table tr:first-child td { padding-top: 6px; }
-.enzyme-tooltip-table tr:last-child td  { padding-bottom: 8px; }
+.enzyme-tooltip-table tr:first-child td { padding-top: var(--space-1-5); }
+.enzyme-tooltip-table tr:last-child td  { padding-bottom: var(--space-2); }
 .enzyme-tooltip-table td:first-child {
   color: var(--accent);
-  padding-right: 10px;
+  padding-right: var(--space-2-5);
   white-space: nowrap;
   font-weight: 600;
-  font-size: 11px;
+  font-size: var(--text-xs);
 }
 .enzyme-tooltip-table td:last-child {
   font-weight: 500;
@@ -117,13 +117,13 @@
 }
 /* Multi-enzyme tooltip spacing */
 .enzyme-tooltip-position {
-  font-size: 10px;
+  font-size: var(--text-2xs);
   color: var(--text-muted);
-  padding: 4px 12px 0;
+  padding: var(--space-1) var(--space-3) 0;
 }
 
 .enzyme-tooltip-site {
-  padding: 6px 0;
+  padding: var(--space-1-5) 0;
 }
 
 .enzyme-tooltip-site-sep {
@@ -133,44 +133,44 @@
 
 .enzyme-tooltip-site-name {
   font-weight: 600;
-  font-size: 11px;
-  padding: 0 12px 2px;
+  font-size: var(--text-xs);
+  padding: 0 var(--space-3) var(--space-0-5);
 }
 
 /* Comma-separated enzyme names sharing the same cut pattern */
 .enzyme-tooltip-site-names {
   font-weight: 600;
-  font-size: 11px;
-  padding: 0 12px 2px;
+  font-size: var(--text-xs);
+  padding: 0 var(--space-3) var(--space-0-5);
   line-height: 1.4;
 }
 
 /* Methylation warning banner in tooltip */
 .enzyme-methyl-warning {
-  font-size: 10px;
+  font-size: var(--text-2xs);
   font-weight: 600;
-  padding: 3px 12px;
+  padding: var(--space-1) var(--space-3);
   border-bottom: 1px solid var(--border);
 }
 .enzyme-methyl-blocked {
-  color: var(--danger, #e53e3e);
-  background: color-mix(in srgb, var(--danger, #e53e3e) 8%, transparent);
+  color: var(--danger);
+  background: color-mix(in srgb, var(--danger) 8%, transparent);
 }
 .enzyme-methyl-impaired {
-  color: var(--warning, #d69e2e);
-  background: color-mix(in srgb, var(--warning, #d69e2e) 8%, transparent);
+  color: var(--warning);
+  background: color-mix(in srgb, var(--warning) 8%, transparent);
 }
 
 /* Inline methylation pills */
 .enzyme-methyl-inline {
   display: inline-flex;
   flex-direction: column;
-  gap: 2px;
+  gap: var(--space-0-5);
 }
 .enzyme-methyl-tag {
-  font-size: 10px;
-  padding: 1px 5px;
-  border-radius: 3px;
+  font-size: var(--text-2xs);
+  padding: var(--space-0-5) var(--space-1);
+  border-radius: var(--radius-xs);
   background: color-mix(in srgb, var(--text-muted) 10%, transparent);
   color: var(--text-secondary);
   white-space: nowrap;

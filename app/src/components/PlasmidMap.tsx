@@ -9,7 +9,7 @@
  * - Center text (name + size)
  */
 
-import { useRef, useEffect, useCallback, useMemo, useState } from 'react'
+import { useRef, useEffect, useCallback, useMemo, useState, memo } from 'react'
 import { formatBp } from '../utils/format'
 import { visibleStroke, contrastText } from '../utils/color'
 import { translate as translateSequenceStr } from '../utils/codon'
@@ -20,8 +20,10 @@ import { displayPosition } from '../models/Document'
 import { orfColor } from '../workers/orf-finder'
 import { reverseComplement as reverseComplementStr } from '../models/complement'
 import AnnotationTooltip, { AnnotationTooltipContent } from './AnnotationTooltip'
+import { annotationBases, annotationProtein, canTranslateAnnotation } from '../utils/annotation-sequence'
+import { useDelayedHover, type HoverTarget } from '../hooks/useDelayedHover'
 import EnzymeTooltip, { EnzymeGroupTooltipContent } from './EnzymeTooltip'
-import { groupCutSites, type GroupedCutSite } from './SequenceView'
+import { groupCutSites, enzymeGroupKey, type GroupedCutSite } from './SequenceView'
 import ContextMenuPopup from './ContextMenuPopup'
 import ConfirmDialog from './ConfirmDialog'
 
@@ -404,7 +406,7 @@ interface PlasmidMapProps {
   onCopyFeedback?: (msg: string) => void
 }
 
-export default function PlasmidMap(_props: PlasmidMapProps) {
+function PlasmidMap(_props: PlasmidMapProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const containerRef = useRef<HTMLDivElement>(null)
 
@@ -426,8 +428,12 @@ export default function PlasmidMap(_props: PlasmidMapProps) {
   const [nameValue, setNameValue] = useState('')
   const nameInputRef = useRef<HTMLInputElement>(null)
   const setViewMode = useEditorStore(s => s.setViewMode)
-  const [annTooltip, setAnnTooltip] = useState<{ x: number; y: number; annId: string } | null>(null)
-  const [enzymeTooltip, setEnzymeTooltip] = useState<{ x: number; y: number; group: GroupedCutSite } | null>(null)
+  // Feature popover: delayed on appear, immediate on leave. See useDelayedHover.
+  const { target: annTooltip, show: showAnnTooltip, hide: hideAnnTooltip } = useDelayedHover<HoverTarget>()
+  // Enzyme popover: same delay as the feature popover, so the two behave
+  // identically on the same canvas.
+  const { target: enzymeTooltip, show: showEnzymeTooltip, hide: hideEnzymeTooltip } =
+    useDelayedHover<HoverTarget & { group: GroupedCutSite }>()
   const [hoveredEnzymeGroup, setHoveredEnzymeGroup] = useState<GroupedCutSite | null>(null)
   const showOrfs = useEditorStore(s => s.showOrfs)
   const showEnzymes = useEditorStore(s => s.showEnzymes)
@@ -1101,8 +1107,8 @@ export default function PlasmidMap(_props: PlasmidMapProps) {
     const hitEnzyme = hitTestEnzymeGroup(px, py, cx, cy, baseRadius, groupedEnzymeSites, seqLen)
     if (hitEnzyme) {
       setHoveredEnzymeGroup(hitEnzyme)
-      setEnzymeTooltip({ x: e.clientX, y: e.clientY, group: hitEnzyme })
-      setAnnTooltip(null)
+      showEnzymeTooltip({ x: e.clientX, y: e.clientY, key: enzymeGroupKey(hitEnzyme), group: hitEnzyme })
+      hideAnnTooltip()
       canvas.style.cursor = 'pointer'
       if (useEditorStore.getState().hoveredAnnotationId) {
         setHoveredAnnotation(null)
@@ -1113,7 +1119,7 @@ export default function PlasmidMap(_props: PlasmidMapProps) {
     // Clear enzyme hover
     if (hoveredEnzymeGroup) {
       setHoveredEnzymeGroup(null)
-      setEnzymeTooltip(null)
+      hideEnzymeTooltip()
     }
 
     const rings = stackAnnotations(allAnnotations)
@@ -1125,21 +1131,21 @@ export default function PlasmidMap(_props: PlasmidMapProps) {
       setHoveredAnnotation(newId)
     }
     if (hitAnn) {
-      setAnnTooltip({ x: e.clientX + 12, y: e.clientY - 10, annId: hitAnn.id })
+      showAnnTooltip({ x: e.clientX + 12, y: e.clientY - 10, key: hitAnn.id })
     } else {
-      setAnnTooltip(null)
+      hideAnnTooltip()
     }
     canvas.style.cursor = hitAnn ? 'pointer' : 'crosshair'
-  }, [doc.sequence.length, allAnnotations, groupedEnzymeSites, hoveredEnzymeGroup, setHoveredAnnotation])
+  }, [doc.sequence.length, allAnnotations, groupedEnzymeSites, hoveredEnzymeGroup, setHoveredAnnotation, showAnnTooltip, hideAnnTooltip, showEnzymeTooltip, hideEnzymeTooltip])
 
   const handleMouseLeave = useCallback(() => {
     if (useEditorStore.getState().hoveredAnnotationId) {
       setHoveredAnnotation(null)
     }
     setHoveredEnzymeGroup(null)
-    setEnzymeTooltip(null)
-    setAnnTooltip(null)
-  }, [setHoveredAnnotation])
+    hideEnzymeTooltip()
+    hideAnnTooltip()
+  }, [setHoveredAnnotation, hideAnnTooltip, hideEnzymeTooltip])
 
   // --- Context menu ---
   const handleContextMenu = useCallback((e: MouseEvent) => {
@@ -1163,8 +1169,8 @@ export default function PlasmidMap(_props: PlasmidMapProps) {
     const hitEnzyme = hitTestEnzymeGroup(px, py, cx, cy, baseRadius, groupedEnzymeSites, seqLen)
 
     // Clear hover tooltips - the context menu will embed tooltip content
-    setAnnTooltip(null)
-    setEnzymeTooltip(null)
+    hideAnnTooltip()
+    hideEnzymeTooltip()
 
     setCtxMenu({
       x: e.clientX,
@@ -1172,7 +1178,7 @@ export default function PlasmidMap(_props: PlasmidMapProps) {
       annId: hitAnn?.id ?? null,
       enzymeGroup: hitEnzyme,
     })
-  }, [doc.sequence.length, allAnnotations, groupedEnzymeSites])
+  }, [doc.sequence.length, allAnnotations, groupedEnzymeSites, hideAnnTooltip, hideEnzymeTooltip])
 
   // Close context menu on outside click or scroll
   useEffect(() => {
@@ -1296,7 +1302,7 @@ export default function PlasmidMap(_props: PlasmidMapProps) {
       })()}
       {/* Hover tooltips - hidden when context menu is open */}
       {!ctxMenu && annTooltip && (() => {
-        const ann = allAnnotations.find(a => a.id === annTooltip.annId)
+        const ann = allAnnotations.find(a => a.id === annTooltip.key)
         if (!ann) return null
         return (
           <AnnotationTooltip
@@ -1360,13 +1366,14 @@ export default function PlasmidMap(_props: PlasmidMapProps) {
         }
         const handleCopyAnnotationBases = () => {
           if (!ctxAnn) return
-          let bases: string
-          if (ctxAnn.start > ctxAnn.end && doc.sequence.topology === 'circular') {
-            bases = doc.sequence.basesIn(ctxAnn.start, doc.sequence.length) + doc.sequence.basesIn(0, ctxAnn.end)
-          } else {
-            bases = doc.sequence.basesIn(ctxAnn.start, ctxAnn.end)
-          }
+          const bases = annotationBases(ctxAnn, doc.sequence)
           navigator.clipboard.writeText(bases).then(() => _props.onCopyFeedback?.(`Copied ${bases.length} bp from "${ctxAnn!.name}"`)).catch(e => console.warn('Clipboard write failed:', e))
+          setCtxMenu(null)
+        }
+        const handleCopyAnnotationProtein = () => {
+          if (!ctxAnn) return
+          const protein = annotationProtein(ctxAnn, doc.sequence)
+          navigator.clipboard.writeText(protein).then(() => _props.onCopyFeedback?.(`Copied ${protein.length} aa from "${ctxAnn!.name}"`)).catch(e => console.warn('Clipboard write failed:', e))
           setCtxMenu(null)
         }
         const handleEditAnnotation = () => {
@@ -1435,6 +1442,13 @@ export default function PlasmidMap(_props: PlasmidMapProps) {
                 <button className="ctx-menu-item" onClick={handleCopyAnnotationBases}>
                   Copy Annotation Bases
                 </button>
+                {/* Shown on exactly the features whose translation the popover
+                    above is already displaying. */}
+                {canTranslateAnnotation(ctxAnn, doc.sequence) && (
+                  <button className="ctx-menu-item" onClick={handleCopyAnnotationProtein}>
+                    Copy Amino Acid Sequence
+                  </button>
+                )}
                 {isUserAnn && !readOnly && (
                   <button className="ctx-menu-item" onClick={handleEditAnnotation}>
                     Edit Annotation
@@ -1507,3 +1521,6 @@ export default function PlasmidMap(_props: PlasmidMapProps) {
     </div>
   )
 }
+
+/** Memoised for the same reason as SequenceView — see the note there. */
+export default memo(PlasmidMap)

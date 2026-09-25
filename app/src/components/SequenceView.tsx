@@ -16,7 +16,7 @@
  * drawn per frame.
  */
 
-import { useRef, useEffect, useCallback, useState, useMemo } from 'react'
+import { useRef, useEffect, useCallback, useState, useMemo, memo } from 'react'
 import { useEditorStore, selectionRange, selectionSegments, isOriginSpanningSelection, selectionLength } from '../store'
 import { Annotation, type AnnotationData } from '../models/Annotation'
 import { displayPosition } from '../models/Document'
@@ -26,6 +26,8 @@ import type { CutSite } from '../enzymes/finder'
 import { methylationEffect } from '../enzymes/db'
 import { orfColor } from '../workers/orf-finder'
 import AnnotationTooltip, { AnnotationTooltipContent } from './AnnotationTooltip'
+import { annotationBases, annotationProtein, canTranslateAnnotation } from '../utils/annotation-sequence'
+import { useDelayedHover, type HoverTarget } from '../hooks/useDelayedHover'
 import EnzymeTooltip, { EnzymeGroupTooltipContent } from './EnzymeTooltip'
 import ContextMenuPopup from './ContextMenuPopup'
 import ConfirmDialog from './ConfirmDialog'
@@ -67,7 +69,8 @@ function getCanvasColors(container: HTMLElement): CanvasColors {
   return _cachedColors
 }
 
-import { baseColor, visibleStroke } from '../utils/color'
+import { visibleStroke, contrastText } from '../utils/color'
+import { buildBasePalette } from '../utils/base-colors'
 
 // Module-level layout ref - set during draw(), used by hit-test helpers
 function baseX(i: number, rowStart: number, L: ZoomLayout): number {
@@ -247,6 +250,17 @@ export interface GroupedCutSite {
   fwdCut: number
   /** Methylation effect on this group: 'blocked', 'impaired', or null */
   methEffect: 'blocked' | 'impaired' | null
+}
+
+/**
+ * Stable identity for a grouped cut site, for hover tracking.
+ *
+ * Grouped sites are rebuilt on each scan, so object identity is useless here —
+ * the delayed-hover hook needs a key that survives that and still distinguishes
+ * two different enzymes cutting at nearby positions.
+ */
+export function enzymeGroupKey(group: GroupedCutSite): string {
+  return `${group.label}@${group.recognitionStart}`
 }
 
 /** Group cut sites at the same position into combined entries. */
@@ -554,7 +568,7 @@ interface SequenceViewProps {
   onCopyFeedback?: (msg: string) => void
 }
 
-export default function SequenceView({ onFindRequest, onAnnotateRequest, onEditFeature, onCopyFeedback }: SequenceViewProps) {
+function SequenceView({ onFindRequest, onAnnotateRequest, onEditFeature, onCopyFeedback }: SequenceViewProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const containerRef = useRef<HTMLDivElement>(null)
   const spacerRef = useRef<HTMLDivElement>(null)
@@ -579,6 +593,10 @@ export default function SequenceView({ onFindRequest, onAnnotateRequest, onEditF
 
   // State subscriptions - trigger re-renders for JSX and feed refs for canvas callbacks
   const doc = useEditorStore(s => s.doc)
+  const colorScheme = useEditorStore(s => s.colorScheme)
+  const colorTarget = useEditorStore(s => s.colorTarget)
+  const showComplement = useEditorStore(s => s.showComplement)
+  const showAnnotationTracks = useEditorStore(s => s.showAnnotationTracks)
   const selection = useEditorStore(s => s.selection)
   const search = useEditorStore(s => s.search)
   const zoomLevel = useEditorStore(s => s.zoomLevel)
@@ -600,8 +618,12 @@ export default function SequenceView({ onFindRequest, onAnnotateRequest, onEditF
   const removeAnnotation = useEditorStore(s => s.removeAnnotation)
 
   const [hoveredEnzymeGroup, setHoveredEnzymeGroup] = useState<GroupedCutSite | null>(null)
-  const [enzymeTooltip, setEnzymeTooltip] = useState<{ x: number; y: number; group: GroupedCutSite } | null>(null)
-  const [annTooltip, setAnnTooltip] = useState<{ x: number; y: number; annId: string } | null>(null)
+  // Enzyme popover: same delay as the feature popover, so the two behave
+  // identically on the same canvas.
+  const { target: enzymeTooltip, show: showEnzymeTooltip, hide: hideEnzymeTooltip } =
+    useDelayedHover<HoverTarget & { group: GroupedCutSite }>()
+  // Feature popover: delayed on appear, immediate on leave. See useDelayedHover.
+  const { target: annTooltip, show: showAnnTooltip, hide: hideAnnTooltip } = useDelayedHover<HoverTarget>()
 
   // Context menu
   interface ContextMenuState {
@@ -723,6 +745,10 @@ export default function SequenceView({ onFindRequest, onAnnotateRequest, onEditF
   const enzymeCutSitesRef = useRef(enzymeCutSites)
   const hoveredEnzymeGroupRef = useRef(hoveredEnzymeGroup)
   const showEnzymesRef = useRef(showEnzymes)
+  const colorSchemeRef = useRef(colorScheme)
+  const colorTargetRef = useRef(colorTarget)
+  const showComplementRef = useRef(showComplement)
+  const showAnnotationTracksRef = useRef(showAnnotationTracks)
   const allAnnotationsRef = useRef(allAnnotations)
   const onFindRequestRef = useRef(onFindRequest)
 
@@ -737,6 +763,10 @@ export default function SequenceView({ onFindRequest, onAnnotateRequest, onEditF
   enzymeCutSitesRef.current = enzymeCutSites
   hoveredEnzymeGroupRef.current = hoveredEnzymeGroup
   showEnzymesRef.current = showEnzymes
+  colorSchemeRef.current = colorScheme
+  colorTargetRef.current = colorTarget
+  showComplementRef.current = showComplement
+  showAnnotationTracksRef.current = showAnnotationTracks
   allAnnotationsRef.current = allAnnotations
   onFindRequestRef.current = onFindRequest
 
@@ -748,7 +778,10 @@ export default function SequenceView({ onFindRequest, onAnnotateRequest, onEditF
     const dpr = window.devicePixelRatio || 1
     const width = container.clientWidth
     const showEnzymesNow = showEnzymesRef.current && enzymeCutSitesRef.current.length > 0
-    const L = getLayout(zoomLevelRef.current, width, showEnzymesNow, docRef.current.sequence.length)
+    const L = getLayout(zoomLevelRef.current, width, showEnzymesNow, docRef.current.sequence.length, {
+      showComplement: showComplementRef.current,
+      showAnnotations: showAnnotationTracksRef.current,
+    })
     layoutRef.current = L
 
     // Read current state from refs (not closure) so draw stays stable
@@ -864,6 +897,13 @@ export default function SequenceView({ onFindRequest, onAnnotateRequest, onEditF
     ctx.scale(dpr, dpr)
 
     const COLORS = getCanvasColors(container)
+    // Resolved once per draw rather than per base: a full screen of letters is
+    // thousands of lookups, and the palette depends only on the scheme and the
+    // theme foreground, neither of which changes mid-frame.
+    const basePalette = buildBasePalette(colorSchemeRef.current, COLORS.text)
+    // "None" has no colour to place anywhere, so background mode is moot.
+    const paintBackground =
+      colorTargetRef.current === 'background' && colorSchemeRef.current !== 'none'
 
     ctx.fillStyle = COLORS.bg
     ctx.fillRect(0, 0, width, canvasH)
@@ -1120,28 +1160,81 @@ export default function SequenceView({ onFindRequest, onAnnotateRequest, onEditF
         const bpW = L.bpWidth
         const halfBp = bpW / 2
         const midY = cy + letterH / 2
-        // Forward strand
-        let bx = L.leftMargin
-        for (let i = rowStart; i < rowEnd; i++) {
-          const ch = visibleBases[i - visibleStart]
-          if (ch) {
-            ctx.fillStyle = baseColor(ch)
-            ctx.fillText(ch, bx + halfBp, midY)
+        /**
+         * Draw one strand of letters.
+         *
+         * In background mode the cell is filled with the base's colour and the
+         * glyph is drawn in whatever contrasts with that fill, so the letter
+         * stays readable on both a dark G and a pale C. Fills are batched by
+         * colour: a row is hundreds of cells and only ever four or five
+         * distinct colours, so setting fillStyle per cell would be the most
+         * expensive thing in the frame.
+         */
+        const drawStrand = (midOfRow: number, charAt: (i: number) => string | undefined) => {
+          if (paintBackground) {
+            const runsByColor = new Map<string, number[]>()
+            let px = L.leftMargin
+            for (let i = rowStart; i < rowEnd; i++) {
+              const ch = charAt(i)
+              if (ch) {
+                const fill = basePalette[ch]
+                // Unpalettised characters (N, gaps) get no block — a filled
+                // cell would imply a call the data does not support.
+                if (fill && fill !== COLORS.text) {
+                  let xs = runsByColor.get(fill)
+                  if (!xs) { xs = []; runsByColor.set(fill, xs) }
+                  xs.push(px)
+                }
+              }
+              px += bpW
+            }
+            for (const [fill, xs] of runsByColor) {
+              ctx.fillStyle = fill
+              for (const x of xs) ctx.fillRect(x, midOfRow - letterH / 2, bpW, letterH)
+            }
           }
-          bx += bpW
+
+          let bx = L.leftMargin
+          for (let i = rowStart; i < rowEnd; i++) {
+            const ch = charAt(i)
+            if (ch) {
+              const color = basePalette[ch] ?? COLORS.text
+              ctx.fillStyle = paintBackground
+                ? (color === COLORS.text ? COLORS.text : contrastText(color))
+                : color
+              ctx.fillText(ch, bx + halfBp, midOfRow)
+            }
+            bx += bpW
+          }
         }
-        cy += letterH + L.strandGap
-        // Complement strand
-        const compMidY = cy + letterH / 2
-        ctx.fillStyle = COLORS.complement
-        bx = L.leftMargin
-        for (let i = rowStart; i < rowEnd; i++) {
-          const ch = visibleBases[i - visibleStart]
-          if (ch) {
-            const comp = COMPLEMENT[ch.toUpperCase()] ?? ch
-            ctx.fillText(ch === ch.toLowerCase() ? comp.toLowerCase() : comp, bx + halfBp, compMidY)
+
+        // Forward strand
+        drawStrand(midY, i => visibleBases[i - visibleStart])
+
+        if (L.showComplement) {
+          cy += letterH + L.strandGap
+          const compMidY = cy + letterH / 2
+          if (paintBackground) {
+            // Complement gets the same treatment as the forward strand —
+            // colouring one and not the other reads as an error.
+            drawStrand(compMidY, i => {
+              const ch = visibleBases[i - visibleStart]
+              if (!ch) return undefined
+              const comp = COMPLEMENT[ch.toUpperCase()] ?? ch
+              return ch === ch.toLowerCase() ? comp.toLowerCase() : comp
+            })
+          } else {
+            ctx.fillStyle = COLORS.complement
+            let bx = L.leftMargin
+            for (let i = rowStart; i < rowEnd; i++) {
+              const ch = visibleBases[i - visibleStart]
+              if (ch) {
+                const comp = COMPLEMENT[ch.toUpperCase()] ?? ch
+                ctx.fillText(ch === ch.toLowerCase() ? comp.toLowerCase() : comp, bx + halfBp, compMidY)
+              }
+              bx += bpW
+            }
           }
-          bx += bpW
         }
         cy += letterH
       } else if (L.mode === 'dots') {
@@ -1159,7 +1252,7 @@ export default function SequenceView({ onFindRequest, onAnnotateRequest, onEditF
         const dotsByColor = new Map<string, number[]>()
         for (let i = rowStart; i < rowEnd; i++) {
           const base = visibleBases[i - visibleStart]
-          const color = baseColor(base)
+          const color = basePalette[base] ?? COLORS.text
           let arr = dotsByColor.get(color)
           if (!arr) { arr = []; dotsByColor.set(color, arr) }
           arr.push(baseX(i, rowStart, L) + L.bpWidth / 2)
@@ -1207,8 +1300,13 @@ export default function SequenceView({ onFindRequest, onAnnotateRequest, onEditF
         stackCacheRef.current?.stacks.set(rowIdx, result)
       }
       const annRows = cached.rows
-      const annOverflow = cached.overflow
-      cy += L.annotationGap
+      // With the tracks hidden there are zero lanes, so everything lands in
+      // overflow. Reporting "+N more" for a band the user deliberately closed
+      // would be noise, and rowHeightForLanes reserves no gap in that case
+      // either — so neither the label nor the leading gap applies.
+      const tracksVisible = L.maxAnnotationRows > 0
+      const annOverflow = tracksVisible ? cached.overflow : 0
+      if (tracksVisible) cy += L.annotationGap
 
       // Batch annotation rendering: group by color to minimize state changes.
       // First pass: collect geometry. Second pass: fill then stroke by color.
@@ -1869,9 +1967,9 @@ export default function SequenceView({ onFindRequest, onAnnotateRequest, onEditF
       if (edge) {
         canvas.style.cursor = 'col-resize'
         // Clear other hovers
-        if (hoveredEnzymeGroupRef.current) { setHoveredEnzymeGroup(null); setEnzymeTooltip(null) }
+        if (hoveredEnzymeGroupRef.current) { setHoveredEnzymeGroup(null); hideEnzymeTooltip() }
         if (useEditorStore.getState().hoveredAnnotationId) useEditorStore.getState().setHoveredAnnotation(null)
-        setAnnTooltip(null)
+        hideAnnTooltip()
         return
       }
     }
@@ -1883,8 +1981,8 @@ export default function SequenceView({ onFindRequest, onAnnotateRequest, onEditF
     const hitEnzyme = hitLabel || hitHighlight
     if (hitEnzyme) {
       setHoveredEnzymeGroup(hitEnzyme)
-      setEnzymeTooltip({ x: e.clientX, y: e.clientY, group: hitEnzyme })
-      setAnnTooltip(null)
+      showEnzymeTooltip({ x: e.clientX, y: e.clientY, key: enzymeGroupKey(hitEnzyme), group: hitEnzyme })
+      hideAnnTooltip()
       canvas.style.cursor = 'pointer'
       // Clear annotation hover
       if (useEditorStore.getState().hoveredAnnotationId) {
@@ -1896,7 +1994,7 @@ export default function SequenceView({ onFindRequest, onAnnotateRequest, onEditF
     // Clear enzyme hover
     if (hoveredEnzymeGroupRef.current) {
       setHoveredEnzymeGroup(null)
-      setEnzymeTooltip(null)
+      hideEnzymeTooltip()
     }
 
     // Check annotation edge hover for resize cursor (only when annotation is selected)
@@ -1909,7 +2007,7 @@ export default function SequenceView({ onFindRequest, onAnnotateRequest, onEditF
         if (selStart === annEdge.annotation.start && selEnd === annEdge.annotation.end) {
           canvas.style.cursor = 'col-resize'
           useEditorStore.getState().setHoveredAnnotation(annEdge.annotation.id)
-          setAnnTooltip(null)
+          hideAnnTooltip()
           return
         }
       }
@@ -1922,9 +2020,9 @@ export default function SequenceView({ onFindRequest, onAnnotateRequest, onEditF
       useEditorStore.getState().setHoveredAnnotation(newId)
     }
     if (hitAnn) {
-      setAnnTooltip({ x: e.clientX + 12, y: e.clientY - 10, annId: hitAnn.id })
+      showAnnTooltip({ x: e.clientX + 12, y: e.clientY - 10, key: hitAnn.id })
     } else {
-      setAnnTooltip(null)
+      hideAnnTooltip()
     }
     canvas.style.cursor = hitAnn ? 'pointer' : 'text'
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -1955,9 +2053,9 @@ export default function SequenceView({ onFindRequest, onAnnotateRequest, onEditF
       useEditorStore.getState().setHoveredAnnotation(null)
     }
     setHoveredEnzymeGroup(null)
-    setEnzymeTooltip(null)
-    setAnnTooltip(null)
-  }, [])
+    hideEnzymeTooltip()
+    hideAnnTooltip()
+  }, [hideAnnTooltip, hideEnzymeTooltip])
 
   // Double-click on annotation opens the edit annotation panel
   const handleDblClick = useCallback((e: MouseEvent) => {
@@ -1992,8 +2090,8 @@ export default function SequenceView({ onFindRequest, onAnnotateRequest, onEditF
     const hitHighlight = !hitLabel ? hitTestEnzymeHighlight(px, py + canvasTopRef.current, seqLen, groupedSitesNow, layoutRef.current, rowLayoutRef.current) : null
     const hitEnzymeGroup = hitLabel || hitHighlight
     // Clear hover tooltips - the context menu will embed tooltip content
-    setAnnTooltip(null)
-    setEnzymeTooltip(null)
+    hideAnnTooltip()
+    hideEnzymeTooltip()
 
     setCtxMenu({
       x: e.clientX,
@@ -2438,7 +2536,7 @@ export default function SequenceView({ onFindRequest, onAnnotateRequest, onEditF
         />
       )}
       {!ctxMenu && annTooltip && (() => {
-        const ann = allAnnotations.find(a => a.id === annTooltip.annId)
+        const ann = allAnnotations.find(a => a.id === annTooltip.key)
         if (!ann) return null
         return (
           <AnnotationTooltip
@@ -2532,13 +2630,14 @@ export default function SequenceView({ onFindRequest, onAnnotateRequest, onEditF
         }
         const handleCopyAnnotationBases = () => {
           if (!ctxAnn) return
-          let bases: string
-          if (ctxAnn.start > ctxAnn.end && doc.sequence.topology === 'circular') {
-            bases = doc.sequence.basesIn(ctxAnn.start, doc.sequence.length) + doc.sequence.basesIn(0, ctxAnn.end)
-          } else {
-            bases = doc.sequence.basesIn(ctxAnn.start, ctxAnn.end)
-          }
+          const bases = annotationBases(ctxAnn, doc.sequence)
           navigator.clipboard.writeText(bases).then(() => onCopyFeedback?.(`Copied ${bases.length} bp from "${ctxAnn!.name}"`)).catch(e => console.warn('Clipboard write failed:', e))
+          setCtxMenu(null)
+        }
+        const handleCopyAnnotationProtein = () => {
+          if (!ctxAnn) return
+          const protein = annotationProtein(ctxAnn, doc.sequence)
+          navigator.clipboard.writeText(protein).then(() => onCopyFeedback?.(`Copied ${protein.length} aa from "${ctxAnn!.name}"`)).catch(e => console.warn('Clipboard write failed:', e))
           setCtxMenu(null)
         }
         const handleCopyRecognition = () => {
@@ -2582,6 +2681,13 @@ export default function SequenceView({ onFindRequest, onAnnotateRequest, onEditF
                 <button className="ctx-menu-item" onClick={handleCopyAnnotationBases}>
                   Copy Annotation Bases
                 </button>
+                {/* Shown on exactly the features whose translation the popover
+                    above is already displaying. */}
+                {canTranslateAnnotation(ctxAnn, doc.sequence) && (
+                  <button className="ctx-menu-item" onClick={handleCopyAnnotationProtein}>
+                    Copy Amino Acid Sequence
+                  </button>
+                )}
                 {isUserAnn && !readOnly && (
                   <button className="ctx-menu-item" onClick={handleEditAnnotation}>
                     Edit Annotation
@@ -2692,3 +2798,11 @@ export default function SequenceView({ onFindRequest, onAnnotateRequest, onEditF
     </div>
   )
 }
+
+/**
+ * Memoised: App re-renders on any of its many state hooks, and re-rendering a
+ * canvas view means re-running its layout memos and draw effects for nothing.
+ * Every prop above is a stable useCallback in App, so this bails out cleanly;
+ * the component still re-renders on its own store subscriptions.
+ */
+export default memo(SequenceView)

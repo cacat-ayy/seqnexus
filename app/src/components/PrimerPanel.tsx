@@ -13,6 +13,7 @@ import './PrimerPanel.css'
 import { useState, useCallback, useRef, useEffect } from 'react'
 import { X, ChevronDown, ChevronRight, Copy, Check, Bookmark, AlertTriangle } from 'lucide-react'
 import { useEditorStore, selectionRange } from '../store'
+import type { AnnotationData } from '../models/Annotation'
 import { findPrimerPairsAsync } from '../workers/primer-finder'
 import type { PrimerConstraints } from '../primers/scoring'
 import { DEFAULT_CONSTRAINTS } from '../primers/scoring'
@@ -56,7 +57,7 @@ export default function PrimerPanel({ open, onClose }: Props) {
   const selectedPrimerIndices = useEditorStore(s => s.selectedPrimerIndices)
   const toggleSelectedPrimer = useEditorStore(s => s.toggleSelectedPrimer)
   const clearPrimers = useEditorStore(s => s.clearPrimers)
-  const addAnnotation = useEditorStore(s => s.addAnnotation)
+  const addAnnotations = useEditorStore(s => s.addAnnotations)
 
   const seqLen = doc.sequence.length
 
@@ -233,12 +234,18 @@ export default function PrimerPanel({ open, onClose }: Props) {
 
   const handleSaveAsAnnotations = useCallback(() => {
     if (selectedPrimerIndices.size === 0) return
+    // Collected and written in one go. Adding these one at a time produced an
+    // undo entry per primer — up to three per selected pair — so undoing a
+    // single button press took a dozen Ctrl+Z, each replaying a full-document
+    // snapshot.
+    const pending: AnnotationData[] = []
+    const saved: number[] = []
     for (const idx of selectedPrimerIndices) {
       const pair = primerResults[idx]
       if (!pair) continue
       const ts = `${Date.now().toString(36)}_${idx}`
       if (wantFwd) {
-        addAnnotation({
+        pending.push({
           id: `primer_fwd_${ts}`,
           name: `FWD primer (${pair.forward.tm.toFixed(1)}°C)`,
           type: 'primer_bind',
@@ -253,7 +260,7 @@ export default function PrimerPanel({ open, onClose }: Props) {
         })
       }
       if (wantRev) {
-        addAnnotation({
+        pending.push({
           id: `primer_rev_${ts}`,
           name: `REV primer (${pair.reverse.tm.toFixed(1)}°C)`,
           type: 'primer_bind',
@@ -268,7 +275,7 @@ export default function PrimerPanel({ open, onClose }: Props) {
         })
       }
       if (wantProbe && pair.probe) {
-        addAnnotation({
+        pending.push({
           id: `primer_probe_${ts}`,
           name: `Probe (${pair.probe.tm.toFixed(1)}°C)`,
           type: 'primer_bind',
@@ -282,9 +289,16 @@ export default function PrimerPanel({ open, onClose }: Props) {
           },
         })
       }
-      setSavedIndices(prev => new Set(prev).add(idx))
+      saved.push(idx)
     }
-  }, [selectedPrimerIndices, primerResults, wantFwd, wantRev, wantProbe, addAnnotation])
+    if (pending.length === 0) return
+    addAnnotations(pending)
+    setSavedIndices(prev => {
+      const next = new Set(prev)
+      for (const idx of saved) next.add(idx)
+      return next
+    })
+  }, [selectedPrimerIndices, primerResults, wantFwd, wantRev, wantProbe, addAnnotations])
 
   const handleReset = useCallback(() => {
     clearPrimers()

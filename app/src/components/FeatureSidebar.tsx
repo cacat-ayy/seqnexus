@@ -5,12 +5,15 @@
  * and includes a search/filter input.
  */
 
-import { useState, useCallback, useRef, useEffect, useMemo } from 'react'
+import { useState, useCallback, useRef, useEffect, useMemo, memo } from 'react'
 import { useEditorStore } from '../store'
 import type { Annotation } from '../models/Annotation'
 import type { Strand } from '../models/Annotation'
 import { defaultColorForType } from '../models/Annotation'
 import AnnotationTooltip from './AnnotationTooltip'
+import FeatureBulkBar from './FeatureBulkBar'
+import ConfirmDialog from './ConfirmDialog'
+import { useListMultiSelect } from '../hooks/useListMultiSelect'
 import { Plus, X, ChevronRight, ChevronDown, Eye, EyeOff, Search, PanelRightClose, ChevronsDownUp, ChevronsUpDown } from 'lucide-react'
 import './FeatureSidebar.css'
 import './ContextMenuPopup.css'
@@ -164,13 +167,15 @@ interface FeatureSidebarProps {
   onClose: () => void
 }
 
-export default function FeatureSidebar({ open, onClose }: FeatureSidebarProps) {
+function FeatureSidebar({ open, onClose }: FeatureSidebarProps) {
   const annotations = useEditorStore(s => s.doc.annotations)
   const sequence = useEditorStore(s => s.doc.sequence)
   const seqLength = sequence.length
   const setSelection = useEditorStore(s => s.setSelection)
   const removeAnnotation = useEditorStore(s => s.removeAnnotation)
   const updateAnnotation = useEditorStore(s => s.updateAnnotation)
+  const updateAnnotations = useEditorStore(s => s.updateAnnotations)
+  const removeAnnotations = useEditorStore(s => s.removeAnnotations)
   const addAnnotation = useEditorStore(s => s.addAnnotation)
   const editAnnotationId = useEditorStore(s => s.editAnnotationId)
   const setEditAnnotation = useEditorStore(s => s.setEditAnnotation)
@@ -181,6 +186,18 @@ export default function FeatureSidebar({ open, onClose }: FeatureSidebarProps) {
   const [expandedId, setExpandedId] = useState<string | null>(null)
   const [filter, setFilter] = useState('')
   const [collapsedTypes, setCollapsedTypes] = useState<Set<string>>(new Set())
+
+  /**
+   * Coalescing key for the group colour pickers.
+   *
+   * Minted fresh each time a picker is grabbed or focused, so one drag folds
+   * into a single undo entry while two consecutive drags stay independently
+   * undoable.
+   */
+  const colorDragKey = useRef<string | null>(null)
+  const beginColorDrag = useCallback((scope: string) => {
+    colorDragKey.current = `color:${scope}:${Date.now()}`
+  }, [])
 
   // Sidebar width with persistence
   const [width, setWidth] = useState(() => {
@@ -361,6 +378,27 @@ export default function FeatureSidebar({ open, onClose }: FeatureSidebarProps) {
 
   const hiddenSet = useMemo(() => new Set(hiddenAnnotationIds), [hiddenAnnotationIds])
 
+  // Multi-selection. The order given to the hook must match the rendered order,
+  // or Shift-ranges would select a different run than the one highlighted.
+  const orderedIds = useMemo(
+    () => grouped.flatMap(([, anns]) => anns.map(a => a.id)),
+    [grouped],
+  )
+  const { selectedIds, handleItemClick, clear: clearSelection } =
+    useListMultiSelect(orderedIds)
+
+  const selectedAnnotations = useMemo(
+    () => grouped.flatMap(([, anns]) => anns.filter(a => selectedIds.has(a.id))),
+    [grouped, selectedIds],
+  )
+
+  const [bulkDeleteOpen, setBulkDeleteOpen] = useState(false)
+  const handleBulkDelete = useCallback(() => {
+    removeAnnotations(selectedAnnotations.map(a => a.id))
+    clearSelection()
+    setBulkDeleteOpen(false)
+  }, [selectedAnnotations, removeAnnotations, clearSelection])
+
   if (!open) return null
 
   return (
@@ -407,6 +445,28 @@ export default function FeatureSidebar({ open, onClose }: FeatureSidebarProps) {
             </button>
           </div>
         </div>
+
+        {selectedAnnotations.length > 0 && (
+          <FeatureBulkBar
+            selected={selectedAnnotations}
+            onClear={clearSelection}
+            onRequestDelete={() => setBulkDeleteOpen(true)}
+          />
+        )}
+
+        <ConfirmDialog
+          open={bulkDeleteOpen}
+          title="Delete features"
+          message={`Delete ${selectedAnnotations.length} selected feature${selectedAnnotations.length === 1 ? '' : 's'}? This can be undone.`}
+          buttons={[
+            { label: 'Cancel', value: 'cancel' },
+            { label: 'Delete', value: 'delete', variant: 'danger' },
+          ]}
+          onResult={value => {
+            if (value === 'delete') handleBulkDelete()
+            else setBulkDeleteOpen(false)
+          }}
+        />
 
         {/* Search */}
         <div className="fs-search">
@@ -527,9 +587,17 @@ export default function FeatureSidebar({ open, onClose }: FeatureSidebarProps) {
                       type="color"
                       className="fs-group-color-input"
                       value={groupColor}
+                      // A colour input fires onChange on every frame of a drag.
+                      // The key is minted once per interaction, so the whole
+                      // drag writes through live but collapses to one undo entry.
+                      onPointerDown={() => beginColorDrag(type)}
+                      onFocus={() => beginColorDrag(type)}
                       onChange={e => {
-                        const color = e.target.value
-                        for (const a of anns) updateAnnotation(a.id, { color })
+                        updateAnnotations(
+                          anns.map(a => a.id),
+                          { color: e.target.value },
+                          { coalesceKey: colorDragKey.current ?? undefined },
+                        )
                       }}
                     />
                   </label>
@@ -555,12 +623,17 @@ export default function FeatureSidebar({ open, onClose }: FeatureSidebarProps) {
                   const isExpanded = expandedId === a.id
                   const isHidden = hiddenSet.has(a.id)
 
+                  const isPicked = selectedIds.has(a.id)
+
                   return (
-                    <div key={a.id} className={`fs-item ${isExpanded ? 'expanded' : ''} ${isHidden ? 'dimmed' : ''}`}>
+                    <div key={a.id} className={`fs-item ${isExpanded ? 'expanded' : ''} ${isHidden ? 'dimmed' : ''} ${isPicked ? 'picked' : ''}`}>
                       {/* Summary row */}
                       <div
                         className="ft-summary"
-                        onClick={() => handleSelect(a.start, a.end)}
+                        aria-selected={isPicked}
+                        // Ctrl/Shift extend the multi-selection; a plain click
+                        // keeps the old behaviour of selecting the region.
+                        onClick={e => handleItemClick(e, a.id, () => handleSelect(a.start, a.end))}
                         onDoubleClick={() => handleToggle(a.id)}
                         onContextMenu={e => handleContextMenu(e, a)}
                         onMouseEnter={e => handleMouseEnter(e, a)}
@@ -736,3 +809,6 @@ export default function FeatureSidebar({ open, onClose }: FeatureSidebarProps) {
     </>
   )
 }
+
+/** Memoised: re-rendered on every App state change despite stable props. */
+export default memo(FeatureSidebar)

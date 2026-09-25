@@ -11,15 +11,15 @@
 
 .spm-checkboxes {
   display: flex;
-  gap: 16px;
-  margin-top: 6px;
+  gap: var(--space-4);
+  margin-top: var(--space-1-5);
 }
 
 .spm-checkbox {
   display: flex;
   align-items: center;
-  gap: 5px;
-  font-size: 12px;
+  gap: var(--space-1);
+  font-size: var(--text-sm);
   color: var(--text);
   cursor: pointer;
 }

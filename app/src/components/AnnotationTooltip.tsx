@@ -8,16 +8,12 @@
 
 import type { Annotation } from '../models/Annotation'
 import type { Sequence } from '../models/Sequence'
-import { reverseComplement } from '../models/complement'
 import { useClampedPosition } from '../hooks/useClampedPosition'
-import { translate } from '../utils/codon'
-
-/** Types that represent protein-coding features. */
-const CODING_TYPES = new Set(['CDS', 'gene', 'ORF'])
-
-function isCodingAnnotation(ann: Annotation): boolean {
-  return CODING_TYPES.has(ann.type) || ann.id.startsWith('_orf_')
-}
+import {
+  annotationBases,
+  annotationProtein,
+  canTranslateAnnotation,
+} from '../utils/annotation-sequence'
 
 /** Tooltip content without positioning wrapper - for embedding in context menus. */
 export function AnnotationTooltipContent({ ann, sequence }: { ann: Annotation; sequence: Sequence }) {
@@ -25,14 +21,7 @@ export function AnnotationTooltipContent({ ann, sequence }: { ann: Annotation; s
   const spansOrigin = ann.start > ann.end
   const len = spansOrigin ? seqLen - ann.start + ann.end : ann.end - ann.start
 
-  let fullBases = ''
-  if (seqLen > 0) {
-    if (spansOrigin) {
-      fullBases = sequence.basesIn(ann.start, seqLen) + sequence.basesIn(0, ann.end)
-    } else {
-      fullBases = sequence.basesIn(ann.start, ann.end)
-    }
-  }
+  const fullBases = annotationBases(ann, sequence)
 
   // Show ~3 rows of content (approx 30 chars/row at current font/width)
   const MAX_DISPLAY = 90
@@ -41,10 +30,9 @@ export function AnnotationTooltipContent({ ann, sequence }: { ann: Annotation; s
 
   let protein = ''
   let proteinAaCount = 0
-  const showProtein = isCodingAnnotation(ann) && fullBases.length >= 3
+  const showProtein = canTranslateAnnotation(ann, sequence)
   if (showProtein) {
-    const codingBases = ann.strand === -1 ? reverseComplement(fullBases) : fullBases
-    const fullProtein = translate(codingBases)
+    const fullProtein = annotationProtein(ann, sequence)
     proteinAaCount = fullProtein.length
     protein = fullProtein.length > MAX_DISPLAY ? fullProtein.slice(0, MAX_DISPLAY) : fullProtein
   }

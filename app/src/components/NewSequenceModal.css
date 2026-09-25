@@ -7,11 +7,11 @@
 .nsm-label {
   display: flex;
   flex-direction: column;
-  gap: 5px;
-  font-size: 12px;
+  gap: var(--space-1);
+  font-size: var(--text-sm);
   font-weight: 600;
   color: var(--text-muted);
-  margin-bottom: 14px;
+  margin-bottom: var(--space-3-5);
   text-transform: uppercase;
   letter-spacing: 0.03em;
 }
@@ -24,14 +24,14 @@
 
 .nsm-input {
   border-radius: var(--radius-input);
-  padding: 7px 10px;
+  padding: var(--space-2) var(--space-2-5);
 }
 
 .nsm-textarea {
   font-family: 'SF Mono', 'Fira Code', 'Cascadia Code', 'Consolas', monospace;
-  font-size: 12px;
+  font-size: var(--text-sm);
   border-radius: var(--radius-input);
-  padding: 8px 10px;
+  padding: var(--space-2) var(--space-2-5);
   resize: vertical;
   min-height: 120px;
   line-height: 1.5;
@@ -41,7 +41,7 @@
 
 .nsm-base-count {
   font-weight: 400;
-  font-size: 11px;
+  font-size: var(--text-xs);
   color: var(--accent);
   margin-left: auto;
   text-transform: none;

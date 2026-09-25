@@ -1,0 +1,124 @@
+/* Bulk action bar — see FeatureBulkBar.tsx. Sits directly under the sidebar
+   header and only exists while a selection does. */
+
+.fbb {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-1-5) var(--space-2);
+  background: var(--accent-bg);
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+  /* Entering without motion reads as a glitch when it pushes the list down. */
+  animation: fbb-in var(--dur-fast) var(--ease-out);
+}
+
+@keyframes fbb-in {
+  from { opacity: 0; transform: translateY(-4px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+.fbb-count {
+  font-size: var(--text-xs);
+  font-weight: 700;
+  color: var(--accent);
+  white-space: nowrap;
+}
+
+.fbb-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-0-5);
+  margin-left: auto;
+}
+
+.fbb-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: background-color var(--dur-fast) var(--ease-out),
+              color var(--dur-fast) var(--ease-out);
+}
+
+.fbb-btn:hover { background: var(--bg-hover); color: var(--text); }
+.fbb-btn:active { transform: scale(.94); }
+.fbb-btn:disabled { opacity: .4; cursor: default; }
+.fbb-btn:disabled:hover { background: transparent; color: var(--text-secondary); }
+.fbb-danger:hover { color: var(--danger); }
+
+.fbb-type {
+  height: 24px;
+  max-width: 88px;
+  font-family: inherit;
+  font-size: var(--text-2xs);
+  border: 1px solid var(--input-border);
+  border-radius: var(--radius-sm);
+  background: var(--input-bg);
+  color: var(--text);
+  cursor: pointer;
+}
+
+/* Native colour inputs cannot be styled, so the real control is overlaid at
+   zero opacity on a swatch we can style. Same trick as the group pickers. */
+.fbb-color {
+  position: relative;
+  display: flex;
+  align-items: center;
+  width: 24px;
+  height: 24px;
+  cursor: pointer;
+}
+
+.fbb-color-swatch {
+  width: 16px;
+  height: 16px;
+  margin: auto;
+  border: 1px solid var(--border-hover);
+  border-radius: var(--radius-xs);
+}
+
+.fbb-color-input {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  cursor: pointer;
+}
+
+.fbb-export { position: relative; }
+
+.fbb-export-menu {
+  position: absolute;
+  top: 100%;
+  right: 0;
+  margin-top: var(--space-0-5);
+  z-index: var(--z-dropdown);
+  min-width: 80px;
+  padding: var(--space-0-5) 0;
+  background: var(--bg-alt);
+  border: 1px solid var(--border-hover);
+  border-radius: var(--radius-input);
+  box-shadow: var(--shadow-popover);
+}
+
+.fbb-export-item {
+  display: block;
+  width: 100%;
+  padding: var(--space-1) var(--space-2);
+  border: none;
+  background: transparent;
+  color: var(--text);
+  font-family: inherit;
+  font-size: var(--text-xs);
+  text-align: left;
+  cursor: pointer;
+}
+
+.fbb-export-item:hover { background: var(--bg-hover); }

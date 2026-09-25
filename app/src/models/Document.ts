@@ -252,6 +252,46 @@ export function updateAnnotation(
 }
 
 /**
+ * Remove many annotations in one pass.
+ *
+ * Calling `removeAnnotation` in a loop is O(n) per id — it rebuilds the whole
+ * array each time — so deleting 50 features from a 500-feature plasmid walked
+ * 25,000 entries. This walks it once.
+ */
+export function removeAnnotations(
+  state: DocumentState,
+  ids: Iterable<string>,
+): DocumentState {
+  const doomed = new Set(ids)
+  if (doomed.size === 0) return state
+  const annotations = state.annotations.filter(a => !doomed.has(a.id))
+  if (annotations.length === state.annotations.length) return state
+  return { ...state, annotations }
+}
+
+/**
+ * Apply the same patch to many annotations in one pass.
+ *
+ * Returns `state` unchanged when nothing matched, so callers can skip pushing
+ * an undo entry for a no-op.
+ */
+export function updateAnnotations(
+  state: DocumentState,
+  ids: Iterable<string>,
+  patch: Partial<Omit<AnnotationData, 'id'>>,
+): DocumentState {
+  const targets = new Set(ids)
+  if (targets.size === 0) return state
+  let changed = false
+  const annotations = state.annotations.map(a => {
+    if (!targets.has(a.id)) return a
+    changed = true
+    return a.with(patch)
+  })
+  return changed ? { ...state, annotations } : state
+}
+
+/**
  * Convert an internal 0-based position to a 1-based display position,
  * accounting for a custom display origin on circular sequences.
  */

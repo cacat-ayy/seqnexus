@@ -2,9 +2,9 @@
 .storage-indicator {
   display: inline-flex;
   align-items: center;
-  gap: 4px;
+  gap: var(--space-1);
   color: var(--text-muted);
-  font-size: 11px;
+  font-size: var(--text-xs);
   cursor: default;
   position: relative;
 }
@@ -13,18 +13,18 @@
   width: 36px;
   height: 6px;
   background: var(--border);
-  border-radius: 3px;
+  border-radius: var(--radius-xs);
   overflow: hidden;
   vertical-align: middle;
 }
 .storage-indicator-bar-fill {
   display: block;
   height: 100%;
-  border-radius: 3px;
+  border-radius: var(--radius-xs);
   transition: width 0.3s ease, background 0.3s ease;
 }
 .storage-indicator-label {
-  font-size: 10px;
+  font-size: var(--text-2xs);
   font-weight: 600;
   min-width: 26px;
   text-align: right;
@@ -35,17 +35,17 @@
   position: absolute;
   bottom: calc(100% + 8px);
   right: 0;
-  z-index: 200;
+  z-index: var(--z-popover);
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: var(--space-1);
   min-width: 160px;
-  padding: 8px 10px;
+  padding: var(--space-2) var(--space-2-5);
   background: var(--bg-alt);
   border: 1px solid var(--border-hover);
-  border-radius: 10px;
+  border-radius: var(--radius-popover);
   box-shadow: var(--shadow-popover);
-  font-size: 11px;
+  font-size: var(--text-xs);
   color: var(--text);
   pointer-events: none;
   animation: storage-tip-in .12s ease;
@@ -68,13 +68,13 @@
   text-transform: uppercase;
   letter-spacing: 0.06em;
   color: var(--accent);
-  margin-bottom: 2px;
+  margin-bottom: var(--space-0-5);
 }
 .storage-indicator-tooltip-row {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  gap: 12px;
+  gap: var(--space-3);
 }
 .storage-indicator-tooltip-label {
   color: var(--text-muted);

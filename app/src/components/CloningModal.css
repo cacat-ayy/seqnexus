@@ -11,13 +11,13 @@
 .cln-method-selector {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 8px 14px;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3-5);
   border-bottom: 1px solid var(--border);
 }
 
 .cln-method-label {
-  font-size: 11px;
+  font-size: var(--text-xs);
   font-weight: 600;
   color: var(--text-muted);
   text-transform: uppercase;
@@ -28,7 +28,7 @@
 .cln-method-select {
   flex: 1;
   font-weight: 500;
-  padding: 5px 8px;
+  padding: var(--space-1) var(--space-2);
   border-radius: var(--radius-input);
 }
 
@@ -40,31 +40,31 @@
   font-weight: 600;
   color: var(--text-secondary);
   font-style: normal;
-  font-size: 11px;
+  font-size: var(--text-xs);
 }
 
 .cln-method-select option {
   font-weight: 400;
   color: var(--text);
-  padding: 4px 0;
+  padding: var(--space-1) 0;
 }
 
 /* Radio groups (Gateway reaction, TOPO variant) */
 .cln-radio-group {
   display: flex;
   flex-direction: column;
-  gap: 2px;
-  margin-top: 4px;
+  gap: var(--space-0-5);
+  margin-top: var(--space-1);
 }
 
 .cln-radio-label {
   display: flex;
   align-items: center;
-  gap: 6px;
-  font-size: 12px;
+  gap: var(--space-1-5);
+  font-size: var(--text-sm);
   color: var(--text);
   cursor: pointer;
-  padding: 4px 6px;
+  padding: var(--space-1) var(--space-1-5);
   border-radius: var(--radius-sm);
   transition: background var(--dur-fast);
 }
@@ -82,23 +82,23 @@
 
 /* Gateway att site display */
 .cln-att-sites {
-  margin-top: 4px;
+  margin-top: var(--space-1);
 }
 
 .cln-att-source {
-  margin-top: 6px;
+  margin-top: var(--space-1-5);
 }
 
 .cln-att-source-name {
-  font-size: 11px;
+  font-size: var(--text-xs);
   font-weight: 600;
   color: var(--text-secondary);
   display: block;
-  margin-bottom: 3px;
+  margin-bottom: var(--space-1);
 }
 
 .cln-att-none {
-  font-size: 11px;
+  font-size: var(--text-xs);
   color: var(--text-muted);
   font-style: italic;
 }
@@ -106,17 +106,17 @@
 .cln-att-list {
   display: flex;
   flex-wrap: wrap;
-  gap: 4px;
+  gap: var(--space-1);
 }
 
 .cln-att-badge {
-  font-size: 10px;
+  font-size: var(--text-2xs);
   font-weight: 600;
   color: var(--accent);
   background: var(--accent-bg);
   border: 1px solid var(--accent-light);
   border-radius: var(--radius-sm);
-  padding: 1px 5px;
+  padding: var(--space-0-5) var(--space-1);
   white-space: nowrap;
   font-family: var(--font-mono);
 }
@@ -129,13 +129,13 @@
 
 /* TOPO validation indicator */
 .cln-topo-validation {
-  font-size: 11px;
+  font-size: var(--text-xs);
   font-weight: 700;
-  padding: 0 4px;
+  padding: 0 var(--space-1);
 }
 
 .cln-topo-validation.valid {
-  color: #10b981;
+  color: var(--success);
 }
 
 .cln-topo-validation.invalid {
@@ -148,29 +148,29 @@
 }
 
 .cln-section {
-  margin-bottom: 16px;
+  margin-bottom: var(--space-4);
 }
 
 .cln-section-label {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  font-size: 11px;
+  font-size: var(--text-xs);
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.05em;
   color: var(--text-secondary);
-  margin-bottom: 6px;
+  margin-bottom: var(--space-1-5);
 }
 
 .cln-ann-actions {
   display: flex;
-  gap: 4px;
+  gap: var(--space-1);
 }
 
 .cln-ann-toggle-btn {
-  font-size: 10px;
-  padding: 1px 6px;
+  font-size: var(--text-2xs);
+  padding: var(--space-0-5) var(--space-1-5);
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
   background: var(--bg);
@@ -190,19 +190,19 @@
 .cln-source-list {
   display: flex;
   flex-direction: column;
-  gap: 4px;
-  margin-bottom: 8px;
+  gap: var(--space-1);
+  margin-bottom: var(--space-2);
 }
 
 .cln-source-chip {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 5px 8px;
+  gap: var(--space-2);
+  padding: var(--space-1) var(--space-2);
   background: var(--bg);
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
-  font-size: 12px;
+  font-size: var(--text-sm);
 }
 
 .cln-source-name {
@@ -217,13 +217,13 @@
 
 .cln-source-info {
   color: var(--text-muted);
-  font-size: 11px;
+  font-size: var(--text-xs);
   white-space: nowrap;
 }
 
 .cln-source-order {
   display: flex;
-  gap: 2px;
+  gap: var(--space-0-5);
 }
 
 .cln-icon-btn {
@@ -231,7 +231,7 @@
   border: none;
   color: var(--text-secondary);
   cursor: pointer;
-  padding: 2px;
+  padding: var(--space-0-5);
   border-radius: var(--radius-sm);
   display: flex;
   align-items: center;
@@ -244,13 +244,13 @@
 
 .cln-source-actions {
   display: flex;
-  gap: 8px;
+  gap: var(--space-2);
   align-items: center;
 }
 
 .cln-select {
   flex: 1;
-  padding: 5px 8px;
+  padding: var(--space-1) var(--space-2);
   border-radius: var(--radius-input);
 }
 
@@ -262,19 +262,19 @@
 .cln-enzyme-chips {
   display: flex;
   flex-wrap: wrap;
-  gap: 4px;
-  margin-bottom: 6px;
+  gap: var(--space-1);
+  margin-bottom: var(--space-1-5);
 }
 
 .cln-enzyme-chip {
   display: inline-flex;
   align-items: center;
-  gap: 4px;
-  padding: 2px 8px;
+  gap: var(--space-1);
+  padding: var(--space-0-5) var(--space-2);
   background: var(--accent-bg);
   border: 1px solid var(--accent);
-  border-radius: 10px;
-  font-size: 11px;
+  border-radius: var(--radius-popover);
+  font-size: var(--text-xs);
   font-weight: 600;
   color: var(--accent);
 }
@@ -295,7 +295,7 @@
 /* Enzyme chip cut count badge */
 .cln-chip-cuts {
   font-weight: 400;
-  font-size: 10px;
+  font-size: var(--text-2xs);
   opacity: 0.75;
   margin-left: -1px;
 }
@@ -314,29 +314,29 @@
 /* Gibson overlap settings */
 .cln-overlap-row {
   display: flex;
-  gap: 16px;
-  font-size: 12px;
+  gap: var(--space-4);
+  font-size: var(--text-sm);
   color: var(--text);
 }
 
 .cln-overlap-row label {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: var(--space-1-5);
 }
 
 .cln-num-input {
   width: 56px;
-  padding: 3px 6px;
-  font-size: 12px;
+  padding: var(--space-1) var(--space-1-5);
+  font-size: var(--text-sm);
   text-align: center;
   border-radius: var(--radius-input);
 }
 
 .cln-hint {
-  font-size: 11px;
+  font-size: var(--text-xs);
   color: var(--text-muted);
-  margin-top: 6px;
+  margin-top: var(--space-1-5);
   font-style: italic;
 }
 
@@ -345,12 +345,12 @@
 .cln-spin { animation: spin 1s linear infinite; }
 
 .cln-stale-banner {
-  font-size: 11px;
-  padding: 5px 10px;
+  font-size: var(--text-xs);
+  padding: var(--space-1) var(--space-2-5);
   background: var(--accent-bg);
   color: var(--accent);
   border-radius: var(--radius-sm);
-  margin-bottom: 8px;
+  margin-bottom: var(--space-2);
 }
 
 .cln-stale-btn {
@@ -367,20 +367,20 @@
   background: var(--warning-bg);
   border: 1px solid color-mix(in srgb, var(--warning) 30%, transparent);
   border-radius: var(--radius-sm);
-  margin-bottom: 12px;
+  margin-bottom: var(--space-3);
   overflow: hidden;
 }
 
 .cln-warnings-header {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: var(--space-1-5);
   width: 100%;
-  padding: 6px 10px;
+  padding: var(--space-1-5) var(--space-2-5);
   background: none;
   border: none;
   color: var(--warning);
-  font-size: 12px;
+  font-size: var(--text-sm);
   font-weight: 600;
   cursor: pointer;
   text-align: left;
@@ -391,13 +391,13 @@
 .cln-warning-list {
   list-style: none;
   margin: 0;
-  padding: 0 10px 8px 30px;
-  font-size: 11px;
+  padding: 0 var(--space-2-5) var(--space-2) 30px;
+  font-size: var(--text-xs);
   color: var(--text-secondary);
 }
 
 .cln-warning-list li {
-  padding: 2px 0;
+  padding: var(--space-0-5) 0;
 }
 
 .cln-warning-list li::before {
@@ -408,22 +408,22 @@
 .cln-product-list {
   display: flex;
   flex-direction: column;
-  gap: 4px;
-  margin-bottom: 12px;
+  gap: var(--space-1);
+  margin-bottom: var(--space-3);
 }
 
 .cln-batch-group {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: var(--space-1);
 }
 .cln-batch-group + .cln-batch-group {
-  margin-top: 8px;
-  padding-top: 8px;
+  margin-top: var(--space-2);
+  padding-top: var(--space-2);
   border-top: 1px solid var(--border);
 }
 .cln-batch-group-header {
-  font-size: 11px;
+  font-size: var(--text-xs);
   font-weight: 600;
   color: var(--text-muted);
   text-transform: uppercase;
@@ -431,32 +431,32 @@
 }
 .cln-batch-group-warnings {
   list-style: none;
-  padding: 6px 10px 6px 30px;
-  margin: 0 0 4px 0;
-  font-size: 11px;
+  padding: var(--space-1-5) var(--space-2-5) var(--space-1-5) 30px;
+  margin: 0 0 var(--space-1) 0;
+  font-size: var(--text-xs);
   color: var(--text-secondary);
   background: var(--warning-bg);
   border: 1px solid color-mix(in srgb, var(--warning) 30%, transparent);
   border-radius: var(--radius-sm);
 }
 .cln-batch-group-warnings li {
-  padding: 2px 0;
+  padding: var(--space-0-5) 0;
 }
 .cln-batch-group-warnings li::before {
   content: '⚠ ';
 }
 .cln-batch-group-empty {
-  font-size: 11px;
+  font-size: var(--text-xs);
   color: var(--text-muted);
   font-style: italic;
-  padding: 4px 0;
+  padding: var(--space-1) 0;
 }
 
 .cln-product-item {
   display: flex;
   align-items: flex-start;
-  gap: 8px;
-  padding: 8px 10px;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-2-5);
   background: var(--bg);
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
@@ -468,7 +468,7 @@
 .cln-product-item.selected { border-color: var(--accent); background: var(--accent-bg); }
 
 .cln-product-item input[type="radio"] {
-  margin-top: 2px;
+  margin-top: var(--space-0-5);
   accent-color: var(--accent);
 }
 
@@ -477,40 +477,40 @@
 .cln-product-header {
   display: flex;
   align-items: center;
-  gap: 8px;
-  font-size: 12px;
+  gap: var(--space-2);
+  font-size: var(--text-sm);
 }
 
 .cln-product-size { font-weight: 700; color: var(--text); }
-.cln-product-topo { color: var(--text-muted); font-size: 11px; }
+.cln-product-topo { color: var(--text-muted); font-size: var(--text-xs); }
 
 .cln-product-expected {
   color: var(--warning);
-  font-size: 10px;
+  font-size: var(--text-2xs);
   font-weight: 700;
 }
 
 .cln-product-offtarget {
   color: var(--text-muted);
-  font-size: 10px;
+  font-size: var(--text-2xs);
   font-style: italic;
 }
 
 .cln-product-desc {
-  font-size: 11px;
+  font-size: var(--text-xs);
   color: var(--text-secondary);
-  margin-top: 2px;
+  margin-top: var(--space-0-5);
 }
 
 /* Annotation transfer */
 .cln-annotations-section {
-  margin-top: 8px;
+  margin-top: var(--space-2);
 }
 
 .cln-annotation-list {
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: var(--space-0-5);
   max-height: 160px;
   overflow-y: auto;
 }
@@ -518,9 +518,9 @@
 .cln-annotation-item {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 3px 6px;
-  font-size: 12px;
+  gap: var(--space-2);
+  padding: var(--space-1) var(--space-1-5);
+  font-size: var(--text-sm);
   cursor: pointer;
   border-radius: var(--radius-sm);
 }
@@ -532,14 +532,14 @@
 }
 
 .cln-ann-name { font-weight: 600; color: var(--text); flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.cln-ann-type { color: var(--text-muted); font-size: 11px; }
-.cln-ann-span { color: var(--text-muted); font-size: 11px; white-space: nowrap; }
+.cln-ann-type { color: var(--text-muted); font-size: var(--text-xs); }
+.cln-ann-span { color: var(--text-muted); font-size: var(--text-xs); white-space: nowrap; }
 
 .cln-no-products {
   text-align: center;
-  padding: 16px;
+  padding: var(--space-4);
   color: var(--text-muted);
-  font-size: 12px;
+  font-size: var(--text-sm);
   font-style: italic;
 }
 
@@ -547,7 +547,7 @@
 .cln-paste-overlay {
   position: fixed;
   inset: 0;
-  z-index: 110;
+  z-index: var(--z-popover);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -566,30 +566,30 @@
 .cln-paste-label {
   display: flex;
   flex-direction: column;
-  gap: 4px;
-  font-size: 12px;
+  gap: var(--space-1);
+  font-size: var(--text-sm);
   font-weight: 600;
   color: var(--text-secondary);
-  margin-bottom: 10px;
+  margin-bottom: var(--space-2-5);
 }
 
 .cln-paste-input {
-  padding: 6px 8px;
-  font-size: 12px;
+  padding: var(--space-1-5) var(--space-2);
+  font-size: var(--text-sm);
   border-radius: var(--radius-input);
 }
 
 .cln-paste-textarea {
   font-family: var(--font-mono);
-  font-size: 12px;
-  padding: 8px;
+  font-size: var(--text-sm);
+  padding: var(--space-2);
   border-radius: var(--radius-input);
   resize: vertical;
   min-height: 80px;
 }
 
 .cln-paste-info {
-  font-size: 11px;
+  font-size: var(--text-xs);
   color: var(--text-muted);
   text-align: right;
 }
@@ -598,8 +598,8 @@
 .cln-dephos-label {
   display: inline-flex;
   align-items: center;
-  gap: 3px;
-  font-size: 10px;
+  gap: var(--space-1);
+  font-size: var(--text-2xs);
   color: var(--text-muted);
   cursor: pointer;
   white-space: nowrap;
@@ -618,10 +618,10 @@
 
 /* Methylation status pill on source chips */
 .cln-methyl-pill {
-  font-size: 9px;
+  font-size: var(--text-2xs);
   font-weight: 600;
-  padding: 1px 5px;
-  border-radius: 3px;
+  padding: var(--space-0-5) var(--space-1);
+  border-radius: var(--radius-xs);
   background: color-mix(in srgb, var(--warning) 12%, transparent);
   color: var(--warning);
   border: 1px solid color-mix(in srgb, var(--warning) 30%, transparent);
@@ -635,8 +635,8 @@
 .cln-option-label {
   display: flex;
   align-items: center;
-  gap: 6px;
-  font-size: 12px;
+  gap: var(--space-1-5);
+  font-size: var(--text-sm);
   color: var(--text-secondary);
   cursor: pointer;
 }
@@ -652,25 +652,25 @@
 
 /* Gibson overlap details table */
 .cln-overlap-details {
-  margin-top: 4px;
+  margin-top: var(--space-1);
 }
 
 .cln-overlap-table {
   width: 100%;
   border-collapse: collapse;
-  font-size: 11px;
+  font-size: var(--text-xs);
 }
 
 .cln-overlap-table th {
   text-align: left;
   font-weight: 600;
   color: var(--text-secondary);
-  padding: 3px 6px;
+  padding: var(--space-1) var(--space-1-5);
   border-bottom: 1px solid var(--border);
 }
 
 .cln-overlap-table td {
-  padding: 3px 6px;
+  padding: var(--space-1) var(--space-1-5);
   color: var(--text);
 }
 
@@ -684,7 +684,7 @@
 
 .cln-overlap-seq {
   font-family: var(--font-mono);
-  font-size: 10px;
+  font-size: var(--text-2xs);
   letter-spacing: 0.02em;
   max-width: 180px;
   overflow: hidden;
@@ -694,19 +694,19 @@
 
 /* Truncated annotation badge */
 .cln-ann-truncated {
-  font-size: 9px;
+  font-size: var(--text-2xs);
   font-weight: 600;
   color: var(--warning);
   background: var(--warning-bg);
   border: 1px solid color-mix(in srgb, var(--warning) 30%, transparent);
-  border-radius: 3px;
-  padding: 0 4px;
+  border-radius: var(--radius-xs);
+  padding: 0 var(--space-1);
   white-space: nowrap;
 }
 
 /* Scrollbar for cloning modal body */
 .cln-body::-webkit-scrollbar { width: 4px; }
-.cln-body::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+.cln-body::-webkit-scrollbar-thumb { background: var(--border); border-radius: var(--radius-pill); }
 .cln-annotation-list::-webkit-scrollbar { width: 4px; }
-.cln-annotation-list::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+.cln-annotation-list::-webkit-scrollbar-thumb { background: var(--border); border-radius: var(--radius-pill); }
 

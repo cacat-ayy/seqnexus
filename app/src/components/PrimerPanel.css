@@ -15,7 +15,7 @@
 
 .primer-modal-settings {
   flex: 0 0 280px;
-  padding: 16px 20px;
+  padding: var(--space-4) var(--space-5);
   border-right: 1px solid var(--border);
   overflow-y: auto;
   max-height: 60vh;
@@ -30,15 +30,15 @@
 
 .primer-type-row {
   display: flex;
-  gap: 12px;
-  margin-top: 2px;
+  gap: var(--space-3);
+  margin-top: var(--space-0-5);
 }
 
 .primer-check {
   display: flex;
   align-items: center;
-  gap: 6px;
-  font-size: 12px;
+  gap: var(--space-1-5);
+  font-size: var(--text-sm);
   font-weight: 400;
   color: var(--text);
   cursor: pointer;
@@ -59,11 +59,11 @@
 .primer-range-row {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: var(--space-1-5);
 }
 
 .primer-range-sep {
-  font-size: 11px;
+  font-size: var(--text-xs);
   color: var(--text-muted);
   font-weight: 400;
   text-transform: none;
@@ -80,7 +80,7 @@
 }
 
 .primer-hint {
-  font-size: 11px;
+  font-size: var(--text-xs);
   font-weight: 400;
   color: var(--text-muted);
   text-transform: none;
@@ -88,21 +88,21 @@
 }
 
 .primer-results-header {
-  font-size: 12px;
+  font-size: var(--text-sm);
   font-weight: 600;
   color: var(--text-muted);
   text-transform: uppercase;
   letter-spacing: 0.03em;
-  padding: 12px 16px 8px;
+  padding: var(--space-3) var(--space-4) var(--space-2);
   border-bottom: 1px solid var(--border);
 }
 
 .primer-results-list {
-  padding: 4px 0;
+  padding: var(--space-1) 0;
 }
 
 .primer-result-card {
-  padding: 8px 16px;
+  padding: var(--space-2) var(--space-4);
   cursor: pointer;
   border-bottom: 1px solid var(--border);
   transition: background var(--dur-fast);
@@ -119,24 +119,24 @@
 .primer-result-header {
   display: flex;
   align-items: center;
-  gap: 8px;
-  margin-bottom: 4px;
+  gap: var(--space-2);
+  margin-bottom: var(--space-1);
 }
 
 .primer-result-rank {
-  font-size: 11px;
+  font-size: var(--text-xs);
   font-weight: 700;
   color: var(--accent);
 }
 
 .primer-result-product {
-  font-size: 11px;
+  font-size: var(--text-xs);
   font-weight: 600;
   color: var(--text);
 }
 
 .primer-result-penalty {
-  font-size: 10px;
+  font-size: var(--text-2xs);
   color: var(--text-muted);
   margin-left: auto;
 }
@@ -144,35 +144,35 @@
 .primer-result-oligo {
   display: flex;
   align-items: center;
-  gap: 6px;
-  margin: 2px 0;
+  gap: var(--space-1-5);
+  margin: var(--space-0-5) 0;
 }
 
 .primer-result-dir {
-  font-size: 9px;
+  font-size: var(--text-2xs);
   font-weight: 700;
-  padding: 1px 4px;
+  padding: var(--space-0-5) var(--space-1);
   border-radius: var(--radius-sm);
   letter-spacing: 0.05em;
 }
 
 .primer-result-dir.fwd {
-  background: #2563eb22;
-  color: #2563eb;
+  background: color-mix(in srgb, var(--accent) 13%, transparent);
+  color: var(--accent);
 }
 
 .primer-result-dir.rev {
-  background: #dc262622;
-  color: #dc2626;
+  background: color-mix(in srgb, var(--danger) 13%, transparent);
+  color: var(--danger);
 }
 
 .primer-result-dir.probe {
-  background: #16a34a22;
-  color: #16a34a;
+  background: color-mix(in srgb, var(--success) 13%, transparent);
+  color: var(--success);
 }
 
 .primer-result-seq {
-  font-size: 11px;
+  font-size: var(--text-xs);
   letter-spacing: 0.04em;
 }
 
@@ -181,7 +181,7 @@
 }
 
 .primer-result-stats {
-  font-size: 10px;
+  font-size: var(--text-2xs);
   color: var(--text-muted);
   margin-left: 32px;
 }
@@ -215,7 +215,7 @@
 }
 
 .primer-copy-btn.copied {
-  color: #16a34a;
+  color: var(--success);
 }
 
 .primer-empty {
@@ -224,9 +224,9 @@
   justify-content: center;
   height: 100%;
   min-height: 200px;
-  font-size: 12px;
+  font-size: var(--text-sm);
   color: var(--text-muted);
-  padding: 20px;
+  padding: var(--space-5);
   text-align: center;
 }
 
@@ -234,14 +234,14 @@
 .primer-collapse-toggle {
   display: flex;
   align-items: center;
-  gap: 5px;
+  gap: var(--space-1);
   width: 100%;
-  padding: 6px 0;
-  margin-top: 4px;
+  padding: var(--space-1-5) 0;
+  margin-top: var(--space-1);
   background: none;
   border: none;
   border-top: 1px solid var(--border);
-  font-size: 12px;
+  font-size: var(--text-sm);
   font-weight: 600;
   color: var(--accent);
   cursor: pointer;
@@ -253,16 +253,16 @@
 }
 
 .primer-collapse-body {
-  padding: 4px 0 0 0;
+  padding: var(--space-1) 0 0 0;
 }
 
 .primer-collapse-subtitle {
-  font-size: 10px;
+  font-size: var(--text-2xs);
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.04em;
   color: var(--text-muted);
-  margin: 8px 0 4px;
+  margin: var(--space-2) 0 var(--space-1);
 }
 
 .primer-collapse-subtitle:first-child {
@@ -270,30 +270,30 @@
 }
 
 .primer-field-label {
-  font-size: 11px;
+  font-size: var(--text-xs);
   color: var(--text-muted);
 }
 
 .primer-field-value {
-  font-size: 11px;
+  font-size: var(--text-xs);
   color: var(--text);
 }
 
 .primer-conc-grid {
   display: grid;
   grid-template-columns: auto 70px auto;
-  gap: 5px 8px;
+  gap: var(--space-1) var(--space-2);
   align-items: center;
 }
 
 .primer-conc-label {
-  font-size: 11px;
+  font-size: var(--text-xs);
   color: var(--text-muted);
   text-align: right;
 }
 
 .primer-conc-unit {
-  font-size: 10px;
+  font-size: var(--text-2xs);
   color: var(--text-muted);
 }
 
@@ -309,9 +309,9 @@
 .ann-item {
   display: flex;
   align-items: center;
-  gap: 5px;
-  padding: 3px 2px;
-  font-size: 13px;
+  gap: var(--space-1);
+  padding: var(--space-1) var(--space-0-5);
+  font-size: var(--text-md);
   border-bottom: 1px solid var(--border-light);
   cursor: pointer;
   border-radius: var(--radius-sm);
@@ -336,7 +336,7 @@
 
 .ann-range {
   color: var(--text-muted);
-  font-size: 11px;
+  font-size: var(--text-xs);
   font-family: monospace;
   flex-shrink: 0;
 }
@@ -345,8 +345,8 @@
   background: none;
   border: none;
   cursor: pointer;
-  padding: 0 2px;
-  font-size: 13px;
+  padding: 0 var(--space-0-5);
+  font-size: var(--text-md);
   color: var(--text-faint);
   flex-shrink: 0;
 }
@@ -357,12 +357,12 @@
 .primer-tm-warn {
   display: flex;
   align-items: center;
-  gap: 5px;
-  padding: 3px 8px;
-  margin-top: 2px;
-  font-size: 10px;
-  color: var(--warning, #d97706);
-  background: color-mix(in srgb, var(--warning, #d97706) 10%, transparent);
+  gap: var(--space-1);
+  padding: var(--space-1) var(--space-2);
+  margin-top: var(--space-0-5);
+  font-size: var(--text-2xs);
+  color: var(--warning);
+  background: color-mix(in srgb, var(--warning) 10%, transparent);
   border-radius: var(--radius-sm);
 }
 

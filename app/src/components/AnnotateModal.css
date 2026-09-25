@@ -7,19 +7,19 @@
 /* Find Features */
 .ann-controls {
   display: flex;
-  gap: 8px;
-  margin-bottom: 8px;
+  gap: var(--space-2);
+  margin-bottom: var(--space-2);
 }
 
 .ann-search-box {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: var(--space-1-5);
   flex: 1;
   background: var(--bg);
   border: 1px solid var(--border);
   border-radius: var(--radius-input);
-  padding: 4px 8px;
+  padding: var(--space-1) var(--space-2);
   color: var(--text-secondary);
 }
 
@@ -32,7 +32,7 @@
   border: none;
   outline: none;
   color: var(--text);
-  font-size: 12px;
+  font-size: var(--text-sm);
   flex: 1;
   min-width: 0;
 }
@@ -40,9 +40,9 @@
 .ann-similarity-row {
   display: flex;
   align-items: center;
-  gap: 8px;
-  margin-bottom: 10px;
-  font-size: 12px;
+  gap: var(--space-2);
+  margin-bottom: var(--space-2-5);
+  font-size: var(--text-sm);
   color: var(--text-secondary);
 }
 
@@ -68,15 +68,15 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin-bottom: 8px;
-  font-size: 12px;
+  margin-bottom: var(--space-2);
+  font-size: var(--text-sm);
   color: var(--text-secondary);
 }
 
 .ann-scanning {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: var(--space-1-5);
 }
 
 .ann-spin {
@@ -86,7 +86,7 @@
 .ann-add-all-btn {
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: var(--space-1);
 }
 
 .ann-results-list {
@@ -108,9 +108,9 @@
 .ann-result-name {
   display: flex;
   align-items: center;
-  gap: 6px;
-  padding: 6px 10px;
-  font-size: 12px;
+  gap: var(--space-1-5);
+  padding: var(--space-1-5) var(--space-2-5);
+  font-size: var(--text-sm);
   font-weight: 600;
   background: var(--bg-alt);
   border-bottom: 1px solid var(--border);
@@ -138,9 +138,9 @@
 .ann-result-match {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 4px 10px 4px 26px;
-  font-size: 12px;
+  gap: var(--space-2);
+  padding: var(--space-1) var(--space-2-5) var(--space-1) 26px;
+  font-size: var(--text-sm);
 }
 
 .ann-match-pos {
@@ -162,11 +162,11 @@
 
 .ann-add-btn {
   margin-left: auto;
-  font-size: 11px;
-  padding: 2px 8px;
+  font-size: var(--text-xs);
+  padding: var(--space-0-5) var(--space-2);
   display: flex;
   align-items: center;
-  gap: 3px;
+  gap: var(--space-1);
 }
 
 .ann-add-btn.added {

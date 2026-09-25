@@ -51,6 +51,118 @@
   --dur-normal: .2s;
   --dur-slow: .3s;
   --panel-header-h: 32px;
+
+  /* --- Type scale ---
+     The app is deliberately dense, so the steps are 1px apart in the middle
+     where nearly all the UI lives. Derived from actual usage, not an abstract
+     ideal: 11px and 12px carry the interface, 10px the badges and counts.
+       --text-2xs  badges, counts, dense metadata
+       --text-xs   dense labels — the most common size in the app
+       --text-sm   body default for controls and prose
+       --text-md   section and dialog titles
+       --text-lg   panel titles
+       --text-xl   display only (error screens)
+     Nothing should sit between these steps. 9px is deliberately absent: it
+     was below the legibility floor and rounds up to --text-2xs. */
+  --text-2xs: 10px;
+  --text-xs: 11px;
+  --text-sm: 12px;
+  --text-md: 13px;
+  --text-lg: 15px;
+  --text-xl: 19px;
+
+  /* --- Spacing scale ---
+     A 2px rhythm, not the usual 4px one. That is deliberate: this is a dense
+     tool whose real layout vocabulary is 2/4/6/8/10/12, and forcing it onto
+     4px steps would have meant redesigning every control rather than making
+     the existing rhythm explicit. Odd values are the noise this replaces.
+     Use these for padding, margin and gap so controls from different
+     components line up when placed side by side. Dimensions above 24px are
+     layout-specific, not rhythm, and stay as raw values. */
+  --space-0-5: 2px;
+  --space-1: 4px;
+  --space-1-5: 6px;
+  --space-2: 8px;
+  --space-2-5: 10px;
+  --space-3: 12px;
+  --space-3-5: 14px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+
+  /* --- Layering scale ---
+     Every stacking context in the app draws from this list, in this order.
+     Raw z-index values invite the "popover behind the modal" class of bug.
+       base      sticky table headers and cells inside a scroll container
+       sticky    in-view chrome: gutters, dividers, resize handles
+       dropdown  menus anchored to a control
+       popover   tooltips and context menus floating over content
+       modal     dialogs and their backdrops
+       nested    a dialog opened from inside another dialog (filename prompt)
+       toast     transient notifications, above everything interactive
+       max       the error boundary, which must outrank a broken UI
+     Note that a dialog establishes its own stacking context, so a tooltip
+     rendered inside one only competes with that dialog's other children —
+     which is why tooltips can sit below --z-modal without being occluded. */
+  --z-base: 1;
+  --z-sticky: 10;
+  --z-dropdown: 100;
+  --z-popover: 300;
+  --z-modal: 500;
+  --z-modal-nested: 600;
+  --z-toast: 700;
+  --z-max: 9999;
+
+  /* --- Nucleotide colours (ABI/Sanger convention: A green, C blue, G dark,
+     T red) ---
+     Used by the alignment panel and the chromatogram's base labels. These are
+     data encodings, not decoration, so they are defined once here and
+     overridden per theme only where legibility demands it.
+
+     Values are unchanged from what the app already rendered: G was #1e293b on
+     light themes and was overridden to amber on all five dark themes by a
+     separate rule in AlignmentPanel.css. That override is now folded into the
+     token, which is the whole point of having one.
+
+     NOTE: the linear sequence view's canvas uses a different scheme
+     (baseColor() in utils/color.ts: C amber, G blue). That divergence is
+     deliberate-looking but undocumented and predates this work — left alone
+     here because changing a scientific display convention is the user's call,
+     not a refactor's. */
+  --base-a: #22a366;
+  --base-c: #3b82f6;
+  --base-g: #1e293b;
+  --base-t: #ef4444;
+  --base-other: #94a3b8;
+
+  /* Amino-acid classes (Clustal-style groups). Same rationale as the
+     nucleotide tokens: data encoding, defined once. */
+  --aa-hydrophobic: #3b82f6;
+  --aa-positive: #ef4444;
+  --aa-negative: #a855f7;
+  --aa-polar: #22a366;
+  --aa-cysteine: #f59e0b;
+  --aa-glycine: #f97316;
+  --aa-aromatic: #06b6d4;
+  --aa-proline: #eab308;
+
+  /* Success. The palette had --danger and --warning but no positive
+     counterpart, so components hardcoded #22c55e / #10b981 independently. */
+  --success: #16a34a;
+  --success-bg: #f0fdf4;
+
+  /* Foreground for filled accent/danger/success surfaces, where components
+     previously hardcoded #fff regardless of theme. */
+  --on-accent: #ffffff;
+
+  /* Smallest radius: chips, badges, tight inline markers. */
+  --radius-xs: 3px;
+  /* Capsule. For scrollbar thumbs and pills, where the radius should simply
+     track the element's own height rather than a fixed step. */
+  --radius-pill: 999px;
+
+  /* Shared easing. Decelerating — motion arrives rather than stops dead. */
+  --ease-out: cubic-bezier(.2, .8, .3, 1);
 }
 
 /* Respect reduced-motion preference */
@@ -122,6 +234,8 @@
   --canvas-enzyme: #f87171; --canvas-enzyme-bg: rgba(248,113,113,.18); --canvas-enzyme-bg-hover: rgba(248,113,113,.35);
   --props-bg: #162032; --input-bg: #162032; --input-border: #334155;
   --status-bg: #1e293b; --find-bg: #1e293b;
+  --base-a: #4ade80; --base-c: #60a5fa; --base-g: #fbbf24; --base-t: #f87171; --base-other: #64748b;
+  --success: #4ade80; --success-bg: rgba(74,222,128,.12);
 }
 
 .app-root[data-theme="midnight"] {
@@ -145,6 +259,8 @@
   --canvas-enzyme: #fb7185; --canvas-enzyme-bg: rgba(251,113,133,.2); --canvas-enzyme-bg-hover: rgba(251,113,133,.38);
   --props-bg: #0a0f1e; --input-bg: #0a0f1e; --input-border: #1e293b;
   --status-bg: #0c1222; --find-bg: #0c1222;
+  --base-a: #4ade80; --base-c: #60a5fa; --base-g: #fbbf24; --base-t: #f87171; --base-other: #64748b;
+  --success: #4ade80; --success-bg: rgba(74,222,128,.12);
 }
 
 .app-root[data-theme="solarized"] {
@@ -251,6 +367,8 @@
   --canvas-enzyme: #ff5555; --canvas-enzyme-bg: rgba(255,85,85,.18); --canvas-enzyme-bg-hover: rgba(255,85,85,.35);
   --props-bg: #21222c; --input-bg: #21222c; --input-border: #44475a;
   --status-bg: #282a36; --find-bg: #21222c;
+  --base-a: #4ade80; --base-c: #60a5fa; --base-g: #fbbf24; --base-t: #f87171; --base-other: #64748b;
+  --success: #4ade80; --success-bg: rgba(74,222,128,.12);
 }
 
 .app-root[data-theme="nord"] {
@@ -273,6 +391,8 @@
   --canvas-enzyme: #bf616a; --canvas-enzyme-bg: rgba(191,97,106,.18); --canvas-enzyme-bg-hover: rgba(191,97,106,.35);
   --props-bg: #272c36; --input-bg: #272c36; --input-border: #3b4252;
   --status-bg: #2e3440; --find-bg: #272c36;
+  --base-a: #4ade80; --base-c: #60a5fa; --base-g: #fbbf24; --base-t: #f87171; --base-other: #64748b;
+  --success: #4ade80; --success-bg: rgba(74,222,128,.12);
 }
 
 .app-root[data-theme="catppuccin"] {
@@ -295,6 +415,8 @@
   --canvas-enzyme: #f38ba8; --canvas-enzyme-bg: rgba(243,139,168,.18); --canvas-enzyme-bg-hover: rgba(243,139,168,.35);
   --props-bg: #181825; --input-bg: #181825; --input-border: #313244;
   --status-bg: #1e1e2e; --find-bg: #181825;
+  --base-a: #4ade80; --base-c: #60a5fa; --base-g: #fbbf24; --base-t: #f87171; --base-other: #64748b;
+  --success: #4ade80; --success-bg: rgba(74,222,128,.12);
 }
 
 /* === Root Layout === */
@@ -306,8 +428,8 @@
   background: var(--bg);
   color: var(--text);
   font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-  padding: 8px;
-  gap: 6px;
+  padding: var(--space-2);
+  gap: var(--space-1-5);
 }
 
 /* === Global Focus & Interaction States === */
@@ -327,7 +449,7 @@
 /* === Scrollbar Styling === */
 .app-root ::-webkit-scrollbar { width: 6px; height: 6px; }
 .app-root ::-webkit-scrollbar-track { background: transparent; }
-.app-root ::-webkit-scrollbar-thumb { background: var(--border-hover); border-radius: 10px; }
+.app-root ::-webkit-scrollbar-thumb { background: var(--border-hover); border-radius: var(--radius-pill); }
 .app-root ::-webkit-scrollbar-thumb:hover { background: var(--text-muted); }
 .app-root { scrollbar-width: thin; scrollbar-color: var(--border-hover) transparent; }
 
@@ -335,8 +457,8 @@
 .toolbar {
   display: flex;
   align-items: center;
-  gap: 2px;
-  padding: 4px 8px;
+  gap: var(--space-0-5);
+  padding: var(--space-1) var(--space-2);
   background: var(--bg-toolbar);
   border: 1px solid var(--border);
   border-radius: var(--radius-card);
@@ -346,6 +468,47 @@
   overflow: visible;
 }
 
+/* --- Command palette trigger ---
+   Styled as a search field rather than a button: it reads as "type here to
+   find things", which is what it does, and distinguishes it from the action
+   buttons to its left. */
+.tb-palette {
+  background: var(--input-bg);
+  border: 1px solid var(--border);
+  color: var(--text-secondary);
+  padding-right: var(--space-1);
+  min-width: 132px;
+  justify-content: flex-start;
+}
+
+.tb-palette:hover {
+  background: var(--bg-hover);
+  border-color: var(--border-hover);
+  color: var(--text);
+}
+
+.tb-palette-label {
+  font-weight: 500;
+}
+
+.tb-kbd {
+  margin-left: auto;
+  font-family: var(--font-mono);
+  font-size: var(--text-2xs);
+  color: var(--text-muted);
+  background: var(--bg-alt);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-xs);
+  padding: 1px var(--space-1);
+}
+
+/* Below this width the toolbar is tight enough that the affordance has to
+   collapse to its icon. The shortcut still works. */
+@media (max-width: 1100px) {
+  .tb-palette { min-width: 0; }
+  .tb-palette-label, .tb-kbd { display: none; }
+}
+
 .toolbar-spacer {
   flex: 1;
 }
@@ -353,8 +516,8 @@
 .toolbar-group {
   display: flex;
   align-items: center;
-  gap: 2px;
-  padding: 0 6px;
+  gap: var(--space-0-5);
+  padding: 0 var(--space-1-5);
   border-right: 1px solid var(--border);
 }
 
@@ -364,8 +527,8 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  padding: 5px 10px;
-  font-size: 12px;
+  padding: var(--space-1) var(--space-2-5);
+  font-size: var(--text-sm);
   font-weight: 600;
   border: 1px solid transparent;
   border-radius: var(--radius-input);
@@ -373,14 +536,23 @@
   color: var(--text);
   cursor: pointer;
   white-space: nowrap;
-  gap: 4px;
-  transition: all var(--dur-fast);
+  gap: var(--space-1);
+  transition: background-color var(--dur-fast) var(--ease-out),
+              border-color var(--dur-fast) var(--ease-out),
+              color var(--dur-fast) var(--ease-out),
+              transform var(--dur-fast) var(--ease-out);
 }
 
-.tb:hover { background: var(--bg-hover); transform: translateY(-1px); }
-.tb:active { transform: translateY(0); }
+/* Hover changes colour only. The previous translateY(-1px) lift moved the
+   button out from under the pointer, which reads as jitter when skimming
+   along a row of them — and animating a transform on hover also fought the
+   toolbar's own wrapping. Press feedback moved to :active, where a transform
+   is both expected and composited. */
+.tb:hover { background: var(--bg-hover); }
+.tb:active { transform: scale(.97); }
 .tb:disabled { opacity: 0.35; cursor: default; }
-.tb:disabled:hover { background: transparent; transform: none; }
+.tb:disabled:hover { background: transparent; }
+.tb:disabled:active { transform: none; }
 .tb.active { background: var(--accent-bg); color: var(--accent); border-color: var(--accent); }
 
 /* --- Split toolbar button with dropdown --- */
@@ -393,13 +565,13 @@
 .tb-split > .tb:first-child {
   border-top-right-radius: 0;
   border-bottom-right-radius: 0;
-  padding-right: 6px;
+  padding-right: var(--space-1-5);
 }
 
 .tb-split-caret {
   border-top-left-radius: 0 !important;
   border-bottom-left-radius: 0 !important;
-  padding: 5px 4px !important;
+  padding: var(--space-1) var(--space-1) !important;
   min-width: 0;
   border-left: 1px solid var(--border) !important;
 }
@@ -412,12 +584,12 @@
   position: absolute;
   top: 100%;
   left: 0;
-  margin-top: 2px;
-  z-index: 400;
+  margin-top: var(--space-0-5);
+  z-index: var(--z-dropdown);
   background: rgba(var(--bg-alt-rgb), .95);
   border: 1px solid var(--border-hover);
   border-radius: var(--radius-popover);
-  padding: 4px 0;
+  padding: var(--space-1) 0;
   min-width: max-content;
   box-shadow: var(--shadow-popover);
   backdrop-filter: blur(12px);
@@ -437,9 +609,9 @@
   border: none;
   border-left: 3px solid transparent;
   color: var(--text);
-  font-size: 12px;
+  font-size: var(--text-sm);
   font-weight: 500;
-  padding: 7px 14px 7px 11px;
+  padding: var(--space-2) var(--space-3-5) var(--space-2) var(--space-3);
   cursor: pointer;
   text-align: left;
   white-space: nowrap;
@@ -474,8 +646,8 @@
 .toolbar-back {
   color: var(--text-secondary);
   text-decoration: none;
-  margin-right: 8px;
-  padding-right: 8px;
+  margin-right: var(--space-2);
+  padding-right: var(--space-2);
   border-radius: var(--radius-input);
   position: relative;
 }
@@ -495,7 +667,7 @@
 /* --- Theme Popover --- */
 .theme-popover {
   position: fixed;
-  z-index: 300;
+  z-index: var(--z-dropdown);
   width: 220px;
   background: var(--bg-alt);
   border: 1px solid var(--border-hover);
@@ -514,8 +686,8 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 10px 14px;
-  font-size: 12px;
+  padding: var(--space-2-5) var(--space-3-5);
+  font-size: var(--text-sm);
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.06em;
@@ -528,7 +700,7 @@
   border: none;
   color: var(--text-secondary);
   cursor: pointer;
-  padding: 2px;
+  padding: var(--space-0-5);
   display: flex;
   align-items: center;
   border-radius: var(--radius-sm);
@@ -539,32 +711,32 @@
 }
 
 .theme-popover-body {
-  padding: 6px 8px 8px;
+  padding: var(--space-1-5) var(--space-2) var(--space-2);
   max-height: 400px;
   overflow-y: auto;
 }
 
 .theme-group-label {
-  font-size: 11px;
+  font-size: var(--text-xs);
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.05em;
   color: var(--accent);
-  padding: 8px 4px 4px;
+  padding: var(--space-2) var(--space-1) var(--space-1);
 }
 
 .theme-option {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: var(--space-2-5);
   width: 100%;
-  padding: 5px 6px;
+  padding: var(--space-1) var(--space-1-5);
   background: none;
   border: 2px solid transparent;
   border-radius: var(--radius-input);
   cursor: pointer;
   color: var(--text);
-  font-size: 12px;
+  font-size: var(--text-sm);
   transition: border-color var(--dur-fast);
 }
 .theme-option:hover {
@@ -591,8 +763,8 @@
   border-radius: var(--radius-sm);
   display: flex;
   flex-direction: column;
-  gap: 2px;
-  padding: 3px 4px;
+  gap: var(--space-0-5);
+  padding: var(--space-1) var(--space-1);
   box-shadow: 0 1px 2px rgba(0,0,0,0.1);
 }
 
@@ -618,7 +790,7 @@
 /* --- Info Popover --- */
 .info-popover {
   position: fixed;
-  z-index: 300;
+  z-index: var(--z-dropdown);
   width: 280px;
   max-height: calc(100vh - 60px);
   display: flex;
@@ -631,8 +803,8 @@
 }
 
 .info-body {
-  padding: 20px 18px;
-  font-size: 12px;
+  padding: var(--space-5) 18px;
+  font-size: var(--text-sm);
   color: var(--text);
   overflow-y: auto;
   flex: 1;
@@ -642,7 +814,7 @@
 .info-body hr {
   border: none;
   border-top: 1px solid var(--border);
-  margin: 14px 0;
+  margin: var(--space-3-5) 0;
 }
 
 .info-logo {
@@ -650,7 +822,7 @@
   align-items: center;
   justify-content: center;
   color: var(--accent);
-  margin-bottom: 4px;
+  margin-bottom: var(--space-1);
 }
 
 .info-title {
@@ -661,15 +833,15 @@
 
 .info-version {
   text-align: center;
-  font-size: 11px;
+  font-size: var(--text-xs);
   font-family: 'SF Mono', 'Fira Code', 'Cascadia Code', 'Consolas', monospace;
   color: var(--text-muted);
-  margin-bottom: 8px;
+  margin-bottom: var(--space-2);
 }
 
 .info-desc {
   text-align: center;
-  font-size: 12px;
+  font-size: var(--text-sm);
   color: var(--text-secondary);
   line-height: 1.5;
 }
@@ -677,8 +849,8 @@
 .info-row {
   display: flex;
   justify-content: space-between;
-  font-size: 12px;
-  padding: 3px 0;
+  font-size: var(--text-sm);
+  padding: var(--space-1) 0;
 }
 
 .info-label {
@@ -686,32 +858,32 @@
 }
 
 .info-notice {
-  font-size: 12px;
+  font-size: var(--text-sm);
   color: var(--text-secondary);
   line-height: 1.5;
   background: color-mix(in srgb, var(--accent) 8%, transparent);
   border-radius: var(--radius-sm);
-  padding: 10px 12px;
+  padding: var(--space-2-5) var(--space-3);
 }
 
 .info-section-title {
-  font-size: 11px;
+  font-size: var(--text-xs);
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.05em;
   color: var(--accent);
-  margin-bottom: 8px;
+  margin-bottom: var(--space-2);
 }
 
 .info-cite {
-  font-size: 11px;
+  font-size: var(--text-xs);
   color: var(--text-secondary);
   line-height: 1.55;
   background: var(--bg-hover);
   border: 1px solid var(--border);
-  border-radius: 8px;
-  padding: 10px 12px;
-  margin-bottom: 8px;
+  border-radius: var(--radius-input);
+  padding: var(--space-2-5) var(--space-3);
+  margin-bottom: var(--space-2);
 }
 .info-cite a {
   color: var(--accent);
@@ -723,17 +895,17 @@
 .info-copy-cite {
   display: block;
   width: 100%;
-  padding: 6px 0;
-  font-size: 11px;
+  padding: var(--space-1-5) 0;
+  font-size: var(--text-xs);
   font-weight: 600;
   color: var(--accent);
   background: none;
   border: 1.5px solid var(--accent);
-  border-radius: 8px;
+  border-radius: var(--radius-input);
   cursor: pointer;
-  transition: all var(--dur-fast);
+  transition: background-color var(--dur-fast) var(--ease-out), border-color var(--dur-fast) var(--ease-out), color var(--dur-fast) var(--ease-out);
   text-align: center;
-  margin-bottom: 2px;
+  margin-bottom: var(--space-0-5);
 }
 .info-copy-cite:hover {
   background: var(--accent-bg);
@@ -745,7 +917,7 @@
   align-items: center;
   justify-content: space-between;
   user-select: none;
-  padding: 4px 0;
+  padding: var(--space-1) 0;
   margin-bottom: 0;
   transition: margin-bottom .15s;
 }
@@ -769,20 +941,20 @@
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 3px 0;
-  font-size: 12px;
+  padding: var(--space-1) 0;
+  font-size: var(--text-sm);
 }
 
 .shortcut-keys {
   display: flex;
-  gap: 2px;
+  gap: var(--space-0-5);
   align-items: center;
 }
 
 .shortcut-keys kbd {
   display: inline-block;
-  padding: 1px 5px;
-  font-size: 11px;
+  padding: var(--space-0-5) var(--space-1);
+  font-size: var(--text-xs);
   font-family: inherit;
   background: var(--bg-hover);
   border: 1px solid var(--border);
@@ -798,10 +970,10 @@
   display: flex;
   justify-content: center;
   align-items: center;
-  gap: 6px;
+  gap: var(--space-1-5);
   padding: 0;
   margin-top: -4px;
-  font-size: 11px;
+  font-size: var(--text-xs);
 }
 .info-legal a {
   color: var(--text-muted);
@@ -823,7 +995,7 @@
   height: 6px;
   border-radius: 50%;
   display: inline-block;
-  margin-left: 4px;
+  margin-left: var(--space-1);
   flex-shrink: 0;
 }
 
@@ -837,7 +1009,7 @@
 }
 
 .zoom-label {
-  font-size: 11px;
+  font-size: var(--text-xs);
   font-family: monospace;
   min-width: 32px;
   text-align: center;
@@ -848,7 +1020,7 @@
   width: 1px;
   height: 20px;
   background: var(--border);
-  margin: 0 4px;
+  margin: 0 var(--space-1);
 }
 
 /* === File Menu Dropdown === */
@@ -860,27 +1032,27 @@
   position: absolute;
   top: 100%;
   left: 0;
-  z-index: 300;
+  z-index: var(--z-dropdown);
   background: var(--bg-alt);
   border: 1px solid var(--border-hover);
   border-radius: var(--radius-input);
-  padding: 4px 0;
+  padding: var(--space-1) 0;
   width: max-content;
   min-width: 180px;
   box-shadow: var(--shadow-popover);
-  margin-top: 2px;
+  margin-top: var(--space-0-5);
 }
 
 .file-menu-item {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--space-2);
   width: 100%;
   background: none;
   border: none;
   color: var(--text);
-  font-size: 12px;
-  padding: 6px 12px;
+  font-size: var(--text-sm);
+  padding: var(--space-1-5) var(--space-3);
   cursor: pointer;
   text-align: left;
   white-space: nowrap;
@@ -911,7 +1083,7 @@
 .file-menu-sep {
   height: 1px;
   background: var(--border);
-  margin: 4px 8px;
+  margin: var(--space-1) var(--space-2);
 }
 
 /* === Main Area (sidebar + center) === */
@@ -939,15 +1111,15 @@
   align-items: center;
   background: var(--bg-alt);
   border-bottom: 1px solid var(--border);
-  padding: 0 8px;
+  padding: 0 var(--space-2);
   flex-shrink: 0;
   height: var(--panel-header-h, 32px);
   box-sizing: border-box;
 }
 
 .view-tab {
-  padding: 6px 14px;
-  font-size: 13px;
+  padding: var(--space-1-5) var(--space-3-5);
+  font-size: var(--text-md);
   font-weight: 600;
   border: none;
   background: transparent;
@@ -963,10 +1135,10 @@
 
 .view-info {
   margin-left: auto;
-  font-size: 12px;
+  font-size: var(--text-sm);
   color: var(--text-muted);
   font-family: monospace;
-  padding-right: 8px;
+  padding-right: var(--space-2);
 }
 .view-info-name {
   cursor: default;
@@ -976,20 +1148,20 @@
   text-decoration: underline dotted;
 }
 .view-info-input {
-  font-size: 12px;
+  font-size: var(--text-sm);
   font-family: monospace;
   background: var(--input-bg);
   color: var(--text);
   border: 1px solid var(--accent);
   border-radius: var(--radius-sm);
-  padding: 1px 4px;
+  padding: var(--space-0-5) var(--space-1);
   outline: none;
   width: 140px;
 }
 
 /* Plasmid map center name input */
 .plasmid-name-input {
-  font-size: 13px;
+  font-size: var(--text-md);
   font-weight: 700;
   font-family: sans-serif;
   text-align: center;
@@ -997,18 +1169,18 @@
   color: var(--text);
   border: 1px solid var(--accent);
   border-radius: var(--radius-input);
-  padding: 4px 8px;
+  padding: var(--space-1) var(--space-2);
   outline: none;
   box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 20%, transparent);
-  z-index: 10;
+  z-index: var(--z-sticky);
 }
 
 /* --- Panel bar (secondary tab bar below view-mode tabs) --- */
 .panel-bar {
   display: flex;
   align-items: center;
-  gap: 2px;
-  padding: 0 8px;
+  gap: var(--space-0-5);
+  padding: 0 var(--space-2);
   background: var(--bg-toolbar);
   border-bottom: 1px solid var(--border);
   flex-shrink: 0;
@@ -1016,43 +1188,61 @@
   box-sizing: border-box;
 }
 
+/* These four are independent on/off switches — any combination can be active
+   at once. They used to be styled as an underlined tab strip, which says
+   "which one am I looking at", not "which of these are turned on", and left
+   the on-state as a 2px line tucked against the bar's own bottom border.
+   A filled pill reads as a toggle and is legible at a glance. */
 .panel-bar-btn {
   display: flex;
   align-items: center;
-  gap: 5px;
-  padding: 5px 10px;
-  font-size: 12px;
+  gap: var(--space-1);
+  padding: var(--space-0-5) var(--space-2);
+  font-size: var(--text-sm);
   font-weight: 600;
-  border: none;
+  /* Transparent rather than none: the border is part of the on-state, and
+     reserving it here keeps the row from shifting when a toggle flips. */
+  border: 1px solid transparent;
+  border-radius: var(--radius-input);
   background: transparent;
   color: var(--text-secondary);
   cursor: pointer;
-  border-bottom: 2px solid transparent;
-  margin-bottom: -1px;
-  min-height: 30px;
-  transition: color var(--dur-fast), border-color var(--dur-fast);
+  min-height: 22px;
+  transition: background-color var(--dur-fast) var(--ease-out),
+              border-color var(--dur-fast) var(--ease-out),
+              color var(--dur-fast) var(--ease-out);
 }
 
 .panel-bar-btn:hover {
   color: var(--text);
+  background: var(--bg-hover);
 }
 
 .panel-bar-btn:active {
   transform: scale(.96);
 }
 
+/* Three signals at once — fill, outline and text colour — so the state does
+   not rest on hue alone and survives both colour-vision deficiency and the
+   low-contrast themes. */
 .panel-bar-btn.active {
   color: var(--accent);
-  border-bottom-color: var(--accent);
+  background: var(--accent-bg);
+  border-color: var(--accent);
+}
+
+.panel-bar-btn.active:hover {
+  background: var(--accent-bg);
+  color: var(--accent);
 }
 
 .panel-bar-count {
-  font-size: 11px;
+  font-size: var(--text-xs);
   font-weight: 600;
   background: var(--bg-hover);
   color: var(--text-muted);
-  padding: 0 5px;
-  border-radius: var(--radius-input);
+  padding: 0 var(--space-1);
+  border-radius: var(--radius-pill);
   min-width: 16px;
   text-align: center;
   line-height: 16px;
@@ -1060,14 +1250,14 @@
 
 .panel-bar-btn.active .panel-bar-count {
   background: var(--accent);
-  color: #fff;
+  color: var(--on-accent);
 }
 
 .panel-bar-sep {
   width: 1px;
   height: 16px;
   background: var(--border);
-  margin: 0 4px;
+  margin: 0 var(--space-1);
   flex-shrink: 0;
 }
 
@@ -1092,18 +1282,18 @@
   position: absolute;
   top: 6px;
   right: 8px;
-  z-index: 5;
+  z-index: var(--z-sticky);
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: var(--space-1);
   pointer-events: none;
 }
 .panel-hint {
   display: flex;
   align-items: center;
-  gap: 6px;
-  padding: 5px 12px;
-  font-size: 11.5px;
+  gap: var(--space-1-5);
+  padding: var(--space-1) var(--space-3);
+  font-size: var(--text-sm);
   color: var(--text);
   background: var(--bg);
   border: 1px solid var(--border);
@@ -1137,7 +1327,7 @@
   background: var(--props-bg);
   max-height: 40%;
   overflow-y: auto;
-  padding: 10px 12px;
+  padding: var(--space-2-5) var(--space-3);
   flex-shrink: 0;
 }
 
@@ -1147,15 +1337,15 @@
   bottom: 40px;
   left: 50%;
   transform: translateX(-50%);
-  z-index: 500;
+  z-index: var(--z-toast);
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: var(--space-2-5);
   max-width: 600px;
-  padding: 10px 16px;
+  padding: var(--space-2-5) var(--space-4);
   background: #dc2626;
   color: #fff;
-  font-size: 13px;
+  font-size: var(--text-md);
   border-radius: var(--radius-input);
   box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
   cursor: pointer;
@@ -1184,7 +1374,7 @@
   color: #fff;
   font-size: 1.1rem;
   cursor: pointer;
-  padding: 0 2px;
+  padding: 0 var(--space-0-5);
   opacity: 0.7;
   flex-shrink: 0;
 }
@@ -1197,16 +1387,16 @@
   bottom: 40px;
   left: 50%;
   transform: translateX(-50%);
-  z-index: 500;
+  z-index: var(--z-toast);
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: var(--space-2-5);
   max-width: 600px;
-  padding: 10px 16px;
+  padding: var(--space-2-5) var(--space-4);
   background: var(--bg-alt);
   color: var(--text);
   border: 1px solid var(--border);
-  font-size: 13px;
+  font-size: var(--text-md);
   border-radius: var(--radius-input);
   box-shadow: var(--shadow-popover);
   cursor: pointer;
@@ -1218,7 +1408,7 @@
   color: var(--text-muted);
   font-size: 1.1rem;
   cursor: pointer;
-  padding: 0 2px;
+  padding: 0 var(--space-0-5);
   opacity: 0.7;
   flex-shrink: 0;
 }
@@ -1231,7 +1421,7 @@
 .parse-progress-overlay {
   position: absolute;
   inset: 0;
-  z-index: 10;
+  z-index: var(--z-popover);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -1242,16 +1432,16 @@
   background: var(--bg);
   border: 1px solid var(--border);
   border-radius: var(--radius-input);
-  padding: 24px 32px;
+  padding: var(--space-6) 32px;
   min-width: 280px;
   text-align: center;
   box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2);
 }
 
 .parse-progress-label {
-  font-size: 14px;
+  font-size: var(--text-lg);
   font-weight: 600;
-  margin-bottom: 12px;
+  margin-bottom: var(--space-3);
   color: var(--text);
 }
 
@@ -1270,9 +1460,9 @@
 }
 
 .parse-progress-detail {
-  font-size: 12px;
+  font-size: var(--text-sm);
   color: var(--text-muted);
-  margin-top: 8px;
+  margin-top: var(--space-2);
 }
 
 /* --- Split view resizable --- */
@@ -1292,7 +1482,7 @@
   background: var(--border);
   cursor: col-resize;
   position: relative;
-  z-index: 2;
+  z-index: var(--z-sticky);
   transition: background var(--dur-fast);
 }
 
@@ -1305,7 +1495,7 @@
 .modal-backdrop {
   position: fixed;
   inset: 0;
-  z-index: 100;
+  z-index: var(--z-modal);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -1358,7 +1548,7 @@
 }
 
 .orf-modal .re-enzyme-name {
-  padding: 4px 0;
+  padding: var(--space-1) 0;
   border-radius: var(--radius-sm);
   user-select: none;
 }
@@ -1381,13 +1571,13 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 10px 14px;
+  padding: var(--space-2-5) var(--space-3-5);
   border-bottom: 1px solid var(--border);
 }
 
 .modal-title {
   margin: 0;
-  font-size: 12px;
+  font-size: var(--text-sm);
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.06em;
@@ -1399,7 +1589,7 @@
   border: none;
   color: var(--text-secondary);
   cursor: pointer;
-  padding: 2px;
+  padding: var(--space-0-5);
   border-radius: var(--radius-sm);
   display: flex;
   align-items: center;
@@ -1411,7 +1601,7 @@
 }
 
 .modal-body {
-  padding: 16px 20px;
+  padding: var(--space-4) var(--space-5);
   overflow-y: auto;
   flex: 1;
 }
@@ -1419,8 +1609,8 @@
 .modal-footer {
   display: flex;
   justify-content: flex-end;
-  gap: 8px;
-  padding: 12px 14px;
+  gap: var(--space-2);
+  padding: var(--space-3) var(--space-3-5);
   border-top: 1px solid var(--border);
 }
 
@@ -1431,9 +1621,9 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 4px;
-  padding: 6px 14px;
-  font-size: 13px;
+  gap: var(--space-1);
+  padding: var(--space-1-5) var(--space-3-5);
+  font-size: var(--text-md);
   font-weight: 500;
   font-family: inherit;
   border: 1px solid var(--border);
@@ -1442,7 +1632,7 @@
   color: var(--text);
   cursor: pointer;
   white-space: nowrap;
-  transition: all var(--dur-fast);
+  transition: background-color var(--dur-fast) var(--ease-out), border-color var(--dur-fast) var(--ease-out), color var(--dur-fast) var(--ease-out), transform var(--dur-fast) var(--ease-out);
 }
 .btn:hover { background: var(--bg-hover); }
 .btn:active { transform: translateY(1px); }
@@ -1463,15 +1653,15 @@
 }
 .btn-danger:hover { background: #d93025; filter: brightness(1.1); }
 
-.btn-sm { padding: 4px 10px; font-size: 12px; }
+.btn-sm { padding: var(--space-1) var(--space-2-5); font-size: var(--text-sm); }
 
 /* "Add" action buttons – dashed border, accent text */
 .btn-add {
   display: inline-flex;
   align-items: center;
-  gap: 4px;
-  padding: 4px 10px;
-  font-size: 11px;
+  gap: var(--space-1);
+  padding: var(--space-1) var(--space-2-5);
+  font-size: var(--text-xs);
   font-weight: 500;
   font-family: inherit;
   border: 1px dashed var(--border-hover);
@@ -1479,7 +1669,7 @@
   background: transparent;
   color: var(--text-secondary);
   cursor: pointer;
-  transition: all var(--dur-fast);
+  transition: background-color var(--dur-fast) var(--ease-out), border-color var(--dur-fast) var(--ease-out), color var(--dur-fast) var(--ease-out);
 }
 .btn-add:hover {
   color: var(--accent);
@@ -1498,8 +1688,8 @@
 }
 
 .toggle-btn {
-  padding: 4px 12px;
-  font-size: 12px;
+  padding: var(--space-1) var(--space-3);
+  font-size: var(--text-sm);
   font-weight: 500;
   font-family: inherit;
   background: var(--bg-alt);
@@ -1530,8 +1720,8 @@
 /* --- Inputs --- */
 .input {
   width: 100%;
-  padding: 6px 10px;
-  font-size: 13px;
+  padding: var(--space-1-5) var(--space-2-5);
+  font-size: var(--text-md);
   font-family: inherit;
   color: var(--text);
   background: var(--input-bg);
@@ -1549,8 +1739,8 @@
 
 /* --- Selects --- */
 .select {
-  padding: 4px 8px;
-  font-size: 12px;
+  padding: var(--space-1) var(--space-2);
+  font-size: var(--text-sm);
   font-family: inherit;
   color: var(--text);
   background: var(--input-bg);
@@ -1569,7 +1759,7 @@
 @media (max-width: 1100px) {
   /* Toolbar: icon-only mode */
   .tb-text { display: none; }
-  .tb { padding: 5px 7px; }
+  .tb { padding: var(--space-1) var(--space-2); }
 
   /* Left sidebar: narrower */
   .left-sidebar { width: 160px; min-width: 160px; }
@@ -1580,7 +1770,7 @@
 
 @media (max-width: 900px) {
   /* Even more compact */
-  .app-root { padding: 4px; gap: 4px; }
+  .app-root { padding: var(--space-1); gap: var(--space-1); }
 
   /* Left sidebar: collapse by default handled by JS, but allow very narrow */
   .left-sidebar { width: 140px; min-width: 140px; }
@@ -1589,6 +1779,20 @@
   .feature-sidebar { min-width: 140px; }
 
   /* Toolbar group separators: tighter */
-  .toolbar-group { padding: 0 3px; }
+  .toolbar-group { padding: 0 var(--space-1); }
 }
 
+
+/* --- Display settings entry in the panel bar ---
+   Pushed to the right and styled as a menu rather than a toggle: it opens a
+   popover instead of switching something on, and sharing the toggles' filled
+   "on" treatment would misrepresent that. */
+.panel-bar-spacer { flex: 1; }
+
+.panel-bar-display { position: relative; }
+
+.panel-bar-btn-menu.open {
+  background: var(--bg-hover);
+  color: var(--text);
+  border-color: var(--border-hover);
+}

@@ -2,7 +2,7 @@
 
 .stats-popover {
   position: fixed;
-  z-index: 300;
+  z-index: var(--z-popover);
   width: 300px;
   max-height: calc(100vh - 60px);
   overflow-y: auto;
@@ -15,7 +15,7 @@
   backdrop-filter: blur(16px);
   -webkit-backdrop-filter: blur(16px);
   padding: 0;
-  font-size: 12px;
+  font-size: var(--text-sm);
   animation: stats-pop-in .15s ease;
 }
 
@@ -25,7 +25,7 @@
 }
 
 .stats-section {
-  padding: 8px 14px;
+  padding: var(--space-2) var(--space-3-5);
   border-bottom: 1px solid var(--border);
 }
 
@@ -34,23 +34,23 @@
 }
 
 .stats-section-title {
-  font-size: 10px;
+  font-size: var(--text-2xs);
   font-weight: 700;
   letter-spacing: 0.5px;
   color: var(--text-muted);
-  margin-bottom: 6px;
+  margin-bottom: var(--space-1-5);
 }
 
 .stats-row {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 2px 0;
+  padding: var(--space-0-5) 0;
   color: var(--text);
 }
 
 .stats-row-indent {
-  padding-left: 12px;
+  padding-left: var(--space-3);
   color: var(--text-secondary);
 }
 
@@ -59,9 +59,9 @@
 .stats-nuc-bar {
   display: flex;
   height: 8px;
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
   overflow: hidden;
-  margin: 6px 0;
+  margin: var(--space-1-5) 0;
 }
 
 .stats-nuc-bar-seg {
@@ -74,13 +74,13 @@
 .stats-nuc-label {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: var(--space-1-5);
 }
 
 .stats-nuc-dot {
   width: 8px;
   height: 8px;
-  border-radius: 2px;
+  border-radius: var(--radius-xs);
   flex-shrink: 0;
 }
 
@@ -94,13 +94,13 @@
 .stats-codon-header {
   display: grid;
   grid-template-columns: 1fr 1fr 0.6fr;
-  gap: 4px;
-  font-size: 10px;
+  gap: var(--space-1);
+  font-size: var(--text-2xs);
   font-weight: 600;
   color: var(--text-muted);
-  padding: 2px 0;
+  padding: var(--space-0-5) 0;
   border-bottom: 1px solid var(--border);
-  margin-bottom: 2px;
+  margin-bottom: var(--space-0-5);
   position: sticky;
   top: 0;
   background: var(--bg-alt);
@@ -109,10 +109,10 @@
 .stats-codon-row {
   display: grid;
   grid-template-columns: 1fr 1fr 0.6fr;
-  gap: 4px;
-  padding: 1px 0;
+  gap: var(--space-1);
+  padding: var(--space-0-5) 0;
   color: var(--text);
-  font-size: 11px;
+  font-size: var(--text-xs);
 }
 
 .stats-codon-seq {
@@ -134,15 +134,15 @@
   bottom: calc(100% + 6px);
   left: 0;
   right: 0;
-  z-index: 10;
+  z-index: var(--z-sticky);
   background: var(--bg-alt);
   border: 1px solid var(--border-hover);
   border-radius: var(--radius-sm);
   box-shadow: var(--shadow-popover);
   backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px);
-  padding: 8px 10px;
-  font-size: 11px;
+  padding: var(--space-2) var(--space-2-5);
+  font-size: var(--text-xs);
   line-height: 1.45;
   color: var(--text-secondary);
   white-space: normal;
@@ -158,7 +158,7 @@
 .stats-collapse-btn {
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: var(--space-1);
   width: 100%;
   background: none;
   border: none;
@@ -177,7 +177,7 @@
 
 .stats-collapse-count {
   margin-left: auto;
-  font-size: 10px;
+  font-size: var(--text-2xs);
   font-weight: 400;
   color: var(--text-muted);
 }
@@ -190,6 +190,6 @@
 .stats-popover::-webkit-scrollbar-thumb,
 .stats-codon-table::-webkit-scrollbar-thumb {
   background: var(--border);
-  border-radius: 2px;
+  border-radius: var(--radius-pill);
 }
 

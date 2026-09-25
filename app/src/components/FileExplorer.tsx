@@ -7,8 +7,9 @@ import './ContextMenuPopup.css'
  * Users can create folders, drag files into them, and search across all files.
  */
 
-import { useState, useMemo, useCallback, useRef, useEffect } from 'react'
+import { useState, useMemo, useCallback, useRef, useEffect, memo } from 'react'
 import { useEditorStore, type ExplorerFolder } from '../store'
+import { useListMultiSelect } from '../hooks/useListMultiSelect'
 import ConfirmDialog, { type ConfirmButton } from './ConfirmDialog'
 import {
   Circle, Ruler, X, Folder, Dna,
@@ -26,7 +27,7 @@ interface FileExplorerProps {
   onExportItems?: (items: Partial<Record<import('./ExportModal').ExportItemKind, string[]>>) => void
 }
 
-export default function FileExplorer({ onImportFile, onOpenProperties, onOpenInfo, onAlignToRef, onQuickAlign, onExportItems }: FileExplorerProps) {
+function FileExplorer({ onImportFile, onOpenProperties, onOpenInfo, onAlignToRef, onQuickAlign, onExportItems }: FileExplorerProps) {
   const tabs = useEditorStore(s => s.tabs)
   const activeTabId = useEditorStore(s => s.activeTabId)
   const setActiveTab = useEditorStore(s => s.setActiveTab)
@@ -114,7 +115,6 @@ export default function FileExplorer({ onImportFile, onOpenProperties, onOpenInf
   // Multi-selection state (shared via store so toolbar can read it)
   const selectedIds = useEditorStore(s => s.explorerSelectedIds)
   const setSelectedIds = useEditorStore(s => s.setExplorerSelectedIds)
-  const lastClickedId = useRef<string | null>(null)
 
   const [editingFolderId, setEditingFolderId] = useState<string | null>(null)
   const [editingTabId, setEditingTabId] = useState<string | null>(null)
@@ -251,62 +251,27 @@ export default function FileExplorer({ onImportFile, onOpenProperties, onOpenInf
     return ids
   }, [folders, tabs, rootTabs, sequencingReads, alignments, standaloneReadAlignments, contigs])
 
-  // Clear selection when items are removed
-  useEffect(() => {
-    if (selectedIds.size === 0) return
-    const validIds = new Set(flatItemIds)
-    const pruned = new Set([...selectedIds].filter(id => validIds.has(id)))
-    if (pruned.size !== selectedIds.size) setSelectedIds(pruned)
-  }, [flatItemIds, selectedIds])
-
-  /** Handle click with multi-select modifiers (Ctrl/Cmd, Shift). */
-  const handleItemClick = useCallback((e: React.MouseEvent, itemId: string, activateFn: () => void) => {
-    if (e.ctrlKey || e.metaKey) {
-      // Toggle individual item in selection, auto-include the currently active item from the same section
-      setSelectedIds(prev => {
-        const next = new Set(prev)
-        if (next.has(itemId)) next.delete(itemId)
-        else next.add(itemId)
-        // If this is the first ctrl-click, also include the currently active item
-        if (prev.size === 0) {
-          let currentId: string | null = null
-          if (itemId.startsWith('seq_')) {
-            // Sequencing section — include the last active read
-            if (activeSequencingReadIds.length > 0) currentId = `seq_${activeSequencingReadIds[activeSequencingReadIds.length - 1]}`
-          } else if (itemId.startsWith('align_')) {
-            if (activeAlignmentId) currentId = activeAlignmentId
-          } else if (itemId.startsWith('readalign_')) {
-            if (activeReadAlignmentId) currentId = activeReadAlignmentId
-          } else if (itemId.startsWith('contig_')) {
-            if (activeContigId) currentId = activeContigId
-          } else {
-            currentId = activeTabId || null
-          }
-          if (currentId && currentId !== itemId) next.add(currentId)
-        }
-        return next
-      })
-      lastClickedId.current = itemId
-    } else if (e.shiftKey && lastClickedId.current) {
-      // Range select from last clicked to current
-      const startIdx = flatItemIds.indexOf(lastClickedId.current)
-      const endIdx = flatItemIds.indexOf(itemId)
-      if (startIdx !== -1 && endIdx !== -1) {
-        const lo = Math.min(startIdx, endIdx)
-        const hi = Math.max(startIdx, endIdx)
-        setSelectedIds(prev => {
-          const next = new Set(prev)
-          for (let i = lo; i <= hi; i++) next.add(flatItemIds[i])
-          return next
-        })
-      }
-    } else {
-      // Plain click – clear selection, activate item
-      setSelectedIds(new Set())
-      lastClickedId.current = itemId
-      activateFn()
+  /**
+   * On the first Ctrl-click the currently open item in the same section counts
+   * as already selected, so Ctrl-clicking a second one selects both rather than
+   * just the second. Sections are identified by id prefix.
+   */
+  const resolveActivePeer = useCallback((itemId: string): string | null => {
+    if (itemId.startsWith('seq_')) {
+      const last = activeSequencingReadIds[activeSequencingReadIds.length - 1]
+      return last ? `seq_${last}` : null
     }
-  }, [flatItemIds, activeTabId, activeSequencingReadIds, activeAlignmentId, activeReadAlignmentId, activeContigId])
+    if (itemId.startsWith('align_')) return activeAlignmentId ?? null
+    if (itemId.startsWith('readalign_')) return activeReadAlignmentId ?? null
+    if (itemId.startsWith('contig_')) return activeContigId ?? null
+    return activeTabId ?? null
+  }, [activeTabId, activeSequencingReadIds, activeAlignmentId, activeReadAlignmentId, activeContigId])
+
+  const { handleItemClick } = useListMultiSelect(flatItemIds, {
+    selected: selectedIds,
+    onSelectedChange: setSelectedIds,
+    resolveActivePeer,
+  })
 
   /** Delete all selected items after confirmation. */
   const handleBulkDelete = useCallback(() => {
@@ -334,7 +299,7 @@ export default function FileExplorer({ onImportFile, onOpenProperties, onOpenInf
         setConfirmState(null)
       },
     })
-  }, [selectedIds, closeTab, removeSequencingRead, removeAlignment, removeReadAlignment, removeContig])
+  }, [selectedIds, setSelectedIds, closeTab, removeSequencingRead, removeAlignment, removeReadAlignment, removeContig])
 
   /** Export all selected items, grouped by kind. */
   const handleBulkExport = useCallback(() => {
@@ -1357,3 +1322,6 @@ export default function FileExplorer({ onImportFile, onOpenProperties, onOpenInf
     </div>
   )
 }
+
+/** Memoised: 36 store subscriptions, previously re-rendered by any App state change. */
+export default memo(FileExplorer)

@@ -1,10 +1,10 @@
 /* ===== Context Menu ===== */
 .ctx-menu {
-  z-index: 400;
+  z-index: var(--z-popover);
   background: rgba(var(--bg-alt-rgb), .95);
   border: 1px solid var(--border-hover);
   border-radius: var(--radius-popover);
-  padding: 4px 0;
+  padding: var(--space-1) 0;
   min-width: 200px;
   box-shadow: var(--shadow-popover);
   backdrop-filter: blur(12px);
@@ -19,14 +19,14 @@
 }
 
 .ctx-menu-header {
-  padding: 8px 14px 6px;
-  font-size: 12px;
+  padding: var(--space-2) var(--space-3-5) var(--space-1-5);
+  font-size: var(--text-sm);
   font-weight: 700;
   color: var(--accent);
   text-transform: uppercase;
   letter-spacing: 0.06em;
   border-bottom: 1px solid var(--border);
-  margin-bottom: 2px;
+  margin-bottom: var(--space-0-5);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -42,8 +42,8 @@
   border: none;
   border-left: 3px solid transparent;
   color: var(--text);
-  font-size: 12px;
-  padding: 7px 14px 7px 11px;
+  font-size: var(--text-sm);
+  padding: var(--space-2) var(--space-3-5) var(--space-2) var(--space-3);
   cursor: pointer;
   text-align: left;
   white-space: nowrap;
@@ -67,7 +67,7 @@
 .ctx-menu-sep {
   height: 1px;
   background: var(--border);
-  margin: 4px 10px;
+  margin: var(--space-1) var(--space-2-5);
 }
 
 /* Tooltip content embedded inside context menu */

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, useCallback, lazy, Suspense } from 'react'
+import { useEffect, useRef, useState, useCallback, useMemo, lazy, Suspense } from 'react'
 import { formatBp } from './utils/format'
 import { gcPercent } from './primers/thermodynamics'
 import './App.css'
@@ -8,6 +8,9 @@ import PlasmidMap from './components/PlasmidMap'
 import EnzymePanel from './components/EnzymePanel'
 import ORFPanel from './components/ORFPanel'
 import FeatureSidebar from './components/FeatureSidebar'
+import EmptyState from './components/EmptyState'
+import DisplayPopover from './components/DisplayPopover'
+import { downloadBlob } from './utils/download'
 import PrimerPanel from './components/PrimerPanel'
 import FindModal from './components/FindModal'
 const AnnotateModal = lazy(() => import('./components/AnnotateModal'))
@@ -41,8 +44,11 @@ import {
   BarChart3, ZoomOut, ZoomIn, PanelLeftClose, PanelLeftOpen,
   X, ChevronDown as ChevronDownSmall,
   SunMoon, Info, List, Lock, LockOpen, Tag, Globe, GalleryVertical, AlignLeft, ArrowLeft,
+  SlidersHorizontal,
 } from 'lucide-react'
 const BlastModal = lazy(() => import('./components/BlastModal'))
+const CommandPalette = lazy(() => import('./components/CommandPalette'))
+import type { Command } from './commands'
 import ExportModal, { type ExportFormat, type ExportItemKind, type ExportMode, defaultFormatForKind, formatsForKind } from './components/ExportModal'
 import SessionExportModal from './components/SessionExportModal'
 import SessionImportModal from './components/SessionImportModal'
@@ -288,6 +294,9 @@ export default function App() {
   }, [])
 
   // File menu
+  const [paletteOpen, setPaletteOpen] = useState(false)
+  const [displayOpen, setDisplayOpen] = useState(false)
+  const displayBtnRef = useRef<HTMLDivElement>(null)
   const [fileMenuOpen, setFileMenuOpen] = useState(false)
   const [newSeqModalOpen, setNewSeqModalOpen] = useState(false)
   const [primerModalOpen, setPrimerModalOpen] = useState(false)
@@ -430,6 +439,20 @@ export default function App() {
     return () => window.removeEventListener('keydown', handler)
   }, [])
 
+  // Ctrl/Cmd+K opens the command palette. Registered in the capture phase so
+  // it still works while focus is inside the sequence canvas or a text input,
+  // both of which stop propagation for their own key handling.
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && !e.shiftKey && !e.altKey && (e.key === 'k' || e.key === 'K')) {
+        e.preventDefault()
+        setPaletteOpen(prev => !prev)
+      }
+    }
+    window.addEventListener('keydown', handler, true)
+    return () => window.removeEventListener('keydown', handler, true)
+  }, [])
+
   // Ctrl+Shift+S to open export modal
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
@@ -529,6 +552,48 @@ export default function App() {
   } = useToasts()
 
   const showCopyHint = useCallback((msg: string) => showHint(msg, 2000), [showHint])
+
+  // Stable identities for the props handed to SequenceView and PlasmidMap.
+  // Both are React.memo'd, and memo compares props by identity — passing these
+  // as inline arrows would allocate a new function on every App render and
+  // defeat the memo entirely, re-rendering a canvas view whenever any of this
+  // component's many state hooks changed.
+  const handleOpenFeaturesPanel = useCallback(() => setFeaturesPanelOpen(true), [])
+  const handleAnnotateRequest = useCallback(() => {
+    useEditorStore.getState().setRequestAddAnnotation(true)
+    setFeaturesPanelOpen(true)
+  }, [])
+  const handleCloseFeaturesPanel = useCallback(() => setFeaturesPanelOpen(false), [])
+
+  // Same reasoning for the file explorer, which subscribes to 36 store slices
+  // and was previously re-rendered by every unrelated App state change.
+  const handleOpenProperties = useCallback(() => setPropertiesModalOpen(true), [])
+  const handleOpenInfo = useCallback(() => setInfoOpen(true), [])
+  const handleExportItems = useCallback((items: Partial<Record<ExportItemKind, string[]>>) => {
+    setBulkExportItems(items)
+    setExportModalOpen(true)
+  }, [])
+  const handleQuickAlign = useCallback((tabIds: string[], readIds?: string[]) => {
+    const state = useEditorStore.getState()
+    const entries: import('./components/AlignmentModal').AlignmentInitialEntry[] = []
+    for (const id of tabIds) {
+      const tab = state.tabs.find(t => t.id === id)
+      if (tab) entries.push({ id: `tab_${id}_${Date.now()}`, name: tab.doc.name, bases: tab.doc.sequence.bases, source: 'tab', sourceId: id })
+    }
+    if (readIds) {
+      for (const rid of readIds) {
+        const read = state.sequencingReads.find(r => r.id === rid)
+        if (read) {
+          const bases = getReadBases(read)
+          if (bases.length > 0) entries.push({ id: `read_${rid}_${Date.now()}`, name: read.data.name, bases, source: 'read', sourceId: rid })
+        }
+      }
+    }
+    if (entries.length >= 2) {
+      setAlignInitialEntries(entries)
+      setAlignModalOpen(true)
+    }
+  }, [getReadBases])
 
   // Report anything that went wrong restoring the last session. Silently
   // starting empty is indistinguishable from having lost the work outright.
@@ -824,22 +889,14 @@ export default function App() {
     }
   }, [handleFileOpen])
 
-  /** Trigger a file download with the given name and blob. */
-  const downloadBlob = useCallback((blob: Blob, filename: string) => {
-    const a = document.createElement('a')
-    const url = URL.createObjectURL(blob)
-    a.href = url
-    a.download = filename
-    a.click()
-    setTimeout(() => URL.revokeObjectURL(url), 60_000)
-  }, [])
+
 
   // --- Session export / import ---
   const handleSessionExport = useCallback((filename: string, opts: SessionExportOptions) => {
     const blob = exportSessionToJson(theme, opts)
     downloadBlob(blob, filename)
     showHint(`Exported session (${(blob.size / 1024).toFixed(0)} KB)`)
-  }, [theme, downloadBlob, showHint])
+  }, [theme, showHint])
 
   const handleSessionImportFile = useCallback((files: FileList | null) => {
     if (!files || files.length === 0) return
@@ -1132,7 +1189,7 @@ export default function App() {
 
     setExportModalOpen(false)
     setBulkExportItems({})
-  }, [doc, bulkExportItems, downloadBlob, showHint])
+  }, [doc, bulkExportItems, showHint])
 
   // Find
   const handleOpenFind = useCallback(() => {
@@ -1151,6 +1208,76 @@ export default function App() {
   const handleCloseFind = useCallback(() => {
     setShowFind(false)
   }, [])
+
+  const handleClosePalette = useCallback(() => setPaletteOpen(false), [])
+
+  // Stable handlers for the empty-state actions.
+  const handleOpenOrfPanel = useCallback(() => setOrfModalOpen(true), [])
+  const handleOpenEnzymePanel = useCallback(() => setEnzymeModalOpen(true), [])
+  const handleOpenPrimerPanel = useCallback(() => setPrimerModalOpen(true), [])
+
+  // The single source of truth for "things the user can do". The palette reads
+  // this; so should the toolbar overflow menu when it lands, rather than
+  // duplicating the list. `disabled` is computed rather than filtered so a
+  // command a user knows exists is still findable, just inert.
+  const isMac = typeof navigator !== 'undefined' && /Mac|iPhone|iPad/.test(navigator.platform)
+  const mod = isMac ? '⌘' : 'Ctrl+'
+  const noDoc = !activeTabId
+
+  const commands = useMemo<Command[]>(() => [
+    // --- File ---
+    { id: 'new-sequence', label: 'New Sequence', group: 'File', icon: Dna, keywords: 'create blank', run: handleNewSequence },
+    { id: 'new-folder', label: 'New Folder', group: 'File', icon: FolderPlus, run: handleNewFolder },
+    { id: 'import-file', label: 'Import File…', group: 'File', icon: FileUp, keywords: 'open load genbank fasta', run: () => fileInputRef.current?.click() },
+    { id: 'import-folder', label: 'Import Folder…', group: 'File', icon: FolderUp, run: () => folderInputRef.current?.click() },
+    { id: 'import-clipboard', label: 'Import from Clipboard', group: 'File', icon: ClipboardPaste, run: handleImportClipboard },
+    { id: 'fetch', label: 'Fetch from NCBI or Addgene…', group: 'File', icon: Globe, keywords: 'download accession', run: () => setFetchModalOpen(true) },
+    { id: 'export', label: 'Export…', group: 'File', icon: Save, shortcut: `${mod}⇧S`, disabled: noDoc, run: () => { setBulkExportItems({}); setExportModalOpen(true) } },
+    { id: 'session-export', label: 'Export Session', group: 'File', run: () => setSessionExportOpen(true) },
+    { id: 'session-import', label: 'Import Session', group: 'File', run: () => sessionImportInputRef.current?.click() },
+
+    // --- Edit ---
+    { id: 'undo', label: 'Undo', group: 'Edit', icon: Undo2, shortcut: `${mod}Z`, disabled: noDoc || readOnly, run: undo },
+    { id: 'redo', label: 'Redo', group: 'Edit', icon: Redo2, shortcut: `${mod}Y`, disabled: noDoc || readOnly, run: redo },
+    { id: 'find', label: 'Find & Replace', group: 'Edit', icon: Search, shortcut: `${mod}F`, run: handleOpenFind },
+    { id: 'goto', label: 'Go to Position', group: 'Edit', shortcut: `${mod}G`, disabled: noDoc, run: () => { setGotoValue(''); setGotoActive(true); requestAnimationFrame(() => gotoInputRef.current?.focus()) } },
+
+    // --- Analyse ---
+    { id: 'annotate', label: 'Annotate Features', group: 'Analyse', icon: Tag, disabled: noDoc, run: () => setAnnotateModalOpen(true) },
+    { id: 'orfs', label: 'Find ORFs', group: 'Analyse', icon: Dna, keywords: 'open reading frame', disabled: noDoc, run: () => setOrfModalOpen(true) },
+    { id: 'enzymes', label: 'Restriction Enzymes', group: 'Analyse', icon: Scissors, keywords: 'digest cut sites', disabled: noDoc, run: () => setEnzymeModalOpen(true) },
+    { id: 'primers', label: 'Design Primers', group: 'Analyse', icon: FlaskConical, keywords: 'pcr tm oligo', disabled: noDoc, run: () => setPrimerModalOpen(true) },
+    { id: 'blast', label: 'BLAST Search', group: 'Analyse', icon: Globe, keywords: 'ncbi homology', disabled: noDoc, run: () => setBlastModalOpen(true) },
+    { id: 'align', label: 'Align Sequences', group: 'Analyse', icon: AlignLeft, keywords: 'msa pairwise clustal', run: () => setAlignModalOpen(true) },
+    { id: 'gel', label: 'Virtual Gel', group: 'Analyse', icon: GalleryVertical, keywords: 'electrophoresis', disabled: noDoc, run: () => setGelModalOpen(true) },
+    { id: 'properties', label: 'Sequence Properties', group: 'Analyse', icon: BarChart3, disabled: noDoc, run: () => setPropertiesModalOpen(true) },
+
+    // --- Cloning ---
+    ...(['digest', 'gibson', 'golden-gate', 'infusion', 'gateway', 'topo'] as const).map(method => ({
+      id: `cloning-${method}`,
+      label: {
+        digest: 'Digest + Ligation', gibson: 'Gibson Assembly', 'golden-gate': 'Golden Gate',
+        infusion: 'In-Fusion', gateway: 'Gateway', topo: 'TOPO',
+      }[method],
+      group: 'Cloning',
+      icon: TestTube,
+      keywords: 'clone assembly',
+      disabled: noDoc,
+      run: () => { setCloningInitialMethod(method); setCloningModalOpen(true) },
+    })),
+
+    // --- View ---
+    { id: 'toggle-orfs', label: 'Toggle ORF Display', group: 'View', icon: Dna, disabled: noDoc, run: () => toggleOrfs() },
+    { id: 'toggle-enzymes', label: 'Toggle Enzyme Display', group: 'View', icon: Scissors, disabled: noDoc, run: () => toggleEnzymes() },
+    { id: 'toggle-primers', label: 'Toggle Primer Display', group: 'View', icon: FlaskConical, disabled: noDoc, run: () => togglePrimers() },
+    { id: 'toggle-features', label: 'Toggle Feature Sidebar', group: 'View', icon: List, disabled: noDoc, run: () => setFeaturesPanelOpen(v => !v) },
+    { id: 'toggle-sidebar', label: 'Toggle File Explorer', group: 'View', icon: PanelLeftOpen, run: () => setSidebarOpen(v => !v) },
+    { id: 'theme', label: 'Change Theme', group: 'View', icon: SunMoon, keywords: 'dark light appearance', run: () => setThemeOpen(true) },
+    { id: 'about', label: 'About SeqNexus', group: 'View', icon: Info, keywords: 'help version', run: () => setInfoOpen(true) },
+  ], [
+    mod, noDoc, readOnly, undo, redo, handleOpenFind, handleNewSequence, handleNewFolder,
+    handleImportClipboard, toggleOrfs, toggleEnzymes, togglePrimers,
+  ])
 
   return (
     <div
@@ -1188,38 +1315,38 @@ export default function App() {
           <ArrowLeft size={16} />
         </a>
         <div className="toolbar-group file-menu-wrap" ref={fileMenuRef}>
-          <button className="tb" onClick={() => setFileMenuOpen(v => !v)} title="File menu">
+          <button className="tb" onClick={() => setFileMenuOpen(v => !v)} title="File menu" aria-haspopup="menu" aria-expanded={fileMenuOpen}>
             <span className="tb-icon"><File size={14} /></span><span className="tb-text">File</span> <ChevronDownSmall size={10} />
           </button>
           {fileMenuOpen && (
-            <div className="file-menu">
-              <button className="file-menu-item" onClick={handleNewSequence}>
+            <div className="file-menu" role="menu">
+              <button className="file-menu-item" role="menuitem" onClick={handleNewSequence}>
                 <span className="file-menu-icon"><Dna size={14} /></span>
                 New Sequence…
               </button>
-              <button className="file-menu-item" onClick={handleNewFolder}>
+              <button className="file-menu-item" role="menuitem" onClick={handleNewFolder}>
                 <span className="file-menu-icon"><FolderPlus size={14} /></span>
                 New Folder
               </button>
               <div className="file-menu-sep" />
-              <button className="file-menu-item" onClick={() => { fileInputRef.current?.click() }}>
+              <button className="file-menu-item" role="menuitem" onClick={() => { fileInputRef.current?.click() }}>
                 <span className="file-menu-icon"><FileUp size={14} /></span>
                 Import Files…
               </button>
-              <button className="file-menu-item" onClick={() => { folderInputRef.current?.click() }}>
+              <button className="file-menu-item" role="menuitem" onClick={() => { folderInputRef.current?.click() }}>
                 <span className="file-menu-icon"><FolderUp size={14} /></span>
                 Import Folder…
               </button>
-              <button className="file-menu-item" onClick={handleImportClipboard}>
+              <button className="file-menu-item" role="menuitem" onClick={handleImportClipboard}>
                 <span className="file-menu-icon"><ClipboardPaste size={14} /></span>
                 Import from Clipboard
               </button>
-              <button className="file-menu-item" onClick={() => { setFetchModalOpen(true); setFileMenuOpen(false) }}>
+              <button className="file-menu-item" role="menuitem" onClick={() => { setFetchModalOpen(true); setFileMenuOpen(false) }}>
                 <span className="file-menu-icon"><Globe size={14} /></span>
                 Import from NCBI / Addgene…
               </button>
               <div className="file-menu-sep" />
-              <button className="file-menu-item" onClick={() => {
+              <button className="file-menu-item" role="menuitem" onClick={() => {
                 setBulkExportItems({})
                 setExportModalOpen(true)
                 setFileMenuOpen(false)
@@ -1227,7 +1354,7 @@ export default function App() {
                 <span className="file-menu-icon"><Save size={14} /></span>
                 Export…
               </button>
-              <button className="file-menu-item" onClick={() => {
+              <button className="file-menu-item" role="menuitem" onClick={() => {
                 const s = useEditorStore.getState()
                 const sel = s.explorerSelectedIds
                 const items: Partial<Record<ExportItemKind, string[]>> = {}
@@ -1249,11 +1376,11 @@ export default function App() {
                 Export Selected…
               </button>
               <div className="file-menu-sep" />
-              <button className="file-menu-item" onClick={() => { setSessionExportOpen(true); setFileMenuOpen(false) }}>
+              <button className="file-menu-item" role="menuitem" onClick={() => { setSessionExportOpen(true); setFileMenuOpen(false) }}>
                 <span className="file-menu-icon"><Save size={14} /></span>
                 Export Session…
               </button>
-              <button className="file-menu-item" onClick={() => { sessionImportInputRef.current?.click(); setFileMenuOpen(false) }}>
+              <button className="file-menu-item" role="menuitem" onClick={() => { sessionImportInputRef.current?.click(); setFileMenuOpen(false) }}>
                 <span className="file-menu-icon"><FileUp size={14} /></span>
                 Import Session…
               </button>
@@ -1321,27 +1448,30 @@ export default function App() {
               className="tb tb-split-caret"
               disabled={!activeTabId}
               onClick={() => setCloningDropdownOpen(v => !v)}
-            >
+              aria-haspopup="menu"
+              aria-expanded={cloningDropdownOpen}
+              aria-label="More cloning methods"
+              >
               <ChevronDownSmall size={12} />
             </button>
             {cloningDropdownOpen && activeTabId && (
-              <div className="tb-dropdown">
-                <button className="tb-dropdown-item" onClick={() => { setCloningInitialMethod('digest'); setCloningModalOpen(true); setCloningDropdownOpen(false) }}>
+              <div className="tb-dropdown" role="menu">
+                <button className="tb-dropdown-item" role="menuitem" onClick={() => { setCloningInitialMethod('digest'); setCloningModalOpen(true); setCloningDropdownOpen(false) }}>
                   Digest + Ligation
                 </button>
-                <button className="tb-dropdown-item" onClick={() => { setCloningInitialMethod('gibson'); setCloningModalOpen(true); setCloningDropdownOpen(false) }}>
+                <button className="tb-dropdown-item" role="menuitem" onClick={() => { setCloningInitialMethod('gibson'); setCloningModalOpen(true); setCloningDropdownOpen(false) }}>
                   Gibson Assembly
                 </button>
-                <button className="tb-dropdown-item" onClick={() => { setCloningInitialMethod('golden-gate'); setCloningModalOpen(true); setCloningDropdownOpen(false) }}>
+                <button className="tb-dropdown-item" role="menuitem" onClick={() => { setCloningInitialMethod('golden-gate'); setCloningModalOpen(true); setCloningDropdownOpen(false) }}>
                   Golden Gate
                 </button>
-                <button className="tb-dropdown-item" onClick={() => { setCloningInitialMethod('infusion'); setCloningModalOpen(true); setCloningDropdownOpen(false) }}>
+                <button className="tb-dropdown-item" role="menuitem" onClick={() => { setCloningInitialMethod('infusion'); setCloningModalOpen(true); setCloningDropdownOpen(false) }}>
                   In-Fusion
                 </button>
-                <button className="tb-dropdown-item" onClick={() => { setCloningInitialMethod('gateway'); setCloningModalOpen(true); setCloningDropdownOpen(false) }}>
+                <button className="tb-dropdown-item" role="menuitem" onClick={() => { setCloningInitialMethod('gateway'); setCloningModalOpen(true); setCloningDropdownOpen(false) }}>
                   Gateway
                 </button>
-                <button className="tb-dropdown-item" onClick={() => { setCloningInitialMethod('topo'); setCloningModalOpen(true); setCloningDropdownOpen(false) }}>
+                <button className="tb-dropdown-item" role="menuitem" onClick={() => { setCloningInitialMethod('topo'); setCloningModalOpen(true); setCloningDropdownOpen(false) }}>
                   TOPO
                 </button>
               </div>
@@ -1435,11 +1565,28 @@ export default function App() {
         </div>
 
         <div className="toolbar-spacer" />
+        {/* The palette is the answer to a toolbar that cannot grow any further,
+            so it needs a visible entry point — a shortcut nobody can see is a
+            shortcut nobody uses. */}
+        <button
+          className="tb tb-palette"
+          onClick={() => setPaletteOpen(true)}
+          title="Search commands"
+          aria-haspopup="dialog"
+          aria-expanded={paletteOpen}
+        >
+          <span className="tb-icon"><Search size={14} /></span>
+          <span className="tb-text tb-palette-label">Search</span>
+          <kbd className="tb-kbd">{isMac ? '⌘K' : 'Ctrl+K'}</kbd>
+        </button>
         <button
           ref={themeBtnRef}
           className="tb toolbar-icon-btn"
           onClick={() => { setThemeOpen(v => !v); setInfoOpen(false) }}
           title="Theme"
+          aria-haspopup="dialog"
+          aria-expanded={themeOpen}
+          aria-label="Theme"
         >
           <SunMoon size={16} />
         </button>
@@ -1448,6 +1595,9 @@ export default function App() {
           className="tb toolbar-icon-btn"
           onClick={() => { setInfoOpen(v => !v); setThemeOpen(false) }}
           title="About SeqNexus"
+          aria-haspopup="dialog"
+          aria-expanded={infoOpen}
+          aria-label="About SeqNexus"
         >
           <Info size={16} />
         </button>
@@ -1596,27 +1746,14 @@ export default function App() {
               <PanelLeftClose size={14} />
             </button>
           </div>
-          <FileExplorer onImportFile={handleFileOpen} onOpenProperties={() => setPropertiesModalOpen(true)} onOpenInfo={() => setInfoOpen(true)} onAlignToRef={openRefPicker} onExportItems={(items) => { setBulkExportItems(items); setExportModalOpen(true) }} onQuickAlign={(tabIds, readIds) => {
-            const state = useEditorStore.getState()
-            const entries: import('./components/AlignmentModal').AlignmentInitialEntry[] = []
-            for (const id of tabIds) {
-              const tab = state.tabs.find(t => t.id === id)
-              if (tab) entries.push({ id: `tab_${id}_${Date.now()}`, name: tab.doc.name, bases: tab.doc.sequence.bases, source: 'tab', sourceId: id })
-            }
-            if (readIds) {
-              for (const rid of readIds) {
-                const read = state.sequencingReads.find(r => r.id === rid)
-                if (read) {
-                  const bases = getReadBases(read)
-                  if (bases.length > 0) entries.push({ id: `read_${rid}_${Date.now()}`, name: read.data.name, bases, source: 'read', sourceId: rid })
-                }
-              }
-            }
-            if (entries.length >= 2) {
-              setAlignInitialEntries(entries)
-              setAlignModalOpen(true)
-            }
-          }} />
+          <FileExplorer
+            onImportFile={handleFileOpen}
+            onOpenProperties={handleOpenProperties}
+            onOpenInfo={handleOpenInfo}
+            onAlignToRef={openRefPicker}
+            onExportItems={handleExportItems}
+            onQuickAlign={handleQuickAlign}
+          />
         </aside>
         {!sidebarOpen && (
           <button
@@ -1858,6 +1995,7 @@ export default function App() {
                 <button
                   className={`panel-bar-btn ${featuresPanelOpen ? 'active' : ''}`}
                   onClick={() => setFeaturesPanelOpen(v => !v)}
+                  aria-pressed={featuresPanelOpen}
                   title="Toggle feature sidebar"
                 >
                   <List size={13} /> Features
@@ -1867,6 +2005,7 @@ export default function App() {
                 <button
                   className={`panel-bar-btn ${showOrfs ? 'active' : ''}`}
                   onClick={() => toggleOrfs()}
+                  aria-pressed={showOrfs}
                   title="Toggle ORF display"
                 >
                   <Dna size={13} /> ORFs
@@ -1877,6 +2016,7 @@ export default function App() {
                 <button
                   className={`panel-bar-btn ${showEnzymes ? 'active' : ''}`}
                   onClick={() => toggleEnzymes()}
+                  aria-pressed={showEnzymes}
                   title="Toggle restriction enzyme display"
                 >
                   <Scissors size={13} /> REs
@@ -1887,10 +2027,33 @@ export default function App() {
                 <button
                   className={`panel-bar-btn ${showPrimers ? 'active' : ''}`}
                   onClick={() => togglePrimers()}
+                  aria-pressed={showPrimers}
                   title="Toggle primer display"
                 >
                   <FlaskConical size={13} /> Primers
                 </button>
+
+                <div className="panel-bar-spacer" />
+
+                {/* Display settings. Not a toggle like its neighbours — it
+                    opens a popover — so it is separated and styled apart. */}
+                <div className="panel-bar-display" ref={displayBtnRef}>
+                  <button
+                    className={`panel-bar-btn panel-bar-btn-menu ${displayOpen ? 'open' : ''}`}
+                    onClick={() => setDisplayOpen(v => !v)}
+                    title="Display settings"
+                    aria-haspopup="dialog"
+                    aria-expanded={displayOpen}
+                  >
+                    <SlidersHorizontal size={13} /> Display
+                    <ChevronDownSmall size={11} />
+                  </button>
+                  <DisplayPopover
+                    open={displayOpen}
+                    onClose={() => setDisplayOpen(false)}
+                    triggerRef={displayBtnRef}
+                  />
+                </div>
 
               </div>
 
@@ -1899,24 +2062,17 @@ export default function App() {
                   <div className="view-area">
                     <FindModal open={showFind} onClose={handleCloseFind} />
                     {/* Empty state hints for active panels with no results */}
-                    <div className="panel-hints">
+                    {/* Worker results arrive asynchronously, so a screen
+                        reader gets no cue that a search finished empty. */}
+                    <div className="panel-hints" aria-live="polite">
                       {showOrfs && orfResults.length === 0 && (
-                        <div className="panel-hint">
-                          <Dna size={12} />
-                          No ORFs found – <button className="panel-hint-link" onClick={() => setOrfModalOpen(true)}>adjust parameters</button>
-                        </div>
+                        <EmptyState icon={Dna} message="No ORFs found" actionLabel="adjust parameters" onAction={handleOpenOrfPanel} />
                       )}
                       {showEnzymes && enzymeCutSites.length === 0 && (
-                        <div className="panel-hint">
-                          <Scissors size={12} />
-                          No enzyme sites – <button className="panel-hint-link" onClick={() => setEnzymeModalOpen(true)}>select enzymes</button>
-                        </div>
+                        <EmptyState icon={Scissors} message="No enzyme sites found" actionLabel="select enzymes" onAction={handleOpenEnzymePanel} />
                       )}
                       {showPrimers && primerResults.length === 0 && (
-                        <div className="panel-hint">
-                          <FlaskConical size={12} />
-                          No primers found – <button className="panel-hint-link" onClick={() => setPrimerModalOpen(true)}>configure search</button>
-                        </div>
+                        <EmptyState icon={FlaskConical} message="No primers found" actionLabel="configure search" onAction={handleOpenPrimerPanel} />
                       )}
                     </div>
                     {parseProgress && (
@@ -1937,8 +2093,8 @@ export default function App() {
                         </div>
                       </div>
                     )}
-                    {viewMode === 'linear' && <SequenceView onFindRequest={handleOpenFind} onAnnotateRequest={() => { useEditorStore.getState().setRequestAddAnnotation(true); setFeaturesPanelOpen(true) }} onEditFeature={() => setFeaturesPanelOpen(true)} onCopyFeedback={showCopyHint} />}
-                    {viewMode === 'circular' && <PlasmidMap onFindRequest={handleOpenFind} onEditFeature={() => setFeaturesPanelOpen(true)} onCopyFeedback={showCopyHint} />}
+                    {viewMode === 'linear' && <SequenceView onFindRequest={handleOpenFind} onAnnotateRequest={handleAnnotateRequest} onEditFeature={handleOpenFeaturesPanel} onCopyFeedback={showCopyHint} />}
+                    {viewMode === 'circular' && <PlasmidMap onFindRequest={handleOpenFind} onEditFeature={handleOpenFeaturesPanel} onCopyFeedback={showCopyHint} />}
                     {viewMode === 'split' && (
                       <div
                         ref={splitContainerRef}
@@ -1947,14 +2103,14 @@ export default function App() {
                         onPointerUp={handleSplitPointerUp}
                       >
                         <div className="split-pane" style={{ flex: `0 0 ${splitFraction * 100}%` }}>
-                          <PlasmidMap onEditFeature={() => setFeaturesPanelOpen(true)} onCopyFeedback={showCopyHint} />
+                          <PlasmidMap onEditFeature={handleOpenFeaturesPanel} onCopyFeedback={showCopyHint} />
                         </div>
                         <div
                           className="split-divider"
                           onPointerDown={handleSplitPointerDown}
                         />
                         <div className="split-pane" style={{ flex: 1 }}>
-                          <SequenceView onFindRequest={handleOpenFind} onAnnotateRequest={() => { useEditorStore.getState().setRequestAddAnnotation(true); setFeaturesPanelOpen(true) }} onEditFeature={() => setFeaturesPanelOpen(true)} onCopyFeedback={showCopyHint} />
+                          <SequenceView onFindRequest={handleOpenFind} onAnnotateRequest={handleAnnotateRequest} onEditFeature={handleOpenFeaturesPanel} onCopyFeedback={showCopyHint} />
                         </div>
                       </div>
                     )}
@@ -2059,7 +2215,7 @@ export default function App() {
             </>
           )}
         </div>
-        <FeatureSidebar open={featuresPanelOpen} onClose={() => setFeaturesPanelOpen(false)} />
+        <FeatureSidebar open={featuresPanelOpen} onClose={handleCloseFeaturesPanel} />
       </div>
 
       {errorToast && (
@@ -2084,6 +2240,14 @@ export default function App() {
       )}
       <StorageToast />
       {dragOver && <div className={`drop-overlay${dropError ? ' drop-error' : ''}`}>{dropError ?? 'Drop files to open'}</div>}
+
+      {/* Mounted only while open: the palette is summoned rarely, and keeping
+          it out of the tree costs nothing to reach via Ctrl/Cmd+K. */}
+      {paletteOpen && (
+        <Suspense fallback={null}>
+          <CommandPalette open={paletteOpen} onClose={handleClosePalette} commands={commands} />
+        </Suspense>
+      )}
 
       <NewSequenceModal
         open={newSeqModalOpen}

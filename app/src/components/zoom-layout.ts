@@ -48,7 +48,22 @@ export function getRenderMode(z: number): RenderMode {
   return 'letters'
 }
 
-export function getLayout(zoomLevel: number, containerWidth: number, showEnzymes = false, seqLen = 0): ZoomLayout {
+export interface LayoutToggles {
+  /** Reserve and draw the complement strand under the forward one. */
+  showComplement?: boolean
+  /** Reserve lanes for annotation bars beneath the sequence. */
+  showAnnotations?: boolean
+}
+
+export function getLayout(
+  zoomLevel: number,
+  containerWidth: number,
+  showEnzymes = false,
+  seqLen = 0,
+  toggles: LayoutToggles = {},
+): ZoomLayout {
+  const wantComplement = toggles.showComplement ?? true
+  const wantAnnotations = toggles.showAnnotations ?? true
   const z = Math.max(0, Math.min(20, zoomLevel))
   const mode = getRenderMode(z)
   // Dynamic left margin based on the widest position label
@@ -80,23 +95,36 @@ export function getLayout(zoomLevel: number, containerWidth: number, showEnzymes
   const rulerHeight = 18
   const annotationRowH = mode === 'line' ? 12 : 14
   const annotationGap = 2
-  const strandGap = mode === 'letters' ? 2 : 0
+  // The complement only exists at letters zoom; below that there are no
+  // letters to draw it with.
+  const showComplement = mode === 'letters' && wantComplement
+  const strandGap = showComplement ? 2 : 0
   const maxTranslationRows = mode === 'letters' ? 2 : 0
-  const seqLineHeight = mode === 'letters' ? 34 : mode === 'dots' ? 8 : 4
+  // 34 = two 16px letter rows plus the 2px gap between them. Dropping the
+  // complement has to shrink the row, not just skip the draw, or every row
+  // carries a blank strand's worth of space.
+  const LETTER_ROW_H = 16
+  const seqLineHeight = mode === 'letters'
+    ? (showComplement ? LETTER_ROW_H * 2 + strandGap : LETTER_ROW_H)
+    : mode === 'dots' ? 8 : 4
 
   const enzymeLabelTierH = 14
   const maxEnzymeTiers = showEnzymes ? 3 : 0
   const enzymeLabelAreaH = maxEnzymeTiers * enzymeLabelTierH
 
+  // Zero lanes means the annotation area collapses entirely — stackAnnotations
+  // places nothing, and rowHeightForLanes reserves no space for it.
+  const maxAnnotationRows = wantAnnotations ? 4 : 0
+
   const rowPaddingBottom = 6
-  const rowHeight = enzymeLabelAreaH + rulerHeight + seqLineHeight + annotationGap
-    + 4 * (annotationRowH + annotationGap)
+  const rowHeight = enzymeLabelAreaH + rulerHeight + seqLineHeight
+    + (maxAnnotationRows > 0 ? annotationGap + maxAnnotationRows * (annotationRowH + annotationGap) : 0)
     + maxTranslationRows * (12 + 1) + rowPaddingBottom
 
   return {
     mode, basesPerRow, bpWidth, groupGap, basesPerGroup, leftMargin,
-    rulerHeight, seqLineHeight, strandGap, showComplement: mode === 'letters',
-    annotationRowH, annotationGap, maxAnnotationRows: 4,
+    rulerHeight, seqLineHeight, strandGap, showComplement,
+    annotationRowH, annotationGap, maxAnnotationRows,
     maxTranslationRows, translationRowH: 12, translationGap: 1,
     rowPaddingBottom, rowHeight,
     enzymeLabelTierH, maxEnzymeTiers, enzymeLabelAreaH,

@@ -7,7 +7,9 @@ import {
   restore,
   addAnnotation,
   removeAnnotation,
+  removeAnnotations,
   updateAnnotation,
+  updateAnnotations,
   type UndoSnapshot,
   type Strandedness,
   undoSnapshot,
@@ -18,6 +20,8 @@ import {
   rotateOrigin as rotateOriginDoc,
 } from './models/Document'
 import { reverseComplement } from './models/complement'
+import type { ColorSchemeId, ColorTarget } from './utils/base-colors'
+import { loadDisplaySettings, saveDisplaySettings, type DisplaySettings } from './utils/display-settings'
 import type { Ab1Data } from './io/ab1'
 import type { CutSite } from './enzymes/finder'
 import type { ORFResult } from './workers/orf-finder'
@@ -304,7 +308,22 @@ interface EditorStore {
   hiddenAnnotationIds: string[]
   toggleAnnotationVisibility: (id: string) => void
   setTypeVisibility: (type: string, visible: boolean) => void
+  /** Show or hide an arbitrary set of annotations in one update. */
+  setAnnotationsVisibility: (ids: Iterable<string>, hidden: boolean) => void
   setAllAnnotationsVisible: () => void
+
+  // --- Global display preferences ---
+  // Unlike showOrfs/showEnzymes/showPrimers, which are per tab, these are
+  // user preferences: they apply to every document and persist across
+  // sessions in their own localStorage key.
+  colorScheme: ColorSchemeId
+  setColorScheme: (id: ColorSchemeId) => void
+  colorTarget: ColorTarget
+  setColorTarget: (t: ColorTarget) => void
+  showComplement: boolean
+  toggleComplement: () => void
+  showAnnotationTracks: boolean
+  toggleAnnotationTracks: () => void
 
   // Hover state (cross-view, not per-tab)
   hoveredAnnotationId: string | null
@@ -399,7 +418,22 @@ interface EditorStore {
   addAnnotation: (data: AnnotationData) => void
   addAnnotations: (data: AnnotationData[]) => void
   removeAnnotation: (id: string) => void
+  /** Delete many annotations as a single undoable action. */
+  removeAnnotations: (ids: Iterable<string>) => void
   updateAnnotation: (id: string, patch: Partial<Omit<AnnotationData, 'id'>>) => void
+  /**
+   * Patch many annotations as a single undoable action.
+   *
+   * Pass a `coalesceKey` for continuous interactions — a colour picker drag
+   * fires on every frame, and without a key each frame would push its own
+   * full-document undo snapshot. Mint a fresh key per interaction so separate
+   * drags stay separately undoable.
+   */
+  updateAnnotations: (
+    ids: Iterable<string>,
+    patch: Partial<Omit<AnnotationData, 'id'>>,
+    opts?: { coalesceKey?: string },
+  ) => void
   setSelection: (sel: Selection) => void
   setCaret: (pos: number) => void
   undo: () => void
@@ -663,12 +697,94 @@ export const useEditorStore = create<EditorStore>((set, get) => {
     })
   }
 
+  /**
+   * Which interaction the top undo entry belongs to, for coalescing.
+   *
+   * Deliberately a closure variable rather than a field on DocumentTab: tabs
+   * are serialised into session export, and this is transient drag state that
+   * must not be written to disk or restored.
+   */
+  let coalesce: { tabId: string; key: string } | null = null
+
+  /** Forget any in-flight coalescing run, so the next mutation starts a new entry. */
+  function endCoalesce() {
+    coalesce = null
+  }
+
+  /**
+   * Turn the annotation tracks back on after something is added.
+   *
+   * Adding a feature and seeing nothing happen reads as a failure. Rather than
+   * make every call site remember this, it hangs off the add actions, which is
+   * the only place new annotations enter the document.
+   */
+  function revealAnnotationTracks() {
+    if (get().showAnnotationTracks) return
+    set({ showAnnotationTracks: true })
+    saveDisplaySettings({
+      colorScheme: get().colorScheme,
+      colorTarget: get().colorTarget,
+      showComplement: get().showComplement,
+      showAnnotationTracks: true,
+    })
+  }
+
   function pushUndo() {
     const tab = getActiveTab()
     if (!tab) return
     const stack = [...tab.undoStack, undoSnapshot(tab.doc)]
     if (stack.length > MAX_UNDO) stack.shift()
     updateActiveTab({ undoStack: stack, redoStack: [] })
+    endCoalesce()
+  }
+
+  /**
+   * Apply a document mutation as one undoable unit.
+   *
+   * Replaces the `pushUndo()` + `updateActiveTab()` pair every mutator used to
+   * repeat. Two reasons it matters beyond tidiness:
+   *
+   *  - It writes the snapshot and the new document in a *single* `set()`, where
+   *    the old pair issued two — so even single mutations halve their renders.
+   *  - `coalesceKey` lets a continuous interaction collapse into one undo entry.
+   *    A colour picker fires `change` on every frame of a drag; without this,
+   *    one drag over a large group could push hundreds of full-document
+   *    snapshots and evict the user's real history past MAX_UNDO.
+   *
+   * Callers mint a fresh key per interaction (on pointerdown/focus), so two
+   * separate drags never merge into one entry.
+   *
+   * Returns false when there was nothing to do — no active tab, read-only, or
+   * the mutation was a no-op — in which case no undo entry is created.
+   */
+  function transact(
+    mutate: (doc: DocumentState) => DocumentState,
+    opts?: { coalesceKey?: string },
+  ): boolean {
+    const tab = getActiveTab()
+    if (!tab || tab.readOnly) return false
+
+    const doc = mutate(tab.doc)
+    // A no-op must not consume an undo slot, and must not disturb an in-flight
+    // coalescing run either.
+    if (doc === tab.doc) return false
+
+    const key = opts?.coalesceKey
+    const continuing =
+      key !== undefined && coalesce !== null &&
+      coalesce.tabId === tab.id && coalesce.key === key
+
+    if (continuing) {
+      // The existing top-of-stack already holds the pre-interaction state.
+      updateActiveTab({ doc })
+    } else {
+      const undoStack = [...tab.undoStack, undoSnapshot(tab.doc)]
+      if (undoStack.length > MAX_UNDO) undoStack.shift()
+      updateActiveTab({ doc, undoStack, redoStack: [] })
+    }
+
+    coalesce = key === undefined ? null : { tabId: tab.id, key }
+    return true
   }
 
   return {
@@ -716,9 +832,66 @@ export const useEditorStore = create<EditorStore>((set, get) => {
         updateActiveTab({ hiddenAnnotationIds: next })
       }
     },
+    setAnnotationsVisibility: (ids, hidden) => {
+      const tab = getActiveTab()
+      if (!tab) return
+      const target = new Set(ids)
+      if (target.size === 0) return
+      const current = tab.hiddenAnnotationIds
+      if (hidden) {
+        const existing = new Set(current)
+        const added = [...target].filter(id => !existing.has(id))
+        if (added.length === 0) return
+        updateActiveTab({ hiddenAnnotationIds: [...current, ...added] })
+      } else {
+        const next = current.filter(id => !target.has(id))
+        if (next.length === current.length) return
+        updateActiveTab({ hiddenAnnotationIds: next })
+      }
+    },
     setAllAnnotationsVisible: () => {
       updateActiveTab({ hiddenAnnotationIds: [] })
     },
+
+    // --- Global display preferences ---
+    ...(() => {
+      const initial = loadDisplaySettings()
+      /** Persist the whole record whenever any one field changes. */
+      const persist = (patch: Partial<DisplaySettings>) => {
+        const s = get()
+        saveDisplaySettings({
+          colorScheme: s.colorScheme,
+          colorTarget: s.colorTarget,
+          showComplement: s.showComplement,
+          showAnnotationTracks: s.showAnnotationTracks,
+          ...patch,
+        })
+      }
+      return {
+        colorScheme: initial.colorScheme,
+        colorTarget: initial.colorTarget,
+        showComplement: initial.showComplement,
+        showAnnotationTracks: initial.showAnnotationTracks,
+        setColorScheme: (id: ColorSchemeId) => {
+          set({ colorScheme: id })
+          persist({ colorScheme: id })
+        },
+        setColorTarget: (t: ColorTarget) => {
+          set({ colorTarget: t })
+          persist({ colorTarget: t })
+        },
+        toggleComplement: () => {
+          const next = !get().showComplement
+          set({ showComplement: next })
+          persist({ showComplement: next })
+        },
+        toggleAnnotationTracks: () => {
+          const next = !get().showAnnotationTracks
+          set({ showAnnotationTracks: next })
+          persist({ showAnnotationTracks: next })
+        },
+      }
+    })(),
     hoveredAnnotationId: null,
     setHoveredAnnotation: (id) => set({ hoveredAnnotationId: id }),
     editAnnotationId: null,
@@ -1280,36 +1453,32 @@ export const useEditorStore = create<EditorStore>((set, get) => {
       updateActiveTab({ doc: replaceBasesInPlace(tab.doc, start, end, fragment) })
     },
 
+    // All of these route through transact(), so each is exactly one undo entry
+    // and one store write, whether it touches one annotation or five hundred.
+
     addAnnotation(data) {
-      const tab = getActiveTab()
-      if (!tab || tab.readOnly) return
-      pushUndo()
-      updateActiveTab({ doc: addAnnotation(tab.doc, data) })
+      if (transact(doc => addAnnotation(doc, data))) revealAnnotationTracks()
     },
 
     addAnnotations(dataArray) {
-      const tab = getActiveTab()
-      if (!tab || tab.readOnly) return
-      pushUndo()
-      let doc = tab.doc
-      for (const data of dataArray) {
-        doc = addAnnotation(doc, data)
-      }
-      updateActiveTab({ doc })
+      if (dataArray.length === 0) return
+      if (transact(doc => dataArray.reduce(addAnnotation, doc))) revealAnnotationTracks()
     },
 
     removeAnnotation(id) {
-      const tab = getActiveTab()
-      if (!tab || tab.readOnly) return
-      pushUndo()
-      updateActiveTab({ doc: removeAnnotation(tab.doc, id) })
+      transact(doc => removeAnnotation(doc, id))
+    },
+
+    removeAnnotations(ids) {
+      transact(doc => removeAnnotations(doc, ids))
     },
 
     updateAnnotation(id, patch) {
-      const tab = getActiveTab()
-      if (!tab || tab.readOnly) return
-      pushUndo()
-      updateActiveTab({ doc: updateAnnotation(tab.doc, id, patch) })
+      transact(doc => updateAnnotation(doc, id, patch))
+    },
+
+    updateAnnotations(ids, patch, opts) {
+      transact(doc => updateAnnotations(doc, ids, patch), opts)
     },
 
     setSelection(sel) {
@@ -1323,6 +1492,9 @@ export const useEditorStore = create<EditorStore>((set, get) => {
     undo() {
       const tab = getActiveTab()
       if (!tab || tab.readOnly || tab.undoStack.length === 0) return
+      // A drag that is still coalescing must not keep folding into an entry
+      // the user has just stepped away from.
+      endCoalesce()
       const prev = tab.undoStack[tab.undoStack.length - 1]
       const redoSnap = undoSnapshot(tab.doc)
       updateActiveTab({
@@ -1336,6 +1508,7 @@ export const useEditorStore = create<EditorStore>((set, get) => {
     redo() {
       const tab = getActiveTab()
       if (!tab || tab.readOnly || tab.redoStack.length === 0) return
+      endCoalesce()
       const next = tab.redoStack[tab.redoStack.length - 1]
       const undoSnap = undoSnapshot(tab.doc)
       updateActiveTab({
