@@ -17,6 +17,7 @@ if (typeof HTMLCanvasElement !== 'undefined') {
       fillRect: noop, clearRect: noop, strokeRect: noop,
       fillText: noop, strokeText: noop, measureText: () => ({ width: 0 }),
       beginPath: noop, closePath: noop, moveTo: noop, lineTo: noop,
+      setLineDash: noop, getLineDash: () => [],
       arc: noop, arcTo: noop, rect: noop, clip: noop,
       stroke: noop, fill: noop, save: noop, restore: noop,
       scale: noop, translate: noop, rotate: noop, setTransform: noop,

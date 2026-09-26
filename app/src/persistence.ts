@@ -68,6 +68,7 @@ interface SerializedTabV2 {
   showOrfs?: boolean
   showEnzymes?: boolean
   showPrimers?: boolean
+  showAutoAnnotations?: boolean
   readOnly?: boolean
 }
 
@@ -179,6 +180,7 @@ function buildSessionData(theme: string): {
       showOrfs: tab.showOrfs || undefined,
       showEnzymes: tab.showEnzymes || undefined,
       showPrimers: tab.showPrimers || undefined,
+      showAutoAnnotations: tab.showAutoAnnotations || undefined,
       readOnly: tab.readOnly || undefined,
     })
   }
@@ -341,7 +343,7 @@ export interface RestoredSeqRead {
 }
 
 export interface RestoredSession {
-  tabs: { id: string; doc: DocumentState; viewMode: ViewMode; zoomLevel: number; hiddenAnnotationIds?: string[]; showOrfs?: boolean; showEnzymes?: boolean; showPrimers?: boolean; readOnly?: boolean; undoStack?: UndoSnapshot[]; redoStack?: UndoSnapshot[] }[]
+  tabs: { id: string; doc: DocumentState; viewMode: ViewMode; zoomLevel: number; hiddenAnnotationIds?: string[]; showOrfs?: boolean; showEnzymes?: boolean; showPrimers?: boolean; showAutoAnnotations?: boolean; readOnly?: boolean; undoStack?: UndoSnapshot[]; redoStack?: UndoSnapshot[] }[]
   activeTabId: string | null
   folders: ExplorerFolder[]
   theme: string
@@ -483,6 +485,7 @@ async function loadV2(data: SerializedSessionV2): Promise<RestoredSession | null
       showOrfs: st.showOrfs,
       showEnzymes: st.showEnzymes,
       showPrimers: st.showPrimers,
+      showAutoAnnotations: st.showAutoAnnotations,
       readOnly: st.readOnly,
       undoStack,
       redoStack,
@@ -805,6 +808,7 @@ export function importSessionFromJson(json: string): RestoredSession {
       id: st.id, doc, viewMode: st.viewMode, zoomLevel: st.zoomLevel,
       hiddenAnnotationIds: st.hiddenAnnotationIds,
       showOrfs: st.showOrfs, showEnzymes: st.showEnzymes, showPrimers: st.showPrimers,
+      showAutoAnnotations: st.showAutoAnnotations,
       readOnly: st.readOnly,
     })
   }

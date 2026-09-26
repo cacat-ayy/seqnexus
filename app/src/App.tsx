@@ -34,6 +34,11 @@ import { parseFastq, meanQuality } from './io/fastq'
 import { useToasts } from './hooks/useToasts'
 import { useSessionPersistence } from './hooks/useSessionPersistence'
 import { usePopoverDismiss } from './hooks/usePopoverDismiss'
+import { useToolbarDensity } from './hooks/useToolbarDensity'
+import { useAutoAnnotateScan } from './hooks/useAutoAnnotateScan'
+import { proposalsFrom, matchKey } from './utils/auto-annotations'
+import { convertibleOrfs, orfKey } from './utils/orf-features'
+import ConvertActions from './components/ConvertActions'
 import StorageToast from './components/StorageToast'
 import StorageIndicator from './components/StorageIndicator'
 import { getEnzyme, type RestrictionEnzyme } from './enzymes/db'
@@ -215,9 +220,18 @@ export default function App() {
   const showOrfs = useEditorStore(s => s.showOrfs)
   const showEnzymes = useEditorStore(s => s.showEnzymes)
   const showPrimers = useEditorStore(s => s.showPrimers)
+  const showAutoAnnotations = useEditorStore(s => s.showAutoAnnotations)
   const toggleOrfs = useEditorStore(s => s.toggleOrfs)
   const toggleEnzymes = useEditorStore(s => s.toggleEnzymes)
   const togglePrimers = useEditorStore(s => s.togglePrimers)
+  const toggleAutoAnnotations = useEditorStore(s => s.toggleAutoAnnotations)
+  const autoAnnotations = useEditorStore(s => s.autoAnnotations)
+  const autoAnnotationPicks = useEditorStore(s => s.autoAnnotationPicks)
+  const orfPicks = useEditorStore(s => s.orfPicks)
+  const applyOrfs = useEditorStore(s => s.applyOrfs)
+  const autoOverlapThreshold = useEditorStore(s => s.autoAnnotateOverlapThreshold)
+  const autoAnnotateScanning = useEditorStore(s => s.autoAnnotateScanning)
+  const applyAutoAnnotations = useEditorStore(s => s.applyAutoAnnotations)
   const orfResults = useEditorStore(s => s.orfResults)
   const enzymeCutSites = useEditorStore(s => s.enzymeCutSites)
   const enzymeNames = useEditorStore(s => s.enzymeNames)
@@ -312,6 +326,43 @@ export default function App() {
   const [blastPhase, setBlastPhase] = useState<'input' | 'polling' | 'results'>('input')
   const [alignModalOpen, setAlignModalOpen] = useState(false)
   const [alignInitialEntries, setAlignInitialEntries] = useState<import('./components/AlignmentModal').AlignmentInitialEntry[] | undefined>(undefined)
+
+  /**
+   * Auto-annotation runs for the overlay and for the modal's list alike, so
+   * the scan belongs here rather than inside either of them.
+   */
+  useAutoAnnotateScan(annotateModalOpen)
+  /** Matches worth offering: the ones the document does not already cover. */
+  const autoProposals = useMemo(
+    () => (showAutoAnnotations || annotateModalOpen)
+      ? proposalsFrom(autoAnnotations, doc.annotations, autoOverlapThreshold)
+      : [],
+    [showAutoAnnotations, annotateModalOpen, autoAnnotations, doc.annotations, autoOverlapThreshold],
+  )
+  /** Picks still on offer — a pick whose proposal is gone must not be counted. */
+  const pickedProposalCount = useMemo(() => {
+    if (autoAnnotationPicks.size === 0) return 0
+    return autoProposals.reduce((n, m) => n + (autoAnnotationPicks.has(matchKey(m)) ? 1 : 0), 0)
+  }, [autoProposals, autoAnnotationPicks])
+
+  /**
+   * ORFs a conversion would add.
+   *
+   * Unlike suggestions, ORFs that a CDS already covers stay on screen — the
+   * overlay answers "where are the reading frames" — but adding them again
+   * would just duplicate the feature, so they are not counted here.
+   */
+  const convertibleOrfList = useMemo(
+    () => (showOrfs ? convertibleOrfs(orfResults, doc.annotations) : []),
+    [showOrfs, orfResults, doc.annotations],
+  )
+  const convertibleOrfCount = convertibleOrfList.length
+  const pickedOrfCount = useMemo(() => {
+    if (orfPicks.size === 0) return 0
+    return convertibleOrfList.reduce((n, o) => n + (orfPicks.has(orfKey(o)) ? 1 : 0), 0)
+  }, [convertibleOrfList, orfPicks])
+  /** Once anything is picked anywhere, the how-to-pick hint has done its job. */
+  const anyPicked = pickedProposalCount + pickedOrfCount
 
   const addAlignment = useEditorStore(s => s.addAlignment)
   const addReadAlignment = useEditorStore(s => s.addReadAlignment)
@@ -521,6 +572,18 @@ export default function App() {
   const infoPopRef = useRef<HTMLDivElement>(null)
   const themeBtnRef = useRef<HTMLButtonElement>(null)
   const infoBtnRef = useRef<HTMLButtonElement>(null)
+
+  // The toolbar must stay a single row: the theme and info buttons sit at its
+  // right end, and a second row moves them — along with the popovers they
+  // anchor. Density is measured rather than guessed; see the hook.
+  const toolbarRef = useRef<HTMLDivElement>(null)
+  const toolbarFit = useToolbarDensity(toolbarRef)
+  const toolbarClass = [
+    'toolbar',
+    toolbarFit.density !== 'full' && 'is-tight',
+    toolbarFit.density === 'icons' && 'is-icons',
+    toolbarFit.wrapped && 'is-wrap',
+  ].filter(Boolean).join(' ')
 
   // Find/replace
   const [showFind, setShowFind] = useState(false)
@@ -1215,6 +1278,33 @@ export default function App() {
   const handleOpenOrfPanel = useCallback(() => setOrfModalOpen(true), [])
   const handleOpenEnzymePanel = useCallback(() => setEnzymeModalOpen(true), [])
   const handleOpenPrimerPanel = useCallback(() => setPrimerModalOpen(true), [])
+  const handleOpenAnnotatePanel = useCallback(() => setAnnotateModalOpen(true), [])
+
+  /** Convert suggestions to features, and say how many, since the overlay
+   *  switches off at the same moment and the count is the only evidence. */
+  const convertAutoAnnotations = useCallback((keys?: Iterable<string>) => {
+    const added = applyAutoAnnotations(keys)
+    if (added > 0) showHint(`Added ${added} feature${added === 1 ? '' : 's'}`)
+  }, [applyAutoAnnotations, showHint])
+  const handleAddPickedAutoAnnotations = useCallback(
+    () => convertAutoAnnotations(useEditorStore.getState().autoAnnotationPicks),
+    [convertAutoAnnotations],
+  )
+  const handleAddAllAutoAnnotations = useCallback(
+    () => convertAutoAnnotations(),
+    [convertAutoAnnotations],
+  )
+
+  /** The same conversion for ORFs, which land as CDS features. */
+  const convertOrfs = useCallback((keys?: Iterable<string>) => {
+    const added = applyOrfs(keys)
+    if (added > 0) showHint(`Added ${added} ORF${added === 1 ? '' : 's'} as features`)
+  }, [applyOrfs, showHint])
+  const handleAddPickedOrfs = useCallback(
+    () => convertOrfs(useEditorStore.getState().orfPicks),
+    [convertOrfs],
+  )
+  const handleAddAllOrfs = useCallback(() => convertOrfs(), [convertOrfs])
 
   // The single source of truth for "things the user can do". The palette reads
   // this; so should the toolbar overflow menu when it lands, rather than
@@ -1270,13 +1360,14 @@ export default function App() {
     { id: 'toggle-orfs', label: 'Toggle ORF Display', group: 'View', icon: Dna, disabled: noDoc, run: () => toggleOrfs() },
     { id: 'toggle-enzymes', label: 'Toggle Enzyme Display', group: 'View', icon: Scissors, disabled: noDoc, run: () => toggleEnzymes() },
     { id: 'toggle-primers', label: 'Toggle Primer Display', group: 'View', icon: FlaskConical, disabled: noDoc, run: () => togglePrimers() },
+    { id: 'toggle-auto-annotations', label: 'Toggle Auto-Annotation Suggestions', group: 'View', icon: Tag, disabled: noDoc, keywords: 'annotate suggest features', run: () => toggleAutoAnnotations() },
     { id: 'toggle-features', label: 'Toggle Feature Sidebar', group: 'View', icon: List, disabled: noDoc, run: () => setFeaturesPanelOpen(v => !v) },
     { id: 'toggle-sidebar', label: 'Toggle File Explorer', group: 'View', icon: PanelLeftOpen, run: () => setSidebarOpen(v => !v) },
     { id: 'theme', label: 'Change Theme', group: 'View', icon: SunMoon, keywords: 'dark light appearance', run: () => setThemeOpen(true) },
     { id: 'about', label: 'About SeqNexus', group: 'View', icon: Info, keywords: 'help version', run: () => setInfoOpen(true) },
   ], [
     mod, noDoc, readOnly, undo, redo, handleOpenFind, handleNewSequence, handleNewFolder,
-    handleImportClipboard, toggleOrfs, toggleEnzymes, togglePrimers,
+    handleImportClipboard, toggleOrfs, toggleEnzymes, togglePrimers, toggleAutoAnnotations,
   ])
 
   return (
@@ -1310,7 +1401,7 @@ export default function App() {
       }}
     >
       {/* === Top Toolbar === */}
-      <div className="toolbar">
+      <div className={toolbarClass} ref={toolbarRef}>
         <a href="index.html" className="tb toolbar-icon-btn toolbar-back" title="Back to homepage">
           <ArrowLeft size={16} />
         </a>
@@ -2013,6 +2104,20 @@ export default function App() {
                     <span className="panel-bar-count">{orfResults.length}</span>
                   )}
                 </button>
+                {/* Conversion lives beside the toggle that produced the
+                    candidates: picking happens on the canvas, and sending the
+                    user to a modal to commit what they just picked there would
+                    break the loop. */}
+                {showOrfs && (
+                  <ConvertActions
+                    total={convertibleOrfCount}
+                    picked={pickedOrfCount}
+                    showHint={anyPicked === 0}
+                    addAllTitle="Add every ORF as a CDS feature"
+                    onAddPicked={handleAddPickedOrfs}
+                    onAddAll={handleAddAllOrfs}
+                  />
+                )}
                 <button
                   className={`panel-bar-btn ${showEnzymes ? 'active' : ''}`}
                   onClick={() => toggleEnzymes()}
@@ -2032,6 +2137,28 @@ export default function App() {
                 >
                   <FlaskConical size={13} /> Primers
                 </button>
+                <button
+                  className={`panel-bar-btn ${showAutoAnnotations ? 'active' : ''}`}
+                  onClick={() => toggleAutoAnnotations()}
+                  aria-pressed={showAutoAnnotations}
+                  title="Toggle auto-annotation suggestions"
+                >
+                  <Tag size={13} /> Auto
+                  {showAutoAnnotations && autoProposals.length > 0 && (
+                    <span className="panel-bar-count">{autoProposals.length}</span>
+                  )}
+                </button>
+
+                {showAutoAnnotations && (
+                  <ConvertActions
+                    total={autoProposals.length}
+                    picked={pickedProposalCount}
+                    showHint={anyPicked === 0}
+                    addAllTitle="Add every suggestion as a feature"
+                    onAddPicked={handleAddPickedAutoAnnotations}
+                    onAddAll={handleAddAllAutoAnnotations}
+                  />
+                )}
 
                 <div className="panel-bar-spacer" />
 
@@ -2073,6 +2200,9 @@ export default function App() {
                       )}
                       {showPrimers && primerResults.length === 0 && (
                         <EmptyState icon={FlaskConical} message="No primers found" actionLabel="configure search" onAction={handleOpenPrimerPanel} />
+                      )}
+                      {showAutoAnnotations && !autoAnnotateScanning && autoProposals.length === 0 && (
+                        <EmptyState icon={Tag} message="No features to suggest" actionLabel="adjust similarity" onAction={handleOpenAnnotatePanel} />
                       )}
                     </div>
                     {parseProgress && (
@@ -2284,7 +2414,13 @@ export default function App() {
       <Suspense fallback={null}>
       <AnnotateModal
         open={annotateModalOpen}
-        onClose={() => setAnnotateModalOpen(false)}
+        onClose={() => {
+          setAnnotateModalOpen(false)
+          // Leave the suggestions on screen, the way closing the ORF panel
+          // leaves the ORFs — the scan the user just tuned is the point.
+          const s = useEditorStore.getState()
+          if (!s.showAutoAnnotations && s.autoAnnotations.length > 0) s.toggleAutoAnnotations()
+        }}
       />
       <SequencePropertiesModal
         open={propertiesModalOpen}

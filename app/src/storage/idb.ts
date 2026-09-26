@@ -9,11 +9,12 @@
 import { openDB, type IDBPDatabase } from 'idb'
 
 const DB_NAME = 'seqnexus'
-const DB_VERSION = 4
+const DB_VERSION = 5
 const STORE_NAME = 'sequences'
 const TRACE_STORE = 'traces'
 const ALIGN_STORE = 'alignments'
 const UNDO_STORE = 'undoHistory'
+const FEATURE_SOURCE_STORE = 'featureSources'
 
 let _db: IDBPDatabase | null = null
 
@@ -32,6 +33,9 @@ async function getDB(): Promise<IDBPDatabase> {
       }
       if (!db.objectStoreNames.contains(UNDO_STORE)) {
         db.createObjectStore(UNDO_STORE)
+      }
+      if (!db.objectStoreNames.contains(FEATURE_SOURCE_STORE)) {
+        db.createObjectStore(FEATURE_SOURCE_STORE)
       }
     },
   })
@@ -106,6 +110,31 @@ export async function clearAll(): Promise<void> {
   if (db.objectStoreNames.contains(UNDO_STORE)) {
     await db.clear(UNDO_STORE)
   }
+}
+
+// ---- Feature source databases (auto-annotation references) ----
+//
+// Imported libraries run to megabytes of sequence, which rules out
+// localStorage. Unlike everything else here they are keyed by their own id
+// rather than a tab's: they belong to the app, not to a document, and outlive
+// every session that used them.
+
+/** Save one imported feature database. */
+export async function saveFeatureSource(id: string, source: unknown): Promise<void> {
+  const db = await getDB()
+  await db.put(FEATURE_SOURCE_STORE, source, id)
+}
+
+/** All imported feature databases, oldest first is up to the caller. */
+export async function loadFeatureSources(): Promise<unknown[]> {
+  const db = await getDB()
+  if (!db.objectStoreNames.contains(FEATURE_SOURCE_STORE)) return []
+  return db.getAll(FEATURE_SOURCE_STORE)
+}
+
+export async function deleteFeatureSource(id: string): Promise<void> {
+  const db = await getDB()
+  await db.delete(FEATURE_SOURCE_STORE, id)
 }
 
 // ---- Trace data (sequencing reads) ----

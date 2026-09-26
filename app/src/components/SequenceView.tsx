@@ -71,6 +71,10 @@ function getCanvasColors(container: HTMLElement): CanvasColors {
 
 import { visibleStroke, contrastText } from '../utils/color'
 import { buildBasePalette } from '../utils/base-colors'
+import {
+  proposalsFrom, proposalAnnotations, isAutoAnnotationId, keyFromAutoId,
+} from '../utils/auto-annotations'
+import { orfIdFor, orfName, keyFromOrfId } from '../utils/orf-features'
 
 // Module-level layout ref - set during draw(), used by hit-test helpers
 function baseX(i: number, rowStart: number, L: ZoomLayout): number {
@@ -605,9 +609,14 @@ function SequenceView({ onFindRequest, onAnnotateRequest, onEditFeature, onCopyF
   const showOrfs = useEditorStore(s => s.showOrfs)
   const showEnzymes = useEditorStore(s => s.showEnzymes)
   const showPrimers = useEditorStore(s => s.showPrimers)
+  const showAutoAnnotations = useEditorStore(s => s.showAutoAnnotations)
   const allEnzymeCutSites = useEditorStore(s => s.enzymeCutSites)
   const allOrfResults = useEditorStore(s => s.orfResults)
   const allPrimerResults = useEditorStore(s => s.primerResults)
+  const allAutoAnnotations = useEditorStore(s => s.autoAnnotations)
+  const autoAnnotationPicks = useEditorStore(s => s.autoAnnotationPicks)
+  const orfPicks = useEditorStore(s => s.orfPicks)
+  const autoOverlapThreshold = useEditorStore(s => s.autoAnnotateOverlapThreshold)
   const enzymeCutSites = showEnzymes ? allEnzymeCutSites : []
   const orfResults = showOrfs ? allOrfResults : []
   const primerResults = showPrimers ? allPrimerResults : []
@@ -646,13 +655,14 @@ function SequenceView({ onFindRequest, onAnnotateRequest, onEditFeature, onCopyF
   const [minimapScroll, setMinimapScroll] = useState({ scrollFrac: 0, viewFrac: 1 })
   const minimapScrollRef = useRef({ scrollFrac: 0, viewFrac: 1 })
 
-  // Convert ORF results to Annotation objects for unified rendering
+  // Convert ORF results to Annotation objects for unified rendering.
+  // The id carries the ORF's identity rather than its index in the list, so a
+  // pick survives the re-scan that changing the ORF settings triggers.
   const orfAnnotations = useMemo(() => {
-    return orfResults.map((orf, i) => {
-      const strandLabel = orf.strand === 1 ? '+' : '−'
+    return orfResults.map(orf => {
       const data: AnnotationData = {
-        id: `_orf_${i}`,
-        name: `ORF ${strandLabel}${orf.frame + 1} (${orf.codons} aa)`,
+        id: orfIdFor(orf),
+        name: orfName(orf),
         type: 'CDS',
         start: orf.start,
         end: orf.end,
@@ -704,6 +714,19 @@ function SequenceView({ onFindRequest, onAnnotateRequest, onEditFeature, onCopyF
     return anns
   }, [primerResults, selectedPrimerIndices])
 
+  /**
+   * Auto-annotation proposals, as annotations.
+   *
+   * Matches the document already covers are dropped here rather than drawn
+   * greyed out: a suggestion to add something that exists is not a suggestion.
+   */
+  const autoAnnotations = useMemo(() => {
+    if (!showAutoAnnotations || allAutoAnnotations.length === 0) return []
+    return proposalAnnotations(
+      proposalsFrom(allAutoAnnotations, doc.annotations, autoOverlapThreshold),
+    )
+  }, [showAutoAnnotations, allAutoAnnotations, doc.annotations, autoOverlapThreshold])
+
   // Filter out hidden annotations
   const hiddenSet = useMemo(() => new Set(hiddenAnnotationIds), [hiddenAnnotationIds])
   const visibleAnnotations = useMemo(() =>
@@ -722,15 +745,18 @@ function SequenceView({ onFindRequest, onAnnotateRequest, onEditFeature, onCopyF
     for (const ann of primerAnnotations) {
       tree.insert(ann)
     }
+    for (const ann of autoAnnotations) {
+      tree.insert(ann)
+    }
     return tree
-  }, [visibleAnnotations, orfAnnotations, primerAnnotations])
+  }, [visibleAnnotations, orfAnnotations, primerAnnotations, autoAnnotations])
 
-  // Combined list for hit-testing (visible annotations + ORFs + primers)
+  // Combined list for hit-testing (visible annotations + ORFs + primers + proposals)
   const allAnnotations = useMemo(() => {
-    const extra = [...orfAnnotations, ...primerAnnotations]
+    const extra = [...orfAnnotations, ...primerAnnotations, ...autoAnnotations]
     if (extra.length === 0) return visibleAnnotations
     return [...visibleAnnotations, ...extra]
-  }, [visibleAnnotations, orfAnnotations, primerAnnotations])
+  }, [visibleAnnotations, orfAnnotations, primerAnnotations, autoAnnotations])
 
   // --- Refs mirroring frequently-changing state ---
   // Allows draw() and event handlers to stay referentially stable
@@ -750,6 +776,8 @@ function SequenceView({ onFindRequest, onAnnotateRequest, onEditFeature, onCopyF
   const showComplementRef = useRef(showComplement)
   const showAnnotationTracksRef = useRef(showAnnotationTracks)
   const allAnnotationsRef = useRef(allAnnotations)
+  const autoPicksRef = useRef(autoAnnotationPicks)
+  const orfPicksRef = useRef(orfPicks)
   const onFindRequestRef = useRef(onFindRequest)
 
   // Sync refs on every render (cheap assignments, no effects needed)
@@ -768,6 +796,8 @@ function SequenceView({ onFindRequest, onAnnotateRequest, onEditFeature, onCopyF
   showComplementRef.current = showComplement
   showAnnotationTracksRef.current = showAnnotationTracks
   allAnnotationsRef.current = allAnnotations
+  autoPicksRef.current = autoAnnotationPicks
+  orfPicksRef.current = orfPicks
   onFindRequestRef.current = onFindRequest
 
   const draw = useCallback(() => {
@@ -1085,9 +1115,17 @@ function SequenceView({ onFindRequest, onAnnotateRequest, onEditFeature, onCopyF
         }
       }
 
-      // --- Selection highlight ---
-      // Supports origin-spanning selections on circular sequences via selectionSegments
-      {
+      /**
+       * Selection band for this row.
+       *
+       * Supports origin-spanning selections on circular sequences via
+       * selectionSegments. `onTop` is for background colouring mode, where the
+       * band is drawn after the base blocks instead of under them: a 25% tint
+       * under an opaque fill is simply gone, and over one it only shifts the
+       * hue, so the band also gets a hard accent edge that reads as a boundary
+       * no matter what colour the bases underneath are.
+       */
+      const paintSelectionBand = (onTop: boolean) => {
         const segs = selectionSegments(selection, topology, seqLen)
         for (const [selStart, selEnd] of segs) {
           const hlStart = Math.max(selStart, rowStart)
@@ -1096,27 +1134,40 @@ function SequenceView({ onFindRequest, onAnnotateRequest, onEditFeature, onCopyF
             const x1 = baseX(hlStart, rowStart, L)
             const x2 = baseX(hlEnd - 1, rowStart, L) + L.bpWidth
             ctx.fillStyle = COLORS.selectionBg
-            ctx.fillRect(x1, cy, x2 - x1, L.seqLineHeight)
+            ctx.fillRect(x1, forwardY, x2 - x1, L.seqLineHeight)
+
+            if (onTop) {
+              ctx.strokeStyle = COLORS.caret
+              ctx.lineWidth = 1.5
+              ctx.beginPath()
+              ctx.moveTo(x1, forwardY + 0.75)
+              ctx.lineTo(x2, forwardY + 0.75)
+              ctx.moveTo(x1, forwardY + L.seqLineHeight - 0.75)
+              ctx.lineTo(x2, forwardY + L.seqLineHeight - 0.75)
+              ctx.stroke()
+            }
 
             // Draw drag handles at selection edges
             const handleW = Math.max(2, Math.min(3, L.bpWidth / 3))
             ctx.fillStyle = COLORS.caret
-            ctx.globalAlpha = 0.7
+            ctx.globalAlpha = onTop ? 1 : 0.7
             if (selStart >= rowStart && selStart < rowEnd) {
               const hx = baseX(selStart, rowStart, L)
-              ctx.fillRect(hx - handleW / 2, cy, handleW, L.seqLineHeight)
+              ctx.fillRect(hx - handleW / 2, forwardY, handleW, L.seqLineHeight)
             }
             if (selEnd > rowStart && selEnd <= rowEnd) {
               const hx = baseX(selEnd - 1, rowStart, L) + L.bpWidth
-              ctx.fillRect(hx - handleW / 2, cy, handleW, L.seqLineHeight)
+              ctx.fillRect(hx - handleW / 2, forwardY, handleW, L.seqLineHeight)
             }
             ctx.globalAlpha = 1
           }
         }
       }
 
-      // --- Search match highlights ---
-      if (search.matches.length > 0) {
+      /** Search match bands for this row. Buried by opaque base blocks the
+       * same way the selection is, so it moves on top under the same rule. */
+      const paintSearchBands = (onTop: boolean) => {
+        if (search.matches.length === 0) return
         // Binary search for first match that could overlap this row
         let mi = 0
         {
@@ -1136,12 +1187,27 @@ function SequenceView({ onFindRequest, onAnnotateRequest, onEditFeature, onCopyF
           if (hlStart < hlEnd) {
             const x1 = baseX(hlStart, rowStart, L)
             const x2 = baseX(hlEnd - 1, rowStart, L) + L.bpWidth
-            ctx.fillStyle = mi === search.currentMatch
+            const isCurrent = mi === search.currentMatch
+            ctx.fillStyle = isCurrent
               ? 'rgba(255, 165, 0, 0.45)'
               : 'rgba(255, 220, 50, 0.3)'
-            ctx.fillRect(x1, cy, x2 - x1, L.seqLineHeight)
+            ctx.fillRect(x1, forwardY, x2 - x1, L.seqLineHeight)
+            if (onTop && isCurrent) {
+              ctx.strokeStyle = '#e8820c'
+              ctx.lineWidth = 1.5
+              ctx.strokeRect(x1 + 0.75, forwardY + 0.75, x2 - x1 - 1.5, L.seqLineHeight - 1.5)
+            }
           }
         }
+      }
+
+      // Opaque per-base colour blocks are only painted in letters mode; in the
+      // other modes the bases sit on the canvas background and the bands below
+      // stay visible, so keep them under the sequence as before.
+      const bandsOnTop = paintBackground && L.mode === 'letters'
+      if (!bandsOnTop) {
+        paintSelectionBand(false)
+        paintSearchBands(false)
       }
 
       // --- Row position label ---
@@ -1279,6 +1345,12 @@ function SequenceView({ onFindRequest, onAnnotateRequest, onEditFeature, onCopyF
         cy += L.seqLineHeight
       }
 
+      // --- Selection / search bands over opaque base colour blocks ---
+      if (bandsOnTop) {
+        paintSelectionBand(true)
+        paintSearchBands(true)
+      }
+
       // --- Caret ---
       if (caretVisible && selection.caret >= rowStart && selection.caret <= rowEnd) {
         const caretX = selection.caret < rowEnd
@@ -1382,9 +1454,19 @@ function SequenceView({ onFindRequest, onAnnotateRequest, onEditFeature, onCopyF
       }
 
       // Render: batch fills by color, then strokes, then labels
-      // Group by color for fewer state changes
+      // Group by color for fewer state changes. Suggestions and picked ORFs
+      // are held back: their dashed or accent outline cannot be batched with
+      // the solid ones.
+      const autoPicks = autoPicksRef.current
+      const orfPicksNow = orfPicksRef.current
       const colorGroups = new Map<string, typeof annBatch>()
+      const proposalBatch: typeof annBatch = []
       for (const a of annBatch) {
+        const orfK = keyFromOrfId(a.ann.id)
+        if (isAutoAnnotationId(a.ann.id) || (orfK !== null && orfPicksNow.has(orfK))) {
+          proposalBatch.push(a)
+          continue
+        }
         const c = a.ann.color
         if (!colorGroups.has(c)) colorGroups.set(c, [])
         colorGroups.get(c)!.push(a)
@@ -1411,6 +1493,34 @@ function SequenceView({ onFindRequest, onAnnotateRequest, onEditFeature, onCopyF
           buildAnnPath(a)
         }
         ctx.stroke()
+      }
+
+      /**
+       * Suggestions: dashed and faint, because they are not in the document
+       * yet. Anything picked — a suggestion or an ORF — is filled more
+       * strongly and outlined solid in the accent colour, so "picked" survives
+       * without depending on hue; the bars are already every colour a feature
+       * type can be.
+       */
+      for (const a of proposalBatch) {
+        if (a.ann.id === hoveredAnnotationId) continue
+        const autoKey = keyFromAutoId(a.ann.id)
+        const orfK = keyFromOrfId(a.ann.id)
+        const picked = (autoKey !== null && autoPicks.has(autoKey))
+          || (orfK !== null && orfPicksNow.has(orfK))
+        ctx.fillStyle = a.ann.color
+        ctx.globalAlpha = picked ? 0.35 : 0.14
+        ctx.beginPath()
+        buildAnnPath(a)
+        ctx.fill()
+        ctx.globalAlpha = picked ? 1 : 0.85
+        ctx.strokeStyle = picked ? COLORS.caret : visibleStroke(a.ann.color)
+        ctx.lineWidth = picked ? 2 : 1
+        ctx.setLineDash(picked ? [] : [4, 3])
+        ctx.beginPath()
+        buildAnnPath(a)
+        ctx.stroke()
+        ctx.setLineDash([])
       }
 
       // Draw hovered annotation on top
@@ -1894,6 +2004,21 @@ function SequenceView({ onFindRequest, onAnnotateRequest, onEditFeature, onCopyF
 
     const hitAnn = hitTestAnnotation(px, py + canvasTopRef.current, seqLen, annTreeRef.current, layoutRef.current, rowLayoutRef.current)
     if (hitAnn) {
+      // Ctrl/Cmd-click on a suggestion or an ORF picks it for conversion.
+      // Only those respond to the modifier — on a real feature, which is
+      // already in the document, it stays a plain click.
+      if (e.ctrlKey || e.metaKey) {
+        const autoKey = keyFromAutoId(hitAnn.id)
+        if (autoKey !== null) {
+          useEditorStore.getState().toggleAutoAnnotationPick(autoKey)
+          return
+        }
+        const orfK = keyFromOrfId(hitAnn.id)
+        if (orfK !== null) {
+          useEditorStore.getState().toggleOrfPick(orfK)
+          return
+        }
+      }
       useEditorStore.getState().setSelection({ anchor: hitAnn.start, caret: hitAnn.end })
       return
     }
@@ -2495,7 +2620,7 @@ function SequenceView({ onFindRequest, onAnnotateRequest, onEditFeature, onCopyF
   // Redraw when any render-affecting state changes
   useEffect(() => {
     draw()
-  }, [doc, selection, search, caretVisible, annTree, zoomLevel, hoveredAnnotationId, enzymeCutSites, hoveredEnzymeGroup, showEnzymes, draw])
+  }, [doc, selection, search, caretVisible, annTree, zoomLevel, hoveredAnnotationId, enzymeCutSites, hoveredEnzymeGroup, showEnzymes, autoAnnotationPicks, orfPicks, draw])
 
   const showMinimap = doc.sequence.length >= MINIMAP_SEQ_THRESHOLD
 
@@ -2556,6 +2681,7 @@ function SequenceView({ onFindRequest, onAnnotateRequest, onEditFeature, onCopyF
           ? allAnnotations.find(a => a.id === ctxMenu.annId) ?? null
           : null
         const isUserAnn = ctxAnn && !ctxAnn.id.startsWith('_orf_') && !ctxAnn.id.startsWith('_primer_')
+          && !isAutoAnnotationId(ctxAnn.id)
 
         const ctxEnzymeGroup = ctxMenu.enzymeGroup
 

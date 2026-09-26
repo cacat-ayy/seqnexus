@@ -18,6 +18,10 @@ import { Annotation, type AnnotationData } from '../models/Annotation'
 import { displayPosition } from '../models/Document'
 
 import { orfColor } from '../workers/orf-finder'
+import {
+  proposalsFrom, proposalAnnotations, isAutoAnnotationId, keyFromAutoId,
+} from '../utils/auto-annotations'
+import { orfIdFor, orfName, keyFromOrfId } from '../utils/orf-features'
 import { reverseComplement as reverseComplementStr } from '../models/complement'
 import AnnotationTooltip, { AnnotationTooltipContent } from './AnnotationTooltip'
 import { annotationBases, annotationProtein, canTranslateAnnotation } from '../utils/annotation-sequence'
@@ -352,6 +356,7 @@ function strokeAnnotationArcOutline(
   strand: number,
   arcWidth: number,
   strokeColor: string,
+  lineWidth = 1,
 ) {
   const arrowAngle = Math.min(0.08, span * 0.2)
   const innerR = radius - arcWidth / 2
@@ -359,7 +364,7 @@ function strokeAnnotationArcOutline(
 
   ctx.save()
   ctx.strokeStyle = strokeColor
-  ctx.lineWidth = 1
+  ctx.lineWidth = lineWidth
   ctx.lineJoin = 'round'
   ctx.beginPath()
 
@@ -437,8 +442,13 @@ function PlasmidMap(_props: PlasmidMapProps) {
   const [hoveredEnzymeGroup, setHoveredEnzymeGroup] = useState<GroupedCutSite | null>(null)
   const showOrfs = useEditorStore(s => s.showOrfs)
   const showEnzymes = useEditorStore(s => s.showEnzymes)
+  const showAutoAnnotations = useEditorStore(s => s.showAutoAnnotations)
   const allEnzymeCutSites = useEditorStore(s => s.enzymeCutSites)
   const allOrfResults = useEditorStore(s => s.orfResults)
+  const allAutoAnnotations = useEditorStore(s => s.autoAnnotations)
+  const autoAnnotationPicks = useEditorStore(s => s.autoAnnotationPicks)
+  const orfPicks = useEditorStore(s => s.orfPicks)
+  const autoOverlapThreshold = useEditorStore(s => s.autoAnnotateOverlapThreshold)
   const enzymeCutSites = showEnzymes ? allEnzymeCutSites : []
   const damMeth = doc.metadata?.damMethylated || false
   const dcmMeth = doc.metadata?.dcmMethylated || false
@@ -455,13 +465,13 @@ function PlasmidMap(_props: PlasmidMapProps) {
   const [ctxMenu, setCtxMenu] = useState<ContextMenuState | null>(null)
   const [deleteConfirm, setDeleteConfirm] = useState<{ annId: string; annName: string } | null>(null)
 
-  // Convert ORF results to Annotation objects for unified arc rendering
+  // Convert ORF results to Annotation objects for unified arc rendering.
+  // Identity-based ids, so a pick survives a re-scan (see orf-features).
   const orfAnnotations = useMemo(() => {
-    return orfResults.map((orf, i) => {
-      const strandLabel = orf.strand === 1 ? '+' : '−'
+    return orfResults.map(orf => {
       const data: AnnotationData = {
-        id: `_orf_${i}`,
-        name: `ORF ${strandLabel}${orf.frame + 1} (${orf.codons} aa)`,
+        id: orfIdFor(orf),
+        name: orfName(orf),
         type: 'CDS',
         start: orf.start,
         end: orf.end,
@@ -479,10 +489,19 @@ function PlasmidMap(_props: PlasmidMapProps) {
     [doc.annotations, hiddenSet]
   )
 
+  /** Auto-annotation proposals the document does not already cover. */
+  const autoAnnotations = useMemo(() => {
+    if (!showAutoAnnotations || allAutoAnnotations.length === 0) return []
+    return proposalAnnotations(
+      proposalsFrom(allAutoAnnotations, doc.annotations, autoOverlapThreshold),
+    )
+  }, [showAutoAnnotations, allAutoAnnotations, doc.annotations, autoOverlapThreshold])
+
   const allAnnotations = useMemo(() => {
-    if (orfAnnotations.length === 0) return visibleAnnotations
-    return [...visibleAnnotations, ...orfAnnotations]
-  }, [visibleAnnotations, orfAnnotations])
+    const extra = [...orfAnnotations, ...autoAnnotations]
+    if (extra.length === 0) return visibleAnnotations
+    return [...visibleAnnotations, ...extra]
+  }, [visibleAnnotations, orfAnnotations, autoAnnotations])
 
   const draw = useCallback(() => {
     const canvas = canvasRef.current
@@ -705,18 +724,34 @@ function PlasmidMap(_props: PlasmidMapProps) {
 
         const arcW = isHovered ? ANNOTATION_ARC_WIDTH + 4 : ANNOTATION_ARC_WIDTH
 
+        // Auto-annotation proposals are not in the document yet, so they are
+        // drawn faint with a dashed outline; picking one fills it in and
+        // outlines it solid in the accent colour. Same language as the linear
+        // view, because the same Ctrl-click works in both.
+        const autoKey = keyFromAutoId(ann.id)
+        const orfK = keyFromOrfId(ann.id)
+        const isProposal = autoKey !== null
+        const isPicked = (autoKey !== null && autoAnnotationPicks.has(autoKey))
+          || (orfK !== null && orfPicks.has(orfK))
+
         // Draw arc with original color
         ctx.strokeStyle = ann.color
         ctx.fillStyle = ann.color
         ctx.lineWidth = arcW
         ctx.lineCap = 'butt'
-        ctx.globalAlpha = isHovered ? 1 : 0.7
+        ctx.globalAlpha = isHovered ? 1 : isProposal ? (isPicked ? 0.6 : 0.28) : 0.7
 
         drawAnnotationArc(ctx, cx, cy, radius, startAngle, span, ann.strand, ann.color, arcW)
 
         // Draw outline border around the full annotation shape
         ctx.globalAlpha = isHovered ? 1 : 0.8
-        strokeAnnotationArcOutline(ctx, cx, cy, radius, startAngle, span, ann.strand, arcW, visibleStroke(ann.color))
+        if (isProposal && !isPicked) ctx.setLineDash([4, 3])
+        strokeAnnotationArcOutline(
+          ctx, cx, cy, radius, startAngle, span, ann.strand, arcW,
+          isPicked ? C.accent : visibleStroke(ann.color),
+          isPicked ? 2 : 1,
+        )
+        ctx.setLineDash([])
 
         ctx.globalAlpha = 1
 
@@ -1015,7 +1050,7 @@ function PlasmidMap(_props: PlasmidMapProps) {
       ctx.fillStyle = C.accent
       ctx.fillText(`${selBpCount} bp selected`, cx, cy + 28)
     }
-  }, [doc, selection, hoveredAnnotationId, groupedEnzymeSites, hoveredEnzymeGroup, allAnnotations])
+  }, [doc, selection, hoveredAnnotationId, groupedEnzymeSites, hoveredEnzymeGroup, allAnnotations, autoAnnotationPicks, orfPicks])
 
   // --- Click handler: click annotation to select its range, or backbone to place caret ---
   const handleClick = useCallback((e: MouseEvent) => {
@@ -1063,6 +1098,19 @@ function PlasmidMap(_props: PlasmidMapProps) {
     // Check annotation hit
     const hitAnn = hitTestAnnotationArc(px, py, cx, cy, baseRadius, allAnnotations, rings, seqLen)
     if (hitAnn) {
+      // Ctrl/Cmd-click picks a suggestion or an ORF, as in the linear view.
+      if (e.ctrlKey || e.metaKey) {
+        const autoKey = keyFromAutoId(hitAnn.id)
+        if (autoKey !== null) {
+          useEditorStore.getState().toggleAutoAnnotationPick(autoKey)
+          return
+        }
+        const orfK = keyFromOrfId(hitAnn.id)
+        if (orfK !== null) {
+          useEditorStore.getState().toggleOrfPick(orfK)
+          return
+        }
+      }
       setSelection({ anchor: hitAnn.start, caret: hitAnn.end })
       return
     }
@@ -1330,6 +1378,7 @@ function PlasmidMap(_props: PlasmidMapProps) {
           ? allAnnotations.find(a => a.id === ctxMenu.annId) ?? null
           : null
         const isUserAnn = ctxAnn && !ctxAnn.id.startsWith('_orf_') && !ctxAnn.id.startsWith('_primer_')
+          && !isAutoAnnotationId(ctxAnn.id)
         const ctxEnzymeGroup = ctxMenu.enzymeGroup
         // Use first site for single-enzyme actions (copy recognition, lookup)
         const ctxEnzymeSite = ctxEnzymeGroup?.sites[0] ?? null

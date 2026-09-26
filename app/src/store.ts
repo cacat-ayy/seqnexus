@@ -27,6 +27,18 @@ import type { CutSite } from './enzymes/finder'
 import type { ORFResult } from './workers/orf-finder'
 import type { PrimerPair } from './primers/finder'
 import type { AlignmentResult } from './alignment/types'
+import type { AnnotationMatch } from './workers/annotate-list'
+import { matchToAnnotationData } from './workers/annotate-list'
+import { matchKey, proposalsFrom } from './utils/auto-annotations'
+import { orfKey, convertibleOrfs, orfToAnnotationData } from './utils/orf-features'
+import {
+  builtinSource, toStoredSource, BUILTIN_SOURCE_ID, type FeatureSource, type StoredFeatureSource,
+} from './features/feature-sources'
+import type { CommonFeature } from './features/common-features'
+import {
+  saveFeatureSource, loadFeatureSources as idbLoadFeatureSources,
+  deleteFeatureSource as idbDeleteFeatureSource,
+} from './storage/idb'
 
 const MAX_UNDO = 100
 
@@ -117,12 +129,14 @@ export interface DocumentTab {
   showOrfs: boolean
   showEnzymes: boolean
   showPrimers: boolean
+  showAutoAnnotations: boolean
   // Cached analysis results (preserved across tab switches)
   orfResults: ORFResult[]
   enzymeCutSites: CutSite[]
   enzymeNames: string[]
   primerResults: PrimerPair[]
   selectedPrimerIndices: Set<number>
+  autoAnnotations: AnnotationMatch[]
 }
 
 export interface ExplorerFolder {
@@ -233,6 +247,7 @@ function makeIdGenerator(prefix: string) {
   }
 }
 
+const featureSourceIds = makeIdGenerator('fsrc')
 const tabIds = makeIdGenerator('tab')
 const seqReadIds = makeIdGenerator('seqread')
 const folderIds = makeIdGenerator('folder')
@@ -243,6 +258,7 @@ const contigIds = makeIdGenerator('contig')
 const nextTabId = () => tabIds.next()
 const nextSeqReadId = () => seqReadIds.next()
 const nextFolderId = () => folderIds.next()
+const nextFeatureSourceId = () => featureSourceIds.next()
 const nextAlignId = () => alignIds.next()
 const nextReadAlignId = () => readAlignIds.next()
 const nextContigId = () => contigIds.next()
@@ -354,6 +370,15 @@ interface EditorStore {
   orfResults: ORFResult[]
   setOrfResults: (orfs: ORFResult[]) => void
   clearOrfs: () => void
+  /** ORF keys picked for conversion into features. Transient, not per tab. */
+  orfPicks: Set<string>
+  toggleOrfPick: (key: string) => void
+  clearOrfPicks: () => void
+  /**
+   * Turn the picked ORFs (or all of them) into CDS features.
+   * One undo entry, and the overlay switches off — they are features now.
+   */
+  applyOrfs: (keys?: Iterable<string>) => number
   // ORF panel params (persisted)
   orfMinCodons: number
   orfStartCodons: string[]
@@ -367,13 +392,47 @@ interface EditorStore {
   toggleSelectedPrimer: (idx: number) => void
   clearPrimers: () => void
 
+  // --- Auto-annotation (cross-view) ---
+  // Proposals, not features: they are drawn on the sequence and only enter the
+  // document when the user converts them.
+  autoAnnotations: AnnotationMatch[]
+  setAutoAnnotations: (matches: AnnotationMatch[]) => void
+  clearAutoAnnotations: () => void
+  /** Match keys the user has picked for conversion. Transient, not per tab. */
+  autoAnnotationPicks: Set<string>
+  toggleAutoAnnotationPick: (key: string) => void
+  setAutoAnnotationPicks: (keys: Iterable<string>) => void
+  clearAutoAnnotationPicks: () => void
+  /**
+   * Turn the picked proposals (or all of them) into real features.
+   * One undo entry, and the overlay switches off — they are features now.
+   */
+  applyAutoAnnotations: (keys?: Iterable<string>) => number
+  autoAnnotateScanning: boolean
+  setAutoAnnotateScanning: (v: boolean) => void
+  // Auto-annotate params (user preferences, like the ORF ones)
+  autoAnnotateMinSimilarity: number
+  autoAnnotateOverlapThreshold: number
+  setAutoAnnotateParams: (params: Partial<{ autoAnnotateMinSimilarity: number; autoAnnotateOverlapThreshold: number }>) => void
+
+  // --- Feature source databases (auto-annotation references) ---
+  featureSources: FeatureSource[]
+  /** Read imported databases back from IndexedDB. Safe to call repeatedly. */
+  loadFeatureSources: () => Promise<void>
+  addFeatureSource: (name: string, features: CommonFeature[]) => string
+  removeFeatureSource: (id: string) => void
+  toggleFeatureSource: (id: string) => void
+  renameFeatureSource: (id: string, name: string) => void
+
   // Visibility toggles for overlay layers
   showOrfs: boolean
   showEnzymes: boolean
   showPrimers: boolean
+  showAutoAnnotations: boolean
   toggleOrfs: () => void
   toggleEnzymes: () => void
   togglePrimers: () => void
+  toggleAutoAnnotations: () => void
 
   // Tab management
   openDocument: (name: string, bases: string, topology?: 'linear' | 'circular', description?: string) => string
@@ -453,7 +512,7 @@ interface EditorStore {
 
   // Session restore (bulk-load tabs + folders + sequencing reads + alignments from persistence)
   restoreSession: (
-    tabs: { id: string; doc: DocumentState; viewMode: ViewMode; zoomLevel: number; hiddenAnnotationIds?: string[]; showOrfs?: boolean; showEnzymes?: boolean; showPrimers?: boolean; readOnly?: boolean; undoStack?: UndoSnapshot[]; redoStack?: UndoSnapshot[] }[],
+    tabs: { id: string; doc: DocumentState; viewMode: ViewMode; zoomLevel: number; hiddenAnnotationIds?: string[]; showOrfs?: boolean; showEnzymes?: boolean; showPrimers?: boolean; showAutoAnnotations?: boolean; readOnly?: boolean; undoStack?: UndoSnapshot[]; redoStack?: UndoSnapshot[] }[],
     activeTabId: string | null,
     folders: ExplorerFolder[],
     seqReads?: { id: string; data: Ab1Data; trimStart: number; trimEnd: number; edits: BaseEdit[] }[],
@@ -468,7 +527,7 @@ interface EditorStore {
 
   // Merge imported session into existing state (adds items alongside existing ones)
   mergeSession: (
-    tabs: { id: string; doc: DocumentState; viewMode: ViewMode; zoomLevel: number; hiddenAnnotationIds?: string[]; showOrfs?: boolean; showEnzymes?: boolean; showPrimers?: boolean; readOnly?: boolean }[],
+    tabs: { id: string; doc: DocumentState; viewMode: ViewMode; zoomLevel: number; hiddenAnnotationIds?: string[]; showOrfs?: boolean; showEnzymes?: boolean; showPrimers?: boolean; showAutoAnnotations?: boolean; readOnly?: boolean }[],
     folders: ExplorerFolder[],
     seqReads?: { id: string; data: Ab1Data; trimStart: number; trimEnd: number; edits: BaseEdit[] }[],
     savedAlignments?: SavedAlignment[],
@@ -552,11 +611,13 @@ function makeTab(doc: DocumentState): DocumentTab {
     showOrfs: false,
     showEnzymes: false,
     showPrimers: false,
+    showAutoAnnotations: false,
     orfResults: [],
     enzymeCutSites: [],
     enzymeNames: [],
     primerResults: [],
     selectedPrimerIndices: new Set(),
+    autoAnnotations: [],
   }
 }
 
@@ -693,6 +754,7 @@ export const useEditorStore = create<EditorStore>((set, get) => {
         showOrfs: active.showOrfs,
         showEnzymes: active.showEnzymes,
         showPrimers: active.showPrimers,
+        showAutoAnnotations: active.showAutoAnnotations,
       } : {}),
     })
   }
@@ -913,8 +975,41 @@ export const useEditorStore = create<EditorStore>((set, get) => {
 
     // ORF display
     orfResults: [],
-    setOrfResults: (orfs) => { set({ orfResults: orfs }); updateActiveTab({ orfResults: orfs }) },
-    clearOrfs: () => { set({ orfResults: [] }); updateActiveTab({ orfResults: [] }) },
+    setOrfResults: (orfs) => {
+      set({ orfResults: orfs })
+      updateActiveTab({ orfResults: orfs })
+      // A re-scan with different settings returns different ORFs; picks for
+      // ones it no longer finds have nothing left to point at.
+      const picks = get().orfPicks
+      if (picks.size > 0) {
+        const live = new Set(orfs.map(orfKey))
+        const kept = new Set([...picks].filter(k => live.has(k)))
+        if (kept.size !== picks.size) set({ orfPicks: kept })
+      }
+    },
+    clearOrfs: () => { set({ orfResults: [], orfPicks: new Set() }); updateActiveTab({ orfResults: [] }) },
+    orfPicks: new Set<string>(),
+    toggleOrfPick: (key) => {
+      const next = new Set(get().orfPicks)
+      if (next.has(key)) next.delete(key)
+      else next.add(key)
+      set({ orfPicks: next })
+    },
+    clearOrfPicks: () => set({ orfPicks: new Set() }),
+    applyOrfs: (keys) => {
+      const state = get()
+      // Re-filter rather than trust the caller: an ORF the document has since
+      // acquired a CDS for must not be added a second time.
+      const convertible = convertibleOrfs(state.orfResults, state.doc.annotations)
+      const wanted = keys ? new Set(keys) : null
+      const chosen = wanted ? convertible.filter(o => wanted.has(orfKey(o))) : convertible
+      if (chosen.length === 0) return 0
+
+      get().addAnnotations(chosen.map(orfToAnnotationData))
+      set({ orfPicks: new Set() })
+      updateActiveTab({ showOrfs: false })
+      return chosen.length
+    },
     orfMinCodons: 300,
     orfStartCodons: ['ATG'],
     orfAllowInterior: true,
@@ -937,6 +1032,116 @@ export const useEditorStore = create<EditorStore>((set, get) => {
     },
     clearPrimers: () => { set({ primerResults: [], selectedPrimerIndices: new Set() }); updateActiveTab({ primerResults: [], selectedPrimerIndices: new Set() }) },
 
+    // Auto-annotation proposals
+    autoAnnotations: [],
+    setAutoAnnotations: (matches) => {
+      set({ autoAnnotations: matches })
+      updateActiveTab({ autoAnnotations: matches })
+      // A pick only means anything while its match is on screen. A re-scan at
+      // the same settings reproduces the same keys, so picks survive that;
+      // picks for matches the new scan no longer returns are dropped.
+      const live = new Set(matches.map(matchKey))
+      const picks = get().autoAnnotationPicks
+      if (picks.size > 0) {
+        const kept = new Set([...picks].filter(k => live.has(k)))
+        if (kept.size !== picks.size) set({ autoAnnotationPicks: kept })
+      }
+    },
+    clearAutoAnnotations: () => {
+      set({ autoAnnotations: [], autoAnnotationPicks: new Set() })
+      updateActiveTab({ autoAnnotations: [] })
+    },
+    autoAnnotationPicks: new Set<string>(),
+    toggleAutoAnnotationPick: (key) => {
+      const next = new Set(get().autoAnnotationPicks)
+      if (next.has(key)) next.delete(key)
+      else next.add(key)
+      set({ autoAnnotationPicks: next })
+    },
+    setAutoAnnotationPicks: (keys) => set({ autoAnnotationPicks: new Set(keys) }),
+    clearAutoAnnotationPicks: () => set({ autoAnnotationPicks: new Set() }),
+
+    applyAutoAnnotations: (keys) => {
+      const state = get()
+      // Re-filter rather than trust the caller: a proposal the document has
+      // since acquired must not be added a second time, whatever the UI held.
+      const proposals = proposalsFrom(
+        state.autoAnnotations,
+        state.doc.annotations,
+        state.autoAnnotateOverlapThreshold,
+      )
+      const wanted = keys ? new Set(keys) : null
+      const chosen = wanted ? proposals.filter(m => wanted.has(matchKey(m))) : proposals
+      if (chosen.length === 0) return 0
+
+      get().addAnnotations(chosen.map(matchToAnnotationData))
+      // They are ordinary features now, so the preview has done its job.
+      set({ autoAnnotationPicks: new Set() })
+      updateActiveTab({ showAutoAnnotations: false })
+      return chosen.length
+    },
+    autoAnnotateScanning: false,
+    setAutoAnnotateScanning: (v) => set({ autoAnnotateScanning: v }),
+    autoAnnotateMinSimilarity: 85,
+    autoAnnotateOverlapThreshold: 75,
+    setAutoAnnotateParams: (params) => set(params),
+
+    // Feature source databases
+    featureSources: [builtinSource()],
+    loadFeatureSources: async () => {
+      let stored: StoredFeatureSource[] = []
+      try {
+        stored = (await idbLoadFeatureSources()) as StoredFeatureSource[]
+      } catch {
+        // No IndexedDB (private mode, quota, an old browser): the built-in
+        // library still works, which is the pre-import behaviour.
+        return
+      }
+      const custom = stored
+        .filter(s => s && Array.isArray(s.features))
+        .map(s => ({ ...s, builtin: false }))
+        .sort((a, b) => a.addedAt - b.addedAt)
+      // Keep the generator above every restored id, or the next import
+      // overwrites a database from a previous session.
+      for (const s of custom) {
+        const m = /^fsrc_(\d+)$/.exec(s.id)
+        if (m) featureSourceIds.syncTo(parseInt(m[1], 10))
+      }
+      const existing = get().featureSources.find(s => s.builtin)
+      set({ featureSources: [builtinSource(existing?.enabled ?? true), ...custom] })
+    },
+    addFeatureSource: (name, features) => {
+      const id = nextFeatureSourceId()
+      const source: FeatureSource = {
+        id, name, builtin: false, enabled: true, addedAt: Date.now(), features,
+      }
+      set(state => ({ featureSources: [...state.featureSources, source] }))
+      void saveFeatureSource(id, toStoredSource(source)).catch(() => {
+        // The import still works for this session; only persistence failed.
+      })
+      return id
+    },
+    removeFeatureSource: (id) => {
+      if (id === BUILTIN_SOURCE_ID) return
+      set(state => ({ featureSources: state.featureSources.filter(s => s.id !== id) }))
+      void idbDeleteFeatureSource(id).catch(() => {})
+    },
+    toggleFeatureSource: (id) => {
+      const next = get().featureSources.map(s =>
+        s.id === id ? { ...s, enabled: !s.enabled } : s)
+      set({ featureSources: next })
+      const changed = next.find(s => s.id === id)
+      if (changed && !changed.builtin) void saveFeatureSource(id, toStoredSource(changed)).catch(() => {})
+    },
+    renameFeatureSource: (id, name) => {
+      const trimmed = name.trim()
+      if (!trimmed || id === BUILTIN_SOURCE_ID) return
+      const next = get().featureSources.map(s => s.id === id ? { ...s, name: trimmed } : s)
+      set({ featureSources: next })
+      const changed = next.find(s => s.id === id)
+      if (changed) void saveFeatureSource(id, toStoredSource(changed)).catch(() => {})
+    },
+
     // Undo/redo feedback
     lastUndoRedoAction: null,
     clearUndoRedoAction: () => set({ lastUndoRedoAction: null }),
@@ -945,11 +1150,14 @@ export const useEditorStore = create<EditorStore>((set, get) => {
     showOrfs: false,
     showEnzymes: false,
     showPrimers: false,
+    showAutoAnnotations: false,
     toggleOrfs: () => {
       const tab = getActiveTab()
       if (!tab) return
       const next = !tab.showOrfs
       updateActiveTab({ showOrfs: next })
+      // Picks are about what is on screen; hiding the overlay forgets them.
+      if (!next) set({ orfPicks: new Set() })
     },
     toggleEnzymes: () => {
       const tab = getActiveTab()
@@ -962,6 +1170,17 @@ export const useEditorStore = create<EditorStore>((set, get) => {
       if (!tab) return
       const next = !tab.showPrimers
       updateActiveTab({ showPrimers: next })
+    },
+    toggleAutoAnnotations: () => {
+      const tab = getActiveTab()
+      if (!tab) return
+      const next = !tab.showAutoAnnotations
+      updateActiveTab({ showAutoAnnotations: next })
+      // Suggestions are drawn in the annotation tracks. Switching the overlay
+      // on while those are hidden would look like the scan found nothing.
+      if (next) revealAnnotationTracks()
+      // Picks are about what is on screen; hiding the overlay forgets them.
+      else set({ autoAnnotationPicks: new Set() })
     },
 
     // Explorer folders
@@ -1003,6 +1222,10 @@ export const useEditorStore = create<EditorStore>((set, get) => {
         showOrfs: active?.showOrfs ?? false,
         showEnzymes: active?.showEnzymes ?? false,
         showPrimers: active?.showPrimers ?? false,
+        showAutoAnnotations: active?.showAutoAnnotations ?? false,
+        autoAnnotations: active?.autoAnnotations ?? [],
+        autoAnnotationPicks: new Set<string>(),
+        orfPicks: new Set<string>(),
         folders: folders.filter(f => f.id !== folderId),
       })
     },
@@ -1040,6 +1263,10 @@ export const useEditorStore = create<EditorStore>((set, get) => {
         showOrfs: tab.showOrfs,
         showEnzymes: tab.showEnzymes,
         showPrimers: tab.showPrimers,
+        showAutoAnnotations: tab.showAutoAnnotations,
+        autoAnnotations: [],
+        autoAnnotationPicks: new Set<string>(),
+        orfPicks: new Set<string>(),
       }))
       return tab.id
     },
@@ -1059,6 +1286,10 @@ export const useEditorStore = create<EditorStore>((set, get) => {
         showOrfs: tab.showOrfs,
         showEnzymes: tab.showEnzymes,
         showPrimers: tab.showPrimers,
+        showAutoAnnotations: tab.showAutoAnnotations,
+        autoAnnotations: [],
+        autoAnnotationPicks: new Set<string>(),
+        orfPicks: new Set<string>(),
       }))
       return tab.id
     },
@@ -1086,6 +1317,10 @@ export const useEditorStore = create<EditorStore>((set, get) => {
         showOrfs: active?.showOrfs ?? false,
         showEnzymes: active?.showEnzymes ?? false,
         showPrimers: active?.showPrimers ?? false,
+        showAutoAnnotations: active?.showAutoAnnotations ?? false,
+        autoAnnotations: active?.autoAnnotations ?? [],
+        autoAnnotationPicks: new Set<string>(),
+        orfPicks: new Set<string>(),
         // Remove closed tab from any folder
         folders: folders.map(f => ({ ...f, tabIds: f.tabIds.filter(id => id !== tabId) })),
       })
@@ -1107,6 +1342,7 @@ export const useEditorStore = create<EditorStore>((set, get) => {
           enzymeNames: state.enzymeNames,
           primerResults: state.primerResults,
           selectedPrimerIndices: state.selectedPrimerIndices,
+          autoAnnotations: state.autoAnnotations,
         } : t)
       }
 
@@ -1127,12 +1363,17 @@ export const useEditorStore = create<EditorStore>((set, get) => {
         showOrfs: tab.showOrfs,
         showEnzymes: tab.showEnzymes,
         showPrimers: tab.showPrimers,
+        showAutoAnnotations: tab.showAutoAnnotations,
         // Restore cached results from the incoming tab
         orfResults: tab.orfResults,
         enzymeCutSites: tab.enzymeCutSites,
         enzymeNames: tab.enzymeNames,
         primerResults: tab.primerResults,
         selectedPrimerIndices: tab.selectedPrimerIndices,
+        autoAnnotations: tab.autoAnnotations,
+        // Picks belong to what was on screen, not to the app.
+        autoAnnotationPicks: new Set<string>(),
+        orfPicks: new Set<string>(),
       })
     },
 
@@ -1169,6 +1410,10 @@ export const useEditorStore = create<EditorStore>((set, get) => {
         showOrfs: newTab.showOrfs,
         showEnzymes: newTab.showEnzymes,
         showPrimers: newTab.showPrimers,
+        showAutoAnnotations: newTab.showAutoAnnotations,
+        autoAnnotations: [],
+        autoAnnotationPicks: new Set<string>(),
+        orfPicks: new Set<string>(),
       }))
     },
 
@@ -1202,11 +1447,13 @@ export const useEditorStore = create<EditorStore>((set, get) => {
         showOrfs: rt.showOrfs ?? false,
         showEnzymes: rt.showEnzymes ?? false,
         showPrimers: rt.showPrimers ?? false,
+        showAutoAnnotations: rt.showAutoAnnotations ?? false,
         orfResults: [],
         enzymeCutSites: [],
         enzymeNames: [],
         primerResults: [],
         selectedPrimerIndices: new Set(),
+        autoAnnotations: [],
       }))
       // Sync ID counters above all restored IDs to avoid collisions
       const syncId = (id: string, gen: ReturnType<typeof makeIdGenerator>, prefix: string) => {
@@ -1273,6 +1520,10 @@ export const useEditorStore = create<EditorStore>((set, get) => {
         showOrfs: active?.showOrfs ?? false,
         showEnzymes: active?.showEnzymes ?? false,
         showPrimers: active?.showPrimers ?? false,
+        showAutoAnnotations: active?.showAutoAnnotations ?? false,
+        autoAnnotations: active?.autoAnnotations ?? [],
+        autoAnnotationPicks: new Set<string>(),
+        orfPicks: new Set<string>(),
         folders: restoredFolders,
         sequencingReads,
         activeSequencingReadIds: activeSeqReadIds ?? [],
@@ -1303,11 +1554,13 @@ export const useEditorStore = create<EditorStore>((set, get) => {
         showOrfs: rt.showOrfs ?? false,
         showEnzymes: rt.showEnzymes ?? false,
         showPrimers: rt.showPrimers ?? false,
+        showAutoAnnotations: rt.showAutoAnnotations ?? false,
         orfResults: [],
         enzymeCutSites: [],
         enzymeNames: [],
         primerResults: [],
         selectedPrimerIndices: new Set(),
+        autoAnnotations: [],
       }))
 
       // Merge folders: match by name, add new items to existing folders

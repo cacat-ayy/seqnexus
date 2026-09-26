@@ -464,9 +464,39 @@
   border-radius: var(--radius-card);
   box-shadow: var(--shadow-sm);
   flex-shrink: 0;
-  flex-wrap: wrap;
+  /* One row, always. The theme and info buttons live at the right end and
+     anchor popovers to their own rects, so a wrapped second row does not just
+     look wrong — it drops those popovers a row lower than the toolbar they
+     belong to. useToolbarDensity keeps the contents inside one row by
+     measuring them; .is-wrap below is its last-resort escape hatch. */
+  flex-wrap: nowrap;
   overflow: visible;
 }
+
+/* Buttons keep their natural size rather than squeezing their padding away
+   under flex-shrink — both because half-squeezed buttons look broken, and
+   because shrinking would hide the overflow the density measurement reads. */
+.toolbar > *:not(.toolbar-spacer) { flex-shrink: 0; }
+
+/* --- Density steps, applied by useToolbarDensity ---
+   Each buys horizontal space; the hook picks the first one that fits. */
+
+/* Same buttons and labels, less air, and the palette down to its icon. */
+.toolbar.is-tight { gap: 0; }
+.toolbar.is-tight .toolbar-group { padding: 0 var(--space-1); }
+.toolbar.is-tight .tb { padding: var(--space-1) var(--space-1-5); }
+.toolbar.is-tight .toolbar-back { margin-right: var(--space-1); padding-right: var(--space-1); }
+.toolbar.is-tight .tb-palette { min-width: 0; }
+.toolbar.is-tight .tb-palette-label,
+.toolbar.is-tight .tb-kbd { display: none; }
+
+/* Labels go, icons and tooltips stay. */
+.toolbar.is-icons .tb-text { display: none; }
+
+/* Narrower than even the icon row. Wrapping is wrong, but it beats pushing
+   the trailing buttons off the edge of the window where nothing can reach
+   them — at that width the popover offset is the smaller problem. */
+.toolbar.is-wrap { flex-wrap: wrap; }
 
 /* --- Command palette trigger ---
    Styled as a search field rather than a button: it reads as "type here to
@@ -502,12 +532,9 @@
   padding: 1px var(--space-1);
 }
 
-/* Below this width the toolbar is tight enough that the affordance has to
-   collapse to its icon. The shortcut still works. */
-@media (max-width: 1100px) {
-  .tb-palette { min-width: 0; }
-  .tb-palette-label, .tb-kbd { display: none; }
-}
+/* The collapse to a bare icon is driven by measured toolbar density
+   (.toolbar.is-tight above), not by a viewport breakpoint: what decides it is
+   whether the row still fits, which the viewport width alone does not say. */
 
 .toolbar-spacer {
   flex: 1;
@@ -1253,6 +1280,39 @@
   color: var(--on-accent);
 }
 
+/* Actions, not toggles: the auto-annotation buttons commit something rather
+   than switching a layer on, so the primary one is filled instead of outlined.
+   Sharing .panel-bar-btn keeps the metrics of the row identical. */
+.panel-bar-btn-accent {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--on-accent);
+}
+
+.panel-bar-btn-accent:hover {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--on-accent);
+  filter: brightness(1.08);
+}
+
+/* The one thing in this row that is text rather than a control. It explains
+   the interaction that has no visible affordance, and is the first thing to
+   go when the bar runs out of room. */
+.panel-bar-hint {
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+  white-space: nowrap;
+  padding: 0 var(--space-1);
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+@media (max-width: 1100px) {
+  .panel-bar-hint { display: none; }
+}
+
 .panel-bar-sep {
   width: 1px;
   height: 16px;
@@ -1757,9 +1817,8 @@
 
 /* === Responsive: compact layout for narrow viewports === */
 @media (max-width: 1100px) {
-  /* Toolbar: icon-only mode */
-  .tb-text { display: none; }
-  .tb { padding: var(--space-1) var(--space-2); }
+  /* The toolbar is not here: dropping its labels depends on whether the row
+     fits, which useToolbarDensity measures. */
 
   /* Left sidebar: narrower */
   .left-sidebar { width: 160px; min-width: 160px; }
@@ -1777,9 +1836,6 @@
 
   /* Feature sidebar: narrower still */
   .feature-sidebar { min-width: 140px; }
-
-  /* Toolbar group separators: tighter */
-  .toolbar-group { padding: 0 var(--space-1); }
 }
 
 

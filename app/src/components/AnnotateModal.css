@@ -4,6 +4,105 @@
   max-width: 90vw;
 }
 
+/* --- Databases ---
+   Which references the scan runs against is a setting, not a result, so it
+   sits above the filters and reads as a short list rather than a panel. */
+.ann-sources {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-input);
+  background: var(--bg);
+  padding: var(--space-1-5) var(--space-2);
+  margin-bottom: var(--space-2-5);
+}
+
+.ann-sources-head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin-bottom: var(--space-1);
+}
+
+.ann-sources-title {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1-5);
+  font-size: var(--text-sm);
+  font-weight: 600;
+  color: var(--text-secondary);
+  flex: 1;
+}
+
+.ann-source-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  max-height: 104px;
+  overflow-y: auto;
+}
+
+.ann-source {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-0-5) 0;
+  font-size: var(--text-sm);
+}
+
+.ann-source-label {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1-5);
+  flex: 1;
+  min-width: 0;
+  cursor: pointer;
+}
+
+.ann-source-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ann-source-remove {
+  display: flex;
+  align-items: center;
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  padding: var(--space-0-5);
+  border-radius: var(--radius-sm);
+}
+
+.ann-source-remove:hover {
+  color: var(--danger, #e03131);
+  background: var(--bg-hover);
+}
+
+.ann-source-msg {
+  margin-top: var(--space-1);
+  font-size: var(--text-xs);
+  color: var(--text-secondary);
+}
+
+.ann-source-msg.error {
+  color: var(--danger, #e03131);
+}
+
+/* Marks a hit that came from an imported database rather than the built-in
+   library — worth knowing before trusting it. */
+.ann-source-badge {
+  font-size: var(--text-2xs, 10px);
+  color: var(--text-muted);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-pill);
+  padding: 0 var(--space-1);
+  max-width: 120px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 /* Find Features */
 .ann-controls {
   display: flex;
@@ -121,6 +220,15 @@
   background: var(--bg-hover);
 }
 
+/* The header's checkbox picks the whole group; the rest of it collapses. */
+.ann-result-head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1-5);
+  flex: 1;
+  min-width: 0;
+}
+
 .ann-result-chevron {
   display: inline-flex;
   align-items: center;
@@ -141,6 +249,17 @@
   gap: var(--space-2);
   padding: var(--space-1) var(--space-2-5) var(--space-1) 26px;
   font-size: var(--text-sm);
+  cursor: pointer;
+}
+
+.ann-result-match:hover {
+  background: var(--bg-hover);
+}
+
+/* Same signal the canvas gives a picked suggestion, so the two views of the
+   same pick set agree. */
+.ann-result-match.picked {
+  background: var(--accent-bg);
 }
 
 .ann-match-pos {
@@ -172,10 +291,6 @@
 .ann-add-btn.added {
   color: var(--accent);
   opacity: 0.7;
-}
-
-.ann-result-match.duplicate {
-  opacity: 0.45;
 }
 
 

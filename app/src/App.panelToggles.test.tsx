@@ -19,6 +19,7 @@ const TOGGLES = [
   ['Toggle ORF display', 'ORFs'],
   ['Toggle restriction enzyme display', 'REs'],
   ['Toggle primer display', 'Primers'],
+  ['Toggle auto-annotation suggestions', 'Auto'],
 ] as const
 
 function toggle(title: string): HTMLButtonElement {

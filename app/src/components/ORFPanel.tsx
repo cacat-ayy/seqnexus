@@ -10,6 +10,7 @@ import { X, ChevronDown, ChevronRight } from 'lucide-react'
 import { useEditorStore } from '../store'
 import { findORFs, orfColor } from '../workers/orf-finder'
 import type { ORFResult, ORFOptions } from '../workers/orf-finder'
+import { orfKey, convertibleOrfs } from '../utils/orf-features'
 import { useExitAnimation } from '../hooks/useExitAnimation'
 import { useFocusTrap } from '../hooks/useFocusTrap'
 
@@ -29,9 +30,13 @@ interface Props {
 
 export default function ORFPanel({ open, onClose }: Props) {
   const doc = useEditorStore(s => s.doc)
+  const annotations = useEditorStore(s => s.doc.annotations)
   const setOrfResults = useEditorStore(s => s.setOrfResults)
   const setSelection = useEditorStore(s => s.setSelection)
   const setOrfParams = useEditorStore(s => s.setOrfParams)
+  const orfPicks = useEditorStore(s => s.orfPicks)
+  const toggleOrfPick = useEditorStore(s => s.toggleOrfPick)
+  const applyOrfs = useEditorStore(s => s.applyOrfs)
 
   const minCodonsInput = useEditorStore(s => s.orfMinCodons)
   const startCodons = useEditorStore(s => s.orfStartCodons)
@@ -93,9 +98,39 @@ export default function ORFPanel({ open, onClose }: Props) {
     })
   }, [])
 
-  const handleOrfClick = useCallback((orf: ORFResult) => {
+  /**
+   * A badge selects its ORF's bases; Ctrl/Cmd-click picks it for conversion
+   * instead — the same modifier that picks an ORF on the canvas, so whichever
+   * one a user reaches for first teaches the other.
+   */
+  const handleOrfClick = useCallback((orf: ORFResult, e: React.MouseEvent) => {
+    if (e.ctrlKey || e.metaKey) {
+      toggleOrfPick(orfKey(orf))
+      return
+    }
     setSelection({ anchor: orf.start, caret: orf.end })
-  }, [setSelection])
+  }, [setSelection, toggleOrfPick])
+
+  /** ORFs a conversion would add, and how many of those are picked. */
+  const convertible = useMemo(
+    () => convertibleOrfs(allOrfs, annotations),
+    [allOrfs, annotations],
+  )
+  const pickedCount = useMemo(
+    () => convertible.reduce((n, o) => n + (orfPicks.has(orfKey(o)) ? 1 : 0), 0),
+    [convertible, orfPicks],
+  )
+
+  /**
+   * Convert, but stay open.
+   *
+   * Closing here would fight the panel's own close behaviour, which turns the
+   * ORF overlay back on. Leaving the panel up also shows the result: the
+   * converted ORFs drop out of the count, since they are features now.
+   */
+  const handleConvert = useCallback(() => {
+    applyOrfs(pickedCount > 0 ? orfPicks : undefined)
+  }, [applyOrfs, pickedCount, orfPicks])
 
   // Group ORFs by strand+frame for the results list
   const orfsByFrame = useMemo(() => {
@@ -173,9 +208,23 @@ export default function ORFPanel({ open, onClose }: Props) {
           </div>
 
           {/* Status */}
-          <div className="re-results-header" style={{ marginTop: 12 }}>
-            {scanning ? 'Scanning…' : `${allOrfs.length} ORF${allOrfs.length !== 1 ? 's' : ''} found`}
-            {orfsByFrame.size > 0 && ` in ${orfsByFrame.size} frame${orfsByFrame.size !== 1 ? 's' : ''}`}
+          <div className="re-results-header orf-results-header" style={{ marginTop: 12 }}>
+            <span>
+              {scanning ? 'Scanning…' : `${allOrfs.length} ORF${allOrfs.length !== 1 ? 's' : ''} found`}
+              {orfsByFrame.size > 0 && ` in ${orfsByFrame.size} frame${orfsByFrame.size !== 1 ? 's' : ''}`}
+              {pickedCount > 0 && ` · ${pickedCount} picked`}
+            </span>
+            {convertible.length > 0 && !scanning && (
+              <button
+                className="btn btn-primary btn-sm"
+                onClick={handleConvert}
+                title="Add these ORFs to the document as CDS features"
+              >
+                {pickedCount > 0
+                  ? `Add picked (${pickedCount})`
+                  : `Add all (${convertible.length})`}
+              </button>
+            )}
           </div>
 
           {/* Results list */}
@@ -210,9 +259,9 @@ export default function ORFPanel({ open, onClose }: Props) {
                       {orfs.map((orf, i) => (
                         <span
                           key={i}
-                          className="re-site-badge"
-                          onClick={() => handleOrfClick(orf)}
-                          title={`${orf.codons} aa, ${orf.start + 1}..${orf.end}`}
+                          className={`re-site-badge ${orfPicks.has(orfKey(orf)) ? 'picked' : ''}`}
+                          onClick={e => handleOrfClick(orf, e)}
+                          title={`${orf.codons} aa, ${orf.start + 1}..${orf.end}\nCtrl-click to pick for conversion`}
                         >
                           {orf.start + 1}
                         </span>
