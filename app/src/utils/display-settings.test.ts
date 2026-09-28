@@ -14,6 +14,9 @@ describe('display settings persistence', () => {
       colorTarget: 'letters',
       showComplement: true,
       showAnnotationTracks: true,
+      plasmidStyle: 'modern',
+      showGcRing: false,
+      showPlasmidLegend: false,
     })
   })
 
@@ -23,6 +26,9 @@ describe('display settings persistence', () => {
       colorTarget: 'background' as const,
       showComplement: false,
       showAnnotationTracks: false,
+      plasmidStyle: 'publication' as const,
+      showGcRing: true,
+      showPlasmidLegend: true,
     }
     saveDisplaySettings(settings)
     expect(loadDisplaySettings()).toEqual(settings)

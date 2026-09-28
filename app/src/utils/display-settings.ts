@@ -19,6 +19,9 @@ import {
   DEFAULT_COLOR_SCHEME, DEFAULT_COLOR_TARGET, COLOR_SCHEMES, COLOR_TARGETS,
   type ColorSchemeId, type ColorTarget,
 } from './base-colors'
+import {
+  DEFAULT_PLASMID_STYLE, PLASMID_STYLES, type PlasmidStyleId,
+} from '../plasmid/styles'
 
 const STORAGE_KEY = 'seqnexus:display-settings'
 
@@ -30,6 +33,12 @@ export interface DisplaySettings {
   showComplement: boolean
   /** Draw the annotation bars beneath the sequence. */
   showAnnotationTracks: boolean
+  /** Which predefined look the circular map is drawn in. */
+  plasmidStyle: PlasmidStyleId
+  /** Draw the GC content and GC skew tracks inside the plasmid backbone. */
+  showGcRing: boolean
+  /** Draw a feature-type colour key in the corner of the map. */
+  showPlasmidLegend: boolean
 }
 
 export const DEFAULT_DISPLAY_SETTINGS: DisplaySettings = {
@@ -39,10 +48,16 @@ export const DEFAULT_DISPLAY_SETTINGS: DisplaySettings = {
   // user sees no change until they choose otherwise.
   showComplement: true,
   showAnnotationTracks: true,
+  plasmidStyle: DEFAULT_PLASMID_STYLE,
+  // Both off: they are additions, and an existing user should see the map
+  // they already know until they ask for more on it.
+  showGcRing: false,
+  showPlasmidLegend: false,
 }
 
 const VALID_SCHEMES = new Set(COLOR_SCHEMES.map(s => s.id))
 const VALID_TARGETS = new Set(COLOR_TARGETS.map(t => t.id))
+const VALID_PLASMID_STYLES = new Set(PLASMID_STYLES.map(s => s.id))
 
 /**
  * Read preferences synchronously, before first paint.
@@ -69,6 +84,15 @@ export function loadDisplaySettings(): DisplaySettings {
       showAnnotationTracks: typeof parsed.showAnnotationTracks === 'boolean'
         ? parsed.showAnnotationTracks
         : DEFAULT_DISPLAY_SETTINGS.showAnnotationTracks,
+      plasmidStyle: VALID_PLASMID_STYLES.has(parsed.plasmidStyle as PlasmidStyleId)
+        ? parsed.plasmidStyle as PlasmidStyleId
+        : DEFAULT_DISPLAY_SETTINGS.plasmidStyle,
+      showGcRing: typeof parsed.showGcRing === 'boolean'
+        ? parsed.showGcRing
+        : DEFAULT_DISPLAY_SETTINGS.showGcRing,
+      showPlasmidLegend: typeof parsed.showPlasmidLegend === 'boolean'
+        ? parsed.showPlasmidLegend
+        : DEFAULT_DISPLAY_SETTINGS.showPlasmidLegend,
     }
   } catch {
     return { ...DEFAULT_DISPLAY_SETTINGS }

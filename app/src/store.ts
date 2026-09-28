@@ -22,6 +22,7 @@ import {
 import { reverseComplement } from './models/complement'
 import type { ColorSchemeId, ColorTarget } from './utils/base-colors'
 import { loadDisplaySettings, saveDisplaySettings, type DisplaySettings } from './utils/display-settings'
+import type { PlasmidStyleId } from './plasmid/styles'
 import type { Ab1Data } from './io/ab1'
 import type { CutSite } from './enzymes/finder'
 import type { ORFResult } from './workers/orf-finder'
@@ -353,6 +354,12 @@ interface EditorStore {
   toggleComplement: () => void
   showAnnotationTracks: boolean
   toggleAnnotationTracks: () => void
+  plasmidStyle: PlasmidStyleId
+  setPlasmidStyle: (id: PlasmidStyleId) => void
+  showGcRing: boolean
+  toggleGcRing: () => void
+  showPlasmidLegend: boolean
+  togglePlasmidLegend: () => void
 
   // Hover state (cross-view, not per-tab)
   hoveredAnnotationId: string | null
@@ -755,6 +762,25 @@ function computeMatches(query: string, options: SearchOptions, bases: string, ci
   }
 }
 
+/**
+ * Every persisted display preference, read off the store in one place.
+ *
+ * The two callers used to each list the fields by hand, which meant adding a
+ * preference silently reset the others wherever someone forgot to extend the
+ * list. One projection, so that cannot happen again.
+ */
+function displaySnapshot(s: EditorStore): DisplaySettings {
+  return {
+    colorScheme: s.colorScheme,
+    colorTarget: s.colorTarget,
+    showComplement: s.showComplement,
+    showAnnotationTracks: s.showAnnotationTracks,
+    plasmidStyle: s.plasmidStyle,
+    showGcRing: s.showGcRing,
+    showPlasmidLegend: s.showPlasmidLegend,
+  }
+}
+
 export const useEditorStore = create<EditorStore>((set, get) => {
   function getActiveTab(): DocumentTab | null {
     const { tabs, activeTabId } = get()
@@ -807,12 +833,7 @@ export const useEditorStore = create<EditorStore>((set, get) => {
   function revealAnnotationTracks() {
     if (get().showAnnotationTracks) return
     set({ showAnnotationTracks: true })
-    saveDisplaySettings({
-      colorScheme: get().colorScheme,
-      colorTarget: get().colorTarget,
-      showComplement: get().showComplement,
-      showAnnotationTracks: true,
-    })
+    saveDisplaySettings(displaySnapshot(get()))
   }
 
   function pushUndo() {
@@ -942,22 +963,22 @@ export const useEditorStore = create<EditorStore>((set, get) => {
     // --- Global display preferences ---
     ...(() => {
       const initial = loadDisplaySettings()
-      /** Persist the whole record whenever any one field changes. */
+      /**
+       * Persist the whole record whenever any one field changes. The patch is
+       * applied on top because `set` has not necessarily been flushed by the
+       * time the setter calls this.
+       */
       const persist = (patch: Partial<DisplaySettings>) => {
-        const s = get()
-        saveDisplaySettings({
-          colorScheme: s.colorScheme,
-          colorTarget: s.colorTarget,
-          showComplement: s.showComplement,
-          showAnnotationTracks: s.showAnnotationTracks,
-          ...patch,
-        })
+        saveDisplaySettings({ ...displaySnapshot(get()), ...patch })
       }
       return {
         colorScheme: initial.colorScheme,
         colorTarget: initial.colorTarget,
         showComplement: initial.showComplement,
         showAnnotationTracks: initial.showAnnotationTracks,
+        plasmidStyle: initial.plasmidStyle,
+        showGcRing: initial.showGcRing,
+        showPlasmidLegend: initial.showPlasmidLegend,
         setColorScheme: (id: ColorSchemeId) => {
           set({ colorScheme: id })
           persist({ colorScheme: id })
@@ -975,6 +996,20 @@ export const useEditorStore = create<EditorStore>((set, get) => {
           const next = !get().showAnnotationTracks
           set({ showAnnotationTracks: next })
           persist({ showAnnotationTracks: next })
+        },
+        setPlasmidStyle: (id: PlasmidStyleId) => {
+          set({ plasmidStyle: id })
+          persist({ plasmidStyle: id })
+        },
+        toggleGcRing: () => {
+          const next = !get().showGcRing
+          set({ showGcRing: next })
+          persist({ showGcRing: next })
+        },
+        togglePlasmidLegend: () => {
+          const next = !get().showPlasmidLegend
+          set({ showPlasmidLegend: next })
+          persist({ showPlasmidLegend: next })
         },
       }
     })(),

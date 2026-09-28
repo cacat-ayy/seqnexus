@@ -4,6 +4,7 @@ import { createRef } from 'react'
 import DisplayPopover from './DisplayPopover'
 import { useEditorStore } from '../store'
 import { COLOR_SCHEMES } from '../utils/base-colors'
+import { PLASMID_STYLES } from '../plasmid/styles'
 
 const store = () => useEditorStore.getState()
 
@@ -130,5 +131,58 @@ describe('colour target', () => {
     store().setColorScheme('none')
     show()
     expect(screen.getByRole('radio', { name: 'Background' })).toBeDisabled()
+  })
+})
+
+describe('DisplayPopover: plasmid map', () => {
+  beforeEach(() => {
+    localStorage.clear()
+    store().setPlasmidStyle('modern')
+  })
+
+  it('offers every predefined style', () => {
+    show()
+    for (const s of PLASMID_STYLES) expect(screen.getByText(s.label)).toBeTruthy()
+  })
+
+  it('marks exactly one style as chosen', () => {
+    show()
+    const styles = [...document.querySelectorAll('.dp-style-list [role="radio"]')]
+    const checked = styles.filter(r => r.getAttribute('aria-checked') === 'true')
+    expect(checked).toHaveLength(1)
+    expect(checked[0].textContent).toContain('Modern')
+  })
+
+  it('selecting a style updates the store', () => {
+    show()
+    act(() => { screen.getByText('Publication').closest('button')!.click() })
+    expect(store().plasmidStyle).toBe('publication')
+  })
+
+  it('reserves the tick on every row, so choosing a style cannot resize the menu', () => {
+    // The tick used to be rendered only on the active row, which made the
+    // widest row change as the selection moved.
+    show()
+    const rows = [...document.querySelectorAll('.dp-style-list .dp-style')]
+    expect(rows.length).toBeGreaterThan(1)
+    for (const row of rows) expect(row.querySelector('.dp-style-check')).not.toBeNull()
+  })
+
+  it('puts the name before the tick, not after it', () => {
+    show()
+    const active = document.querySelector('.dp-style.active')!
+    // getAttribute, not .className: the tick is an SVG element, whose
+    // className is an SVGAnimatedString rather than a string.
+    const children = [...active.children].map(c => c.getAttribute('class') ?? '')
+    expect(children[0]).toContain('dp-style-text')
+    expect(children[children.length - 1]).toContain('dp-style-check')
+  })
+
+  it('toggles the GC ring and the colour key', () => {
+    show()
+    act(() => { screen.getByLabelText('GC content and skew ring').click() })
+    expect(store().showGcRing).toBe(true)
+    act(() => { screen.getByLabelText('Feature colour key').click() })
+    expect(store().showPlasmidLegend).toBe(true)
   })
 })

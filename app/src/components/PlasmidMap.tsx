@@ -1,22 +1,24 @@
 /**
  * Circular plasmid map view.
  *
- * Renders a classic circular diagram with:
- * - Backbone circle with bp tick marks
- * - Annotation arcs with directional arrows
- * - Annotation labels
- * - Selection highlight arc
- * - Center text (name + size)
+ * The drawing itself lives in `src/plasmid/`: this component gathers state,
+ * builds a scene, and hands it to an emitter. It used to issue every canvas
+ * call inline, which is why it could not be exported and why each of the four
+ * pointer handlers recomputed the geometry by hand.
  */
 
 import { useRef, useEffect, useCallback, useMemo, useState, memo } from 'react'
-import { formatBp } from '../utils/format'
+import { Download, Maximize2, Image as ImageIcon, FileCode2 } from 'lucide-react'
 import { copyText } from '../utils/clipboard'
-import { visibleStroke, contrastText } from '../utils/color'
 import { translate as translateSequenceStr } from '../utils/codon'
-import { useEditorStore, selectionRange, isOriginSpanningSelection, selectionLength, selectionSegments } from '../store'
+import { gcPercent } from '../primers/thermodynamics'
+import { downloadBlob } from '../utils/download'
+import { notify } from '../toast'
+import {
+  useEditorStore, selectionRange, isOriginSpanningSelection, selectionLength,
+  selectionSegments,
+} from '../store'
 import { Annotation, type AnnotationData } from '../models/Annotation'
-import { displayPosition } from '../models/Document'
 
 import { orfColor } from '../workers/orf-finder'
 import {
@@ -32,383 +34,41 @@ import { groupCutSites, enzymeGroupKey, type GroupedCutSite } from './SequenceVi
 import ContextMenuPopup from './ContextMenuPopup'
 import ConfirmDialog from './ConfirmDialog'
 
-/** Hit-test annotation arcs. Returns the annotation under (px, py) or null. */
-function hitTestAnnotationArc(
-  px: number,
-  py: number,
-  cx: number,
-  cy: number,
-  baseRadius: number,
-  _annotations: Annotation[],
-  rings: Annotation[][],
-  seqLen: number,
-): Annotation | null {
-  if (seqLen === 0) return null
-  const dx = px - cx
-  const dy = py - cy
-  const dist = Math.sqrt(dx * dx + dy * dy)
+import {
+  buildPlasmidScene, type PlasmidScene, type ScenePrimer, type SceneEnzymeGroup,
+} from '../plasmid/scene'
+import { renderSceneToCanvas, type Viewport } from '../plasmid/renderCanvas'
+import { plasmidToPng, plasmidToSvgBlob } from '../plasmid/exportImage'
+import { getPlasmidStyle, resolvePlasmidColors } from '../plasmid/styles'
+import { stackAnnotations, angleToPos, normalizeAngle } from '../plasmid/geometry'
+import { computeGcSeries, findMethylationSites } from '../plasmid/gc'
 
-  // Compute angle in the same coordinate system as posToAngle
-  let angle = Math.atan2(dy, dx)
-
-  for (let ringIdx = 0; ringIdx < rings.length; ringIdx++) {
-    const radius = baseRadius + 14 + ringIdx * (ANNOTATION_ARC_WIDTH + ANNOTATION_GAP)
-    const halfWidth = ANNOTATION_ARC_WIDTH / 2 + 3 // small tolerance
-    if (dist < radius - halfWidth || dist > radius + halfWidth) continue
-
-    for (const ann of rings[ringIdx]) {
-      const startAngle = posToAngle(ann.start, seqLen)
-      const span = annArcSpan(ann.start, ann.end, seqLen)
-
-      // Check if the click angle falls within [startAngle, startAngle + span]
-      const norm = (v: number) => ((v % (Math.PI * 2)) + Math.PI * 2) % (Math.PI * 2)
-      const offset = norm(angle - startAngle)
-      if (offset <= span) return ann
-    }
-  }
-  return null
-}
-
-function getPlasmidColors(container: HTMLElement) {
-  const s = getComputedStyle(container)
-  const v = (name: string, fallback: string) => s.getPropertyValue(name).trim() || fallback
-  return {
-    bg: v('--canvas-bg', '#ffffff'),
-    backbone: v('--canvas-backbone', '#555555'),
-    text: v('--canvas-text', '#333333'),
-    textMuted: v('--canvas-ruler', '#888888'),
-    tickMinor: v('--canvas-ruler-tick', '#cccccc'),
-    accent: v('--accent', '#3b82f6'),
-    selectionArc: v('--selection-bg', 'rgba(59, 130, 246, 0.3)'),
-    enzyme: v('--canvas-enzyme', '#e53e3e'),
-  }
-}
-
-const BACKBONE_WIDTH = 3
-const MAX_TICKS = 500 // cap total ticks for performance
-
-/** Compute adaptive tick intervals so we never exceed MAX_TICKS. */
-function getTickIntervals(seqLen: number): { major: number; minor: number } {
-  if (seqLen <= 5_000) return { major: 500, minor: 100 }
-  if (seqLen <= 50_000) return { major: 5_000, minor: 1_000 }
-  if (seqLen <= 500_000) return { major: 50_000, minor: 10_000 }
-  // Genome scale: ensure < MAX_TICKS ticks
-  const minor = Math.ceil(seqLen / MAX_TICKS / 1000) * 1000
-  return { major: minor * 5, minor }
-}
 /**
- * Assign enzyme labels to radial tiers so they don't overlap.
- * Tier 0 is closest to the backbone, higher tiers are further inward.
+ * One offscreen context for all text measurement.
+ *
+ * The layout pass needs to measure strings before anything is drawn, and the
+ * SVG export has no canvas of its own. Sharing this one means both outputs
+ * position every label identically.
  */
-function assignEnzymeLabelTiers(
-  groups: GroupedCutSite[],
-  seqLen: number,
-  baseRadius: number,
-  ctx: CanvasRenderingContext2D,
-): { group: GroupedCutSite; angle: number; tier: number }[] {
-  if (groups.length === 0 || seqLen === 0) return []
-
-  const LABEL_FONT = '9px sans-serif'
-  const TIER_SPACING = 16
-  const BASE_LABEL_R = baseRadius - 22
-  const MIN_GAP = 6 // minimum pixel gap between labels
-
-  ctx.font = LABEL_FONT
-
-  // Normalize angles to [0, 2π) for consistent wrap-around handling
-  const TWO_PI = Math.PI * 2
-  const normalize = (a: number) => ((a % TWO_PI) + TWO_PI) % TWO_PI
-
-  // Compute angular span each label occupies at its radius
-  const items = groups.map(group => {
-    const rawAngle = posToAngle(group.fwdCut, seqLen)
-    const angle = normalize(rawAngle)
-    const textWidth = ctx.measureText(group.label).width + MIN_GAP
-    return { group, angle, textWidth, tier: 0 }
-  })
-
-  // Sort by angle for sweep
-  items.sort((a, b) => a.angle - b.angle)
-
-  // Check if two angular ranges overlap on a circle.
-  // Each range is [center - halfSpan, center + halfSpan].
-  function angularOverlap(a1: number, hs1: number, a2: number, hs2: number): boolean {
-    // Angular distance between centers (shortest arc)
-    let d = Math.abs(a1 - a2)
-    if (d > Math.PI) d = TWO_PI - d
-    return d < hs1 + hs2
+let _measureCtx: CanvasRenderingContext2D | null = null
+function measureText(text: string, font: string): number {
+  if (!_measureCtx) {
+    _measureCtx = document.createElement('canvas').getContext('2d')
   }
-
-  // Track all labels placed on each tier (needed for wrap-around checks)
-  const tierLabels: { angle: number; halfSpan: number }[][] = []
-
-  for (const item of items) {
-    let placed = false
-    for (let t = 0; t < tierLabels.length; t++) {
-      const tr = BASE_LABEL_R - t * TIER_SPACING
-      if (tr < 30) break
-      const hs = item.textWidth / (2 * tr)
-      // Check against all labels on this tier
-      let overlaps = false
-      for (const existing of tierLabels[t]) {
-        if (angularOverlap(item.angle, hs, existing.angle, existing.halfSpan)) {
-          overlaps = true
-          break
-        }
-      }
-      if (!overlaps) {
-        item.tier = t
-        tierLabels[t].push({ angle: item.angle, halfSpan: hs })
-        placed = true
-        break
-      }
-    }
-    if (!placed) {
-      const t = tierLabels.length
-      const tr = BASE_LABEL_R - t * TIER_SPACING
-      if (tr >= 30) {
-        item.tier = t
-        const hs = item.textWidth / (2 * tr)
-        tierLabels.push([{ angle: item.angle, halfSpan: hs }])
-      }
-    }
-  }
-
-  return items.filter(item => {
-    const r = BASE_LABEL_R - item.tier * TIER_SPACING
-    return r >= 30
-  })
+  if (!_measureCtx) return text.length * 6
+  _measureCtx.font = font
+  return _measureCtx.measureText(text).width
 }
 
-const ANNOTATION_ARC_WIDTH = 16
-const ANNOTATION_GAP = 2
-const LABEL_FONT = '11px sans-serif'
-const TICK_FONT = '9px monospace'
-const CENTER_FONT_NAME = 'bold 14px sans-serif'
-const CENTER_FONT_SIZE = '12px sans-serif'
-
-
-
-/** Convert a base position to an angle (0 = top, clockwise). */
-function posToAngle(pos: number, seqLen: number): number {
-  return (pos / seqLen) * Math.PI * 2 - Math.PI / 2
-}
-
-/** Hit-test enzyme cut site markers on the plasmid map. */
-function hitTestEnzymeGroup(
-  px: number, py: number,
-  cx: number, cy: number,
-  baseRadius: number,
-  groups: GroupedCutSite[],
-  seqLen: number,
-): GroupedCutSite | null {
-  if (seqLen === 0) return null
-  const hitRadius = 14 // generous click target around the tick mark
-  for (const group of groups) {
-    const angle = posToAngle(group.fwdCut, seqLen)
-    // Check proximity to the tick mark (from innerR to outerR)
-    const mx = cx + Math.cos(angle) * baseRadius
-    const my = cy + Math.sin(angle) * baseRadius
-    const dx = px - mx
-    const dy = py - my
-    if (dx * dx + dy * dy < hitRadius * hitRadius) return group
-    // Also check the label area (inside the circle)
-    const labelR = baseRadius - 22
-    const lx = cx + Math.cos(angle) * labelR
-    const ly = cy + Math.sin(angle) * labelR
-    const ldx = px - lx
-    const ldy = py - ly
-    if (ldx * ldx + ldy * ldy < hitRadius * hitRadius) return group
-  }
-  return null
-}
-
-/** Check whether two annotations overlap, accounting for origin-spanning. */
-export function annotationsOverlap(a: Annotation, b: Annotation): boolean {
-  const aWraps = a.start > a.end
-  const bWraps = b.start > b.end
-  if (!aWraps && !bWraps) {
-    // Both normal
-    return a.start < b.end && a.end > b.start
-  }
-  if (aWraps && bWraps) {
-    // Both wrap - they always overlap (both cover the origin)
-    return true
-  }
-  // One wraps, one doesn't. The wrapping one covers [start, ∞) ∪ [0, end).
-  const wrap = aWraps ? a : b
-  const norm = aWraps ? b : a
-  return norm.start < wrap.end || norm.end > wrap.start
-}
-
-/** Stack annotations into non-overlapping rings. */
-export function stackAnnotations(annotations: Annotation[]): Annotation[][] {
-  const sorted = [...annotations].sort((a, b) => a.start - b.start)
-  const rings: Annotation[][] = []
-  for (const ann of sorted) {
-    let placed = false
-    for (const ring of rings) {
-      const overlaps = ring.some(existing => annotationsOverlap(ann, existing))
-      if (!overlaps) {
-        ring.push(ann)
-        placed = true
-        break
-      }
-    }
-    if (!placed) {
-      rings.push([ann])
-    }
-  }
-  return rings
-}
-
-/** Compute the angular span for an annotation, using its base positions
- *  to unambiguously determine whether it spans the origin.
- *  Always returns a positive value in (0, 2π]. */
-export function annArcSpan(start: number, end: number, seqLen: number): number {
-  const spansOrigin = start > end
-  let bpSpan: number
-  if (spansOrigin) {
-    bpSpan = seqLen - start + end
-  } else {
-    bpSpan = end - start
-  }
-  if (bpSpan <= 0) bpSpan = seqLen // full circle
-  return (bpSpan / seqLen) * Math.PI * 2
-}
-
-/** Draw an arc with an arrowhead at the end for directionality.
- *  `span` is the pre-computed angular span (always positive). */
-function drawAnnotationArc(
-  ctx: CanvasRenderingContext2D,
-  cx: number,
-  cy: number,
-  radius: number,
-  startAngle: number,
-  span: number,
-  strand: number,
-  _color: string,
-  arcWidth: number,
-) {
-  const arrowAngle = Math.min(0.08, span * 0.2)
-
-  ctx.beginPath()
-  if (strand === 1) {
-    // Forward: arrow at end
-    ctx.arc(cx, cy, radius, startAngle, startAngle + span - arrowAngle)
-    ctx.stroke()
-    // Arrowhead
-    const tipAngle = startAngle + span
-    const baseAngle = startAngle + span - arrowAngle
-    const innerR = radius - arcWidth / 2
-    const outerR = radius + arcWidth / 2
-    ctx.beginPath()
-    ctx.moveTo(
-      cx + Math.cos(baseAngle) * innerR,
-      cy + Math.sin(baseAngle) * innerR,
-    )
-    ctx.lineTo(
-      cx + Math.cos(tipAngle) * radius,
-      cy + Math.sin(tipAngle) * radius,
-    )
-    ctx.lineTo(
-      cx + Math.cos(baseAngle) * outerR,
-      cy + Math.sin(baseAngle) * outerR,
-    )
-    ctx.closePath()
-    ctx.fill()
-  } else if (strand === -1) {
-    // Reverse: arrow at start
-    ctx.arc(cx, cy, radius, startAngle + arrowAngle, startAngle + span)
-    ctx.stroke()
-    // Arrowhead
-    const tipAngle = startAngle
-    const baseAngle = startAngle + arrowAngle
-    const innerR = radius - arcWidth / 2
-    const outerR = radius + arcWidth / 2
-    ctx.beginPath()
-    ctx.moveTo(
-      cx + Math.cos(baseAngle) * innerR,
-      cy + Math.sin(baseAngle) * innerR,
-    )
-    ctx.lineTo(
-      cx + Math.cos(tipAngle) * radius,
-      cy + Math.sin(tipAngle) * radius,
-    )
-    ctx.lineTo(
-      cx + Math.cos(baseAngle) * outerR,
-      cy + Math.sin(baseAngle) * outerR,
-    )
-    ctx.closePath()
-    ctx.fill()
-  } else {
-    // No strand - plain arc, use span to go the right way around
-    ctx.arc(cx, cy, radius, startAngle, startAngle + span)
-    ctx.stroke()
-  }
-}
-
-/** Draw the outline of an annotation arc (body + arrowhead) as a closed path. */
-function strokeAnnotationArcOutline(
-  ctx: CanvasRenderingContext2D,
-  cx: number, cy: number,
-  radius: number,
-  startAngle: number, span: number,
-  strand: number,
-  arcWidth: number,
-  strokeColor: string,
-  lineWidth = 1,
-) {
-  const arrowAngle = Math.min(0.08, span * 0.2)
-  const innerR = radius - arcWidth / 2
-  const outerR = radius + arcWidth / 2
-
-  ctx.save()
-  ctx.strokeStyle = strokeColor
-  ctx.lineWidth = lineWidth
-  ctx.lineJoin = 'round'
-  ctx.beginPath()
-
-  if (strand === 1) {
-    // Forward: arrow at end
-    const bodyEnd = startAngle + span - arrowAngle
-    const tipAngle = startAngle + span
-    // Outer arc (forward)
-    ctx.arc(cx, cy, outerR, startAngle, bodyEnd)
-    // Arrow outer edge → tip
-    ctx.lineTo(cx + Math.cos(tipAngle) * radius, cy + Math.sin(tipAngle) * radius)
-    // Arrow tip → inner edge
-    ctx.lineTo(cx + Math.cos(bodyEnd) * innerR, cy + Math.sin(bodyEnd) * innerR)
-    // Inner arc (reverse)
-    ctx.arc(cx, cy, innerR, bodyEnd, startAngle, true)
-    ctx.closePath()
-  } else if (strand === -1) {
-    // Reverse: arrow at start
-    const bodyStart = startAngle + arrowAngle
-    const tipAngle = startAngle
-    // Outer arc (forward from bodyStart)
-    ctx.arc(cx, cy, outerR, bodyStart, startAngle + span)
-    // End cap → inner arc
-    ctx.arc(cx, cy, innerR, startAngle + span, bodyStart, true)
-    // Arrow inner edge → tip
-    ctx.lineTo(cx + Math.cos(tipAngle) * radius, cy + Math.sin(tipAngle) * radius)
-    // Arrow tip → outer edge
-    ctx.lineTo(cx + Math.cos(bodyStart) * outerR, cy + Math.sin(bodyStart) * outerR)
-    ctx.closePath()
-  } else {
-    // No strand: outline the thick arc as a closed ring segment
-    ctx.arc(cx, cy, outerR, startAngle, startAngle + span)
-    ctx.arc(cx, cy, innerR, startAngle + span, startAngle, true)
-    ctx.closePath()
-  }
-
-  ctx.stroke()
-  ctx.restore()
-}
+const MIN_ZOOM = 1
+const MAX_ZOOM = 6
+const FIT: Viewport = { scale: 1, tx: 0, ty: 0 }
 
 interface PlasmidMapProps {
   onFindRequest?: () => void
   onEditFeature?: (annId: string) => void
+  /** Ask App for a filename before writing a file, as the gel view does. */
+  onExportPrompt?: (defaultName: string, onConfirm: (name: string) => void) => void
 }
 
 function PlasmidMap(_props: PlasmidMapProps) {
@@ -433,26 +93,38 @@ function PlasmidMap(_props: PlasmidMapProps) {
   const [nameValue, setNameValue] = useState('')
   const nameInputRef = useRef<HTMLInputElement>(null)
   const setViewMode = useEditorStore(s => s.setViewMode)
-  // Feature popover: delayed on appear, immediate on leave. See useDelayedHover.
+
   const { target: annTooltip, show: showAnnTooltip, hide: hideAnnTooltip } = useDelayedHover<HoverTarget>()
-  // Enzyme popover: same delay as the feature popover, so the two behave
-  // identically on the same canvas.
   const { target: enzymeTooltip, show: showEnzymeTooltip, hide: hideEnzymeTooltip } =
     useDelayedHover<HoverTarget & { group: GroupedCutSite }>()
-  const [hoveredEnzymeGroup, setHoveredEnzymeGroup] = useState<GroupedCutSite | null>(null)
+  const [hoveredEnzymeKey, setHoveredEnzymeKey] = useState<string | null>(null)
+
   const showOrfs = useEditorStore(s => s.showOrfs)
   const showEnzymes = useEditorStore(s => s.showEnzymes)
+  const showPrimers = useEditorStore(s => s.showPrimers)
   const showAutoAnnotations = useEditorStore(s => s.showAutoAnnotations)
   const allEnzymeCutSites = useEditorStore(s => s.enzymeCutSites)
   const allOrfResults = useEditorStore(s => s.orfResults)
+  const allPrimerResults = useEditorStore(s => s.primerResults)
+  const selectedPrimerIndices = useEditorStore(s => s.selectedPrimerIndices)
   const allAutoAnnotations = useEditorStore(s => s.autoAnnotations)
   const autoAnnotationPicks = useEditorStore(s => s.autoAnnotationPicks)
   const orfPicks = useEditorStore(s => s.orfPicks)
   const autoOverlapThreshold = useEditorStore(s => s.autoAnnotateOverlapThreshold)
+
+  // Global display preferences
+  const plasmidStyleId = useEditorStore(s => s.plasmidStyle)
+  const showGcRing = useEditorStore(s => s.showGcRing)
+  const showPlasmidLegend = useEditorStore(s => s.showPlasmidLegend)
+  const style = useMemo(() => getPlasmidStyle(plasmidStyleId), [plasmidStyleId])
+
   const enzymeCutSites = showEnzymes ? allEnzymeCutSites : []
   const damMeth = doc.metadata?.damMethylated || false
   const dcmMeth = doc.metadata?.dcmMethylated || false
-  const groupedEnzymeSites = useMemo(() => groupCutSites(enzymeCutSites, damMeth, dcmMeth), [enzymeCutSites, damMeth, dcmMeth])
+  const groupedEnzymeSites = useMemo(
+    () => groupCutSites(enzymeCutSites, damMeth, dcmMeth),
+    [enzymeCutSites, damMeth, dcmMeth],
+  )
   const orfResults = showOrfs ? allOrfResults : []
 
   // Context menu
@@ -464,32 +136,33 @@ function PlasmidMap(_props: PlasmidMapProps) {
   }
   const [ctxMenu, setCtxMenu] = useState<ContextMenuState | null>(null)
   const [deleteConfirm, setDeleteConfirm] = useState<{ annId: string; annName: string } | null>(null)
+  const [exportOpen, setExportOpen] = useState(false)
 
-  // Convert ORF results to Annotation objects for unified arc rendering.
-  // Identity-based ids, so a pick survives a re-scan (see orf-features).
-  const orfAnnotations = useMemo(() => {
-    return orfResults.map(orf => {
-      const data: AnnotationData = {
-        id: orfIdFor(orf),
-        name: orfName(orf),
-        type: 'CDS',
-        start: orf.start,
-        end: orf.end,
-        strand: orf.strand,
-        color: orfColor(orf.strand, orf.frame),
-      }
-      return new Annotation(data)
-    })
-  }, [orfResults])
+  // --- Viewport ---
+  // Local, not the tab's `zoomLevel`, which the store defines as bases per row
+  // for the linear view. Resets when the document changes so a new tab always
+  // opens fitted.
+  const [viewport, setViewport] = useState<Viewport>(FIT)
+  useEffect(() => { setViewport(FIT) }, [activeTabId])
+  const panRef = useRef<{ x: number; y: number; tx: number; ty: number } | null>(null)
 
-  // Filter out hidden annotations
+  // --- Derived data ---
+  const orfAnnotations = useMemo(() => orfResults.map(orf => new Annotation({
+    id: orfIdFor(orf),
+    name: orfName(orf),
+    type: 'CDS',
+    start: orf.start,
+    end: orf.end,
+    strand: orf.strand,
+    color: orfColor(orf.strand, orf.frame),
+  } as AnnotationData)), [orfResults])
+
   const hiddenSet = useMemo(() => new Set(hiddenAnnotationIds), [hiddenAnnotationIds])
   const visibleAnnotations = useMemo(() =>
     hiddenSet.size === 0 ? doc.annotations : doc.annotations.filter(a => !hiddenSet.has(a.id)),
-    [doc.annotations, hiddenSet]
+    [doc.annotations, hiddenSet],
   )
 
-  /** Auto-annotation proposals the document does not already cover. */
   const autoAnnotations = useMemo(() => {
     if (!showAutoAnnotations || allAutoAnnotations.length === 0) return []
     return proposalAnnotations(
@@ -499,583 +172,250 @@ function PlasmidMap(_props: PlasmidMapProps) {
 
   const allAnnotations = useMemo(() => {
     const extra = [...orfAnnotations, ...autoAnnotations]
-    if (extra.length === 0) return visibleAnnotations
-    return [...visibleAnnotations, ...extra]
+    return extra.length === 0 ? visibleAnnotations : [...visibleAnnotations, ...extra]
   }, [visibleAnnotations, orfAnnotations, autoAnnotations])
 
-  const draw = useCallback(() => {
-    const canvas = canvasRef.current
-    const container = containerRef.current
-    if (!canvas || !container) return
+  /** Stacked once. Previously recomputed in the draw and in all four handlers,
+   *  including on every pointer move. */
+  const rings = useMemo(() => stackAnnotations(allAnnotations), [allAnnotations])
 
-    const dpr = window.devicePixelRatio || 1
-    const size = Math.min(container.clientWidth, container.clientHeight)
-    canvas.width = size * dpr
-    canvas.height = size * dpr
-    canvas.style.width = `${size}px`
-    canvas.style.height = `${size}px`
+  const annById = useMemo(() => {
+    const m = new Map<string, Annotation>()
+    for (const a of allAnnotations) m.set(a.id, a)
+    return m
+  }, [allAnnotations])
 
-    const ctx = canvas.getContext('2d')
-    if (!ctx) return
-    ctx.scale(dpr, dpr)
+  const proposalIds = useMemo(() => {
+    const s = new Set<string>()
+    for (const a of allAnnotations) if (keyFromAutoId(a.id) !== null) s.add(a.id)
+    return s
+  }, [allAnnotations])
 
-    const C = getPlasmidColors(container)
-    const cx = size / 2
-    const cy = size / 2
-    const seqLen = doc.sequence.length
-    const baseRadius = size * 0.32
-
-    // Clear
-    ctx.fillStyle = C.bg
-    ctx.fillRect(0, 0, size, size)
-
-    if (seqLen === 0) {
-      ctx.fillStyle = C.textMuted
-      ctx.font = CENTER_FONT_NAME
-      ctx.textAlign = 'center'
-      ctx.textBaseline = 'middle'
-      ctx.fillText('No sequence loaded', cx, cy)
-      return
+  const pickedIds = useMemo(() => {
+    const s = new Set<string>()
+    for (const a of allAnnotations) {
+      const autoKey = keyFromAutoId(a.id)
+      if (autoKey !== null && autoAnnotationPicks.has(autoKey)) { s.add(a.id); continue }
+      const orfK = keyFromOrfId(a.id)
+      if (orfK !== null && orfPicks.has(orfK)) s.add(a.id)
     }
+    return s
+  }, [allAnnotations, autoAnnotationPicks, orfPicks])
 
-    // --- Selection arc ---
-    // For origin-spanning selections (anchor > caret on circular), draw from anchor
-    // through the origin to caret. For normal selections, draw from min to max.
-    if (selection.anchor !== selection.caret) {
-      const isOriginSel = isOriginSpanningSelection(selection, 'circular')
-      let arcStart: number, arcEnd: number
-      if (isOriginSel) {
-        arcStart = selection.anchor
-        arcEnd = selection.caret
-      } else {
-        arcStart = Math.min(selection.anchor, selection.caret)
-        arcEnd = Math.max(selection.anchor, selection.caret)
-      }
-      const startAngle = posToAngle(arcStart, seqLen)
-      const endAngle = posToAngle(arcEnd, seqLen)
-      ctx.beginPath()
-      ctx.arc(cx, cy, baseRadius, startAngle, endAngle)
-      ctx.strokeStyle = C.selectionArc
-      ctx.lineWidth = ANNOTATION_ARC_WIDTH * 3
-      ctx.stroke()
-    }
+  const sceneEnzymes: SceneEnzymeGroup[] = useMemo(
+    () => groupedEnzymeSites.map(g => ({
+      key: enzymeGroupKey(g),
+      label: g.label,
+      cutPos: g.fwdCut,
+      methEffect: g.methEffect,
+    })),
+    [groupedEnzymeSites],
+  )
 
-    // --- Backbone circle ---
-    ctx.beginPath()
-    ctx.arc(cx, cy, baseRadius, 0, Math.PI * 2)
-    ctx.strokeStyle = C.backbone
-    ctx.lineWidth = BACKBONE_WIDTH
-    ctx.stroke()
+  const enzymeByKey = useMemo(() => {
+    const m = new Map<string, GroupedCutSite>()
+    for (const g of groupedEnzymeSites) m.set(enzymeGroupKey(g), g)
+    return m
+  }, [groupedEnzymeSites])
 
-    // --- Tick marks ---
-    const ticks = getTickIntervals(seqLen)
-    ctx.font = TICK_FONT
-    ctx.fillStyle = C.textMuted
-    ctx.textAlign = 'center'
-    ctx.textBaseline = 'middle'
-    const dispOrigin = doc.metadata?.displayOrigin || 0
-
-    for (let pos = 0; pos < seqLen; pos += ticks.minor) {
-      const angle = posToAngle(pos, seqLen)
-      const isMajor = pos % ticks.major === 0
-      const innerR = baseRadius - (isMajor ? 8 : 4)
-      const outerR = baseRadius + (isMajor ? 8 : 4)
-
-      ctx.beginPath()
-      ctx.moveTo(cx + Math.cos(angle) * innerR, cy + Math.sin(angle) * innerR)
-      ctx.lineTo(cx + Math.cos(angle) * outerR, cy + Math.sin(angle) * outerR)
-      ctx.strokeStyle = isMajor ? C.textMuted : C.tickMinor
-      ctx.lineWidth = isMajor ? 1.5 : 0.5
-      ctx.stroke()
-
-      if (isMajor && pos > 0) {
-        const labelR = baseRadius - 18
-        const lx = cx + Math.cos(angle) * labelR
-        const ly = cy + Math.sin(angle) * labelR
-        ctx.save()
-        ctx.translate(lx, ly)
-        // Rotate text to be readable
-        let textAngle = angle + Math.PI / 2
-        if (textAngle > Math.PI / 2 && textAngle < Math.PI * 1.5) {
-          textAngle += Math.PI
-        }
-        ctx.rotate(textAngle)
-        ctx.fillText(String(displayPosition(pos, dispOrigin, seqLen)), 0, 0)
-        ctx.restore()
-      }
-    }
-
-    // --- Methylation site markers (subtle dots on backbone) ---
-    if ((damMeth || dcmMeth) && seqLen > 0) {
-      const bases = doc.sequence.bases.toUpperCase()
-      ctx.globalAlpha = 0.3
-      const dotR = Math.max(1, baseRadius * 0.008)
-      if (damMeth) {
-        ctx.fillStyle = '#3b82f6'
-        for (let i = 0; i <= bases.length - 4; i++) {
-          if (bases[i] === 'G' && bases[i+1] === 'A' && bases[i+2] === 'T' && bases[i+3] === 'C') {
-            const angle = posToAngle(i + 2, seqLen) // center of GATC
-            const dx = cx + Math.cos(angle) * baseRadius
-            const dy = cy + Math.sin(angle) * baseRadius
-            ctx.beginPath()
-            ctx.arc(dx, dy, dotR, 0, Math.PI * 2)
-            ctx.fill()
-          }
-        }
-      }
-      if (dcmMeth) {
-        ctx.fillStyle = '#f59e0b'
-        for (let i = 0; i <= bases.length - 5; i++) {
-          if (bases[i] === 'C' && bases[i+1] === 'C' &&
-              (bases[i+2] === 'A' || bases[i+2] === 'T') &&
-              bases[i+3] === 'G' && bases[i+4] === 'G') {
-            const angle = posToAngle(i + 2, seqLen)
-            const dx = cx + Math.cos(angle) * baseRadius
-            const dy = cy + Math.sin(angle) * baseRadius
-            ctx.beginPath()
-            ctx.arc(dx, dy, dotR, 0, Math.PI * 2)
-            ctx.fill()
-          }
-        }
-      }
-      ctx.globalAlpha = 1
-    }
-
-    // --- Enzyme cut site markers ---
-    if (groupedEnzymeSites.length > 0) {
-      const TIER_SPACING = 16
-      const BASE_LABEL_R = baseRadius - 22
-
-      // Draw tick marks and dots first (always at backbone)
-      for (const group of groupedEnzymeSites) {
-        const isHovered = hoveredEnzymeGroup && group.fwdCut === hoveredEnzymeGroup.fwdCut && group.label === hoveredEnzymeGroup.label
-        const methDim = group.methEffect
-        if (methDim) ctx.globalAlpha = methDim === 'blocked' ? 0.25 : 0.5
-        const angle = posToAngle(group.fwdCut, seqLen)
-        const innerR = baseRadius - 12
-        const outerR = baseRadius + 12
-
-        ctx.beginPath()
-        ctx.moveTo(cx + Math.cos(angle) * innerR, cy + Math.sin(angle) * innerR)
-        ctx.lineTo(cx + Math.cos(angle) * outerR, cy + Math.sin(angle) * outerR)
-        ctx.strokeStyle = C.enzyme
-        ctx.lineWidth = isHovered ? 3 : 2
-        ctx.stroke()
-
-        const bx = cx + Math.cos(angle) * baseRadius
-        const by = cy + Math.sin(angle) * baseRadius
-        ctx.fillStyle = C.enzyme
-        ctx.beginPath()
-        ctx.arc(bx, by, isHovered ? 4 : 3, 0, Math.PI * 2)
-        ctx.fill()
-        if (methDim) ctx.globalAlpha = 1
-      }
-
-      // Assign labels to tiers and draw with leader lines
-      const tieredLabels = assignEnzymeLabelTiers(groupedEnzymeSites, seqLen, baseRadius, ctx)
-      for (const item of tieredLabels) {
-        const isHovered = hoveredEnzymeGroup && item.group.fwdCut === hoveredEnzymeGroup.fwdCut && item.group.label === hoveredEnzymeGroup.label
-        const methDim = item.group.methEffect
-        if (methDim) ctx.globalAlpha = methDim === 'blocked' ? 0.25 : 0.5
-        const labelR = BASE_LABEL_R - item.tier * TIER_SPACING
-
-        // Leader line from backbone inward to label position
-        if (item.tier > 0) {
-          ctx.beginPath()
-          ctx.moveTo(cx + Math.cos(item.angle) * (baseRadius - 12), cy + Math.sin(item.angle) * (baseRadius - 12))
-          ctx.lineTo(cx + Math.cos(item.angle) * (labelR + 6), cy + Math.sin(item.angle) * (labelR + 6))
-          ctx.strokeStyle = C.enzyme
-          ctx.globalAlpha = methDim ? (methDim === 'blocked' ? 0.15 : 0.25) : 0.3
-          ctx.lineWidth = 1
-          ctx.stroke()
-          ctx.globalAlpha = methDim ? (methDim === 'blocked' ? 0.25 : 0.5) : 1
-        }
-
-        // Label text
-        const lx = cx + Math.cos(item.angle) * labelR
-        const ly = cy + Math.sin(item.angle) * labelR
-        ctx.save()
-        ctx.font = isHovered ? 'bold 10px sans-serif' : '9px sans-serif'
-        ctx.fillStyle = C.enzyme
-        ctx.textAlign = 'center'
-        ctx.textBaseline = 'middle'
-        ctx.translate(lx, ly)
-        let textAngle = item.angle + Math.PI / 2
-        if (textAngle > Math.PI / 2 && textAngle < Math.PI * 1.5) {
-          textAngle += Math.PI
-        }
-        ctx.rotate(textAngle)
-        ctx.fillText(item.group.label, 0, 0)
-        ctx.restore()
-        if (methDim) ctx.globalAlpha = 1
-      }
-    }
-
-    // --- Annotation arcs ---
-    const outsideLabels: { name: string; midAngle: number; arcRadius: number; isHovered: boolean; color: string }[] = []
-    const rings = stackAnnotations(allAnnotations)
-    for (let ringIdx = 0; ringIdx < rings.length; ringIdx++) {
-      const radius = baseRadius + 14 + ringIdx * (ANNOTATION_ARC_WIDTH + ANNOTATION_GAP)
-
-      for (const ann of rings[ringIdx]) {
-        const startAngle = posToAngle(ann.start, seqLen)
-        const span = annArcSpan(ann.start, ann.end, seqLen)
-        const isHovered = ann.id === hoveredAnnotationId
-
-        const arcW = isHovered ? ANNOTATION_ARC_WIDTH + 4 : ANNOTATION_ARC_WIDTH
-
-        // Auto-annotation proposals are not in the document yet, so they are
-        // drawn faint with a dashed outline; picking one fills it in and
-        // outlines it solid in the accent colour. Same language as the linear
-        // view, because the same Ctrl-click works in both.
-        const autoKey = keyFromAutoId(ann.id)
-        const orfK = keyFromOrfId(ann.id)
-        const isProposal = autoKey !== null
-        const isPicked = (autoKey !== null && autoAnnotationPicks.has(autoKey))
-          || (orfK !== null && orfPicks.has(orfK))
-
-        // Draw arc with original color
-        ctx.strokeStyle = ann.color
-        ctx.fillStyle = ann.color
-        ctx.lineWidth = arcW
-        ctx.lineCap = 'butt'
-        ctx.globalAlpha = isHovered ? 1 : isProposal ? (isPicked ? 0.6 : 0.28) : 0.7
-
-        drawAnnotationArc(ctx, cx, cy, radius, startAngle, span, ann.strand, ann.color, arcW)
-
-        // Draw outline border around the full annotation shape
-        ctx.globalAlpha = isHovered ? 1 : 0.8
-        if (isProposal && !isPicked) ctx.setLineDash([4, 3])
-        strokeAnnotationArcOutline(
-          ctx, cx, cy, radius, startAngle, span, ann.strand, arcW,
-          isPicked ? C.accent : visibleStroke(ann.color),
-          isPicked ? 2 : 1,
-        )
-        ctx.setLineDash([])
-
-        ctx.globalAlpha = 1
-
-        // Label - render inside the arc if it fits, otherwise collect for outside placement
-        const midAngle = startAngle + span / 2
-        const labelFont = isHovered ? 'bold 12px sans-serif' : LABEL_FONT
-        ctx.font = labelFont
-        const textWidth = ctx.measureText(ann.name).width
-        const arcLength = Math.abs(span) * radius
-        const textPad = 8
-
-        if (textWidth + textPad < arcLength) {
-          // Render text curved along the arc
-          ctx.save()
-          ctx.font = labelFont
-          ctx.fillStyle = contrastText(ann.color)
-          ctx.textAlign = 'center'
-          ctx.textBaseline = 'middle'
-
-          // Measure each character width
-          const chars = ann.name.split('')
-          const charWidths = chars.map(ch => ctx.measureText(ch).width)
-          const totalCharWidth = charWidths.reduce((a, b) => a + b, 0)
-
-          // Angular span the text occupies
-          const textAngularSpan = totalCharWidth / radius
-
-          // Determine if text should be flipped (bottom half of circle)
-          const normMid = ((midAngle % (Math.PI * 2)) + Math.PI * 2) % (Math.PI * 2)
-          const flip = normMid > Math.PI / 2 && normMid < Math.PI * 1.5
-
-          // Starting angle: center the text at midAngle
-          let charAngle: number
-          if (flip) {
-            // Read right-to-left so text isn't upside down
-            charAngle = midAngle + textAngularSpan / 2
-            for (let ci = 0; ci < chars.length; ci++) {
-              const halfChar = charWidths[ci] / 2 / radius
-              charAngle -= halfChar
-              const x = cx + Math.cos(charAngle) * radius
-              const y = cy + Math.sin(charAngle) * radius
-              ctx.save()
-              ctx.translate(x, y)
-              ctx.rotate(charAngle - Math.PI / 2)
-              ctx.fillText(chars[ci], 0, 0)
-              ctx.restore()
-              charAngle -= halfChar
-            }
-          } else {
-            charAngle = midAngle - textAngularSpan / 2
-            for (let ci = 0; ci < chars.length; ci++) {
-              const halfChar = charWidths[ci] / 2 / radius
-              charAngle += halfChar
-              const x = cx + Math.cos(charAngle) * radius
-              const y = cy + Math.sin(charAngle) * radius
-              ctx.save()
-              ctx.translate(x, y)
-              ctx.rotate(charAngle + Math.PI / 2)
-              ctx.fillText(chars[ci], 0, 0)
-              ctx.restore()
-              charAngle += halfChar
-            }
-          }
-          ctx.restore()
-        } else {
-          // Collect for outside label placement (rendered after all arcs)
-          outsideLabels.push({
-            name: ann.name,
-            midAngle,
-            arcRadius: radius,
-            isHovered,
-            color: ann.color,
-          })
-        }
-      }
-    }
-
-    // --- Outside annotation labels (straight text, tiered to avoid overlap) ---
-    if (outsideLabels.length > 0) {
-      const TWO_PI = Math.PI * 2
-      const normalize = (a: number) => ((a % TWO_PI) + TWO_PI) % TWO_PI
-      const OUTSIDE_LABEL_FONT = '10px sans-serif'
-      const OUTSIDE_LABEL_FONT_BOLD = 'bold 11px sans-serif'
-      const TIER_GAP = 14
-      const MAX_LABEL_WIDTH = size * 0.22
-      const LEADER_GAP = 4 // gap between arc and leader line start
-
-      // Compute the outermost annotation ring radius
-      const outermostRingR = baseRadius + 14 + (rings.length - 1) * (ANNOTATION_ARC_WIDTH + ANNOTATION_GAP)
-      const baseLabelR = outermostRingR + ANNOTATION_ARC_WIDTH / 2 + 18
-
-      // Prepare labels: measure text, truncate if needed
-      ctx.font = OUTSIDE_LABEL_FONT
-      interface OutsideLabel {
-        name: string
-        displayName: string
-        angle: number // normalized [0, 2π)
-        midAngle: number // original (for positioning)
-        arcRadius: number
-        textWidth: number
-        isHovered: boolean
-        color: string
-        tier: number
-      }
-
-      const labels: OutsideLabel[] = outsideLabels.map(ol => {
-        const font = ol.isHovered ? OUTSIDE_LABEL_FONT_BOLD : OUTSIDE_LABEL_FONT
-        ctx.font = font
-        let displayName = ol.name
-        let tw = ctx.measureText(displayName).width
-        if (tw > MAX_LABEL_WIDTH) {
-          // Truncate with ellipsis
-          while (displayName.length > 1 && tw > MAX_LABEL_WIDTH) {
-            displayName = displayName.slice(0, -1)
-            tw = ctx.measureText(displayName + '…').width
-          }
-          displayName += '…'
-          tw = ctx.measureText(displayName).width
-        }
-        return {
-          name: ol.name,
-          displayName,
-          angle: normalize(ol.midAngle),
-          midAngle: ol.midAngle,
-          arcRadius: ol.arcRadius,
-          textWidth: tw,
-          isHovered: ol.isHovered,
-          color: ol.color,
-          tier: 0,
-        }
+  const scenePrimers: ScenePrimer[] = useMemo(() => {
+    if (!showPrimers || allPrimerResults.length === 0) return []
+    const out: ScenePrimer[] = []
+    allPrimerResults.forEach((pair, i) => {
+      const selected = selectedPrimerIndices.has(i)
+      out.push({
+        id: `primer_${i}_f`, name: `Primer ${i + 1} F`,
+        start: pair.forward.start, end: pair.forward.end, strand: 1, selected,
       })
+      out.push({
+        id: `primer_${i}_r`, name: `Primer ${i + 1} R`,
+        start: pair.reverse.start, end: pair.reverse.end, strand: -1, selected,
+      })
+    })
+    return out
+  }, [showPrimers, allPrimerResults, selectedPrimerIndices])
 
-      // Sort by angle for consistent processing
-      labels.sort((a, b) => a.angle - b.angle)
+  /** Scanned once per sequence rather than once per redraw. */
+  const methylation = useMemo(
+    () => findMethylationSites(doc.sequence.bases, damMeth, dcmMeth),
+    [doc.sequence.bases, damMeth, dcmMeth],
+  )
 
-      // Assign tiers using screen-space bounding box collision detection.
-      // For horizontal text, angular overlap doesn't capture the real overlap –
-      // we need to check if the actual rendered rectangles intersect.
-      const LABEL_H = 12 // approximate line height
-      const LABEL_PAD = 3
+  const gcSeries = useMemo(
+    () => (showGcRing ? computeGcSeries(doc.sequence.bases) : null),
+    [showGcRing, doc.sequence.bases],
+  )
 
-      // For x-extent computation: use the label's own arc radius (not just
-      // the outermost ring) to ensure clearance from its specific feature.
-      const TEXT_GAP_ = 6
+  const gcOverall = useMemo(
+    () => (doc.sequence.length > 0 ? gcPercent(doc.sequence.bases) : null),
+    [doc.sequence.bases, doc.sequence.length],
+  )
 
-      function labelXPos(l: OutsideLabel, tier: number): { lx: number; ly: number; align: CanvasTextAlign } {
-        const tierOffset = tier * TIER_GAP
-        const r = baseLabelR + tierOffset
-        // Position along the radial direction
-        const rx = cx + Math.cos(l.midAngle) * r
-        const ry = cy + Math.sin(l.midAngle) * r
-        const na = normalize(l.midAngle)
-        // Very narrow top/bottom zones (within ~5° of 12/6 o'clock)
-        const nearTop = na > Math.PI * 1.47 || na < Math.PI * 0.03
-        const nearBottom = na > Math.PI * 0.47 && na < Math.PI * 0.53
-        const onRight = na < Math.PI / 2 || na > Math.PI * 1.5
+  const legend = useMemo(() => {
+    if (!showPlasmidLegend) return null
+    const seen = new Map<string, string>()
+    for (const a of allAnnotations) if (!seen.has(a.type)) seen.set(a.type, a.color)
+    return [...seen].slice(0, 12).map(([label, color]) => ({ label, color }))
+  }, [showPlasmidLegend, allAnnotations])
 
-        if (nearTop || nearBottom) {
-          return { lx: rx, ly: ry, align: 'center' }
-        }
+  // --- Scene ---
+  const [canvasSize, setCanvasSize] = useState(0)
 
-        // For all other labels: ensure the text clears the outermost arc
-        // at this y-coordinate.  Compute the arc's x-extent at ry, then
-        // place text just beyond it – but never closer than the radial point.
-        const arcOuter = Math.max(l.arcRadius, outermostRingR) + ANNOTATION_ARC_WIDTH / 2 + 4
-        const dy = ry - cy
-        const rSq = arcOuter * arcOuter
-        const dySq = dy * dy
-        if (dySq < rSq) {
-          const xExtent = Math.sqrt(rSq - dySq)
-          if (onRight) {
-            const clearX = cx + xExtent + TEXT_GAP_ + tierOffset
-            const lx = Math.max(clearX, rx)
-            return { lx, ly: ry, align: 'left' }
-          } else {
-            const clearX = cx - xExtent - TEXT_GAP_ - tierOffset
-            const lx = Math.min(clearX, rx)
-            return { lx, ly: ry, align: 'right' }
-          }
-        }
-        // dy >= arcOuter means we're above/below the arc circle – use radial
-        return { lx: rx, ly: ry, align: onRight ? 'left' : 'right' }
+  /**
+   * Bumped when the app theme changes, so the scene re-resolves its colours.
+   *
+   * The palette comes from CSS custom properties on `.app-root`, which React
+   * cannot see. The old renderer had the same blind spot and simply kept
+   * drawing in the previous theme's colours until some unrelated redraw came
+   * along, usually the next hover. Watching the attribute is cheap because it
+   * only fires on an actual theme switch.
+   */
+  const [themeVersion, setThemeVersion] = useState(0)
+  useEffect(() => {
+    const root = containerRef.current?.closest('.app-root')
+    if (!root) return
+    const mo = new MutationObserver(() => setThemeVersion(v => v + 1))
+    mo.observe(root, { attributes: true, attributeFilter: ['data-theme'] })
+    return () => mo.disconnect()
+  }, [])
+
+  const scene = useMemo<PlasmidScene | null>(() => {
+    if (canvasSize <= 0) return null
+    const colors = resolvePlasmidColors(style, containerRef.current)
+    return buildPlasmidScene({
+      size: canvasSize,
+      seqLen: doc.sequence.length,
+      name: doc.name,
+      topology: doc.sequence.topology,
+      displayOrigin: (doc.sequence.topology === 'circular' ? doc.metadata?.displayOrigin : 0) || 0,
+      style,
+      colors,
+      measureText,
+      rings,
+      hoveredAnnotationId,
+      proposalIds,
+      pickedIds,
+      enzymeGroups: sceneEnzymes,
+      hoveredEnzymeKey,
+      primers: scenePrimers,
+      selection,
+      selectionSpansOrigin: isOriginSpanningSelection(selection, 'circular'),
+      selectionLength: selectionLength(selection, 'circular', doc.sequence.length),
+      methylation,
+      gc: gcSeries,
+      gcPercent: gcOverall,
+      legend,
+    })
+  }, [
+    canvasSize, doc.sequence.length, doc.sequence.topology, doc.name, doc.metadata,
+    style, rings, hoveredAnnotationId, proposalIds, pickedIds, sceneEnzymes,
+    hoveredEnzymeKey, scenePrimers, selection, methylation, gcSeries, gcOverall, legend,
+    themeVersion,
+  ])
+
+  const sceneRef = useRef<PlasmidScene | null>(null)
+  sceneRef.current = scene
+  const viewportRef = useRef(viewport)
+  viewportRef.current = viewport
+
+  // --- Painting, coalesced into one frame ---
+  const rafRef = useRef(0)
+  const paint = useCallback(() => {
+    if (rafRef.current) return
+    rafRef.current = requestAnimationFrame(() => {
+      rafRef.current = 0
+      const canvas = canvasRef.current
+      const s = sceneRef.current
+      if (!canvas || !s) return
+      const dpr = window.devicePixelRatio || 1
+      const px = Math.round(s.size * dpr)
+      // Assigning width/height reallocates the backing store, so only do it
+      // when the size has actually changed.
+      if (canvas.width !== px || canvas.height !== px) {
+        canvas.width = px
+        canvas.height = px
+        canvas.style.width = `${s.size}px`
+        canvas.style.height = `${s.size}px`
       }
+      const ctx = canvas.getContext('2d')
+      if (!ctx) return
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
+      renderSceneToCanvas(ctx, s, viewportRef.current)
+    })
+  }, [])
 
-      function labelRect(l: OutsideLabel, tier: number): { x1: number; y1: number; x2: number; y2: number } {
-        const { lx, ly, align } = labelXPos(l, tier)
-        let x1: number, x2: number
-        if (align === 'center') {
-          x1 = lx - l.textWidth / 2 - LABEL_PAD
-          x2 = lx + l.textWidth / 2 + LABEL_PAD
-        } else if (align === 'left') {
-          x1 = lx - LABEL_PAD
-          x2 = lx + l.textWidth + LABEL_PAD
-        } else {
-          x1 = lx - l.textWidth - LABEL_PAD
-          x2 = lx + LABEL_PAD
-        }
-        return { x1, y1: ly - LABEL_H / 2 - LABEL_PAD, x2, y2: ly + LABEL_H / 2 + LABEL_PAD }
-      }
+  useEffect(() => { paint() }, [scene, viewport, paint])
+  useEffect(() => () => { if (rafRef.current) cancelAnimationFrame(rafRef.current) }, [])
 
-      function rectsOverlap(a: ReturnType<typeof labelRect>, b: ReturnType<typeof labelRect>): boolean {
-        return a.x1 < b.x2 && a.x2 > b.x1 && a.y1 < b.y2 && a.y2 > b.y1
-      }
-
-      const tierRects: ReturnType<typeof labelRect>[][] = []
-
-      for (const label of labels) {
-        let placed = false
-        for (let t = 0; t < tierRects.length; t++) {
-          const rect = labelRect(label, t)
-          let overlaps = false
-          for (const existing of tierRects[t]) {
-            if (rectsOverlap(rect, existing)) {
-              overlaps = true
-              break
-            }
-          }
-          if (!overlaps) {
-            label.tier = t
-            tierRects[t].push(rect)
-            placed = true
-            break
-          }
-        }
-        if (!placed) {
-          label.tier = tierRects.length
-          tierRects.push([labelRect(label, label.tier)])
-        }
-      }
-
-      // Draw labels with leader lines
-      for (const label of labels) {
-        const { lx, ly, align } = labelXPos(label, label.tier)
-
-        // Leader line from arc edge to near the label
-        const leaderStartR = label.arcRadius + ANNOTATION_ARC_WIDTH / 2 + LEADER_GAP
-        const leaderEndX = lx + (align === 'left' ? -3 : align === 'right' ? 3 : 0)
-        const leaderEndY = ly
-        const sx = cx + Math.cos(label.midAngle) * leaderStartR
-        const sy = cy + Math.sin(label.midAngle) * leaderStartR
-        const leaderLen = Math.hypot(leaderEndX - sx, leaderEndY - sy)
-        if (leaderLen > 8) {
-          ctx.beginPath()
-          ctx.moveTo(sx, sy)
-          ctx.lineTo(leaderEndX, leaderEndY)
-          ctx.strokeStyle = label.isHovered ? C.text : C.tickMinor
-          ctx.lineWidth = 0.75
-          ctx.stroke()
-        }
-
-        // Draw horizontal text
-        const font = label.isHovered ? OUTSIDE_LABEL_FONT_BOLD : OUTSIDE_LABEL_FONT
-        ctx.font = font
-        ctx.fillStyle = label.isHovered ? C.text : C.textMuted
-        ctx.textAlign = align
-        ctx.textBaseline = 'middle'
-        ctx.fillText(label.displayName, lx, ly)
-      }
+  // One observer for the component's life, rather than a new one per redraw.
+  useEffect(() => {
+    const container = containerRef.current
+    if (!container) return
+    const measure = () => {
+      setCanvasSize(Math.min(container.clientWidth, container.clientHeight))
     }
+    measure()
+    const ro = new ResizeObserver(measure)
+    ro.observe(container)
+    return () => ro.disconnect()
+  }, [])
 
-    // --- Caret indicator ---
-    const hasSelection = selection.anchor !== selection.caret
-    if (!hasSelection) {
-      const caretAngle = posToAngle(selection.caret, seqLen)
-      const innerR = baseRadius - 10
-      const outerR = baseRadius + 10
-      ctx.beginPath()
-      ctx.moveTo(cx + Math.cos(caretAngle) * innerR, cy + Math.sin(caretAngle) * innerR)
-      ctx.lineTo(cx + Math.cos(caretAngle) * outerR, cy + Math.sin(caretAngle) * outerR)
-      ctx.strokeStyle = C.accent
-      ctx.lineWidth = 2
-      ctx.stroke()
+  // --- Coordinate conversion ---
+
+  /** Client point to scene coordinates, undoing the viewport transform. */
+  const toSceneXY = useCallback((clientX: number, clientY: number) => {
+    const canvas = canvasRef.current
+    const s = sceneRef.current
+    if (!canvas || !s) return null
+    const rect = canvas.getBoundingClientRect()
+    const vp = viewportRef.current
+    const half = s.size / 2
+    return {
+      x: (clientX - rect.left - vp.tx - half) / vp.scale + half,
+      y: (clientY - rect.top - vp.ty - half) / vp.scale + half,
+      scene: s,
     }
+  }, [])
 
-    // --- Center text ---
-    ctx.fillStyle = C.text
-    ctx.font = CENTER_FONT_NAME
-    ctx.textAlign = 'center'
-    ctx.textBaseline = 'middle'
-    const maxNameW = baseRadius * 1.6
-    let centerName = doc.name
-    if (ctx.measureText(centerName).width > maxNameW) {
-      while (centerName.length > 1 && ctx.measureText(centerName + '…').width > maxNameW) {
-        centerName = centerName.slice(0, -1)
-      }
-      centerName += '…'
+  /** Topmost hit region under a scene point, searched newest first so the
+   *  outer rings win over the ones they are drawn on top of. */
+  const hitTest = useCallback((x: number, y: number, scn: PlasmidScene) => {
+    const cx = scn.size / 2
+    const cy = scn.size / 2
+    const dx = x - cx
+    const dy = y - cy
+    const dist = Math.hypot(dx, dy)
+    const angle = Math.atan2(dy, dx)
+
+    // Points (enzymes) take precedence: they are small and deliberate.
+    for (const r of scn.hitRegions) {
+      if (r.kind !== 'point') continue
+      if ((x - r.x) ** 2 + (y - r.y) ** 2 < r.r * r.r) return r
     }
-    ctx.fillText(centerName, cx, cy - 10)
-    ctx.font = CENTER_FONT_SIZE
-    ctx.fillStyle = C.textMuted
-    ctx.fillText(formatBp(seqLen), cx, cy + 10)
-
-    if (hasSelection) {
-      const selBpCount = selectionLength(selection, 'circular', seqLen)
-      ctx.font = '11px sans-serif'
-      ctx.fillStyle = C.accent
-      ctx.fillText(`${selBpCount} bp selected`, cx, cy + 28)
+    for (let i = scn.hitRegions.length - 1; i >= 0; i--) {
+      const r = scn.hitRegions[i]
+      if (r.kind !== 'arc') continue
+      if (dist < r.radius - r.halfWidth || dist > r.radius + r.halfWidth) continue
+      if (normalizeAngle(angle - r.startAngle) <= r.span) return r
     }
-  }, [doc, selection, hoveredAnnotationId, groupedEnzymeSites, hoveredEnzymeGroup, allAnnotations, autoAnnotationPicks, orfPicks])
+    return null
+  }, [])
 
-  // --- Click handler: click annotation to select its range, or backbone to place caret ---
+  // --- Pointer handlers ---
+
   const handleClick = useCallback((e: MouseEvent) => {
     setCtxMenu(null)
-
-    const canvas = canvasRef.current
-    const container = containerRef.current
-    if (!canvas || !container) return
-
-    const rect = canvas.getBoundingClientRect()
-    const px = e.clientX - rect.left
-    const py = e.clientY - rect.top
-    const size = Math.min(container.clientWidth, container.clientHeight)
-    const cx = size / 2
-    const cy = size / 2
+    setExportOpen(false)
+    const p = toSceneXY(e.clientX, e.clientY)
+    if (!p) return
     const seqLen = doc.sequence.length
     if (seqLen === 0) return
+    const { x, y, scene: scn } = p
+    const cx = scn.size / 2
+    const cy = scn.size / 2
 
-    const baseRadius = size * 0.32
-    const rings = stackAnnotations(allAnnotations)
-
-    // Check center name click - open inline editor
-    const dxCenter = px - cx
-    const dyCenter = py - cy
-    if (Math.abs(dxCenter) < 60 && Math.abs(dyCenter) < 16) {
+    // Centre name opens the inline editor.
+    if (Math.abs(x - cx) < 70 && Math.abs(y - (cy - 12)) < 14) {
       setNameValue(doc.name)
       setEditingName(true)
       setTimeout(() => {
@@ -1085,148 +425,201 @@ function PlasmidMap(_props: PlasmidMapProps) {
       return
     }
 
-    // Check enzyme hit first - select recognition site, switch to linear only if in circular-only view
-    const hitEnzyme = hitTestEnzymeGroup(px, py, cx, cy, baseRadius, groupedEnzymeSites, seqLen)
-    if (hitEnzyme) {
-      setSelection({ anchor: hitEnzyme.recognitionStart, caret: hitEnzyme.recognitionEnd })
-      if (useEditorStore.getState().viewMode === 'circular') {
-        setViewMode('linear')
+    const hit = hitTest(x, y, scn)
+    if (hit?.type === 'enzyme') {
+      const group = enzymeByKey.get(hit.id)
+      if (group) {
+        setSelection({ anchor: group.recognitionStart, caret: group.recognitionEnd })
+        if (useEditorStore.getState().viewMode === 'circular') setViewMode('linear')
       }
       return
     }
-
-    // Check annotation hit
-    const hitAnn = hitTestAnnotationArc(px, py, cx, cy, baseRadius, allAnnotations, rings, seqLen)
-    if (hitAnn) {
-      // Ctrl/Cmd-click picks a suggestion or an ORF, as in the linear view.
+    if (hit?.type === 'primer') {
+      const p2 = scenePrimers.find(sp => sp.id === hit.id)
+      if (p2) setSelection({ anchor: p2.start, caret: p2.end })
+      return
+    }
+    if (hit?.type === 'feature') {
+      const ann = annById.get(hit.id)
+      if (!ann) return
       if (e.ctrlKey || e.metaKey) {
-        const autoKey = keyFromAutoId(hitAnn.id)
-        if (autoKey !== null) {
-          useEditorStore.getState().toggleAutoAnnotationPick(autoKey)
-          return
-        }
-        const orfK = keyFromOrfId(hitAnn.id)
-        if (orfK !== null) {
-          useEditorStore.getState().toggleOrfPick(orfK)
-          return
-        }
+        const autoKey = keyFromAutoId(ann.id)
+        if (autoKey !== null) { useEditorStore.getState().toggleAutoAnnotationPick(autoKey); return }
+        const orfK = keyFromOrfId(ann.id)
+        if (orfK !== null) { useEditorStore.getState().toggleOrfPick(orfK); return }
       }
-      setSelection({ anchor: hitAnn.start, caret: hitAnn.end })
+      setSelection({ anchor: ann.start, caret: ann.end })
       return
     }
 
-    // Calculate angle from center
-    const dx = px - cx
-    const dy = py - cy
-    const dist = Math.sqrt(dx * dx + dy * dy)
+    // Backbone: place the caret.
+    const dist = Math.hypot(x - cx, y - cy)
+    if (dist < scn.baseRadius * 0.5 || dist > scn.baseRadius * 1.8) return
+    const pos = angleToPos(Math.atan2(y - cy, x - cx), seqLen)
+    if (e.shiftKey) setSelection({ anchor: selection.anchor, caret: pos })
+    else setCaret(pos)
+  }, [
+    doc.sequence.length, doc.name, toSceneXY, hitTest, enzymeByKey, annById,
+    scenePrimers, selection.anchor, setSelection, setCaret, setViewMode,
+  ])
 
-    // Only respond to clicks near the backbone
-    if (dist < baseRadius * 0.5 || dist > baseRadius * 1.8) return
-
-    let angle = Math.atan2(dy, dx) + Math.PI / 2
-    if (angle < 0) angle += Math.PI * 2
-    const pos = Math.round((angle / (Math.PI * 2)) * seqLen) % seqLen
-
-    if (e.shiftKey) {
-      setSelection({ anchor: selection.anchor, caret: pos })
-    } else {
-      setCaret(pos)
-    }
-  }, [doc.sequence.length, allAnnotations, groupedEnzymeSites, selection.anchor, setSelection, setCaret, setViewMode])
-
-  // --- Mousemove handler: hover detection for annotations and enzymes ---
   const handleMouseMove = useCallback((e: MouseEvent) => {
     const canvas = canvasRef.current
-    const container = containerRef.current
-    if (!canvas || !container) return
+    if (!canvas) return
 
-    const rect = canvas.getBoundingClientRect()
-    const px = e.clientX - rect.left
-    const py = e.clientY - rect.top
-    const size = Math.min(container.clientWidth, container.clientHeight)
-    const cx = size / 2
-    const cy = size / 2
-    const seqLen = doc.sequence.length
-    if (seqLen === 0) return
-
-    const baseRadius = size * 0.32
-
-    // Check enzyme hover first
-    const hitEnzyme = hitTestEnzymeGroup(px, py, cx, cy, baseRadius, groupedEnzymeSites, seqLen)
-    if (hitEnzyme) {
-      setHoveredEnzymeGroup(hitEnzyme)
-      showEnzymeTooltip({ x: e.clientX, y: e.clientY, key: enzymeGroupKey(hitEnzyme), group: hitEnzyme })
-      hideAnnTooltip()
-      canvas.style.cursor = 'pointer'
-      if (useEditorStore.getState().hoveredAnnotationId) {
-        setHoveredAnnotation(null)
-      }
+    if (panRef.current) {
+      const p = panRef.current
+      setViewport(v => ({ ...v, tx: p.tx + (e.clientX - p.x), ty: p.ty + (e.clientY - p.y) }))
       return
     }
 
-    // Clear enzyme hover
-    if (hoveredEnzymeGroup) {
-      setHoveredEnzymeGroup(null)
+    const pt = toSceneXY(e.clientX, e.clientY)
+    if (!pt || doc.sequence.length === 0) return
+    const hit = hitTest(pt.x, pt.y, pt.scene)
+
+    const store = useEditorStore.getState()
+    if (hit?.type === 'enzyme') {
+      const group = enzymeByKey.get(hit.id)
+      if (group) {
+        if (hoveredEnzymeKey !== hit.id) setHoveredEnzymeKey(hit.id)
+        showEnzymeTooltip({ x: e.clientX, y: e.clientY, key: hit.id, group })
+        hideAnnTooltip()
+        canvas.style.cursor = 'pointer'
+        if (store.hoveredAnnotationId) setHoveredAnnotation(null)
+        return
+      }
+    }
+    if (hoveredEnzymeKey) {
+      setHoveredEnzymeKey(null)
       hideEnzymeTooltip()
     }
 
-    const rings = stackAnnotations(allAnnotations)
-    const hitAnn = hitTestAnnotationArc(px, py, cx, cy, baseRadius, allAnnotations, rings, seqLen)
-
-    const currentHover = useEditorStore.getState().hoveredAnnotationId
-    const newId = hitAnn?.id ?? null
-    if (newId !== currentHover) {
-      setHoveredAnnotation(newId)
-    }
-    if (hitAnn) {
-      showAnnTooltip({ x: e.clientX + 12, y: e.clientY - 10, key: hitAnn.id })
-    } else {
-      hideAnnTooltip()
-    }
-    canvas.style.cursor = hitAnn ? 'pointer' : 'crosshair'
-  }, [doc.sequence.length, allAnnotations, groupedEnzymeSites, hoveredEnzymeGroup, setHoveredAnnotation, showAnnTooltip, hideAnnTooltip, showEnzymeTooltip, hideEnzymeTooltip])
+    const featureId = hit?.type === 'feature' ? hit.id : null
+    if (featureId !== store.hoveredAnnotationId) setHoveredAnnotation(featureId)
+    if (featureId) showAnnTooltip({ x: e.clientX + 12, y: e.clientY - 10, key: featureId })
+    else hideAnnTooltip()
+    canvas.style.cursor = hit ? 'pointer' : viewportRef.current.scale > 1 ? 'grab' : 'crosshair'
+  }, [
+    doc.sequence.length, toSceneXY, hitTest, enzymeByKey, hoveredEnzymeKey,
+    setHoveredAnnotation, showAnnTooltip, hideAnnTooltip, showEnzymeTooltip, hideEnzymeTooltip,
+  ])
 
   const handleMouseLeave = useCallback(() => {
-    if (useEditorStore.getState().hoveredAnnotationId) {
-      setHoveredAnnotation(null)
-    }
-    setHoveredEnzymeGroup(null)
+    if (useEditorStore.getState().hoveredAnnotationId) setHoveredAnnotation(null)
+    setHoveredEnzymeKey(null)
     hideEnzymeTooltip()
     hideAnnTooltip()
+    panRef.current = null
   }, [setHoveredAnnotation, hideAnnTooltip, hideEnzymeTooltip])
 
-  // --- Context menu ---
   const handleContextMenu = useCallback((e: MouseEvent) => {
     e.preventDefault()
-    const canvas = canvasRef.current
-    const container = containerRef.current
-    if (!canvas || !container) return
-
-    const rect = canvas.getBoundingClientRect()
-    const px = e.clientX - rect.left
-    const py = e.clientY - rect.top
-    const size = Math.min(container.clientWidth, container.clientHeight)
-    const cx = size / 2
-    const cy = size / 2
-    const seqLen = doc.sequence.length
-    if (seqLen === 0) return
-
-    const baseRadius = size * 0.32
-    const rings = stackAnnotations(allAnnotations)
-    const hitAnn = hitTestAnnotationArc(px, py, cx, cy, baseRadius, allAnnotations, rings, seqLen)
-    const hitEnzyme = hitTestEnzymeGroup(px, py, cx, cy, baseRadius, groupedEnzymeSites, seqLen)
-
-    // Clear hover tooltips - the context menu will embed tooltip content
+    const p = toSceneXY(e.clientX, e.clientY)
+    if (!p || doc.sequence.length === 0) return
+    const hit = hitTest(p.x, p.y, p.scene)
     hideAnnTooltip()
     hideEnzymeTooltip()
-
     setCtxMenu({
       x: e.clientX,
       y: e.clientY,
-      annId: hitAnn?.id ?? null,
-      enzymeGroup: hitEnzyme,
+      annId: hit?.type === 'feature' ? hit.id : null,
+      enzymeGroup: hit?.type === 'enzyme' ? enzymeByKey.get(hit.id) ?? null : null,
     })
-  }, [doc.sequence.length, allAnnotations, groupedEnzymeSites, hideAnnTooltip, hideEnzymeTooltip])
+  }, [doc.sequence.length, toSceneXY, hitTest, enzymeByKey, hideAnnTooltip, hideEnzymeTooltip])
+
+  const handleDblClick = useCallback((e: MouseEvent) => {
+    const p = toSceneXY(e.clientX, e.clientY)
+    if (!p || doc.sequence.length === 0) return
+    const hit = hitTest(p.x, p.y, p.scene)
+    if (hit?.type === 'feature') {
+      useEditorStore.getState().setEditAnnotation(hit.id)
+      _props.onEditFeature?.(hit.id)
+      return
+    }
+    // Empty space returns the view to fit, which is the escape hatch from a
+    // zoom the user cannot otherwise undo with the pointer.
+    if (!hit) setViewport(FIT)
+  }, [doc.sequence.length, toSceneXY, hitTest, _props])
+
+  const handleWheel = useCallback((e: WheelEvent) => {
+    if (!e.ctrlKey && !e.metaKey && Math.abs(e.deltaY) < 1) return
+    e.preventDefault()
+    const canvas = canvasRef.current
+    const s = sceneRef.current
+    if (!canvas || !s) return
+    const rect = canvas.getBoundingClientRect()
+    const px = e.clientX - rect.left
+    const py = e.clientY - rect.top
+
+    setViewport(v => {
+      const next = Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, v.scale * (e.deltaY < 0 ? 1.12 : 1 / 1.12)))
+      if (next === v.scale) return v
+      if (next === MIN_ZOOM) return FIT
+      // Keep the point under the cursor fixed while the scale changes.
+      const half = s.size / 2
+      const k = next / v.scale
+      return {
+        scale: next,
+        tx: px - k * (px - v.tx - half) - half,
+        ty: py - k * (py - v.ty - half) - half,
+      }
+    })
+  }, [])
+
+  const handleMouseDown = useCallback((e: MouseEvent) => {
+    if (e.button !== 0 || viewportRef.current.scale <= 1) return
+    const p = toSceneXY(e.clientX, e.clientY)
+    if (!p) return
+    // Dragging pans only on empty space, so dragging across a feature still
+    // behaves like a click on it.
+    if (hitTest(p.x, p.y, p.scene)) return
+    panRef.current = { x: e.clientX, y: e.clientY, tx: viewportRef.current.tx, ty: viewportRef.current.ty }
+  }, [toSceneXY, hitTest])
+
+  const handleMouseUp = useCallback(() => { panRef.current = null }, [])
+
+  // Listeners attached once. They used to be removed and re-added on every
+  // hover, because the draw callback was in this effect's dependency list.
+  const handlers = useRef({
+    handleClick, handleDblClick, handleMouseMove, handleMouseLeave,
+    handleContextMenu, handleWheel, handleMouseDown, handleMouseUp,
+  })
+  handlers.current = {
+    handleClick, handleDblClick, handleMouseMove, handleMouseLeave,
+    handleContextMenu, handleWheel, handleMouseDown, handleMouseUp,
+  }
+
+  useEffect(() => {
+    const canvas = canvasRef.current
+    if (!canvas) return
+    const click = (e: MouseEvent) => handlers.current.handleClick(e)
+    const dbl = (e: MouseEvent) => handlers.current.handleDblClick(e)
+    const move = (e: MouseEvent) => handlers.current.handleMouseMove(e)
+    const leave = () => handlers.current.handleMouseLeave()
+    const ctx = (e: MouseEvent) => handlers.current.handleContextMenu(e)
+    const wheel = (e: WheelEvent) => handlers.current.handleWheel(e)
+    const down = (e: MouseEvent) => handlers.current.handleMouseDown(e)
+    const up = () => handlers.current.handleMouseUp()
+
+    canvas.addEventListener('click', click)
+    canvas.addEventListener('dblclick', dbl)
+    canvas.addEventListener('mousemove', move)
+    canvas.addEventListener('mouseleave', leave)
+    canvas.addEventListener('contextmenu', ctx)
+    canvas.addEventListener('wheel', wheel, { passive: false })
+    canvas.addEventListener('mousedown', down)
+    window.addEventListener('mouseup', up)
+    return () => {
+      canvas.removeEventListener('click', click)
+      canvas.removeEventListener('dblclick', dbl)
+      canvas.removeEventListener('mousemove', move)
+      canvas.removeEventListener('mouseleave', leave)
+      canvas.removeEventListener('contextmenu', ctx)
+      canvas.removeEventListener('wheel', wheel)
+      canvas.removeEventListener('mousedown', down)
+      window.removeEventListener('mouseup', up)
+    }
+  }, [])
 
   // Close context menu on outside click or scroll
   useEffect(() => {
@@ -1248,52 +641,33 @@ function PlasmidMap(_props: PlasmidMapProps) {
     }
   }, [ctxMenu])
 
-  // Double-click on annotation opens the edit annotation panel
-  const handleDblClick = useCallback((e: MouseEvent) => {
-    const canvas = canvasRef.current
-    const container = containerRef.current
-    if (!canvas || !container) return
-    const rect = canvas.getBoundingClientRect()
-    const px = e.clientX - rect.left
-    const py = e.clientY - rect.top
-    const size = Math.min(container.clientWidth, container.clientHeight)
-    const cx = size / 2
-    const cy = size / 2
-    const seqLen = doc.sequence.length
-    if (seqLen === 0) return
-    const baseRadius = size * 0.32
-    const rings = stackAnnotations(allAnnotations)
-    const hitAnn = hitTestAnnotationArc(px, py, cx, cy, baseRadius, allAnnotations, rings, seqLen)
-    if (hitAnn) {
-      useEditorStore.getState().setEditAnnotation(hitAnn.id)
-      _props.onEditFeature?.(hitAnn.id)
+  // --- Export ---
+  // Always rendered at fit scale: an exported figure should be the whole map,
+  // not whatever corner the user had zoomed into.
+  const exportScene = useCallback((): PlasmidScene | null => sceneRef.current, [])
+
+  const runExport = useCallback((kind: 'png' | 'svg') => {
+    setExportOpen(false)
+    const s = exportScene()
+    if (!s) return
+    const base = (doc.name || 'plasmid').replace(/[^\w.-]+/g, '_')
+    const defaultName = `${base}-map.${kind}`
+    const write = async (filename: string) => {
+      try {
+        const blob = kind === 'png' ? await plasmidToPng(s) : plasmidToSvgBlob(s)
+        downloadBlob(blob, filename)
+        notify.success(`Exported ${filename}`)
+      } catch (err) {
+        notify.error('Could not export the map', {
+          detail: err instanceof Error ? err.message : undefined,
+        })
+      }
     }
-  }, [doc.sequence.length, allAnnotations, _props.onEditFeature])
+    if (_props.onExportPrompt) _props.onExportPrompt(defaultName, name => { void write(name) })
+    else void write(defaultName)
+  }, [doc.name, exportScene, _props])
 
-  useEffect(() => {
-    draw()
-
-    const canvas = canvasRef.current
-    const container = containerRef.current
-    if (!canvas || !container) return
-
-    canvas.addEventListener('click', handleClick)
-    canvas.addEventListener('dblclick', handleDblClick)
-    canvas.addEventListener('mousemove', handleMouseMove)
-    canvas.addEventListener('mouseleave', handleMouseLeave)
-    canvas.addEventListener('contextmenu', handleContextMenu)
-    const ro = new ResizeObserver(() => draw())
-    ro.observe(container)
-
-    return () => {
-      canvas.removeEventListener('click', handleClick)
-      canvas.removeEventListener('dblclick', handleDblClick)
-      canvas.removeEventListener('mousemove', handleMouseMove)
-      canvas.removeEventListener('mouseleave', handleMouseLeave)
-      canvas.removeEventListener('contextmenu', handleContextMenu)
-      ro.disconnect()
-    }
-  }, [draw, handleClick, handleDblClick, handleMouseMove, handleMouseLeave, handleContextMenu])
+  const zoomed = viewport.scale > 1
 
   return (
     <div
@@ -1312,6 +686,44 @@ function PlasmidMap(_props: PlasmidMapProps) {
         ref={canvasRef}
         style={{ cursor: 'crosshair' }}
       />
+
+      {/* Map controls. Kept out of the panel bar because they act on this
+          view only, and the reset needs to be visible: zoom is otherwise a
+          state the pointer cannot easily get you out of. */}
+      <div className="plasmid-tools">
+        {zoomed && (
+          <button
+            className="plasmid-tool"
+            onClick={() => setViewport(FIT)}
+            title="Reset zoom to fit"
+            aria-label="Reset zoom to fit"
+          >
+            <Maximize2 size={13} />
+          </button>
+        )}
+        <div className="plasmid-tool-menu">
+          <button
+            className={`plasmid-tool ${exportOpen ? 'open' : ''}`}
+            onClick={() => setExportOpen(v => !v)}
+            title="Export map image"
+            aria-label="Export map image"
+            aria-haspopup="menu"
+            aria-expanded={exportOpen}
+          >
+            <Download size={13} />
+          </button>
+          {exportOpen && (
+            <div className="plasmid-export-menu" role="menu">
+              <button className="plasmid-export-item" role="menuitem" onClick={() => runExport('png')}>
+                <ImageIcon size={13} /> PNG image
+              </button>
+              <button className="plasmid-export-item" role="menuitem" onClick={() => runExport('svg')}>
+                <FileCode2 size={13} /> SVG vector
+              </button>
+            </div>
+          )}
+        </div>
+      </div>
       {editingName && (() => {
         // Position the input at the center of the canvas
         const container = containerRef.current

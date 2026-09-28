@@ -15,6 +15,7 @@ import {
   type ColorSchemeId, type ColorTarget,
 } from '../utils/base-colors'
 import { contrastText } from '../utils/color'
+import { PLASMID_STYLES, type PlasmidStyleId } from '../plasmid/styles'
 import { usePopoverDismiss } from '../hooks/usePopoverDismiss'
 import { useClampedPosition } from '../hooks/useClampedPosition'
 import './DisplayPopover.css'
@@ -87,6 +88,12 @@ export default function DisplayPopover({ open, onClose, triggerRef }: Props) {
   const toggleComplement = useEditorStore(s => s.toggleComplement)
   const showAnnotationTracks = useEditorStore(s => s.showAnnotationTracks)
   const toggleAnnotationTracks = useEditorStore(s => s.toggleAnnotationTracks)
+  const plasmidStyle = useEditorStore(s => s.plasmidStyle)
+  const setPlasmidStyle = useEditorStore(s => s.setPlasmidStyle)
+  const showGcRing = useEditorStore(s => s.showGcRing)
+  const toggleGcRing = useEditorStore(s => s.toggleGcRing)
+  const showPlasmidLegend = useEditorStore(s => s.showPlasmidLegend)
+  const togglePlasmidLegend = useEditorStore(s => s.togglePlasmidLegend)
 
   if (!open) return null
 
@@ -133,7 +140,7 @@ export default function DisplayPopover({ open, onClose, triggerRef }: Props) {
             >
               <SchemeSwatch schemeId={scheme.id} target={colorTarget} />
               <span className="dp-scheme-label">{scheme.label}</span>
-              {colorScheme === scheme.id && <Check size={13} className="dp-scheme-check" />}
+              <Check size={13} className="dp-scheme-check" aria-hidden="true" />
             </button>
           ))}
         </div>
@@ -150,6 +157,40 @@ export default function DisplayPopover({ open, onClose, triggerRef }: Props) {
         <label className="dp-check">
           <input type="checkbox" checked={showAnnotationTracks} onChange={toggleAnnotationTracks} />
           <span>Annotation tracks</span>
+        </label>
+      </div>
+
+      <div className="dp-sep" />
+
+      <div className="dp-section">
+        <div className="dp-section-label" id="dp-plasmid-label">Plasmid map</div>
+        <div className="dp-style-list" role="radiogroup" aria-labelledby="dp-plasmid-label">
+          {PLASMID_STYLES.map(s => (
+            <button
+              key={s.id}
+              className={`dp-style ${plasmidStyle === s.id ? 'active' : ''}`}
+              role="radio"
+              aria-checked={plasmidStyle === s.id}
+              onClick={() => setPlasmidStyle(s.id as PlasmidStyleId)}
+            >
+              <span className="dp-style-text">
+                <span className="dp-style-name">{s.label}</span>
+                <span className="dp-style-desc">{s.description}</span>
+              </span>
+              {/* Always rendered, hidden when inactive: a tick that appears
+                  and disappears would resize the popover as the selection
+                  moves between rows. */}
+              <Check size={13} className="dp-style-check" aria-hidden="true" />
+            </button>
+          ))}
+        </div>
+        <label className="dp-check">
+          <input type="checkbox" checked={showGcRing} onChange={toggleGcRing} />
+          <span>GC content and skew ring</span>
+        </label>
+        <label className="dp-check">
+          <input type="checkbox" checked={showPlasmidLegend} onChange={togglePlasmidLegend} />
+          <span>Feature colour key</span>
         </label>
       </div>
 

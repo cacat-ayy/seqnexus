@@ -77,7 +77,16 @@
 
 .dp-scheme-label { flex: 1; }
 
-.dp-scheme-check { flex-shrink: 0; color: var(--accent); }
+/* Reserved on every row for the same reason as the style list's tick: the
+   popover is as wide as its widest row, so a tick that only exists on the
+   active row makes the whole menu resize when the selection moves. */
+.dp-scheme-check {
+  flex-shrink: 0;
+  color: var(--accent);
+  visibility: hidden;
+}
+
+.dp-scheme.active .dp-scheme-check { visibility: visible; }
 
 .dp-sep {
   height: 1px;
@@ -162,3 +171,66 @@
   min-width: 11px;
   text-align: center;
 }
+
+/* --- Plasmid map style list ---
+   Two lines per row rather than a swatch: the difference between these is the
+   whole drawing, so a small colour chip could not preview it honestly. The
+   description carries the distinction instead. */
+.dp-style-list {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  margin-bottom: var(--space-1-5);
+}
+
+.dp-style {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  width: 100%;
+  padding: var(--space-1) var(--space-1);
+  border: none;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text);
+  font-family: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: background-color var(--dur-fast) var(--ease-out);
+}
+
+.dp-style:hover { background: var(--bg-hover); }
+
+.dp-style.active {
+  background: var(--accent-bg);
+  color: var(--accent);
+}
+
+/* Name over description in one column, so the tick stays on the right. */
+.dp-style-text {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-width: 0;
+}
+
+.dp-style-name {
+  font-size: var(--text-xs);
+  font-weight: 600;
+}
+
+.dp-style-desc {
+  font-size: var(--text-2xs);
+  color: var(--text-muted);
+}
+
+.dp-style.active .dp-style-desc { color: inherit; opacity: .8; }
+
+/* Present on every row and merely invisible when inactive, so the widest row
+   does not change as the selection moves. */
+.dp-style-check {
+  flex-shrink: 0;
+  visibility: hidden;
+}
+
+.dp-style.active .dp-style-check { visibility: visible; }

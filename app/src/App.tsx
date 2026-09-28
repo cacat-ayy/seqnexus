@@ -646,6 +646,13 @@ export default function App() {
   const [bulkExportItems, setBulkExportItems] = useState<Partial<Record<ExportItemKind, string[]>>>({})
   // Lightweight filename prompt for non-sequence exports (gel images, etc.)
   const [filenamePrompt, setFilenamePrompt] = useState<{ defaultName: string; onConfirm: (name: string) => void } | null>(null)
+  /** Shared by every view that writes an image: ask for a name, then act. */
+  const handleFilenamePrompt = useCallback((defaultName: string, onConfirm: (name: string) => void) => {
+    setFilenamePrompt({
+      defaultName,
+      onConfirm: (name) => { onConfirm(name); setFilenamePrompt(null) },
+    })
+  }, [])
 
   // Stable identities for the props handed to SequenceView and PlasmidMap.
   // Both are React.memo'd, and memo compares props by identity — passing these
@@ -2270,7 +2277,7 @@ export default function App() {
                       </div>
                     )}
                     {viewMode === 'linear' && <SequenceView onFindRequest={handleOpenFind} onAnnotateRequest={handleAnnotateRequest} onEditFeature={handleOpenFeaturesPanel} />}
-                    {viewMode === 'circular' && <PlasmidMap onFindRequest={handleOpenFind} onEditFeature={handleOpenFeaturesPanel} />}
+                    {viewMode === 'circular' && <PlasmidMap onFindRequest={handleOpenFind} onEditFeature={handleOpenFeaturesPanel} onExportPrompt={handleFilenamePrompt} />}
                     {viewMode === 'split' && (
                       <div
                         ref={splitContainerRef}
@@ -2279,7 +2286,7 @@ export default function App() {
                         onPointerUp={handleSplitPointerUp}
                       >
                         <div className="split-pane" style={{ flex: `0 0 ${splitFraction * 100}%` }}>
-                          <PlasmidMap onEditFeature={handleOpenFeaturesPanel} />
+                          <PlasmidMap onEditFeature={handleOpenFeaturesPanel} onExportPrompt={handleFilenamePrompt} />
                         </div>
                         <div
                           className="split-divider"
@@ -2513,7 +2520,7 @@ export default function App() {
       <GelView
         open={gelModalOpen}
         onClose={() => setGelModalOpen(false)}
-        onExportPrompt={(defaultName, onConfirm) => setFilenamePrompt({ defaultName, onConfirm: (name) => { onConfirm(name); setFilenamePrompt(null) } })}
+        onExportPrompt={handleFilenamePrompt}
       />
       </Suspense>
       {statsOpen && activeTabId && (
