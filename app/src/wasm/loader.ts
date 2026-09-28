@@ -124,7 +124,7 @@ async function runEmscriptenModule(
 
   // Instantiate the module
   const instance = await factory({
-    wasmBinary: wasmBinary.slice(0), // copy — Emscripten detaches the buffer
+    wasmBinary: wasmBinary.slice(0), // copy: Emscripten detaches the buffer
     noInitialRun: true,
     print: (text: string) => { stdoutChunks.push(text) },
     printErr: (text: string) => { stderrChunks.push(text) },

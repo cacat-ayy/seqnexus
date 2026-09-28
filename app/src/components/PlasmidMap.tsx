@@ -11,6 +11,7 @@
 
 import { useRef, useEffect, useCallback, useMemo, useState, memo } from 'react'
 import { formatBp } from '../utils/format'
+import { copyText } from '../utils/clipboard'
 import { visibleStroke, contrastText } from '../utils/color'
 import { translate as translateSequenceStr } from '../utils/codon'
 import { useEditorStore, selectionRange, isOriginSpanningSelection, selectionLength, selectionSegments } from '../store'
@@ -408,7 +409,6 @@ function strokeAnnotationArcOutline(
 interface PlasmidMapProps {
   onFindRequest?: () => void
   onEditFeature?: (annId: string) => void
-  onCopyFeedback?: (msg: string) => void
 }
 
 function PlasmidMap(_props: PlasmidMapProps) {
@@ -1392,20 +1392,20 @@ function PlasmidMap(_props: PlasmidMapProps) {
         const handleCopy = () => {
           if (!hasSelection) return
           const bases = getCtxSelectedBases()
-          navigator.clipboard.writeText(bases).then(() => _props.onCopyFeedback?.(`Copied ${bases.length} bp`)).catch(e => console.warn('Clipboard write failed:', e))
+          copyText(bases, `Copied ${bases.length} bp`)
           setCtxMenu(null)
         }
         const handleCopyRevComp = () => {
           if (!hasSelection) return
           const text = reverseComplementStr(getCtxSelectedBases())
-          navigator.clipboard.writeText(text).then(() => _props.onCopyFeedback?.(`Copied reverse complement (${text.length} bp)`)).catch(e => console.warn('Clipboard write failed:', e))
+          copyText(text, `Copied reverse complement (${text.length} bp)`)
           setCtxMenu(null)
         }
         const handleCopyProtein = () => {
           if (!hasSelection) return
           const bases = getCtxSelectedBases()
           const protein = translateSequenceStr(bases)
-          navigator.clipboard.writeText(protein).then(() => _props.onCopyFeedback?.(`Copied protein (${protein.length} aa)`)).catch(e => console.warn('Clipboard write failed:', e))
+          copyText(protein, `Copied protein (${protein.length} aa)`)
           setCtxMenu(null)
         }
         const handleSelectAnnotation = () => {
@@ -1416,13 +1416,13 @@ function PlasmidMap(_props: PlasmidMapProps) {
         const handleCopyAnnotationBases = () => {
           if (!ctxAnn) return
           const bases = annotationBases(ctxAnn, doc.sequence)
-          navigator.clipboard.writeText(bases).then(() => _props.onCopyFeedback?.(`Copied ${bases.length} bp from "${ctxAnn!.name}"`)).catch(e => console.warn('Clipboard write failed:', e))
+          copyText(bases, `Copied ${bases.length} bp from "${ctxAnn!.name}"`)
           setCtxMenu(null)
         }
         const handleCopyAnnotationProtein = () => {
           if (!ctxAnn) return
           const protein = annotationProtein(ctxAnn, doc.sequence)
-          navigator.clipboard.writeText(protein).then(() => _props.onCopyFeedback?.(`Copied ${protein.length} aa from "${ctxAnn!.name}"`)).catch(e => console.warn('Clipboard write failed:', e))
+          copyText(protein, `Copied ${protein.length} aa from "${ctxAnn!.name}"`)
           setCtxMenu(null)
         }
         const handleEditAnnotation = () => {
@@ -1454,7 +1454,7 @@ function PlasmidMap(_props: PlasmidMapProps) {
         }
         const handleCopyRecognition = () => {
           if (!ctxEnzymeSite) return
-          navigator.clipboard.writeText(ctxEnzymeSite.enzyme.recognition).then(() => _props.onCopyFeedback?.(`Copied ${ctxEnzymeSite!.enzyme.recognition}`)).catch(e => console.warn('Clipboard write failed:', e))
+          copyText(ctxEnzymeSite.enzyme.recognition, `Copied ${ctxEnzymeSite!.enzyme.recognition}`)
           setCtxMenu(null)
         }
         const handleSelectRecognition = () => {

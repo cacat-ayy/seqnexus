@@ -66,7 +66,7 @@ export class ErrorBoundary extends Component<Props, State> {
           <h1 className="eb-title">Something went wrong</h1>
           <p className="eb-lede">
             The editor hit an unexpected error and stopped rendering.{' '}
-            <strong>Your work is not lost</strong> — the session is saved automatically,
+            <strong>Your work is not lost</strong>: the session is saved automatically,
             so reloading should bring back your sequences as of the last save.
           </p>
 

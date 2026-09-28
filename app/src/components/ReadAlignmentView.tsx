@@ -16,6 +16,7 @@ import { replaceBasesInPlace, undoSnapshot } from '../models/Document'
 import ChromatogramView, { type ChromZoomHandle } from './ChromatogramView'
 import { runAlignment } from '../workers/alignment'
 import { DEFAULT_DNA_SCORING } from '../alignment/types'
+import { notify } from '../toast'
 
 /** Zoom levels: [cellWidth, fontSize] – levels 0-3 hide letters */
 const ZOOM_LEVELS: [number, number][] = [
@@ -153,7 +154,7 @@ export default function ReadAlignmentView({ ra, onZoomChange }: Props) {
       if (editMap[i] === 'insert') {
         map.push(-1) // inserted bases have no original quality
       } else {
-        map.push(i) // original or substituted – quality is at original position
+        map.push(i) // original or substituted: quality is at original position
       }
     }
     return map
@@ -403,7 +404,14 @@ export default function ReadAlignmentView({ ra, onZoomChange }: Props) {
         setCurrentMismatchIdx(-1)
         clearResolvedCols(ra.id)
       })
-      .catch(e => console.warn('Realignment failed:', e))
+      .catch(e => {
+        // The view keeps showing the previous alignment, so without this the
+        // only sign that anything happened is the spinner stopping.
+        notify.error('Realignment failed', {
+          detail: e instanceof Error ? e.message : undefined,
+        })
+        console.warn('Realignment failed:', e)
+      })
       .finally(() => setRealigning(false))
   }, [ra.id, ra.readId, ra.tabId, updateResult, clearResolvedCols])
 

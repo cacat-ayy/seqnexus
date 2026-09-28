@@ -268,5 +268,5 @@ export function describeImport(fileName: string, parsed: ParsedFeatureSource): s
   const reasons = new Map<string, number>()
   for (const s of parsed.skipped) reasons.set(s.reason, (reasons.get(s.reason) ?? 0) + 1)
   const detail = [...reasons.entries()].map(([reason, count]) => `${count} ${reason}`).join(', ')
-  return `${base} — skipped ${detail}`
+  return `${base}: skipped ${detail}`
 }

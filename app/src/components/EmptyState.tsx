@@ -22,7 +22,7 @@ export default function EmptyState({ icon: Icon, message, actionLabel, onAction 
   return (
     <div className="panel-hint">
       <Icon size={12} />
-      {message} – <button className="panel-hint-link" onClick={onAction}>{actionLabel}</button>
+      {message}: <button className="panel-hint-link" onClick={onAction}>{actionLabel}</button>
     </div>
   )
 }

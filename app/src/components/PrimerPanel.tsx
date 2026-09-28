@@ -20,6 +20,7 @@ import { DEFAULT_CONSTRAINTS } from '../primers/scoring'
 import { DEFAULT_PROBE_CONSTRAINTS } from '../primers/finder'
 import { useExitAnimation } from '../hooks/useExitAnimation'
 import { useFocusTrap } from '../hooks/useFocusTrap'
+import { copyText } from '../utils/clipboard'
 
 const LS_PRIMER_SETTINGS = 'seqnexus:primer-settings'
 
@@ -226,10 +227,15 @@ export default function PrimerPanel({ open, onClose }: Props) {
   }, [primerResults, toggleSelectedPrimer, setSelection])
 
   const handleCopy = useCallback((seq: string, key: string) => {
-    navigator.clipboard.writeText(seq).catch(e => console.warn('Clipboard write failed:', e))
-    setCopiedKey(key)
-    if (copiedTimer.current) clearTimeout(copiedTimer.current)
-    copiedTimer.current = setTimeout(() => setCopiedKey(null), 1500)
+    // No success toast: the row shows its own tick. The tick must wait for the
+    // write to actually land, though, or a blocked clipboard still looks like
+    // a successful copy. Failures are reported by copyText.
+    copyText(seq).then(ok => {
+      if (!ok) return
+      setCopiedKey(key)
+      if (copiedTimer.current) clearTimeout(copiedTimer.current)
+      copiedTimer.current = setTimeout(() => setCopiedKey(null), 1500)
+    })
   }, [])
 
   const handleSaveAsAnnotations = useCallback(() => {
@@ -545,7 +551,7 @@ export default function PrimerPanel({ open, onClose }: Props) {
                         {wantFwd && wantRev && Math.abs(pair.forward.tm - pair.reverse.tm) > 3 && (
                           <div className="primer-tm-warn">
                             <AlertTriangle size={12} />
-                            <span>ΔTm {Math.abs(pair.forward.tm - pair.reverse.tm).toFixed(1)}°C — primers may anneal unevenly</span>
+                            <span>ΔTm {Math.abs(pair.forward.tm - pair.reverse.tm).toFixed(1)}°C: primers may anneal unevenly</span>
                           </div>
                         )}
                         {wantProbe && pair.probe && (

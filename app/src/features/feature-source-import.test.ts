@@ -162,6 +162,6 @@ describe('describeImport', () => {
   it('groups skip reasons with counts', () => {
     const parsed = parseFeatureSource('p.fa', `>a\n${SEQ}\n>b\nATG\n>c\nATG\n`)
     expect(describeImport('p.fa', parsed))
-      .toBe(`Imported 1 feature from "p.fa" — skipped 2 shorter than ${MIN_FEATURE_LENGTH} bp`)
+      .toBe(`Imported 1 feature from "p.fa": skipped 2 shorter than ${MIN_FEATURE_LENGTH} bp`)
   })
 })

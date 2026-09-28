@@ -11,6 +11,7 @@ import FeatureSidebar from './components/FeatureSidebar'
 import EmptyState from './components/EmptyState'
 import DisplayPopover from './components/DisplayPopover'
 import { downloadBlob } from './utils/download'
+import { copyText } from './utils/clipboard'
 import PrimerPanel from './components/PrimerPanel'
 import FindModal from './components/FindModal'
 const AnnotateModal = lazy(() => import('./components/AnnotateModal'))
@@ -31,7 +32,7 @@ import { parseGeneious } from './io/geneious'
 import { parseAb1, autoTrim } from './io/ab1'
 import { parseScf } from './io/scf'
 import { parseFastq, meanQuality } from './io/fastq'
-import { useToasts } from './hooks/useToasts'
+import { notify } from './toast'
 import { useSessionPersistence } from './hooks/useSessionPersistence'
 import { usePopoverDismiss } from './hooks/usePopoverDismiss'
 import { useToolbarDensity } from './hooks/useToolbarDensity'
@@ -39,7 +40,7 @@ import { useAutoAnnotateScan } from './hooks/useAutoAnnotateScan'
 import { proposalsFrom, matchKey } from './utils/auto-annotations'
 import { convertibleOrfs, orfKey } from './utils/orf-features'
 import ConvertActions from './components/ConvertActions'
-import StorageToast from './components/StorageToast'
+import Toaster from './components/Toaster'
 import StorageIndicator from './components/StorageIndicator'
 import { getEnzyme, type RestrictionEnzyme } from './enzymes/db'
 import { findEnzymeSitesAsync } from './workers/enzyme-finder'
@@ -175,6 +176,36 @@ function MultiChromScrollbar({ scrollX, zoom, setScrollX, readIds }: { scrollX: 
       <div className={`chrom-scrollbar-thumb ${dragging ? 'dragging' : ''}`} style={{ left: thumbLeft, width: thumbWidth }} />
     </div>
   )
+}
+
+/**
+ * Detail line for the "can't open this" error. Kept out of the headline: the
+ * user needs to know which file failed first, and the list of eight formats
+ * second.
+ */
+const SUPPORTED_FORMATS_HINT =
+  'Supported: GenBank (.gb), SnapGene (.dna), Geneious (.geneious), FASTA (.fasta, .fa), '
+  + 'FASTQ (.fastq, .fq), AB1 (.ab1), SCF (.scf) and plain text (.txt).'
+
+/** Parser and reader failures, reduced to something fit for a detail line. */
+const errorDetail = (err: unknown): string | undefined =>
+  err instanceof Error ? err.message : err ? String(err) : undefined
+
+/**
+ * Confirm an export, but only if something was actually written.
+ *
+ * Every branch of `handleExport` used to announce success unconditionally, so
+ * asking to export an item that could not be resolved produced a cheerful
+ * "Exported foo.gb" and no file.
+ */
+function reportExport(count: number, filename: string): void {
+  if (count === 0) {
+    notify.error('Nothing was exported', { detail: 'The selected item could not be found.' })
+  } else if (count === 1) {
+    notify.success(`Exported ${filename}`)
+  } else {
+    notify.success(`Exported ${count} files`)
+  }
 }
 
 export default function App() {
@@ -471,7 +502,15 @@ export default function App() {
       findEnzymeSitesAsync(bases, enzymes, topology).then(sites => {
         if (gen !== enzymeScanGen.current) return // stale
         setEnzymeCutSites(sites)
-      }).catch(e => console.warn('Enzyme scan failed:', e))
+      }).catch(e => {
+        // Silently returning no sites is indistinguishable from a sequence
+        // that genuinely has none, which is a misleading thing to show.
+        notify.warning('Restriction site scan failed', {
+          detail: errorDetail(e),
+          key: 'enzyme-scan',
+        })
+        console.warn('Enzyme scan failed:', e)
+      })
     }, 300)
     return () => { if (enzymeScanTimer.current) clearTimeout(enzymeScanTimer.current) }
   }, [doc.sequence, enzymeNames, seqLength, setEnzymeCutSites]) // eslint-disable-line react-hooks/exhaustive-deps -- getEnzyme/findEnzymeSitesAsync are module-level imports
@@ -608,14 +647,6 @@ export default function App() {
   // Lightweight filename prompt for non-sequence exports (gel images, etc.)
   const [filenamePrompt, setFilenamePrompt] = useState<{ defaultName: string; onConfirm: (name: string) => void } | null>(null)
 
-  // --- Toasts ---
-  const {
-    errorToast, errorToastClosing, dismissErrorToast, showError, handleErrorAnimationEnd,
-    hintToast, hintToastClosing, dismissHintToast, showHint, handleHintAnimationEnd,
-  } = useToasts()
-
-  const showCopyHint = useCallback((msg: string) => showHint(msg, 2000), [showHint])
-
   // Stable identities for the props handed to SequenceView and PlasmidMap.
   // Both are React.memo'd, and memo compares props by identity — passing these
   // as inline arrows would allocate a new function on every App render and
@@ -661,8 +692,12 @@ export default function App() {
   // Report anything that went wrong restoring the last session. Silently
   // starting empty is indistinguishable from having lost the work outright.
   useEffect(() => {
-    if (sessionLoadWarnings.length > 0) showError(sessionLoadWarnings.join(' '))
-  }, [sessionLoadWarnings, showError])
+    if (sessionLoadWarnings.length === 0) return
+    // Lead with the first problem and stack the rest underneath, rather than
+    // running them all together into one unreadable sentence.
+    const [first, ...rest] = sessionLoadWarnings
+    notify.warning(first, { detail: rest.join(' ') || undefined, key: 'session-restore' })
+  }, [sessionLoadWarnings])
 
   // --- File handling ---
   const SUPPORTED_EXTENSIONS = /\.(gb|gbk|genbank|dna|geneious|fasta|fa|fna|faa|fastq|fq|seq|txt|ab1|abi|abif|scf|json)$/i
@@ -673,7 +708,7 @@ export default function App() {
   const handleFileOpen = useCallback((file: File) => {
     // Validate file extension
     if (!SUPPORTED_EXTENSIONS.test(file.name)) {
-      showError(`Unsupported file format: "${file.name.split('.').pop()}". Supported: GenBank (.gb), SnapGene (.dna), Geneious (.geneious), FASTA (.fasta/.fa), FASTQ (.fastq/.fq), AB1 (.ab1), SCF (.scf), plain text (.txt)`)
+      notify.error(`Can't open "${file.name}"`, { detail: SUPPORTED_FORMATS_HINT })
       return
     }
 
@@ -691,10 +726,10 @@ export default function App() {
             sessionImportParsedRef.current = session
             setSessionImportOpen(true)
           } catch (e) {
-            showError(`Failed to read session file: ${e instanceof Error ? e.message : 'Unknown error'}`)
+            notify.error(`Could not read "${file.name}"`, { detail: errorDetail(e) })
           }
         } else {
-          showError(`"${file.name}" is not a recognized SeqNexus session file`)
+          notify.error(`"${file.name}" is not a SeqNexus session file`)
         }
       }
       reader.readAsText(file)
@@ -712,13 +747,13 @@ export default function App() {
             const folderName = file.name.replace(/\.[^.]+$/, '')
             const folderId = useEditorStore.getState().createFolder(folderName)
             for (const id of tabIds) useEditorStore.getState().moveTabToFolder(id, folderId)
-            showHint(`Opened ${docs.length} sequences from "${file.name}"`)
+            notify.success(`Opened ${docs.length} sequences from "${file.name}"`)
           }
           setParseProgress(null)
         })
         .catch((err) => {
           setParseProgress(null)
-          showError(`Failed to parse GenBank file: ${err instanceof Error ? err.message : String(err)}`)
+          notify.error(`Could not read "${file.name}"`, { detail: errorDetail(err) })
         })
     } else if (file.name.match(/\.dna$/i)) {
       // SnapGene binary format
@@ -728,10 +763,10 @@ export default function App() {
           const doc = parseSnapGene(reader.result as ArrayBuffer)
           openDocumentState(doc)
         } catch (err) {
-          showError(`Failed to parse SnapGene file: ${err instanceof Error ? err.message : String(err)}`)
+          notify.error(`Could not read "${file.name}"`, { detail: errorDetail(err) })
         }
       }
-      reader.onerror = () => showError(`Failed to read file: ${file.name}`)
+      reader.onerror = () => notify.error(`Could not read "${file.name}"`)
       reader.readAsArrayBuffer(file)
     } else if (file.name.match(/\.geneious$/i)) {
       // Geneious ZIP+XML format
@@ -741,10 +776,10 @@ export default function App() {
           const doc = parseGeneious(reader.result as ArrayBuffer)
           openDocumentState(doc)
         } catch (err) {
-          showError(`Failed to parse Geneious file: ${err instanceof Error ? err.message : String(err)}`)
+          notify.error(`Could not read "${file.name}"`, { detail: errorDetail(err) })
         }
       }
-      reader.onerror = () => showError(`Failed to read file: ${file.name}`)
+      reader.onerror = () => notify.error(`Could not read "${file.name}"`)
       reader.readAsArrayBuffer(file)
     } else if (file.name.match(/\.(ab1|abi|abif)$/i)) {
       // Sanger sequencing chromatogram (ABIF)
@@ -757,10 +792,10 @@ export default function App() {
           const [trimStart, trimEnd] = autoTrim(ab1.qualityScores)
           setSequencingTrim(id, trimStart, trimEnd)
         } catch (err) {
-          showError(`Failed to parse AB1 file: ${err instanceof Error ? err.message : String(err)}`)
+          notify.error(`Could not read "${file.name}"`, { detail: errorDetail(err) })
         }
       }
-      reader.onerror = () => showError(`Failed to read file: ${file.name}`)
+      reader.onerror = () => notify.error(`Could not read "${file.name}"`)
       reader.readAsArrayBuffer(file)
     } else if (file.name.match(/\.scf$/i)) {
       // Sanger sequencing chromatogram (SCF)
@@ -773,10 +808,10 @@ export default function App() {
           const [trimStart, trimEnd] = autoTrim(scf.qualityScores)
           setSequencingTrim(id, trimStart, trimEnd)
         } catch (err) {
-          showError(`Failed to parse SCF file: ${err instanceof Error ? err.message : String(err)}`)
+          notify.error(`Could not read "${file.name}"`, { detail: errorDetail(err) })
         }
       }
-      reader.onerror = () => showError(`Failed to read file: ${file.name}`)
+      reader.onerror = () => notify.error(`Could not read "${file.name}"`)
       reader.readAsArrayBuffer(file)
     } else if (file.name.match(/\.(fastq|fq)$/i)) {
       // FASTQ. Opened as plain sequences, not chromatograms: the format
@@ -790,11 +825,11 @@ export default function App() {
         try {
           records = parseFastq(reader.result as string)
         } catch (err) {
-          showError(`Failed to parse FASTQ file: ${err instanceof Error ? err.message : String(err)}`)
+          notify.error(`Could not read "${file.name}"`, { detail: errorDetail(err) })
           return
         }
         if (records.length === 0) {
-          showError(`No reads found in "${file.name}".`)
+          notify.error(`No reads found in "${file.name}"`)
           return
         }
 
@@ -809,10 +844,10 @@ export default function App() {
         if (records.length > 1) {
           const folderId = useEditorStore.getState().createFolder(defaultName)
           for (const id of tabIds) useEditorStore.getState().moveTabToFolder(id, folderId)
-          showHint(`Opened ${records.length} reads from "${file.name}"`)
+          notify.success(`Opened ${records.length} reads from "${file.name}"`)
         }
       }
-      reader.onerror = () => showError(`Failed to read file: ${file.name}`)
+      reader.onerror = () => notify.error(`Could not read "${file.name}"`)
       reader.readAsText(file)
     } else {
       // FASTA or plain text
@@ -821,7 +856,7 @@ export default function App() {
         const text = reader.result as string
         // Validate content looks like sequence data (skip for FASTA/GenBank)
         if (text.length > 0 && !DNA_CHARS.test(text) && !text.startsWith('LOCUS') && !text.startsWith('>')) {
-          showError(`File "${file.name}" does not appear to contain valid DNA/RNA sequence data.`)
+          notify.error(`"${file.name}" does not look like sequence data`, { detail: 'Expected DNA or RNA bases, FASTA, or GenBank.' })
           return
         }
 
@@ -849,7 +884,7 @@ export default function App() {
         }
 
         if (records.length === 0) {
-          showError(`No sequence data found in "${file.name}".`)
+          notify.error(`No sequence data found in "${file.name}"`)
           return
         }
 
@@ -861,13 +896,13 @@ export default function App() {
           const folderName = file.name.replace(/\.[^.]+$/, '')
           const folderId = useEditorStore.getState().createFolder(folderName)
           for (const id of tabIds) useEditorStore.getState().moveTabToFolder(id, folderId)
-          showHint(`Opened ${records.length} sequences from "${file.name}"`)
+          notify.success(`Opened ${records.length} sequences from "${file.name}"`)
         }
       }
-      reader.onerror = () => showError(`Failed to read file: ${file.name}`)
+      reader.onerror = () => notify.error(`Could not read "${file.name}"`)
       reader.readAsText(file)
     }
-  }, [openDocument, openDocumentState, showError, showHint, addSequencingRead, setSequencingTrim])
+  }, [openDocument, openDocumentState, addSequencingRead, setSequencingTrim])
 
   // --- File menu actions ---
   const handleNewSequence = useCallback(() => {
@@ -905,7 +940,7 @@ export default function App() {
         if (docs.length > 1) {
           const folderId = useEditorStore.getState().createFolder('Pasted sequences')
           for (const id of tabIds) useEditorStore.getState().moveTabToFolder(id, folderId)
-          showHint(`Pasted ${docs.length} sequences from clipboard`)
+          notify.success(`Pasted ${docs.length} sequences from clipboard`)
         }
       } else {
         // Multi-record FASTA or plain text
@@ -927,14 +962,14 @@ export default function App() {
         if (records.length > 1) {
           const folderId = useEditorStore.getState().createFolder('Pasted sequences')
           for (const id of tabIds) useEditorStore.getState().moveTabToFolder(id, folderId)
-          showHint(`Pasted ${records.length} sequences from clipboard`)
+          notify.success(`Pasted ${records.length} sequences from clipboard`)
         }
       }
     } catch {
       // Clipboard API not available or permission denied
     }
     setFileMenuOpen(false)
-  }, [openDocument, openDocumentState, showHint])
+  }, [openDocument, openDocumentState])
 
   const handleDrop = useCallback((e: React.DragEvent) => {
     if (!e.dataTransfer.types.includes('Files')) return // internal drag, ignore
@@ -942,7 +977,7 @@ export default function App() {
     const files = Array.from(e.dataTransfer.files)
     const unsupported = files.filter(f => !SUPPORTED_EXTENSIONS.test(f.name))
     if (unsupported.length > 0 && unsupported.length === files.length) {
-      // All files unsupported – show brief error on the overlay
+      // All files unsupported: show a brief error on the overlay
       const exts = unsupported.map(f => `.${f.name.split('.').pop()}`).join(', ')
       setDropError(`Unsupported format: ${exts}`)
       setTimeout(() => { setDropError(null); setDragOver(false) }, 1500)
@@ -958,8 +993,8 @@ export default function App() {
   const handleSessionExport = useCallback((filename: string, opts: SessionExportOptions) => {
     const blob = exportSessionToJson(theme, opts)
     downloadBlob(blob, filename)
-    showHint(`Exported session (${(blob.size / 1024).toFixed(0)} KB)`)
-  }, [theme, showHint])
+    notify.success(`Exported session (${(blob.size / 1024).toFixed(0)} KB)`)
+  }, [theme])
 
   const handleSessionImportFile = useCallback((files: FileList | null) => {
     if (!files || files.length === 0) return
@@ -975,12 +1010,12 @@ export default function App() {
         // Store parsed counts for the modal
         sessionImportParsedRef.current = session
       } catch (e) {
-        showError(`Failed to read session file: ${e instanceof Error ? e.message : 'Unknown error'}`)
+        notify.error(`Could not read "${file.name}"`, { detail: errorDetail(e) })
       }
     }
-    reader.onerror = () => showError('Failed to read file')
+    reader.onerror = () => notify.error(`Could not read "${file.name}"`)
     reader.readAsText(file)
-  }, [showError])
+  }, [])
 
   const sessionImportParsedRef = useRef<ReturnType<typeof importSessionFromJson> | null>(null)
 
@@ -997,8 +1032,8 @@ export default function App() {
     setSessionImportOpen(false)
     setSessionImportData(null)
     sessionImportParsedRef.current = null
-    showHint(`Replaced session (${session.tabs.length} sequences)`)
-  }, [showHint])
+    notify.success(`Replaced session (${session.tabs.length} sequences)`)
+  }, [])
 
   const handleSessionMerge = useCallback(() => {
     let session = sessionImportParsedRef.current
@@ -1013,8 +1048,8 @@ export default function App() {
     setSessionImportOpen(false)
     setSessionImportData(null)
     sessionImportParsedRef.current = null
-    showHint(`Merged ${session.tabs.length} sequences into session`)
-  }, [showHint])
+    notify.success(`Merged ${session.tabs.length} sequences into session`)
+  }, [])
 
   /** Determine the kind of the currently active/viewed item. */
   const getActiveItemKind = (s: ReturnType<typeof useEditorStore.getState>): ExportItemKind => {
@@ -1130,10 +1165,11 @@ export default function App() {
           fileCount++
         }
       }
-      showHint(`Exported ${fileCount} file${fileCount > 1 ? 's' : ''}`)
+      reportExport(fileCount, filename)
     } else if (!hasBulk) {
       // Single item export (active item)
       const activeKind = getActiveItemKind(state)
+      let written = 0
       if (activeKind === 'sequence') {
         if (format === 'dna') {
           downloadBlob(new Blob([writeSnapGene(doc)], { type: 'application/octet-stream' }), filename)
@@ -1142,23 +1178,27 @@ export default function App() {
           const mime = format === 'csv' ? 'text/csv' : 'text/plain'
           downloadBlob(new Blob([text], { type: mime }), filename)
         }
+        written = 1
       } else if (activeKind === 'read') {
         const read = state.sequencingReads.find(r => state.activeSequencingReadIds.includes(r.id))
         if (read) {
           const text = exportReadText(read, format)
           downloadBlob(new Blob([text], { type: 'text/plain' }), filename)
+          written = 1
         }
       } else if (activeKind === 'alignment') {
         const align = state.alignments.find(a => a.id === state.activeAlignmentId)
         if (align) {
           const text = exportAlignmentText(align.result, align.seqType, format)
           downloadBlob(new Blob([text], { type: 'text/plain' }), filename)
+          written = 1
         }
       } else if (activeKind === 'read-alignment') {
         const ra = state.readAlignments.find(r => r.id === state.activeReadAlignmentId)
         if (ra) {
           const text = exportAlignmentText(ra.result, 'dna', format)
           downloadBlob(new Blob([text], { type: 'text/plain' }), filename)
+          written = 1
         }
       } else if (activeKind === 'contig') {
         const contig = state.contigs.find(c => c.id === state.activeContigId)
@@ -1169,10 +1209,11 @@ export default function App() {
           if (raResults.length > 0) {
             const text = exportAlignmentText(raResults[0].result, 'dna', format)
             downloadBlob(new Blob([text], { type: 'text/plain' }), filename)
+            written = 1
           }
         }
       }
-      showHint(`Exported ${filename}`)
+      reportExport(written, filename)
     } else {
       // Bulk export of a single kind
       const kind = kinds[0]
@@ -1180,6 +1221,7 @@ export default function App() {
       const ext = EXT_MAP[format] ?? '.txt'
 
       if (mode === 'separate') {
+        let written = 0
         for (const id of ids) {
           if (kind === 'sequence') {
             const tab = state.tabs.find(t => t.id === id)
@@ -1191,19 +1233,23 @@ export default function App() {
               const mime = format === 'csv' ? 'text/csv' : 'text/plain'
               downloadBlob(new Blob([text], { type: mime }), `${tab.doc.name}${ext}`)
             }
+            written++
           } else if (kind === 'read') {
             const readId = id.startsWith('seq_') ? id.slice(4) : id
             const read = state.sequencingReads.find(r => r.id === readId)
             if (!read) continue
             downloadItem(exportReadText(read, format), read.data.name.replace(/\s+/g, '_'), ext)
+            written++
           } else if (kind === 'alignment') {
             const align = state.alignments.find(a => a.id === id)
             if (!align) continue
             downloadItem(exportAlignmentText(align.result, align.seqType, format), align.name.replace(/\s+/g, '_'), ext)
+            written++
           } else if (kind === 'read-alignment') {
             const ra = state.readAlignments.find(r => r.id === id)
             if (!ra) continue
             downloadItem(exportAlignmentText(ra.result, 'dna', format), ra.name.replace(/\s+/g, '_'), ext)
+            written++
           } else if (kind === 'contig') {
             const contig = state.contigs.find(c => c.id === id)
             if (!contig) continue
@@ -1212,10 +1258,11 @@ export default function App() {
               .filter(Boolean) as typeof state.readAlignments
             if (raResults.length > 0) {
               downloadItem(exportAlignmentText(raResults[0].result, 'dna', format), contig.name.replace(/\s+/g, '_'), ext)
+              written++
             }
           }
         }
-        showHint(`Exported ${ids.length} file${ids.length > 1 ? 's' : ''}`)
+        reportExport(written, filename)
       } else {
         // Combined into one file
         const parts: string[] = []
@@ -1245,14 +1292,16 @@ export default function App() {
         }
         const mime = format === 'csv' ? 'text/csv' : 'text/plain'
         const sep = format === 'gb' ? '\n' : ''
-        downloadBlob(new Blob([parts.join(sep)], { type: mime }), filename)
-        showHint(`Exported ${filename}`)
+        if (parts.length > 0) {
+          downloadBlob(new Blob([parts.join(sep)], { type: mime }), filename)
+        }
+        reportExport(parts.length > 0 ? 1 : 0, filename)
       }
     }
 
     setExportModalOpen(false)
     setBulkExportItems({})
-  }, [doc, bulkExportItems, showHint])
+  }, [doc, bulkExportItems])
 
   // Find
   const handleOpenFind = useCallback(() => {
@@ -1284,8 +1333,8 @@ export default function App() {
    *  switches off at the same moment and the count is the only evidence. */
   const convertAutoAnnotations = useCallback((keys?: Iterable<string>) => {
     const added = applyAutoAnnotations(keys)
-    if (added > 0) showHint(`Added ${added} feature${added === 1 ? '' : 's'}`)
-  }, [applyAutoAnnotations, showHint])
+    if (added > 0) notify.success(`Added ${added} feature${added === 1 ? '' : 's'}`)
+  }, [applyAutoAnnotations])
   const handleAddPickedAutoAnnotations = useCallback(
     () => convertAutoAnnotations(useEditorStore.getState().autoAnnotationPicks),
     [convertAutoAnnotations],
@@ -1298,8 +1347,8 @@ export default function App() {
   /** The same conversion for ORFs, which land as CDS features. */
   const convertOrfs = useCallback((keys?: Iterable<string>) => {
     const added = applyOrfs(keys)
-    if (added > 0) showHint(`Added ${added} ORF${added === 1 ? '' : 's'} as features`)
-  }, [applyOrfs, showHint])
+    if (added > 0) notify.success(`Added ${added} ORF${added === 1 ? '' : 's'} as features`)
+  }, [applyOrfs])
   const handleAddPickedOrfs = useCallback(
     () => convertOrfs(useEditorStore.getState().orfPicks),
     [convertOrfs],
@@ -1657,7 +1706,7 @@ export default function App() {
 
         <div className="toolbar-spacer" />
         {/* The palette is the answer to a toolbar that cannot grow any further,
-            so it needs a visible entry point — a shortcut nobody can see is a
+            so it needs a visible entry point: a shortcut nobody can see is a
             shortcut nobody uses. */}
         <button
           className="tb tb-palette"
@@ -1765,7 +1814,7 @@ export default function App() {
               </div>
               <hr />
               <div className="info-row"><span className="info-label">Author</span><span><a href="mailto:contact@seqnexus.app">Christopher Acatay</a></span></div>
-              <div className="info-row"><span className="info-label">License</span><span>MIT – free for any use</span></div>
+              <div className="info-row"><span className="info-label">License</span><span>MIT: free for any use</span></div>
               <hr />
               <div className="info-notice">
                 <strong>Free to use.</strong> SeqNexus is open-source under the MIT license. All generated figures may be used freely in publications, presentations, theses, and commercial work.
@@ -1953,7 +2002,6 @@ export default function App() {
                       hideCurves={isMulti ? !multiChromShowCurves : undefined}
                       onSelectionStart={isMulti ? handleMultiSelectionStart : undefined}
                       clearSelectionTrigger={isMulti && multiChromClearSel.activeReadId !== rid ? multiChromClearSel.trigger : undefined}
-                      onCopyFeedback={showCopyHint}
                     />
                   )
                 })}
@@ -1982,9 +2030,7 @@ export default function App() {
                       const text = format === 'fasta'
                         ? toAlignedFasta(activeAlign.result)
                         : toClustal(activeAlign.result)
-                      navigator.clipboard.writeText(text).then(() => {
-                        showCopyHint(`Copied alignment as ${format === 'fasta' ? 'FASTA' : 'Clustal'}`)
-                      })
+                      copyText(text, `Copied alignment as ${format === 'fasta' ? 'FASTA' : 'Clustal'}`)
                     }}
                     onAnnotateDiffs={() => {
                       const anns = generateDiffAnnotations(activeAlign.result)
@@ -2163,7 +2209,7 @@ export default function App() {
                 <div className="panel-bar-spacer" />
 
                 {/* Display settings. Not a toggle like its neighbours — it
-                    opens a popover — so it is separated and styled apart. */}
+                    opens a popover: so it is separated and styled apart. */}
                 <div className="panel-bar-display" ref={displayBtnRef}>
                   <button
                     className={`panel-bar-btn panel-bar-btn-menu ${displayOpen ? 'open' : ''}`}
@@ -2223,8 +2269,8 @@ export default function App() {
                         </div>
                       </div>
                     )}
-                    {viewMode === 'linear' && <SequenceView onFindRequest={handleOpenFind} onAnnotateRequest={handleAnnotateRequest} onEditFeature={handleOpenFeaturesPanel} onCopyFeedback={showCopyHint} />}
-                    {viewMode === 'circular' && <PlasmidMap onFindRequest={handleOpenFind} onEditFeature={handleOpenFeaturesPanel} onCopyFeedback={showCopyHint} />}
+                    {viewMode === 'linear' && <SequenceView onFindRequest={handleOpenFind} onAnnotateRequest={handleAnnotateRequest} onEditFeature={handleOpenFeaturesPanel} />}
+                    {viewMode === 'circular' && <PlasmidMap onFindRequest={handleOpenFind} onEditFeature={handleOpenFeaturesPanel} />}
                     {viewMode === 'split' && (
                       <div
                         ref={splitContainerRef}
@@ -2233,14 +2279,14 @@ export default function App() {
                         onPointerUp={handleSplitPointerUp}
                       >
                         <div className="split-pane" style={{ flex: `0 0 ${splitFraction * 100}%` }}>
-                          <PlasmidMap onEditFeature={handleOpenFeaturesPanel} onCopyFeedback={showCopyHint} />
+                          <PlasmidMap onEditFeature={handleOpenFeaturesPanel} />
                         </div>
                         <div
                           className="split-divider"
                           onPointerDown={handleSplitPointerDown}
                         />
                         <div className="split-pane" style={{ flex: 1 }}>
-                          <SequenceView onFindRequest={handleOpenFind} onAnnotateRequest={handleAnnotateRequest} onEditFeature={handleOpenFeaturesPanel} onCopyFeedback={showCopyHint} />
+                          <SequenceView onFindRequest={handleOpenFind} onAnnotateRequest={handleAnnotateRequest} onEditFeature={handleOpenFeaturesPanel} />
                         </div>
                       </div>
                     )}
@@ -2348,27 +2394,7 @@ export default function App() {
         <FeatureSidebar open={featuresPanelOpen} onClose={handleCloseFeaturesPanel} />
       </div>
 
-      {errorToast && (
-        <div
-          className={errorToastClosing ? 'error-toast closing' : 'error-toast'}
-          onClick={dismissErrorToast}
-          onAnimationEnd={handleErrorAnimationEnd}
-        >
-          <span>{errorToast}</span>
-          <button className="error-toast-close">&times;</button>
-        </div>
-      )}
-      {hintToast && (
-        <div
-          className={hintToastClosing ? 'hint-toast closing' : 'hint-toast'}
-          onClick={dismissHintToast}
-          onAnimationEnd={handleHintAnimationEnd}
-        >
-          <span>{hintToast}</span>
-          <button className="hint-toast-close">&times;</button>
-        </div>
-      )}
-      <StorageToast />
+      <Toaster />
       {dragOver && <div className={`drop-overlay${dropError ? ' drop-error' : ''}`}>{dropError ?? 'Drop files to open'}</div>}
 
       {/* Mounted only while open: the palette is summoned rarely, and keeping
@@ -2442,7 +2468,7 @@ export default function App() {
         initialEntries={alignInitialEntries}
         onResult={(result, seqType) => {
           addAlignment(result, seqType, result.algorithm)
-          if (result.warning) showHint(result.warning, 5000)
+          if (result.warning) notify.warning(result.warning)
           setAlignModalOpen(false)
           setAlignInitialEntries(undefined)
         }}
@@ -2456,6 +2482,9 @@ export default function App() {
           // When all reads in the batch are done, create a contig if 2+
           if (batchReadAlignIdsRef.current.length === batchTotal && batchTotal >= 2) {
             addContig(batchRefTabIdRef.current!, batchReadAlignIdsRef.current)
+            // Worth confirming, unlike a single alignment: several reads
+            // collapse into one contig, so the count is not on screen anywhere.
+            notify.success(`Assembled ${batchTotal} reads into a contig`)
             batchReadAlignIdsRef.current = []
             batchRefTabIdRef.current = null
           }

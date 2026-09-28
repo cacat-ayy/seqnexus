@@ -73,3 +73,14 @@
   100% { opacity: 0; }
 }
 
+/* The global reduced-motion rule collapses every animation to 0.01ms. This
+   keyframe starts at opacity 0, so collapsing it made the confirmation
+   invisible rather than instant. App unmounts the element on a 1.5s timer
+   either way, so simply showing it is the correct reduced-motion behaviour. */
+@media (prefers-reduced-motion: reduce) {
+  .status-undo-flash {
+    animation: none;
+    opacity: 1;
+  }
+}
+

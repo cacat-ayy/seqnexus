@@ -15,6 +15,7 @@ import { replaceBasesInPlace, undoSnapshot } from '../models/Document'
 
 import InlineChromatogram from './InlineChromatogram'
 import { buildReadMapping, computeContigStats } from '../alignment/contig'
+import { copyText } from '../utils/clipboard'
 
 const ZOOM_LEVELS: [number, number][] = [
   [1, 0], [2, 0], [3, 0], [4, 0],
@@ -266,7 +267,10 @@ export default function ContigView({ contig, onZoomChange, onViewReadAlignment, 
         if (ch && ch !== '\u00A0') text += ch
       })
     })
-    if (text) navigator.clipboard.writeText(text.replace(/-/g, '')).catch(() => {})
+    if (text) {
+      const bases = text.replace(/-/g, '')
+      copyText(bases, `Copied consensus (${bases.length} bp)`)
+    }
   }, [refLength, readMappings])
 
   // Active disagreement column

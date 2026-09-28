@@ -144,7 +144,7 @@ function validateInsertEnds(
       const lastBase = seq[seq.length - 1]
       const firstBase = seq[0]
       if (lastBase === 'A' && firstBase === 'T') {
-        return { valid: true, message: "Insert appears to have A-overhangs – consider TOPO-TA instead for higher efficiency" }
+        return { valid: true, message: "Insert appears to have A-overhangs: consider TOPO-TA instead for higher efficiency" }
       }
       return { valid: true, message: 'Insert has blunt ends (compatible with TOPO-Blunt)' }
     }
@@ -155,7 +155,7 @@ function validateInsertEnds(
       if (prefix === DIRECTIONAL_INSERT_OVERHANG) {
         return { valid: true, message: "Insert has 5' CACC overhang (compatible with Directional TOPO)" }
       }
-      return { valid: false, message: `Insert lacks 5' CACC overhang – Directional TOPO requires CACC at the 5' end of the forward primer (found: ${prefix})` }
+      return { valid: false, message: `Insert lacks 5' CACC overhang: Directional TOPO requires CACC at the 5' end of the forward primer (found: ${prefix})` }
     }
   }
 }
@@ -308,18 +308,18 @@ function findActiveSite(
     const nearEnd = sites.find(s => s.start >= len - 30)
 
     if (nearStart) {
-      info.push(`Linear vector detected – TOPO site (CCCTT) found near the 5' end at position ${nearStart.start}. Inserting at this site.`)
+      info.push(`Linear vector detected: TOPO site (CCCTT) found near the 5' end at position ${nearStart.start}. Inserting at this site.`)
       return { site: nearStart, info }
     }
     if (nearEnd) {
-      info.push(`Linear vector detected – TOPO site (CCCTT) found near the 3' end at position ${nearEnd.start}. Inserting at this site.`)
+      info.push(`Linear vector detected: TOPO site (CCCTT) found near the 3' end at position ${nearEnd.start}. Inserting at this site.`)
       return { site: nearEnd, info }
     }
 
     // No CCCTT near the ends – the vector may not be linearized at the
     // TOPO site, or it may not be a TOPO vector at all.
     if (sites.length > 0) {
-      info.push(`Linear vector has no CCCTT near either end – it may not be linearized at the TOPO site. Found ${sites.length} internal CCCTT occurrence${sites.length > 1 ? 's' : ''}; inserting at the first one (position ${sites[0].start}). Commercial TOPO vectors are supplied pre-linearized at the activated site.`)
+      info.push(`Linear vector has no CCCTT near either end: it may not be linearized at the TOPO site. Found ${sites.length} internal CCCTT occurrence${sites.length > 1 ? 's' : ''}; inserting at the first one (position ${sites[0].start}). Commercial TOPO vectors are supplied pre-linearized at the activated site.`)
       return { site: sites[0], info }
     }
 
@@ -380,7 +380,7 @@ function findActiveSite(
   }
 
   // Fallback: use the first site
-  info.push(`Multiple CCCTT sites found (${sites.length}) – using the first one at position ${sites[0].start}. In a real TOPO reaction, only the manufacturer-activated site is used; the other occurrences are incidental.`)
+  info.push(`Multiple CCCTT sites found (${sites.length}): using the first one at position ${sites[0].start}. In a real TOPO reaction, only the manufacturer-activated site is used; the other occurrences are incidental.`)
   return { site: sites[0], info }
 }
 

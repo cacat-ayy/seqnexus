@@ -7,6 +7,7 @@
 
 import { useState, useCallback, useRef, useEffect, useMemo, memo } from 'react'
 import { useEditorStore } from '../store'
+import { notify } from '../toast'
 import type { Annotation } from '../models/Annotation'
 import type { Strand } from '../models/Annotation'
 import { defaultColorForType } from '../models/Annotation'
@@ -394,9 +395,25 @@ function FeatureSidebar({ open, onClose }: FeatureSidebarProps) {
 
   const [bulkDeleteOpen, setBulkDeleteOpen] = useState(false)
   const handleBulkDelete = useCallback(() => {
+    const n = selectedAnnotations.length
     removeAnnotations(selectedAnnotations.map(a => a.id))
     clearSelection()
     setBulkDeleteOpen(false)
+    // The confirm dialog already promises "This can be undone". Deletion is
+    // one entry on the active tab's undo stack, so make good on it here
+    // rather than leaving the user to find Ctrl+Z.
+    const tabId = useEditorStore.getState().activeTabId
+    notify.success(`Deleted ${n} feature${n === 1 ? '' : 's'}`, {
+      action: {
+        label: 'Undo',
+        onClick: () => {
+          const store = useEditorStore.getState()
+          // Undo is per document. If the user has since switched tabs, this
+          // would pop a different sequence's history, so do nothing.
+          if (store.activeTabId === tabId) store.undo()
+        },
+      },
+    })
   }, [selectedAnnotations, removeAnnotations, clearSelection])
 
   if (!open) return null

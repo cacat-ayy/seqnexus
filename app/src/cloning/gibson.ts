@@ -97,7 +97,7 @@ function checkInternalHomology(
       const fwd = findOverlap(sequences[i], sequences[j], minOverlap, maxOverlap)
       if (fwd > 0) {
         warnings.push(
-          `Fragments ${i + 1} and ${j + 1} share ${fwd} bp internal homology – possible mis-assembly`
+          `Fragments ${i + 1} and ${j + 1} share ${fwd} bp internal homology: possible mis-assembly`
         )
       }
 
@@ -106,7 +106,7 @@ function checkInternalHomology(
       const inv = findOverlap(sequences[i], rcJ, minOverlap, maxOverlap)
       if (inv > 0) {
         warnings.push(
-          `Fragments ${i + 1} and ${j + 1} share ${inv} bp inverted repeat – possible mis-assembly`
+          `Fragments ${i + 1} and ${j + 1} share ${inv} bp inverted repeat: possible mis-assembly`
         )
       }
     }
@@ -142,7 +142,7 @@ export function gibsonAssemble(input: GibsonInput): GibsonResult {
       const tm = calcTm(overlapSeq)
       if (tm < GIBSON_MIN_TM) {
         warnings.push(
-          `Self-circularization overlap Tm is ${tm.toFixed(1)}°C (need ≥ ${GIBSON_MIN_TM}°C) – assembly may fail`
+          `Self-circularization overlap Tm is ${tm.toFixed(1)}°C (need ≥ ${GIBSON_MIN_TM}°C): assembly may fail`
         )
       }
       const body = seq.slice(0, seq.length - selfOverlap)
@@ -163,7 +163,7 @@ export function gibsonAssemble(input: GibsonInput): GibsonResult {
         }],
       }
     }
-    return { products: [], warnings: ['Single fragment with no self-homology – cannot assemble'], overlaps: [] }
+    return { products: [], warnings: ['Single fragment with no self-homology: cannot assemble'], overlaps: [] }
   }
 
   // Auto-ordering: try all permutations and pick the one with the most valid overlaps
@@ -200,12 +200,12 @@ export function gibsonAssemble(input: GibsonInput): GibsonResult {
 
       if (tm < GIBSON_MIN_TM) {
         warnings.push(
-          `Overlap between fragments ${i + 1} and ${i + 2} has Tm ${tm.toFixed(1)}°C (need ≥ ${GIBSON_MIN_TM}°C) – assembly may fail`
+          `Overlap between fragments ${i + 1} and ${i + 2} has Tm ${tm.toFixed(1)}°C (need ≥ ${GIBSON_MIN_TM}°C): assembly may fail`
         )
       }
       if (overlap > 40) {
         warnings.push(
-          `Long overlap (${overlap} bp) between fragments ${i + 1} and ${i + 2} – verify this is intentional`
+          `Long overlap (${overlap} bp) between fragments ${i + 1} and ${i + 2}: verify this is intentional`
         )
       }
     }
@@ -228,7 +228,7 @@ export function gibsonAssemble(input: GibsonInput): GibsonResult {
     })
     if (circTm < GIBSON_MIN_TM) {
       warnings.push(
-        `Circular junction overlap has Tm ${circTm.toFixed(1)}°C (need ≥ ${GIBSON_MIN_TM}°C) – assembly may fail`
+        `Circular junction overlap has Tm ${circTm.toFixed(1)}°C (need ≥ ${GIBSON_MIN_TM}°C): assembly may fail`
       )
     }
   }

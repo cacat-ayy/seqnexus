@@ -824,7 +824,7 @@ export default function AlignmentModal({ open, onClose, onResult, onReadAlignRes
             {showWarning && (
               <div className="align-warning">
                 <AlertTriangle size={14} />
-                Large alignment ({entries.length} sequences, {(totalBases / 1000).toFixed(1)} kb) – may take a while.
+                Large alignment ({entries.length} sequences, {(totalBases / 1000).toFixed(1)} kb): may take a while.
               </div>
             )}
 

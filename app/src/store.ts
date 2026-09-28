@@ -146,6 +146,19 @@ export interface ExplorerFolder {
   collapsed: boolean
 }
 
+/** A closed sequence, kept just long enough to undo the close. */
+export interface ClosedTab {
+  tab: DocumentTab
+  /** Where it sat in `tabs`, so reopening does not send it to the end. */
+  index: number
+  /** The folder it belonged to, or null if it sat at the top level. */
+  folderId: string | null
+}
+
+/** How many closes can be taken back. Small on purpose: this is an undo
+    buffer, and every entry pins a full sequence in memory. */
+export const MAX_RECENTLY_CLOSED = 5
+
 export type BaseEdit =
   | { type: 'substitute'; pos: number; original: string; base: string }
   | { type: 'insert'; pos: number; offset: number; base: string }
@@ -438,6 +451,17 @@ interface EditorStore {
   openDocument: (name: string, bases: string, topology?: 'linear' | 'circular', description?: string) => string
   openDocumentState: (state: DocumentState) => string
   closeTab: (tabId: string) => void
+  /**
+   * The last few closed sequences, newest last, so a delete can be taken back.
+   *
+   * Deliberately in-memory only and excluded from the session snapshot:
+   * this is an undo buffer for the current sitting, not a recycle bin, and
+   * persisting it would keep the bases of deleted sequences on disk after the
+   * user asked for them to go.
+   */
+  recentlyClosedTabs: ClosedTab[]
+  /** Restore the most recently closed sequence, at its original position. */
+  reopenClosedTab: () => void
   setActiveTab: (tabId: string) => void
   renameTab: (tabId: string, name: string) => void
   duplicateTab: (tabId: string) => void
@@ -1183,6 +1207,8 @@ export const useEditorStore = create<EditorStore>((set, get) => {
       else set({ autoAnnotationPicks: new Set() })
     },
 
+    recentlyClosedTabs: [],
+
     // Explorer folders
     folders: [],
     createFolder: (name) => {
@@ -1295,7 +1321,8 @@ export const useEditorStore = create<EditorStore>((set, get) => {
     },
 
     closeTab(tabId) {
-      const { tabs, activeTabId, folders } = get()
+      const { tabs, activeTabId, folders, recentlyClosedTabs } = get()
+      const closing = tabs.find(t => t.id === tabId)
       const newTabs = tabs.filter(t => t.id !== tabId)
       let newActiveId = activeTabId
       if (activeTabId === tabId) {
@@ -1323,7 +1350,48 @@ export const useEditorStore = create<EditorStore>((set, get) => {
         orfPicks: new Set<string>(),
         // Remove closed tab from any folder
         folders: folders.map(f => ({ ...f, tabIds: f.tabIds.filter(id => id !== tabId) })),
+        // Keep enough to put it back. Closing is reached through a delete
+        // confirmation, so the user has already said yes: the buffer is there
+        // for the moment straight afterwards when they realise they meant a
+        // different sequence.
+        recentlyClosedTabs: closing
+          ? [
+              ...recentlyClosedTabs.slice(-(MAX_RECENTLY_CLOSED - 1)),
+              {
+                tab: closing,
+                index: tabs.findIndex(t => t.id === tabId),
+                folderId: folders.find(f => f.tabIds.includes(tabId))?.id ?? null,
+              },
+            ]
+          : recentlyClosedTabs,
       })
+    },
+
+    reopenClosedTab() {
+      const { recentlyClosedTabs, tabs, folders } = get()
+      const last = recentlyClosedTabs[recentlyClosedTabs.length - 1]
+      if (!last) return
+
+      // Put it back where it was, not on the end.
+      const restored = tabs.slice()
+      restored.splice(Math.min(last.index, restored.length), 0, last.tab)
+
+      set({
+        tabs: restored,
+        recentlyClosedTabs: recentlyClosedTabs.slice(0, -1),
+        folders: last.folderId
+          ? folders.map(f => (
+              f.id === last.folderId && !f.tabIds.includes(last.tab.id)
+                ? { ...f, tabIds: [...f.tabIds, last.tab.id] }
+                : f
+            ))
+          : folders,
+      })
+      // Focus it, so an undo lands the user back where they were. This also
+      // repopulates doc/selection/view state from the restored tab. Cached
+      // analysis results (ORFs, cut sites) are not restored: they are only
+      // written back to a tab on switch, so the closed tab's copy was stale.
+      get().setActiveTab(last.tab.id)
     },
 
     setActiveTab(tabId) {

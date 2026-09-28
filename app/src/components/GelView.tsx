@@ -1244,7 +1244,7 @@ export default function GelView({ open, onClose, onExportPrompt }: Props) {
             })}
             {filteredEnzymes.length > 30 && (
               <div className="gel-enzyme-empty">
-                {filteredEnzymes.length - 30} more – refine search
+                {filteredEnzymes.length - 30} more: refine search
               </div>
             )}
           </div>

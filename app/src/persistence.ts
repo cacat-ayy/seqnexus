@@ -34,7 +34,7 @@ import {
   getAllStoredUndoIds,
   clearAll as idbClearAll,
 } from './storage/idb'
-import { showStorageError } from './components/StorageToast'
+import { notify } from './toast'
 
 const STORAGE_KEY = 'seqnexus_session'
 /** Where an unreadable session payload is parked so autosave cannot clobber it. */
@@ -325,10 +325,13 @@ export async function saveSession(theme: string): Promise<void> {
     }
     _onSaveComplete?.()
   } catch (err) {
-    const msg = err instanceof DOMException && err.name === 'QuotaExceededError'
-      ? 'Storage quota exceeded – export your work to avoid data loss'
-      : 'Session save failed – export your work to avoid data loss'
-    showStorageError(msg)
+    const quota = err instanceof DOMException && err.name === 'QuotaExceededError'
+    // Keyed: autosave retries on a timer, and a browser that is out of room
+    // will fail every time. One standing notice, not one per attempt.
+    notify.error(quota ? 'Storage quota exceeded' : 'Session save failed', {
+      detail: 'Export your work to avoid losing it.',
+      key: 'session-save',
+    })
   }
 }
 
@@ -400,7 +403,7 @@ export async function loadSession(): Promise<RestoredSession | null> {
     if (!data || data.version !== 2 || !Array.isArray(data.tabs)) {
       preserveCorruptSession(raw)
       loadWarnings.push(
-        'Your saved session could not be read (unrecognised format). A copy has been kept — export it from Storage if you need to recover it.',
+        'Your saved session could not be read (unrecognised format). A copy has been kept: export it from Storage if you need to recover it.',
       )
       return null
     }

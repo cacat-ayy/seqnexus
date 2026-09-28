@@ -126,9 +126,9 @@ function checkOverhangFidelity(overhangs: string[]): string[] {
   for (const oh of unique) {
     const score = scoreOverhangFidelity(oh, unique)
     if (score === 'low') {
-      warnings.push(`Overhang ${oh} has low ligation fidelity – may cause mis-assembly`)
+      warnings.push(`Overhang ${oh} has low ligation fidelity: may cause mis-assembly`)
     } else if (score === 'medium') {
-      warnings.push(`Overhang ${oh} has moderate ligation fidelity – consider alternatives`)
+      warnings.push(`Overhang ${oh} has moderate ligation fidelity: consider alternatives`)
     }
   }
 
@@ -163,7 +163,7 @@ export function goldenGateAssemble(input: GoldenGateInput): GoldenGateResult {
   const insertFragments = allFragments.filter(f => !isBackboneFragment(f, input.enzyme))
 
   if (insertFragments.length === 0) {
-    warnings.push('All fragments contain the enzyme recognition site – no inserts found')
+    warnings.push('All fragments contain the enzyme recognition site: no inserts found')
     return { products: [], warnings, allFragments, insertFragments }
   }
 
@@ -188,7 +188,7 @@ export function goldenGateAssemble(input: GoldenGateInput): GoldenGateResult {
   // Check for palindromic overhangs
   for (const [seq] of overhangMap) {
     if (isPalindromicOverhang(seq)) {
-      warnings.push(`Palindromic overhang ${seq} – may cause self-ligation or ambiguous assembly`)
+      warnings.push(`Palindromic overhang ${seq}: may cause self-ligation or ambiguous assembly`)
     }
   }
 
@@ -197,10 +197,10 @@ export function goldenGateAssemble(input: GoldenGateInput): GoldenGateResult {
     const fiveCount = entries.filter(e => e.end === '5').length
     const threeCount = entries.filter(e => e.end === '3').length
     if (fiveCount > 1) {
-      warnings.push(`Duplicate 5' overhang ${seq} on ${fiveCount} fragments – ambiguous assembly`)
+      warnings.push(`Duplicate 5' overhang ${seq} on ${fiveCount} fragments: ambiguous assembly`)
     }
     if (threeCount > 1) {
-      warnings.push(`Duplicate 3' overhang ${seq} on ${threeCount} fragments – ambiguous assembly`)
+      warnings.push(`Duplicate 3' overhang ${seq} on ${threeCount} fragments: ambiguous assembly`)
     }
   }
 

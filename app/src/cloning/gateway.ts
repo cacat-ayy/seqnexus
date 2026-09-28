@@ -153,12 +153,12 @@ function runBP(sources: { doc: DocumentState }[]): GatewayResult {
   }
 
   if (allAttB.length < 2) {
-    warnings.push(`Found ${allAttB.length} attB site(s) – need 2 (attB1 + attB2) flanking the insert`)
+    warnings.push(`Found ${allAttB.length} attB site(s): need 2 (attB1 + attB2) flanking the insert`)
     return { products: [], warnings, detectedSites }
   }
 
   if (allAttP.length < 2) {
-    warnings.push(`Found ${allAttP.length} attP site(s) – need 2 (attP1 + attP2) on the donor vector`)
+    warnings.push(`Found ${allAttP.length} attP site(s): need 2 (attP1 + attP2) on the donor vector`)
     return { products: [], warnings, detectedSites }
   }
 
@@ -180,7 +180,7 @@ function runBP(sources: { doc: DocumentState }[]): GatewayResult {
 
   // Validate pairing: attB and attP should be on different sources
   if (attB1.srcIdx === attP1.srcIdx) {
-    warnings.push('attB and attP sites found on the same source – expected them on different sequences')
+    warnings.push('attB and attP sites found on the same source: expected them on different sequences')
   }
 
   // Build the entry clone: vector backbone (outside attP sites) + insert (between attB sites)
@@ -301,12 +301,12 @@ function runLR(sources: { doc: DocumentState }[]): GatewayResult {
   }
 
   if (allAttL.length < 2) {
-    warnings.push(`Found ${allAttL.length} attL site(s) – need 2 (attL1 + attL2) on the entry clone`)
+    warnings.push(`Found ${allAttL.length} attL site(s): need 2 (attL1 + attL2) on the entry clone`)
     return { products: [], warnings, detectedSites }
   }
 
   if (allAttR.length < 2) {
-    warnings.push(`Found ${allAttR.length} attR site(s) – need 2 (attR1 + attR2) on the destination vector`)
+    warnings.push(`Found ${allAttR.length} attR site(s): need 2 (attR1 + attR2) on the destination vector`)
     return { products: [], warnings, detectedSites }
   }
 
@@ -460,7 +460,7 @@ function runMultiSite(sources: { doc: DocumentState }[]): GatewayResult {
   const validEntries: { doc: DocumentState; left: AttSiteMatch; right: AttSiteMatch; leftNum: number; rightNum: number }[] = []
   for (const [, sites] of entryClones) {
     if (sites.length < 2) {
-      warnings.push(`Source "${sites[0].doc.name}" has only ${sites.length} attL site – need 2`)
+      warnings.push(`Source "${sites[0].doc.name}" has only ${sites.length} attL site: need 2`)
       continue
     }
 
@@ -475,7 +475,7 @@ function runMultiSite(sources: { doc: DocumentState }[]): GatewayResult {
     }
 
     if (deduped.length < 2) {
-      warnings.push(`Source "${sites[0].doc.name}" has only ${deduped.length} distinct attL site – need 2`)
+      warnings.push(`Source "${sites[0].doc.name}" has only ${deduped.length} distinct attL site: need 2`)
       continue
     }
 
@@ -493,7 +493,7 @@ function runMultiSite(sources: { doc: DocumentState }[]): GatewayResult {
   }
 
   if (validEntries.length < 2) {
-    warnings.push(`Found ${validEntries.length} valid entry clone(s) – need at least 2 for MultiSite`)
+    warnings.push(`Found ${validEntries.length} valid entry clone(s): need at least 2 for MultiSite`)
     return { products: [], warnings, detectedSites }
   }
 

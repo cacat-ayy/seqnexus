@@ -27,6 +27,7 @@ import { methylationEffect } from '../enzymes/db'
 import { orfColor } from '../workers/orf-finder'
 import AnnotationTooltip, { AnnotationTooltipContent } from './AnnotationTooltip'
 import { annotationBases, annotationProtein, canTranslateAnnotation } from '../utils/annotation-sequence'
+import { copyText, readText } from '../utils/clipboard'
 import { useDelayedHover, type HoverTarget } from '../hooks/useDelayedHover'
 import EnzymeTooltip, { EnzymeGroupTooltipContent } from './EnzymeTooltip'
 import ContextMenuPopup from './ContextMenuPopup'
@@ -569,10 +570,9 @@ interface SequenceViewProps {
   onFindRequest?: () => void
   onAnnotateRequest?: () => void
   onEditFeature?: (annId: string) => void
-  onCopyFeedback?: (msg: string) => void
 }
 
-function SequenceView({ onFindRequest, onAnnotateRequest, onEditFeature, onCopyFeedback }: SequenceViewProps) {
+function SequenceView({ onFindRequest, onAnnotateRequest, onEditFeature }: SequenceViewProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const containerRef = useRef<HTMLDivElement>(null)
   const spacerRef = useRef<HTMLDivElement>(null)
@@ -2399,7 +2399,7 @@ function SequenceView({ onFindRequest, onAnnotateRequest, onEditFeature, onCopyF
       if (segs.length > 0) {
         e.preventDefault()
         const bases = getSelectedBases()
-        navigator.clipboard.writeText(bases).then(() => onCopyFeedback?.(`Copied ${bases.length} bp`)).catch(e => console.warn('Clipboard write failed:', e))
+        copyText(bases, `Copied ${bases.length} bp`)
       }
       return
     }
@@ -2407,7 +2407,7 @@ function SequenceView({ onFindRequest, onAnnotateRequest, onEditFeature, onCopyF
       if (segs.length > 0) {
         e.preventDefault()
         const bases = getSelectedBases()
-        navigator.clipboard.writeText(bases).then(() => onCopyFeedback?.(`Cut ${bases.length} bp`)).catch(e => console.warn('Clipboard write failed:', e))
+        copyText(bases, `Cut ${bases.length} bp`)
         if (!ro) deleteSelection()
       }
       return
@@ -2694,17 +2694,18 @@ function SequenceView({ onFindRequest, onAnnotateRequest, onEditFeature, onCopyF
         const handleCopy = () => {
           if (!hasSelection) return
           const bases = getCtxSelectedBases()
-          navigator.clipboard.writeText(bases).then(() => onCopyFeedback?.(`Copied ${bases.length} bp`)).catch(e => console.warn('Clipboard write failed:', e))
+          copyText(bases, `Copied ${bases.length} bp`)
           setCtxMenu(null)
         }
         const handleCopyRevComp = () => {
           if (!hasSelection) return
           const text = reverseComplementStr(getCtxSelectedBases())
-          navigator.clipboard.writeText(text).then(() => onCopyFeedback?.(`Copied reverse complement (${text.length} bp)`)).catch(e => console.warn('Clipboard write failed:', e))
+          copyText(text, `Copied reverse complement (${text.length} bp)`)
           setCtxMenu(null)
         }
         const handlePasteRevComp = () => {
-          navigator.clipboard.readText().then(text => {
+          readText().then(text => {
+            if (text === null) return // already reported
             const filtered = text.replace(/[^ATGCUatgcuRYSWKMBVDHNryswkmbvdhn]/g, '').toUpperCase()
             if (filtered.length === 0) return
             const rc = reverseComplementStr(filtered)
@@ -2718,14 +2719,14 @@ function SequenceView({ onFindRequest, onAnnotateRequest, onEditFeature, onCopyF
               s.insert(currentSel.caret, rc)
               s.setCaret(currentSel.caret + rc.length)
             }
-          }).catch(e => console.warn('Clipboard read failed:', e))
+          })
           setCtxMenu(null)
         }
         const handleCopyProtein = () => {
           if (!hasSelection) return
           const bases = getCtxSelectedBases()
           const protein = translateSequenceStr(bases)
-          navigator.clipboard.writeText(protein).then(() => onCopyFeedback?.(`Copied protein (${protein.length} aa)`)).catch(e => console.warn('Clipboard write failed:', e))
+          copyText(protein, `Copied protein (${protein.length} aa)`)
           setCtxMenu(null)
         }
         const handleAddAnnotation = () => {
@@ -2757,19 +2758,19 @@ function SequenceView({ onFindRequest, onAnnotateRequest, onEditFeature, onCopyF
         const handleCopyAnnotationBases = () => {
           if (!ctxAnn) return
           const bases = annotationBases(ctxAnn, doc.sequence)
-          navigator.clipboard.writeText(bases).then(() => onCopyFeedback?.(`Copied ${bases.length} bp from "${ctxAnn!.name}"`)).catch(e => console.warn('Clipboard write failed:', e))
+          copyText(bases, `Copied ${bases.length} bp from "${ctxAnn!.name}"`)
           setCtxMenu(null)
         }
         const handleCopyAnnotationProtein = () => {
           if (!ctxAnn) return
           const protein = annotationProtein(ctxAnn, doc.sequence)
-          navigator.clipboard.writeText(protein).then(() => onCopyFeedback?.(`Copied ${protein.length} aa from "${ctxAnn!.name}"`)).catch(e => console.warn('Clipboard write failed:', e))
+          copyText(protein, `Copied ${protein.length} aa from "${ctxAnn!.name}"`)
           setCtxMenu(null)
         }
         const handleCopyRecognition = () => {
           if (!ctxEnzymeGroup) return
           const primary = ctxEnzymeGroup.sites[0]
-          navigator.clipboard.writeText(primary.enzyme.recognition).then(() => onCopyFeedback?.(`Copied ${primary.enzyme.recognition}`)).catch(e => console.warn('Clipboard write failed:', e))
+          copyText(primary.enzyme.recognition, `Copied ${primary.enzyme.recognition}`)
           setCtxMenu(null)
         }
         const handleSelectRecognition = () => {

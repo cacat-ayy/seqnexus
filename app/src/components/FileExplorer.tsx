@@ -8,7 +8,8 @@ import './ContextMenuPopup.css'
  */
 
 import { useState, useMemo, useCallback, useRef, useEffect, memo } from 'react'
-import { useEditorStore, type ExplorerFolder } from '../store'
+import { useEditorStore, MAX_RECENTLY_CLOSED, type ExplorerFolder } from '../store'
+import { notify } from '../toast'
 import { useListMultiSelect } from '../hooks/useListMultiSelect'
 import ConfirmDialog, { type ConfirmButton } from './ConfirmDialog'
 import {
@@ -287,14 +288,30 @@ function FileExplorer({ onImportFile, onOpenProperties, onOpenInfo, onAlignToRef
       ],
       onResult: (value) => {
         if (value === 'delete') {
+          let sequences = 0
           for (const id of selectedIds) {
             if (id.startsWith('seq_')) removeSequencingRead(id.slice(4))
             else if (id.startsWith('align_')) removeAlignment(id)
             else if (id.startsWith('readalign_')) removeReadAlignment(id)
             else if (id.startsWith('contig_')) removeContig(id)
-            else closeTab(id)
+            else { closeTab(id); sequences++ }
           }
           setSelectedIds(new Set())
+          // Only sequences go through the reopen buffer. Offering Undo on a
+          // mixed batch would restore some of it and quietly drop the rest,
+          // which is worse than not offering it.
+          const undoable = sequences === count && sequences <= MAX_RECENTLY_CLOSED
+          notify.success(`Deleted ${count} item${count === 1 ? '' : 's'}`, {
+            action: undoable
+              ? {
+                  label: 'Undo',
+                  onClick: () => {
+                    const store = useEditorStore.getState()
+                    for (let i = 0; i < sequences; i++) store.reopenClosedTab()
+                  },
+                }
+              : undefined,
+          })
         }
         setConfirmState(null)
       },
@@ -491,7 +508,15 @@ function FileExplorer({ onImportFile, onOpenProperties, onOpenInfo, onAlignToRef
         { label: 'Delete', value: 'delete', variant: 'danger' },
       ],
       onResult: (value) => {
-        if (value === 'delete') closeTab(tabId)
+        if (value === 'delete') {
+          closeTab(tabId)
+          // The confirm dialog asked; this offers the way back. Closing a tab
+          // discards the sequence outright, and a mis-aimed right click on a
+          // dense explorer list is easy.
+          notify.success(`Deleted "${name}"`, {
+            action: { label: 'Undo', onClick: () => useEditorStore.getState().reopenClosedTab() },
+          })
+        }
         setConfirmState(null)
       },
     })

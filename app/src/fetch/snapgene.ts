@@ -55,13 +55,13 @@ export async function fetchSnapGene(input: string): Promise<string> {
   // SnapGene will almost certainly return HTML due to CORS
   if (text.includes('<html') || text.includes('<!DOCTYPE')) {
     throw new Error(
-      `SnapGene returned an HTML page – direct download is blocked by CORS. ` +
+      `SnapGene returned an HTML page: direct download is blocked by CORS. ` +
       `Visit snapgene.com to download the file manually, then import it.`
     )
   }
 
   if (!text.startsWith('LOCUS')) {
-    throw new Error(`Unexpected response from SnapGene – does not appear to be a GenBank record.`)
+    throw new Error(`Unexpected response from SnapGene: does not appear to be a GenBank record.`)
   }
 
   return text

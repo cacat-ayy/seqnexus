@@ -15,6 +15,7 @@ import { parseBlastJson } from '../blast/parser'
 import type { BlastProgram, BlastResult, BlastHit } from '../blast/types'
 import { useExitAnimation } from '../hooks/useExitAnimation'
 import { useFocusTrap } from '../hooks/useFocusTrap'
+import { copyText } from '../utils/clipboard'
 
 interface Props {
   open: boolean
@@ -249,7 +250,7 @@ export default function BlastModal({ open, onClose, onPhaseChange }: Props) {
   // --- Submit ---
   const handleSubmit = useCallback(async () => {
     if (queryLen < 10) {
-      setError('Query too short – minimum 10 bases.')
+      setError('Query too short: minimum 10 bases.')
       return
     }
 
@@ -284,7 +285,7 @@ export default function BlastModal({ open, onClose, onPhaseChange }: Props) {
         if (Date.now() - startTimeRef.current > TIMEOUT_MS) {
           if (pollRef.current) clearInterval(pollRef.current)
           if (timerRef.current) clearInterval(timerRef.current)
-          setError(`Search timed out after 15 minutes. Your RID is ${res.rid} – check results at NCBI.`)
+          setError(`Search timed out after 15 minutes. Your RID is ${res.rid}: check results at NCBI.`)
           setPhaseAndNotify('input')
           return
         }
@@ -397,7 +398,7 @@ export default function BlastModal({ open, onClose, onPhaseChange }: Props) {
   }, [activeHistoryIdx, confirmDeleteIdx, setPhaseAndNotify])
 
   const handleCopyRid = useCallback(() => {
-    if (rid) navigator.clipboard.writeText(rid).catch(e => console.warn('Clipboard write failed:', e))
+    if (rid) copyText(rid, 'Copied request ID')
   }, [rid])
 
   const ncbiResultsUrl = rid
@@ -574,26 +575,26 @@ export default function BlastModal({ open, onClose, onPhaseChange }: Props) {
                   onChange={e => setDatabase(e.target.value)}
                 >
                   <optgroup label="Nucleotide">
-                    <option value="core_nt">core_nt – Standard nucleotide collection</option>
-                    <option value="nt">nt – Full nucleotide collection</option>
-                    <option value="refseq_rna">refseq_rna – RefSeq RNA</option>
-                    <option value="refseq_representative_genomes">refseq_representative_genomes – RefSeq representative genomes</option>
-                    <option value="refseq_select">refseq_select – RefSeq Select</option>
+                    <option value="core_nt">core_nt: Standard nucleotide collection</option>
+                    <option value="nt">nt: Full nucleotide collection</option>
+                    <option value="refseq_rna">refseq_rna: RefSeq RNA</option>
+                    <option value="refseq_representative_genomes">refseq_representative_genomes: RefSeq representative genomes</option>
+                    <option value="refseq_select">refseq_select: RefSeq Select</option>
                   </optgroup>
                   <optgroup label="Protein">
-                    <option value="nr">nr – Non-redundant protein</option>
-                    <option value="swissprot">swissprot – UniProt/Swiss-Prot</option>
-                    <option value="refseq_protein">refseq_protein – RefSeq protein</option>
-                    <option value="pdb">pdb – Protein Data Bank</option>
+                    <option value="nr">nr: Non-redundant protein</option>
+                    <option value="swissprot">swissprot: UniProt/Swiss-Prot</option>
+                    <option value="refseq_protein">refseq_protein: RefSeq protein</option>
+                    <option value="pdb">pdb: Protein Data Bank</option>
                   </optgroup>
                   <optgroup label="Genomic">
-                    <option value="wgs">wgs – Whole-genome shotgun</option>
-                    <option value="env_nt">env_nt – Environmental nucleotide</option>
-                    <option value="patnt">patnt – Patent nucleotide</option>
+                    <option value="wgs">wgs: Whole-genome shotgun</option>
+                    <option value="env_nt">env_nt: Environmental nucleotide</option>
+                    <option value="patnt">patnt: Patent nucleotide</option>
                   </optgroup>
                   <optgroup label="Organism-specific">
-                    <option value="human_genomic">human_genomic – Human genome</option>
-                    <option value="mouse_genomic">mouse_genomic – Mouse genome</option>
+                    <option value="human_genomic">human_genomic: Human genome</option>
+                    <option value="mouse_genomic">mouse_genomic: Mouse genome</option>
                   </optgroup>
                 </select>
               </div>
@@ -626,7 +627,7 @@ export default function BlastModal({ open, onClose, onPhaseChange }: Props) {
               {/* Query length warning */}
               {queryLen > 100_000 && (
                 <div className="blast-warn">
-                  Query is {queryLen.toLocaleString()} bp – large queries may take a long time.
+                  Query is {queryLen.toLocaleString()} bp: large queries may take a long time.
                 </div>
               )}
 

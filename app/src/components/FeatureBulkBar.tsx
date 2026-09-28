@@ -14,6 +14,7 @@ import { useEditorStore } from '../store'
 import { FEATURE_TYPES } from '../utils/annotation-constants'
 import { annotationBases } from '../utils/annotation-sequence'
 import { downloadText } from '../utils/download'
+import { copyText } from '../utils/clipboard'
 import { writeGff3 } from '../io/gff3'
 import { writeCsv } from '../io/csv'
 import './FeatureBulkBar.css'
@@ -23,11 +24,10 @@ interface Props {
   selected: Annotation[]
   onClear: () => void
   onRequestDelete: () => void
-  onCopyFeedback?: (msg: string) => void
 }
 
 export default function FeatureBulkBar({
-  selected, onClear, onRequestDelete, onCopyFeedback,
+  selected, onClear, onRequestDelete,
 }: Props) {
   const doc = useEditorStore(s => s.doc)
   const hiddenIds = useEditorStore(s => s.hiddenAnnotationIds)
@@ -56,10 +56,8 @@ export default function FeatureBulkBar({
     const fasta = selected
       .map(a => `>${a.name || a.id} ${a.start + 1}..${a.end}\n${annotationBases(a, doc.sequence)}`)
       .join('\n')
-    navigator.clipboard.writeText(fasta)
-      .then(() => onCopyFeedback?.(`Copied ${count} feature${count === 1 ? '' : 's'}`))
-      .catch(e => console.warn('Clipboard write failed:', e))
-  }, [selected, doc.sequence, count, onCopyFeedback])
+    copyText(fasta, `Copied ${count} feature${count === 1 ? '' : 's'}`)
+  }, [selected, doc.sequence, count])
 
   /**
    * The writers take a whole DocumentState, so a shallow clone carrying only

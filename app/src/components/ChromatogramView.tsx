@@ -38,6 +38,7 @@ function qualityColor(q: number): string {
 
 /** Nucleotide → color matching SequenceView. */
 import { baseColor } from '../utils/color'
+import { copyText } from '../utils/clipboard'
 
 // ---------------------------------------------------------------------------
 // Component
@@ -87,11 +88,10 @@ interface Props {
   /** When set, clears this read's selection (incremented by parent to trigger clear). */
   clearSelectionTrigger?: number
   /** Called with a message when a copy action succeeds (for toast display). */
-  onCopyFeedback?: (msg: string) => void
 
 }
 
-export default function ChromatogramView({ readId, forceHorizontal, compact, zoomRef, onZoomChange, externalSearchOpen, onSearchClose, syncScrollX, onSyncScroll, syncZoom, onSyncZoom, syncShowTraces, syncShowQuality, hideCurves: hideCurvesProp, onSelectionStart, clearSelectionTrigger, onCopyFeedback }: Props) {
+export default function ChromatogramView({ readId, forceHorizontal, compact, zoomRef, onZoomChange, externalSearchOpen, onSearchClose, syncScrollX, onSyncScroll, syncZoom, onSyncZoom, syncShowTraces, syncShowQuality, hideCurves: hideCurvesProp, onSelectionStart, clearSelectionTrigger }: Props) {
   const read = useEditorStore(s => s.sequencingReads.find(r => r.id === readId)) as SequencingRead | undefined
   const setTrim = useEditorStore(s => s.setSequencingTrim)
   const openDocument = useEditorStore(s => s.openDocument)
@@ -1795,21 +1795,17 @@ export default function ChromatogramView({ readId, forceHorizontal, compact, zoo
   const handleCopy = useCallback(() => {
     const text = getSelectedText()
     if (text) {
-      navigator.clipboard.writeText(text)
-        .then(() => onCopyFeedback?.(`Copied ${text.length} bp`))
-        .catch(e => console.warn('Clipboard write failed:', e))
+      copyText(text, `Copied ${text.length} bp`)
     }
-  }, [getSelectedText, onCopyFeedback])
+  }, [getSelectedText])
 
   const handleCopyRevComp = useCallback(() => {
     const text = getSelectedText()
     if (text) {
       const rc = reverseComplement(text)
-      navigator.clipboard.writeText(rc)
-        .then(() => onCopyFeedback?.(`Copied reverse complement (${rc.length} bp)`))
-        .catch(e => console.warn('Clipboard write failed:', e))
+      copyText(rc, `Copied reverse complement (${rc.length} bp)`)
     }
-  }, [getSelectedText, onCopyFeedback])
+  }, [getSelectedText])
 
   const handleCopyFasta = useCallback(() => {
     const text = getSelectedText()
@@ -1817,10 +1813,8 @@ export default function ChromatogramView({ readId, forceHorizontal, compact, zoo
     const name = data?.name || readId
     const rangeLabel = selRange ? ` ${selRange.start + 1}..${selRange.end}` : ''
     const fasta = `>${name}${rangeLabel}\n${text}\n`
-    navigator.clipboard.writeText(fasta)
-      .then(() => onCopyFeedback?.(`Copied as FASTA (${text.length} bp)`))
-      .catch(e => console.warn('Clipboard write failed:', e))
-  }, [getSelectedText, data?.name, readId, selRange, onCopyFeedback])
+    copyText(fasta, `Copied as FASTA (${text.length} bp)`)
+  }, [getSelectedText, data?.name, readId, selRange])
 
   const handleContextMenu = useCallback((e: React.MouseEvent) => {
     e.preventDefault()

@@ -41,7 +41,7 @@ export async function fetchNCBI(accession: string): Promise<string> {
 
   // Verify it looks like GenBank format
   if (!text.startsWith('LOCUS')) {
-    throw new Error(`Unexpected response from NCBI – does not appear to be a GenBank record.`)
+    throw new Error(`Unexpected response from NCBI: does not appear to be a GenBank record.`)
   }
 
   return text

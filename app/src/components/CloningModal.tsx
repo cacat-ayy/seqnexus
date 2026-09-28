@@ -979,7 +979,7 @@ export default function CloningModal({ open, onClose, initialMethod }: Props) {
                   const counts = cutCountMap.get(e.name)
                   const total = totalCuts(counts)
                   const hasDigestSources = digestVectors.length + digestInserts.length > 0
-                  const cutLabel = hasDigestSources ? ` – ${formatCutCounts(counts)} cut${total !== 1 ? 's' : ''}` : ''
+                  const cutLabel = hasDigestSources ? `: ${formatCutCounts(counts)} cut${total !== 1 ? 's' : ''}` : ''
                   return (
                     <option key={e.name} value={e.name} className={hasDigestSources && total === 0 ? 'cln-enzyme-muted' : ''}>
                       {e.name} ({e.recognition}){cutLabel}
@@ -1150,7 +1150,7 @@ export default function CloningModal({ open, onClose, initialMethod }: Props) {
                   const counts = cutCountMap.get(e.name)
                   const total = totalCuts(counts)
                   const hasGgSources = ggVectors.length + ggInserts.length > 0
-                  const cutLabel = hasGgSources ? ` – ${formatCutCounts(counts)} cut${total !== 1 ? 's' : ''}` : ''
+                  const cutLabel = hasGgSources ? `: ${formatCutCounts(counts)} cut${total !== 1 ? 's' : ''}` : ''
                   return (
                     <option key={e.name} value={e.name}>
                       {e.name} ({e.recognition}, cuts +{e.fwd_cut}/+{e.rev_cut}){cutLabel}
@@ -1189,7 +1189,7 @@ export default function CloningModal({ open, onClose, initialMethod }: Props) {
             <div className="cln-section">
               {stale && (
                 <div className="cln-stale-banner">
-                  Sources changed since last simulation – results may be outdated
+                  Sources changed since last simulation: results may be outdated
                 </div>
               )}
               <div className="cln-section-label">

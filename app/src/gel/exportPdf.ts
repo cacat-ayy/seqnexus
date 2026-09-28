@@ -6,6 +6,8 @@
  * directly from the spec.
  */
 
+import { notify } from '../toast'
+
 interface LaneRow {
   lane: number
   type: string
@@ -77,7 +79,9 @@ export function exportGelPdf(canvas: HTMLCanvasElement, rows: LaneRow[], gelPct:
 
   const w = window.open('', '_blank')
   if (!w) {
-    alert('Please allow popups to export PDF.')
+    notify.error('Could not open the print window', {
+      detail: 'Allow pop-ups for this site to export a PDF.',
+    })
     return
   }
   w.document.write(html)

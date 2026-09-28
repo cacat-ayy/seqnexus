@@ -1,0 +1,144 @@
+/* --- Toasts ---
+   One card shape for all four severities, distinguished by a left rule and a
+   coloured icon rather than a filled background. The filled variants this
+   replaced hardcoded #dc2626 and painted white text onto var(--warning), which
+   is a light amber on every dark theme: about 1.9:1, effectively unreadable.
+   Tinting a neutral surface keeps the body text at the theme's own contrast
+   and needs no per-theme foreground token. */
+
+.toaster {
+  position: fixed;
+  right: var(--space-4);
+  /* Clear of the status bar, so the stack never covers the storage indicator. */
+  bottom: 40px;
+  z-index: var(--z-toast);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  /* The container spans the corner but must not swallow clicks on the canvas
+     behind it; individual toasts opt back in. */
+  pointer-events: none;
+}
+
+.toaster-group {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.toast {
+  pointer-events: auto;
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
+  max-width: min(420px, calc(100vw - var(--space-6)));
+  padding: var(--space-2-5) var(--space-3);
+  background: var(--bg-alt);
+  color: var(--text);
+  font-size: var(--text-sm);
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--toast-accent);
+  border-radius: var(--radius-popover);
+  box-shadow: var(--shadow-popover);
+  animation: toast-in var(--dur-normal) var(--ease-out);
+}
+
+.toast-success { --toast-accent: var(--success); }
+.toast-info    { --toast-accent: var(--accent); }
+.toast-warning { --toast-accent: var(--warning); }
+.toast-error   { --toast-accent: var(--danger); }
+
+.toast-icon {
+  flex-shrink: 0;
+  color: var(--toast-accent);
+  /* Optical alignment with the first line of text rather than the box. */
+  margin-top: 1px;
+}
+
+.toast-body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-0-5);
+  min-width: 0;
+  flex: 1;
+}
+
+.toast-message {
+  /* Long filenames and parser output must wrap, not clip the close button. */
+  overflow-wrap: anywhere;
+}
+
+.toast-detail {
+  font-size: var(--text-xs);
+  color: var(--text-secondary);
+  overflow-wrap: anywhere;
+}
+
+.toast-action {
+  flex-shrink: 0;
+  align-self: flex-start;
+  padding: var(--space-0-5) var(--space-2);
+  font-family: inherit;
+  font-size: var(--text-xs);
+  color: var(--toast-accent);
+  background: color-mix(in srgb, var(--toast-accent) 12%, transparent);
+  border: 1px solid color-mix(in srgb, var(--toast-accent) 30%, transparent);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: background var(--dur-fast);
+}
+.toast-action:hover {
+  background: color-mix(in srgb, var(--toast-accent) 22%, transparent);
+}
+
+.toast-close {
+  flex-shrink: 0;
+  align-self: flex-start;
+  display: flex;
+  align-items: center;
+  padding: var(--space-0-5);
+  margin-top: 1px;
+  background: none;
+  border: none;
+  border-radius: var(--radius-xs);
+  color: var(--text-muted);
+  cursor: pointer;
+  opacity: 0.7;
+  transition: opacity var(--dur-fast), background var(--dur-fast);
+}
+.toast-close:hover {
+  opacity: 1;
+  color: var(--text);
+  background: var(--bg-hover);
+}
+
+.toast-action:focus-visible,
+.toast-close:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.toast-closing {
+  animation: toast-out var(--dur-fast) var(--ease-out) forwards;
+  pointer-events: none;
+}
+
+@keyframes toast-in {
+  from { opacity: 0; transform: translateY(8px) scale(.98); }
+  to   { opacity: 1; transform: translateY(0)   scale(1); }
+}
+
+@keyframes toast-out {
+  from { opacity: 1; transform: translateY(0)   scale(1); }
+  to   { opacity: 0; transform: translateY(8px) scale(.98); }
+}
+
+@media (max-width: 600px) {
+  .toaster {
+    left: var(--space-3);
+    right: var(--space-3);
+  }
+  .toast {
+    max-width: none;
+  }
+}
