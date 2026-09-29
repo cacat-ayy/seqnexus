@@ -2124,7 +2124,7 @@ export default function ChromatogramView({ readId, forceHorizontal, compact, zoo
     const result = getTrimmedSequence()
     if (result.length === 0) return
     const name = `${data.name} (trimmed)`
-    openDocument(name, result, 'linear')
+    openDocument(name, result, 'linear', undefined, 'consensus')
   }, [data, getTrimmedSequence, openDocument])
 
   // ---- Trim input handlers ----

@@ -12,6 +12,7 @@ import {
   updateAnnotations,
   type UndoSnapshot,
   type Strandedness,
+  type DocumentOrigin,
   undoSnapshot,
   restoreUndo,
   insertBasesInPlace,
@@ -30,6 +31,8 @@ import type { CutSite } from './enzymes/finder'
 import type { ORFResult } from './workers/orf-finder'
 import type { PrimerPair } from './primers/finder'
 import type { AlignmentResult } from './alignment/types'
+import { toUid, parseUid, type ItemMeta } from './explorer/types'
+import { PRESET_COLORS } from './utils/annotation-constants'
 import type { AnnotationMatch } from './workers/annotate-list'
 import { matchToAnnotationData } from './workers/annotate-list'
 import { matchKey, proposalsFrom } from './utils/auto-annotations'
@@ -128,6 +131,10 @@ export type ViewMode = 'linear' | 'circular' | 'split'
 export interface DocumentTab {
   id: string
   doc: DocumentState
+  /** When it entered the session. The other four kinds already had this. */
+  createdAt: number
+  /** Stamped wherever an undo entry is created, which is every edit. */
+  modifiedAt: number
   selection: Selection
   search: SearchState
   undoStack: UndoSnapshot[]
@@ -152,7 +159,19 @@ export interface DocumentTab {
 export interface ExplorerFolder {
   id: string
   name: string
-  tabIds: string[]
+  /**
+   * Explorer uids (`${kind}:${id}`), not tab ids.
+   *
+   * Folders used to hold sequences only, which made type the structure of the
+   * tree rather than a property of an item, and left reads, alignments and
+   * contigs with nowhere to be filed. An item has at most one folder: multi
+   * membership is what tags are for.
+   */
+  itemUids: string[]
+  /** Parent folder, for nesting. Null at the top level. */
+  parentId: string | null
+  /** Optional accent on the folder header. */
+  color?: string
   collapsed: boolean
 }
 
@@ -165,8 +184,25 @@ export interface ClosedTab {
   folderId: string | null
 }
 
-/** How many closes can be taken back. Small on purpose: this is an undo
-    buffer, and every entry pins a full sequence in memory. */
+/**
+ * Anything the explorer has deleted, kept just long enough to take it back.
+ *
+ * Sequences had this buffer from the start; the other four kinds only had a
+ * confirmation dialog, which is backwards, since a read alignment or a contig
+ * costs far more to recreate than a sequence does to reopen. One buffer across
+ * all kinds lets every delete act immediately and offer an Undo instead.
+ */
+export type DeletedItem =
+  | ({ kind: 'sequence' } & ClosedTab)
+  | { kind: 'read'; index: number; folderId: string | null; read: SequencingRead; wasActive: boolean }
+  | { kind: 'alignment'; index: number; folderId: string | null; alignment: SavedAlignment }
+  /** Removing a read alignment also rewrites the contigs holding it, so the
+   *  whole contig list is snapshotted rather than reconstructed. */
+  | { kind: 'read-alignment'; index: number; folderId: string | null; readAlignment: ReadAlignment; contigs: Contig[] }
+  | { kind: 'contig'; index: number; folderId: string | null; contig: Contig }
+
+/** How many deletes can be taken back. Small on purpose: this is an undo
+    buffer, and every entry pins a full sequence or trace in memory. */
 export const MAX_RECENTLY_CLOSED = 5
 
 export type BaseEdit =
@@ -183,6 +219,8 @@ interface SeqUndoSnapshot {
 export interface SequencingRead {
   id: string
   data: Ab1Data
+  /** When it was imported. Absent in sessions written before the field. */
+  createdAt: number
   trimStart: number
   trimEnd: number
   edits: BaseEdit[]
@@ -288,6 +326,88 @@ const nextAlignId = () => alignIds.next()
 const nextReadAlignId = () => readAlignIds.next()
 const nextContigId = () => contigIds.next()
 
+/**
+ * A folder and every folder beneath it, including itself.
+ *
+ * Guarded against a cycle in `parentId`, which nothing in the UI can create
+ * but a hand-edited or partially-written session could.
+ */
+export function folderSubtree(folders: ExplorerFolder[], rootId: string): Set<string> {
+  const childrenOf = new Map<string, string[]>()
+  for (const f of folders) {
+    if (f.parentId) (childrenOf.get(f.parentId) ?? childrenOf.set(f.parentId, []).get(f.parentId)!).push(f.id)
+  }
+  const out = new Set<string>()
+  const stack = [rootId]
+  while (stack.length > 0) {
+    const id = stack.pop()!
+    if (out.has(id)) continue
+    out.add(id)
+    for (const child of childrenOf.get(id) ?? []) stack.push(child)
+  }
+  return out
+}
+
+/**
+ * Pick a colour for a new tag: the first preset not already in use, so tags
+ * created one after another stay distinguishable. Falls back to walking the
+ * palette once every colour is taken.
+ */
+function nextTagColor(used: Record<string, string>): string {
+  const taken = new Set(Object.values(used))
+  return PRESET_COLORS.find(c => !taken.has(c))
+    ?? PRESET_COLORS[Object.keys(used).length % PRESET_COLORS.length]
+}
+
+/** Which folder an item is filed in, if any. */
+function folderOf(folders: ExplorerFolder[], uid: string): string | null {
+  return folders.find(f => f.itemUids.includes(uid))?.id ?? null
+}
+
+/** Drop an item from whatever folder holds it. */
+function withoutItem(folders: ExplorerFolder[], uid: string): ExplorerFolder[] {
+  if (!folders.some(f => f.itemUids.includes(uid))) return folders
+  return folders.map(f => (
+    f.itemUids.includes(uid) ? { ...f, itemUids: f.itemUids.filter(u => u !== uid) } : f
+  ))
+}
+
+/** Put an item back in the folder it was deleted from, if that still exists. */
+function withItem(folders: ExplorerFolder[], uid: string, folderId: string | null): ExplorerFolder[] {
+  if (!folderId) return folders
+  return folders.map(f => (
+    f.id === folderId && !f.itemUids.includes(uid) ? { ...f, itemUids: [...f.itemUids, uid] } : f
+  ))
+}
+
+/** Append to the delete buffer, dropping the oldest entry past the cap. */
+function pushDeleted(buffer: DeletedItem[], entry: DeletedItem): DeletedItem[] {
+  return [...buffer.slice(-(MAX_RECENTLY_CLOSED - 1)), entry]
+}
+
+/** Put an item back at the index it was removed from, clamped to the end. */
+function insertAt<T>(list: T[], index: number, item: T): T[] {
+  const next = list.slice()
+  next.splice(Math.min(Math.max(index, 0), next.length), 0, item)
+  return next
+}
+
+/**
+ * Write one item's metadata back, dropping the entry entirely when every
+ * field has been cleared. Keeps `{}` and `{ starred: false }` out of the map,
+ * which matters because the map is persisted and remapped on session import.
+ */
+function pruneEmptyMeta(
+  map: Record<string, ItemMeta>,
+  uid: string,
+  meta: ItemMeta,
+): Record<string, ItemMeta> {
+  const next = { ...map }
+  if (Object.values(meta).every(v => v === undefined)) delete next[uid]
+  else next[uid] = meta
+  return next
+}
+
 export interface ReadAlignment {
   id: string
   name: string
@@ -337,13 +457,49 @@ interface EditorStore {
   explorerSelectedIds: Set<string>
   setExplorerSelectedIds: (ids: Set<string> | ((prev: Set<string>) => Set<string>)) => void
 
+  /**
+   * Per-item user metadata, keyed by explorer uid (`${kind}:${id}`).
+   *
+   * Kept in one map rather than as fields on the five item types: it is user
+   * annotation rather than item state, it has to span kinds for favourites to
+   * work at all, and a single map is one thing to persist and one thing to
+   * remap on session import.
+   */
+  itemMeta: Record<string, ItemMeta>
+  toggleItemStar: (uid: string) => void
+  setItemNote: (uid: string, note: string | null) => void
+  /** Drop metadata for items that no longer exist. */
+  pruneItemMeta: () => void
+
+  /**
+   * Tag name to colour.
+   *
+   * Separate from `itemMeta` because a colour belongs to the tag, not to
+   * each item wearing it: recolouring "failed QC" has to change every row at
+   * once, and storing the colour per item would make that a rewrite.
+   */
+  tagColors: Record<string, string>
+  addTag: (uid: string, tag: string) => void
+  removeTag: (uid: string, tag: string) => void
+  /** Rewrites the tag on every item that carries it. */
+  renameTag: (from: string, to: string) => void
+  /** Removes the tag everywhere and forgets its colour. */
+  deleteTag: (tag: string) => void
+  setTagColor: (tag: string, color: string) => void
+
   // Explorer folders
   folders: ExplorerFolder[]
-  createFolder: (name: string) => string
+  createFolder: (name: string, parentId?: string | null) => string
   renameFolder: (id: string, name: string) => void
   deleteFolder: (id: string) => void
   toggleFolder: (id: string) => void
+  /** File an item of any kind, or pass null to move it back to the top level. */
+  moveItemToFolder: (uid: string, folderId: string | null) => void
+  /** Sequence-only shorthand over `moveItemToFolder`, for the import paths. */
   moveTabToFolder: (tabId: string, folderId: string | null) => void
+  /** Re-parent a folder. Ignored when it would make a cycle. */
+  setFolderParent: (id: string, parentId: string | null) => void
+  setFolderColor: (id: string, color: string | null) => void
 
   // Annotation visibility (per-tab)
   hiddenAnnotationIds: string[]
@@ -495,19 +651,22 @@ interface EditorStore {
   toggleAutoAnnotations: () => void
 
   // Tab management
-  openDocument: (name: string, bases: string, topology?: 'linear' | 'circular', description?: string) => string
+  openDocument: (name: string, bases: string, topology?: 'linear' | 'circular', description?: string, origin?: DocumentOrigin) => string
   openDocumentState: (state: DocumentState) => string
   closeTab: (tabId: string) => void
   /**
-   * The last few closed sequences, newest last, so a delete can be taken back.
+   * The last few deleted items of any kind, newest last, so a delete can be
+   * taken back.
    *
    * Deliberately in-memory only and excluded from the session snapshot:
    * this is an undo buffer for the current sitting, not a recycle bin, and
    * persisting it would keep the bases of deleted sequences on disk after the
    * user asked for them to go.
    */
-  recentlyClosedTabs: ClosedTab[]
-  /** Restore the most recently closed sequence, at its original position. */
+  recentlyDeleted: DeletedItem[]
+  /** Restore the most recently deleted item, at its original position. */
+  undoDelete: () => void
+  /** Older name for `undoDelete`, kept for callers that only close tabs. */
   reopenClosedTab: () => void
   setActiveTab: (tabId: string) => void
   renameTab: (tabId: string, name: string) => void
@@ -583,10 +742,10 @@ interface EditorStore {
 
   // Session restore (bulk-load tabs + folders + sequencing reads + alignments from persistence)
   restoreSession: (
-    tabs: { id: string; doc: DocumentState; viewMode: ViewMode; zoomLevel: number; hiddenAnnotationIds?: string[]; showOrfs?: boolean; showEnzymes?: boolean; showPrimers?: boolean; showAutoAnnotations?: boolean; readOnly?: boolean; undoStack?: UndoSnapshot[]; redoStack?: UndoSnapshot[] }[],
+    tabs: { id: string; doc: DocumentState; createdAt?: number; modifiedAt?: number; viewMode: ViewMode; zoomLevel: number; hiddenAnnotationIds?: string[]; showOrfs?: boolean; showEnzymes?: boolean; showPrimers?: boolean; showAutoAnnotations?: boolean; readOnly?: boolean; undoStack?: UndoSnapshot[]; redoStack?: UndoSnapshot[] }[],
     activeTabId: string | null,
     folders: ExplorerFolder[],
-    seqReads?: { id: string; data: Ab1Data; trimStart: number; trimEnd: number; edits: BaseEdit[] }[],
+    seqReads?: { id: string; data: Ab1Data; createdAt?: number; trimStart: number; trimEnd: number; edits: BaseEdit[] }[],
     activeSeqReadIds?: string[],
     savedAlignments?: SavedAlignment[],
     savedReadAlignments?: ReadAlignment[],
@@ -594,16 +753,20 @@ interface EditorStore {
     activeAlignmentId?: string | null,
     activeContigId?: string | null,
     activeReadAlignmentId?: string | null,
+    itemMeta?: Record<string, ItemMeta>,
+    tagColors?: Record<string, string>,
   ) => void
 
   // Merge imported session into existing state (adds items alongside existing ones)
   mergeSession: (
-    tabs: { id: string; doc: DocumentState; viewMode: ViewMode; zoomLevel: number; hiddenAnnotationIds?: string[]; showOrfs?: boolean; showEnzymes?: boolean; showPrimers?: boolean; showAutoAnnotations?: boolean; readOnly?: boolean }[],
+    tabs: { id: string; doc: DocumentState; createdAt?: number; modifiedAt?: number; viewMode: ViewMode; zoomLevel: number; hiddenAnnotationIds?: string[]; showOrfs?: boolean; showEnzymes?: boolean; showPrimers?: boolean; showAutoAnnotations?: boolean; readOnly?: boolean }[],
     folders: ExplorerFolder[],
-    seqReads?: { id: string; data: Ab1Data; trimStart: number; trimEnd: number; edits: BaseEdit[] }[],
+    seqReads?: { id: string; data: Ab1Data; createdAt?: number; trimStart: number; trimEnd: number; edits: BaseEdit[] }[],
     savedAlignments?: SavedAlignment[],
     savedReadAlignments?: ReadAlignment[],
     savedContigs?: Contig[],
+    itemMeta?: Record<string, ItemMeta>,
+    tagColors?: Record<string, string>,
   ) => void
 
   // Legacy compat
@@ -668,9 +831,12 @@ const emptySearch: SearchState = { query: '', options: { ...defaultSearchOptions
 const DEFAULT_ZOOM = 14  // default zoom level - shows individual letters
 
 function makeTab(doc: DocumentState): DocumentTab {
+  const now = Date.now()
   return {
     id: nextTabId(),
     doc,
+    createdAt: now,
+    modifiedAt: now,
     selection: { anchor: 0, caret: 0 },
     search: { ...emptySearch },
     undoStack: [],
@@ -886,7 +1052,7 @@ export const useEditorStore = create<EditorStore>((set, get) => {
     if (!tab) return
     const stack = [...tab.undoStack, undoSnapshot(tab.doc)]
     if (stack.length > MAX_UNDO) stack.shift()
-    updateActiveTab({ undoStack: stack, redoStack: [] })
+    updateActiveTab({ undoStack: stack, redoStack: [], modifiedAt: Date.now() })
     endCoalesce()
   }
 
@@ -934,11 +1100,11 @@ export const useEditorStore = create<EditorStore>((set, get) => {
 
     if (continuing) {
       // The existing top-of-stack already holds the pre-interaction state.
-      updateActiveTab({ doc })
+      updateActiveTab({ doc, modifiedAt: Date.now() })
     } else {
       const undoStack = [...tab.undoStack, undoSnapshot(tab.doc)]
       if (undoStack.length > MAX_UNDO) undoStack.shift()
-      updateActiveTab({ doc, undoStack, redoStack: [] })
+      updateActiveTab({ doc, undoStack, redoStack: [], modifiedAt: Date.now() })
     }
 
     coalesce = key === undefined ? null : { tabId: tab.id, key }
@@ -1367,34 +1533,165 @@ export const useEditorStore = create<EditorStore>((set, get) => {
       else set({ autoAnnotationPicks: new Set() })
     },
 
-    recentlyClosedTabs: [],
+    recentlyDeleted: [],
+
+    // Per-item user metadata (favourites, notes)
+    itemMeta: {},
+    toggleItemStar: (uid) => {
+      set(s => {
+        const current = s.itemMeta[uid]
+        const starred = !current?.starred
+        // An entry with nothing left in it is dropped rather than kept as
+        // `{ starred: false }`, so unstarring everything leaves an empty map
+        // and the session stays small.
+        const next = { ...current, starred: starred || undefined }
+        return { itemMeta: pruneEmptyMeta(s.itemMeta, uid, next) }
+      })
+    },
+    setItemNote: (uid, note) => {
+      set(s => {
+        const trimmed = note?.trim()
+        const next = { ...s.itemMeta[uid], note: trimmed || undefined }
+        return { itemMeta: pruneEmptyMeta(s.itemMeta, uid, next) }
+      })
+    },
+    tagColors: {},
+    addTag: (uid, tag) => {
+      const name = tag.trim()
+      if (!name) return
+      set(s => {
+        const current = s.itemMeta[uid]?.tags ?? []
+        if (current.includes(name)) return {}
+        return {
+          itemMeta: pruneEmptyMeta(s.itemMeta, uid, { ...s.itemMeta[uid], tags: [...current, name] }),
+          // A new tag picks the next unused colour, so two tags created in a
+          // row never look the same.
+          tagColors: s.tagColors[name]
+            ? s.tagColors
+            : { ...s.tagColors, [name]: nextTagColor(s.tagColors) },
+        }
+      })
+    },
+    removeTag: (uid, tag) => {
+      set(s => {
+        const current = s.itemMeta[uid]?.tags
+        if (!current?.includes(tag)) return {}
+        const tags = current.filter(t => t !== tag)
+        return {
+          itemMeta: pruneEmptyMeta(s.itemMeta, uid, {
+            ...s.itemMeta[uid], tags: tags.length > 0 ? tags : undefined,
+          }),
+        }
+      })
+    },
+    renameTag: (from, to) => {
+      const name = to.trim()
+      if (!name || name === from) return
+      set(s => {
+        const itemMeta: Record<string, ItemMeta> = {}
+        for (const [uid, meta] of Object.entries(s.itemMeta)) {
+          if (!meta.tags?.includes(from)) { itemMeta[uid] = meta; continue }
+          // Renaming onto an existing tag merges the two, so the item does
+          // not end up carrying the same name twice.
+          const tags = [...new Set(meta.tags.map(t => (t === from ? name : t)))]
+          itemMeta[uid] = { ...meta, tags }
+        }
+        const { [from]: color, ...rest } = s.tagColors
+        return { itemMeta, tagColors: { ...rest, [name]: rest[name] ?? color ?? nextTagColor(rest) } }
+      })
+    },
+    deleteTag: (tag) => {
+      set(s => {
+        const itemMeta: Record<string, ItemMeta> = {}
+        for (const [uid, meta] of Object.entries(s.itemMeta)) {
+          if (!meta.tags?.includes(tag)) { itemMeta[uid] = meta; continue }
+          const tags = meta.tags.filter(t => t !== tag)
+          const next: ItemMeta = { ...meta, tags: tags.length > 0 ? tags : undefined }
+          if (!Object.values(next).every(v => v === undefined)) itemMeta[uid] = next
+        }
+        const tagColors = { ...s.tagColors }
+        delete tagColors[tag]
+        return { itemMeta, tagColors }
+      })
+    },
+    setTagColor: (tag, color) => {
+      set(s => ({ tagColors: { ...s.tagColors, [tag]: color } }))
+    },
+    pruneItemMeta: () => {
+      const s = get()
+      const live = new Set<string>([
+        ...s.tabs.map(t => toUid('sequence', t.id)),
+        ...s.sequencingReads.map(r => toUid('read', r.id)),
+        ...s.alignments.map(a => toUid('alignment', a.id)),
+        ...s.readAlignments.map(ra => toUid('read-alignment', ra.id)),
+        ...s.contigs.map(c => toUid('contig', c.id)),
+      ])
+      const next: Record<string, ItemMeta> = {}
+      let dropped = false
+      for (const [uid, meta] of Object.entries(s.itemMeta)) {
+        if (live.has(uid)) next[uid] = meta
+        else dropped = true
+      }
+      if (dropped) set({ itemMeta: next })
+    },
 
     // Explorer folders
     folders: [],
-    createFolder: (name) => {
+    createFolder: (name, parentId = null) => {
       const id = nextFolderId()
-      set(state => ({ folders: [...state.folders, { id, name, tabIds: [], collapsed: false }] }))
+      set(state => ({
+        folders: [...state.folders, { id, name, itemUids: [], parentId, collapsed: false }],
+      }))
       return id
     },
     renameFolder: (id, name) => {
       set(state => ({ folders: state.folders.map(f => f.id === id ? { ...f, name } : f) }))
     },
     deleteFolder: (id) => {
-      set(state => ({ folders: state.folders.filter(f => f.id !== id) }))
+      // Children are promoted to where the deleted folder sat rather than
+      // deleted with it: "Delete folder, keep contents" has to mean the whole
+      // subtree survives, not just the items one level down.
+      set(state => {
+        const parentId = state.folders.find(f => f.id === id)?.parentId ?? null
+        return {
+          folders: state.folders
+            .filter(f => f.id !== id)
+            .map(f => f.parentId === id ? { ...f, parentId } : f),
+        }
+      })
     },
     deleteFolderWithContents: (folderId) => {
-      const { tabs, activeTabId, folders } = get()
-      const folder = folders.find(f => f.id === folderId)
-      if (!folder) return
-      const removeIds = new Set(folder.tabIds)
-      const newTabs = tabs.filter(t => !removeIds.has(t.id))
-      let newActiveId = activeTabId
-      if (activeTabId && removeIds.has(activeTabId)) {
-        const idx = tabs.findIndex(t => t.id === activeTabId)
+      const state = get()
+      if (!state.folders.some(f => f.id === folderId)) return
+
+      // The whole subtree goes, and so does everything filed anywhere in it.
+      const doomedFolders = folderSubtree(state.folders, folderId)
+      const doomed = { sequence: new Set<string>(), read: new Set<string>(), alignment: new Set<string>(), 'read-alignment': new Set<string>(), contig: new Set<string>() }
+      for (const f of state.folders) {
+        if (!doomedFolders.has(f.id)) continue
+        for (const uid of f.itemUids) {
+          const parsed = parseUid(uid)
+          if (parsed) doomed[parsed.kind].add(parsed.id)
+        }
+      }
+
+      const newTabs = state.tabs.filter(t => !doomed.sequence.has(t.id))
+      let newActiveId = state.activeTabId
+      if (state.activeTabId && doomed.sequence.has(state.activeTabId)) {
+        const idx = state.tabs.findIndex(t => t.id === state.activeTabId)
         const next = newTabs[Math.min(idx, newTabs.length - 1)]
         newActiveId = next?.id ?? null
       }
       const active = newTabs.find(t => t.id === newActiveId)
+
+      const readAlignments = state.readAlignments.filter(ra => !doomed['read-alignment'].has(ra.id))
+      const survivingRaIds = new Set(readAlignments.map(ra => ra.id))
+      const contigs = state.contigs
+        .filter(c => !doomed.contig.has(c.id))
+        .map(c => ({ ...c, readAlignmentIds: c.readAlignmentIds.filter(id => survivingRaIds.has(id)) }))
+        .filter(c => c.readAlignmentIds.length > 0)
+      const contigIds = new Set(contigs.map(c => c.id))
+
       set({
         tabs: newTabs,
         activeTabId: newActiveId,
@@ -1412,29 +1709,61 @@ export const useEditorStore = create<EditorStore>((set, get) => {
         autoAnnotations: active?.autoAnnotations ?? [],
         autoAnnotationPicks: new Set<string>(),
         orfPicks: new Set<string>(),
-        folders: folders.filter(f => f.id !== folderId),
+        sequencingReads: state.sequencingReads.filter(r => !doomed.read.has(r.id)),
+        activeSequencingReadIds: state.activeSequencingReadIds.filter(id => !doomed.read.has(id)),
+        alignments: state.alignments.filter(a => !doomed.alignment.has(a.id)),
+        activeAlignmentId: doomed.alignment.has(state.activeAlignmentId ?? '') ? null : state.activeAlignmentId,
+        readAlignments,
+        activeReadAlignmentId: survivingRaIds.has(state.activeReadAlignmentId ?? '') ? state.activeReadAlignmentId : null,
+        contigs,
+        activeContigId: contigIds.has(state.activeContigId ?? '') ? state.activeContigId : null,
+        folders: state.folders.filter(f => !doomedFolders.has(f.id)),
       })
     },
     toggleFolder: (id) => {
       set(state => ({ folders: state.folders.map(f => f.id === id ? { ...f, collapsed: !f.collapsed } : f) }))
     },
-    moveTabToFolder: (tabId, folderId) => {
+    moveItemToFolder: (uid, folderId) => {
       set(state => {
-        // Remove tab from all folders first
+        // Pulled out of every folder first, so an item can never end up filed
+        // in two places by a dropped drag that was not cleaned up.
         let folders = state.folders.map(f => ({
           ...f,
-          tabIds: f.tabIds.filter(id => id !== tabId),
+          itemUids: f.itemUids.filter(u => u !== uid),
         }))
-        // Add to target folder if specified
         if (folderId) {
-          folders = folders.map(f => f.id === folderId ? { ...f, tabIds: [...f.tabIds, tabId] } : f)
+          folders = folders.map(f => f.id === folderId ? { ...f, itemUids: [...f.itemUids, uid] } : f)
         }
         return { folders }
       })
     },
+    moveTabToFolder: (tabId, folderId) => {
+      get().moveItemToFolder(toUid('sequence', tabId), folderId)
+    },
+    setFolderParent: (id, parentId) => {
+      set(state => {
+        if (id === parentId) return {}
+        // Rejected rather than repaired: a folder dropped into its own
+        // descendant would otherwise detach that whole subtree from the root
+        // and make it unreachable.
+        if (parentId && folderSubtree(state.folders, id).has(parentId)) return {}
+        return { folders: state.folders.map(f => f.id === id ? { ...f, parentId } : f) }
+      })
+    },
+    setFolderColor: (id, color) => {
+      set(state => ({
+        folders: state.folders.map(f => f.id === id ? { ...f, color: color ?? undefined } : f),
+      }))
+    },
 
-    openDocument(name, bases, topology = 'linear', description) {
-      const doc: DocumentState = { name, description: description || undefined, sequence: new Sequence(bases, topology), annotations: [] }
+    openDocument(name, bases, topology = 'linear', description, origin) {
+      const doc: DocumentState = {
+        name,
+        description: description || undefined,
+        sequence: new Sequence(bases, topology),
+        annotations: [],
+        metadata: origin ? { origin } : undefined,
+      }
       const tab = makeTab(doc)
       set(state => ({
         tabs: [...state.tabs, tab],
@@ -1481,7 +1810,7 @@ export const useEditorStore = create<EditorStore>((set, get) => {
     },
 
     closeTab(tabId) {
-      const { tabs, activeTabId, folders, recentlyClosedTabs } = get()
+      const { tabs, activeTabId, folders, recentlyDeleted } = get()
       const closing = tabs.find(t => t.id === tabId)
       const newTabs = tabs.filter(t => t.id !== tabId)
       let newActiveId = activeTabId
@@ -1509,49 +1838,89 @@ export const useEditorStore = create<EditorStore>((set, get) => {
         autoAnnotationPicks: new Set<string>(),
         orfPicks: new Set<string>(),
         // Remove closed tab from any folder
-        folders: folders.map(f => ({ ...f, tabIds: f.tabIds.filter(id => id !== tabId) })),
-        // Keep enough to put it back. Closing is reached through a delete
-        // confirmation, so the user has already said yes: the buffer is there
-        // for the moment straight afterwards when they realise they meant a
-        // different sequence.
-        recentlyClosedTabs: closing
-          ? [
-              ...recentlyClosedTabs.slice(-(MAX_RECENTLY_CLOSED - 1)),
-              {
-                tab: closing,
-                index: tabs.findIndex(t => t.id === tabId),
-                folderId: folders.find(f => f.tabIds.includes(tabId))?.id ?? null,
-              },
-            ]
-          : recentlyClosedTabs,
+        folders: withoutItem(folders, toUid('sequence', tabId)),
+        // Keep enough to put it back. Deleting a sequence discards it
+        // outright, and a mis-aimed click on a dense explorer list is easy.
+        recentlyDeleted: closing
+          ? pushDeleted(recentlyDeleted, {
+              kind: 'sequence',
+              tab: closing,
+              index: tabs.findIndex(t => t.id === tabId),
+              folderId: folderOf(folders, toUid('sequence', tabId)),
+            })
+          : recentlyDeleted,
       })
     },
 
-    reopenClosedTab() {
-      const { recentlyClosedTabs, tabs, folders } = get()
-      const last = recentlyClosedTabs[recentlyClosedTabs.length - 1]
+    undoDelete() {
+      const state = get()
+      const last = state.recentlyDeleted[state.recentlyDeleted.length - 1]
       if (!last) return
+      const rest = state.recentlyDeleted.slice(0, -1)
 
-      // Put it back where it was, not on the end.
-      const restored = tabs.slice()
-      restored.splice(Math.min(last.index, restored.length), 0, last.tab)
+      switch (last.kind) {
+        case 'sequence': {
+          // Put it back where it was, not on the end.
+          const restored = state.tabs.slice()
+          restored.splice(Math.min(last.index, restored.length), 0, last.tab)
+          set({
+            tabs: restored,
+            recentlyDeleted: rest,
+            folders: withItem(state.folders, toUid('sequence', last.tab.id), last.folderId),
+          })
+          // Focus it, so an undo lands the user back where they were. This
+          // also repopulates doc/selection/view state from the restored tab.
+          // Cached analysis results (ORFs, cut sites) are not restored: they
+          // are only written back to a tab on switch, so the closed tab's
+          // copy was stale.
+          get().setActiveTab(last.tab.id)
+          return
+        }
+        case 'read': {
+          set({
+            sequencingReads: insertAt(state.sequencingReads, last.index, last.read),
+            folders: withItem(state.folders, toUid('read', last.read.id), last.folderId),
+            recentlyDeleted: rest,
+          })
+          if (last.wasActive) get().setActiveSequencingRead(last.read.id)
+          return
+        }
+        case 'alignment': {
+          set({
+            alignments: insertAt(state.alignments, last.index, last.alignment),
+            folders: withItem(state.folders, toUid('alignment', last.alignment.id), last.folderId),
+            recentlyDeleted: rest,
+          })
+          get().setActiveAlignment(last.alignment.id)
+          return
+        }
+        case 'read-alignment': {
+          // The contig list is restored wholesale: removing a read alignment
+          // can empty a contig, and deleting that contig is part of the same
+          // action the user is taking back.
+          set({
+            readAlignments: insertAt(state.readAlignments, last.index, last.readAlignment),
+            contigs: last.contigs,
+            folders: withItem(state.folders, toUid('read-alignment', last.readAlignment.id), last.folderId),
+            recentlyDeleted: rest,
+          })
+          get().setActiveReadAlignment(last.readAlignment.id)
+          return
+        }
+        case 'contig': {
+          set({
+            contigs: insertAt(state.contigs, last.index, last.contig),
+            folders: withItem(state.folders, toUid('contig', last.contig.id), last.folderId),
+            recentlyDeleted: rest,
+          })
+          get().setActiveContig(last.contig.id)
+          return
+        }
+      }
+    },
 
-      set({
-        tabs: restored,
-        recentlyClosedTabs: recentlyClosedTabs.slice(0, -1),
-        folders: last.folderId
-          ? folders.map(f => (
-              f.id === last.folderId && !f.tabIds.includes(last.tab.id)
-                ? { ...f, tabIds: [...f.tabIds, last.tab.id] }
-                : f
-            ))
-          : folders,
-      })
-      // Focus it, so an undo lands the user back where they were. This also
-      // repopulates doc/selection/view state from the restored tab. Cached
-      // analysis results (ORFs, cut sites) are not restored: they are only
-      // written back to a tab on switch, so the closed tab's copy was stale.
-      get().setActiveTab(last.tab.id)
+    reopenClosedTab() {
+      get().undoDelete()
     },
 
     setActiveTab(tabId) {
@@ -1660,10 +2029,12 @@ export const useEditorStore = create<EditorStore>((set, get) => {
       updateActiveTab({ readOnly: !tab.readOnly })
     },
 
-    restoreSession(restoredTabs, restoredActiveId, restoredFolders, seqReads, activeSeqReadIds, savedAlignments, savedReadAlignments, savedContigs, restoredActiveAlignmentId, restoredActiveContigId, restoredActiveReadAlignmentId) {
+    restoreSession(restoredTabs, restoredActiveId, restoredFolders, seqReads, activeSeqReadIds, savedAlignments, savedReadAlignments, savedContigs, restoredActiveAlignmentId, restoredActiveContigId, restoredActiveReadAlignmentId, restoredItemMeta, restoredTagColors) {
       const tabs: DocumentTab[] = restoredTabs.map(rt => ({
         id: rt.id,
         doc: rt.doc,
+        createdAt: rt.createdAt ?? 0,
+        modifiedAt: rt.modifiedAt ?? rt.createdAt ?? 0,
         selection: { anchor: 0, caret: 0 },
         search: { ...emptySearch },
         undoStack: rt.undoStack ?? [],
@@ -1697,6 +2068,7 @@ export const useEditorStore = create<EditorStore>((set, get) => {
         return {
           id: sr.id,
           data: sr.data,
+          createdAt: sr.createdAt ?? 0,
           trimStart: sr.trimStart,
           trimEnd: sr.trimEnd,
           edits: sr.edits ?? [],
@@ -1761,16 +2133,20 @@ export const useEditorStore = create<EditorStore>((set, get) => {
         activeReadAlignmentId: validActiveRAId,
         contigs,
         activeContigId: validActiveContigId,
+        itemMeta: restoredItemMeta ?? {},
+        tagColors: restoredTagColors ?? {},
       })
     },
 
-    mergeSession(mergedTabs, mergedFolders, seqReads, savedAlignments, savedReadAlignments, savedContigs) {
+    mergeSession(mergedTabs, mergedFolders, seqReads, savedAlignments, savedReadAlignments, savedContigs, importedItemMeta, importedTagColors) {
       const state = get()
 
       // Convert imported tabs to DocumentTab objects
       const newTabs: DocumentTab[] = mergedTabs.map(rt => ({
         id: rt.id,
         doc: rt.doc,
+        createdAt: rt.createdAt ?? Date.now(),
+        modifiedAt: rt.modifiedAt ?? rt.createdAt ?? Date.now(),
         selection: { anchor: 0, caret: 0 },
         search: { ...emptySearch },
         undoStack: [],
@@ -1797,10 +2173,10 @@ export const useEditorStore = create<EditorStore>((set, get) => {
       for (const importedFolder of mergedFolders) {
         const existing = existingFoldersByName.get(importedFolder.name)
         if (existing) {
-          // Add tab IDs to existing folder (avoid duplicates)
-          const existingIds = new Set(existing.tabIds)
-          for (const tid of importedFolder.tabIds) {
-            if (!existingIds.has(tid)) existing.tabIds.push(tid)
+          // Add item uids to the existing folder, avoiding duplicates
+          const existingIds = new Set(existing.itemUids)
+          for (const uid of importedFolder.itemUids) {
+            if (!existingIds.has(uid)) existing.itemUids.push(uid)
           }
         } else {
           finalFolders.push(importedFolder)
@@ -1811,6 +2187,7 @@ export const useEditorStore = create<EditorStore>((set, get) => {
       const newReads: SequencingRead[] = (seqReads ?? []).map(sr => ({
         id: sr.id,
         data: sr.data,
+        createdAt: sr.createdAt ?? Date.now(),
         trimStart: sr.trimStart,
         trimEnd: sr.trimEnd,
         edits: sr.edits ?? [],
@@ -1825,6 +2202,11 @@ export const useEditorStore = create<EditorStore>((set, get) => {
         alignments: [...state.alignments, ...(savedAlignments ?? [])],
         readAlignments: [...state.readAlignments, ...(savedReadAlignments ?? [])],
         contigs: [...state.contigs, ...(savedContigs ?? [])],
+        // Imported ids were remapped before this call, so the incoming keys
+        // cannot collide with metadata already in the map.
+        itemMeta: { ...state.itemMeta, ...(importedItemMeta ?? {}) },
+        // Existing colours win: an import must not repaint tags already here.
+        tagColors: { ...(importedTagColors ?? {}), ...state.tagColors },
       })
     },
 
@@ -2091,6 +2473,7 @@ export const useEditorStore = create<EditorStore>((set, get) => {
       const read: SequencingRead = {
         id,
         data,
+        createdAt: Date.now(),
         trimStart: 0,
         trimEnd: data.bases.length,
         edits: [],
@@ -2108,10 +2491,22 @@ export const useEditorStore = create<EditorStore>((set, get) => {
     },
 
     removeSequencingRead(id) {
-      set(s => ({
-        sequencingReads: s.sequencingReads.filter(r => r.id !== id),
-        activeSequencingReadIds: s.activeSequencingReadIds.filter(rid => rid !== id),
-      }))
+      set(s => {
+        const index = s.sequencingReads.findIndex(r => r.id === id)
+        if (index === -1) return {}
+        return {
+          sequencingReads: s.sequencingReads.filter(r => r.id !== id),
+          activeSequencingReadIds: s.activeSequencingReadIds.filter(rid => rid !== id),
+          folders: withoutItem(s.folders, toUid('read', id)),
+          recentlyDeleted: pushDeleted(s.recentlyDeleted, {
+            kind: 'read',
+            index,
+            folderId: folderOf(s.folders, toUid('read', id)),
+            read: s.sequencingReads[index],
+            wasActive: s.activeSequencingReadIds.includes(id),
+          }),
+        }
+      })
     },
 
     setActiveSequencingRead(id) {
@@ -2248,10 +2643,20 @@ export const useEditorStore = create<EditorStore>((set, get) => {
     },
 
     removeAlignment(id) {
-      set(s => ({
-        alignments: s.alignments.filter(a => a.id !== id),
-        activeAlignmentId: s.activeAlignmentId === id ? null : s.activeAlignmentId,
-      }))
+      set(s => {
+        const index = s.alignments.findIndex(a => a.id === id)
+        if (index === -1) return {}
+        return {
+          alignments: s.alignments.filter(a => a.id !== id),
+          activeAlignmentId: s.activeAlignmentId === id ? null : s.activeAlignmentId,
+          folders: withoutItem(s.folders, toUid('alignment', id)),
+          recentlyDeleted: pushDeleted(s.recentlyDeleted, {
+            kind: 'alignment', index,
+            folderId: folderOf(s.folders, toUid('alignment', id)),
+            alignment: s.alignments[index],
+          }),
+        }
+      })
     },
 
     renameAlignment(id, name) {
@@ -2313,6 +2718,8 @@ export const useEditorStore = create<EditorStore>((set, get) => {
 
     removeReadAlignment(id) {
       set(s => {
+        const index = s.readAlignments.findIndex(r => r.id === id)
+        if (index === -1) return {}
         // Remove from contigs; delete contigs that become empty
         const updatedContigs = s.contigs
           .map(c => c.readAlignmentIds.includes(id)
@@ -2325,6 +2732,14 @@ export const useEditorStore = create<EditorStore>((set, get) => {
           activeReadAlignmentId: s.activeReadAlignmentId === id ? null : s.activeReadAlignmentId,
           contigs: updatedContigs,
           activeContigId: removedContigIds.includes(s.activeContigId ?? '') ? null : s.activeContigId,
+          folders: withoutItem(s.folders, toUid('read-alignment', id)),
+          recentlyDeleted: pushDeleted(s.recentlyDeleted, {
+            kind: 'read-alignment',
+            index,
+            folderId: folderOf(s.folders, toUid('read-alignment', id)),
+            readAlignment: s.readAlignments[index],
+            contigs: s.contigs,
+          }),
         }
       })
     },
@@ -2418,10 +2833,20 @@ export const useEditorStore = create<EditorStore>((set, get) => {
     },
 
     removeContig(id) {
-      set(s => ({
-        contigs: s.contigs.filter(c => c.id !== id),
-        activeContigId: s.activeContigId === id ? null : s.activeContigId,
-      }))
+      set(s => {
+        const index = s.contigs.findIndex(c => c.id === id)
+        if (index === -1) return {}
+        return {
+          contigs: s.contigs.filter(c => c.id !== id),
+          activeContigId: s.activeContigId === id ? null : s.activeContigId,
+          folders: withoutItem(s.folders, toUid('contig', id)),
+          recentlyDeleted: pushDeleted(s.recentlyDeleted, {
+            kind: 'contig', index,
+            folderId: folderOf(s.folders, toUid('contig', id)),
+            contig: s.contigs[index],
+          }),
+        }
+      })
     },
 
     renameContig(id, name) {

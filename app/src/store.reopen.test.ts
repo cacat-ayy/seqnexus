@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach } from 'vitest'
 import { useEditorStore, MAX_RECENTLY_CLOSED } from './store'
+import { toUid } from './explorer/types'
 
 const store = () => useEditorStore.getState()
 
@@ -10,7 +11,7 @@ const store = () => useEditorStore.getState()
 describe('reopening a closed sequence', () => {
   beforeEach(() => {
     for (const tab of store().tabs) store().closeTab(tab.id)
-    useEditorStore.setState({ recentlyClosedTabs: [] })
+    useEditorStore.setState({ recentlyDeleted: [] })
   })
 
   it('remembers a closed tab and puts it back', () => {
@@ -18,13 +19,13 @@ describe('reopening a closed sequence', () => {
 
     store().closeTab(id)
     expect(store().tabs).toHaveLength(0)
-    expect(store().recentlyClosedTabs).toHaveLength(1)
+    expect(store().recentlyDeleted).toHaveLength(1)
 
     store().reopenClosedTab()
     expect(store().tabs).toHaveLength(1)
     expect(store().tabs[0].doc.name).toBe('pTest')
     expect(store().tabs[0].doc.sequence.bases).toBe('ATGC')
-    expect(store().recentlyClosedTabs).toHaveLength(0)
+    expect(store().recentlyDeleted).toHaveLength(0)
   })
 
   it('restores it at its original position, not on the end', () => {
@@ -45,10 +46,10 @@ describe('reopening a closed sequence', () => {
     store().moveTabToFolder(id, folderId)
 
     store().closeTab(id)
-    expect(store().folders[0].tabIds).not.toContain(id)
+    expect(store().folders[0].itemUids).not.toContain(toUid('sequence', id))
 
     store().reopenClosedTab()
-    expect(store().folders[0].tabIds).toContain(id)
+    expect(store().folders[0].itemUids).toContain(toUid('sequence', id))
   })
 
   it('makes the restored tab active', () => {
@@ -82,9 +83,11 @@ describe('reopening a closed sequence', () => {
       store().closeTab(id)
     }
 
-    expect(store().recentlyClosedTabs).toHaveLength(MAX_RECENTLY_CLOSED)
+    expect(store().recentlyDeleted).toHaveLength(MAX_RECENTLY_CLOSED)
     // seq0 and seq1 fell off the end; the newest is still there.
-    expect(store().recentlyClosedTabs[0].tab.doc.name).toBe('seq2')
+    const oldest = store().recentlyDeleted[0]
+    expect(oldest.kind).toBe('sequence')
+    expect(oldest.kind === 'sequence' && oldest.tab.doc.name).toBe('seq2')
   })
 
   it('does nothing when there is nothing to reopen', () => {

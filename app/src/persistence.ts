@@ -9,6 +9,7 @@
 import { useEditorStore, type ExplorerFolder, type ViewMode, type BaseEdit, type SavedAlignment, type ReadAlignment, type Contig } from './store'
 import type { Ab1Data } from './io/ab1'
 import type { AlignmentResult } from './alignment/types'
+import { toUid, parseUid, type ItemMeta } from './explorer/types'
 import { type DocumentSnapshot, type DocumentState, type UndoSnapshot, snapshot, restore } from './models/Document'
 import { PieceTable, type PieceTableSnapshot } from './models/PieceTable'
 import { Sequence } from './models/Sequence'
@@ -62,6 +63,8 @@ interface SerializedUndoHistory {
 interface SerializedTabV2 {
   id: string
   doc: Omit<DocumentSnapshot, 'bases'>
+  createdAt?: number
+  modifiedAt?: number
   viewMode: ViewMode
   zoomLevel: number
   hiddenAnnotationIds?: string[]
@@ -76,6 +79,7 @@ interface SerializedTabV2 {
 interface SerializedSeqRead {
   id: string
   name: string
+  createdAt?: number
   trimStart: number
   trimEnd: number
   edits: BaseEdit[]
@@ -118,6 +122,11 @@ interface SerializedSessionV2 {
   tabs: SerializedTabV2[]
   activeTabId: string | null
   folders: ExplorerFolder[]
+  /** Favourites and notes, keyed by explorer uid. Optional: sessions written
+   *  before per-item metadata existed simply have none. */
+  itemMeta?: Record<string, ItemMeta>
+  /** Tag name to colour. Optional for the same reason as itemMeta. */
+  tagColors?: Record<string, string>
   theme: string
   sequencingReads?: SerializedSeqRead[]
   activeSequencingReadIds?: string[]
@@ -139,6 +148,65 @@ let _idbOk: boolean | null = null
 async function checkIdb(): Promise<boolean> {
   if (_idbOk === null) _idbOk = await idbAvailable()
   return _idbOk
+}
+
+/** A folder as written before folders could hold anything but sequences. */
+interface LegacyFolder {
+  id: string
+  name: string
+  tabIds?: string[]
+  itemUids?: string[]
+  parentId?: string | null
+  color?: string
+  collapsed?: boolean
+}
+
+/**
+ * Read folders in either shape.
+ *
+ * Sessions written before folders became kind-agnostic hold `tabIds`, a list
+ * of bare tab ids. Those become sequence uids on the way in. Only the new
+ * shape is ever written back, so this runs once per stored session.
+ */
+export function migrateFolders(folders: unknown): ExplorerFolder[] {
+  if (!Array.isArray(folders)) return []
+  return (folders as LegacyFolder[])
+    .filter(f => f && typeof f.id === 'string')
+    .map(f => ({
+      id: f.id,
+      name: typeof f.name === 'string' ? f.name : 'Folder',
+      itemUids: Array.isArray(f.itemUids)
+        ? f.itemUids.filter((u): u is string => typeof u === 'string')
+        : (f.tabIds ?? []).filter(id => typeof id === 'string').map(id => toUid('sequence', id)),
+      parentId: typeof f.parentId === 'string' ? f.parentId : null,
+      color: typeof f.color === 'string' ? f.color : undefined,
+      collapsed: f.collapsed === true,
+    }))
+}
+
+/**
+ * Item metadata for items that still exist.
+ *
+ * Deleting a starred item leaves its entry behind, because the delete buffer
+ * may still put it back. Filtering at save time rather than at delete time
+ * keeps undo intact without letting the map grow across a long session.
+ */
+function liveItemMeta(state: ReturnType<typeof useEditorStore.getState>): Record<string, ItemMeta> | undefined {
+  const live = new Set<string>([
+    ...state.tabs.map(t => toUid('sequence', t.id)),
+    ...state.sequencingReads.map(r => toUid('read', r.id)),
+    ...state.alignments.map(a => toUid('alignment', a.id)),
+    ...state.readAlignments.map(ra => toUid('read-alignment', ra.id)),
+    ...state.contigs.map(c => toUid('contig', c.id)),
+  ])
+  const out: Record<string, ItemMeta> = {}
+  let any = false
+  for (const [uid, meta] of Object.entries(state.itemMeta)) {
+    if (!live.has(uid)) continue
+    out[uid] = meta
+    any = true
+  }
+  return any ? out : undefined
 }
 
 /** Build the session data from the current store state. */
@@ -176,6 +244,8 @@ function buildSessionData(theme: string): {
     const { bases: _, ...docWithoutBases } = snap
     v2Tabs.push({
       id: tab.id, doc: docWithoutBases, viewMode: tab.viewMode, zoomLevel: tab.zoomLevel,
+      createdAt: tab.createdAt || undefined,
+      modifiedAt: tab.modifiedAt || undefined,
       hiddenAnnotationIds: tab.hiddenAnnotationIds.length > 0 ? tab.hiddenAnnotationIds : undefined,
       showOrfs: tab.showOrfs || undefined,
       showEnzymes: tab.showEnzymes || undefined,
@@ -189,6 +259,7 @@ function buildSessionData(theme: string): {
   const seqReads: SerializedSeqRead[] = state.sequencingReads.map(r => ({
     id: r.id,
     name: r.data.name,
+    createdAt: r.createdAt || undefined,
     trimStart: r.trimStart,
     trimEnd: r.trimEnd,
     edits: r.edits,
@@ -235,6 +306,8 @@ function buildSessionData(theme: string): {
       tabs: v2Tabs,
       activeTabId: state.activeTabId,
       folders: state.folders,
+      itemMeta: liveItemMeta(state),
+      tagColors: Object.keys(state.tagColors).length > 0 ? state.tagColors : undefined,
       theme,
       sequencingReads: seqReads,
       activeSequencingReadIds: state.activeSequencingReadIds,
@@ -340,15 +413,19 @@ export async function saveSession(theme: string): Promise<void> {
 export interface RestoredSeqRead {
   id: string
   data: Ab1Data
+  createdAt?: number
   trimStart: number
   trimEnd: number
   edits: BaseEdit[]
 }
 
 export interface RestoredSession {
-  tabs: { id: string; doc: DocumentState; viewMode: ViewMode; zoomLevel: number; hiddenAnnotationIds?: string[]; showOrfs?: boolean; showEnzymes?: boolean; showPrimers?: boolean; showAutoAnnotations?: boolean; readOnly?: boolean; undoStack?: UndoSnapshot[]; redoStack?: UndoSnapshot[] }[]
+  tabs: { id: string; doc: DocumentState; createdAt?: number; modifiedAt?: number; viewMode: ViewMode; zoomLevel: number; hiddenAnnotationIds?: string[]; showOrfs?: boolean; showEnzymes?: boolean; showPrimers?: boolean; showAutoAnnotations?: boolean; readOnly?: boolean; undoStack?: UndoSnapshot[]; redoStack?: UndoSnapshot[] }[]
   activeTabId: string | null
   folders: ExplorerFolder[]
+  /** Favourites and notes, keyed by explorer uid. */
+  itemMeta: Record<string, ItemMeta>
+  tagColors: Record<string, string>
   theme: string
   sequencingReads: RestoredSeqRead[]
   activeSequencingReadIds: string[]
@@ -482,6 +559,8 @@ async function loadV2(data: SerializedSessionV2): Promise<RestoredSession | null
     tabs.push({
       id: st.id,
       doc,
+      createdAt: st.createdAt,
+      modifiedAt: st.modifiedAt,
       viewMode: st.viewMode,
       zoomLevel: st.zoomLevel,
       hiddenAnnotationIds: st.hiddenAnnotationIds,
@@ -514,6 +593,7 @@ async function loadV2(data: SerializedSessionV2): Promise<RestoredSession | null
         seqReads.push({
           id: sr.id,
           data: { ...traceData, name: sr.name },
+          createdAt: sr.createdAt,
           trimStart: sr.trimStart,
           trimEnd: sr.trimEnd,
           edits: sr.edits ?? [],
@@ -608,7 +688,9 @@ async function loadV2(data: SerializedSessionV2): Promise<RestoredSession | null
   return {
     tabs,
     activeTabId: data.activeTabId,
-    folders: data.folders ?? [],
+    folders: migrateFolders(data.folders),
+    itemMeta: data.itemMeta ?? {},
+    tagColors: data.tagColors ?? {},
     theme: data.theme ?? 'light',
     sequencingReads: seqReads,
     activeSequencingReadIds: data.activeSequencingReadIds ?? [],
@@ -734,6 +816,30 @@ export function exportSessionToJson(theme: string, opts: SessionExportOptions): 
   const alignIds = new Set((meta.alignments ?? []).map(a => a.id))
   const raIds = new Set((meta.readAlignments ?? []).map(ra => ra.id))
 
+  // Drop metadata for whatever the user left out, so an export without reads
+  // does not carry favourites for reads it does not contain.
+  if (meta.itemMeta) {
+    const kept = new Set<string>([
+      ...meta.tabs.map(t => toUid('sequence', t.id)),
+      ...(meta.sequencingReads ?? []).map(r => toUid('read', r.id)),
+      ...[...alignIds].map(id => toUid('alignment', id)),
+      ...[...raIds].map(id => toUid('read-alignment', id)),
+      ...(meta.contigs ?? []).map(c => toUid('contig', c.id)),
+    ])
+    const filtered = Object.fromEntries(
+      Object.entries(meta.itemMeta).filter(([uid]) => kept.has(uid)),
+    )
+    meta.itemMeta = Object.keys(filtered).length > 0 ? filtered : undefined
+
+    // Carry only the colours of tags that survived the filtering, so an
+    // export without reads does not ship a palette of read-only tags.
+    const liveTags = new Set(Object.values(filtered).flatMap(m => m.tags ?? []))
+    const colors = Object.fromEntries(
+      Object.entries(meta.tagColors ?? {}).filter(([tag]) => liveTags.has(tag)),
+    )
+    meta.tagColors = Object.keys(colors).length > 0 ? colors : undefined
+  }
+
   const envelope: SessionExportEnvelope = {
     format: 'seqnexus-session',
     version: 1,
@@ -808,7 +914,8 @@ export function importSessionFromJson(json: string): RestoredSession {
     const fullSnap: DocumentSnapshot = { ...st.doc, bases }
     const doc = restore(fullSnap)
     tabs.push({
-      id: st.id, doc, viewMode: st.viewMode, zoomLevel: st.zoomLevel,
+      id: st.id, doc, createdAt: st.createdAt, modifiedAt: st.modifiedAt,
+      viewMode: st.viewMode, zoomLevel: st.zoomLevel,
       hiddenAnnotationIds: st.hiddenAnnotationIds,
       showOrfs: st.showOrfs, showEnzymes: st.showEnzymes, showPrimers: st.showPrimers,
       showAutoAnnotations: st.showAutoAnnotations,
@@ -824,6 +931,7 @@ export function importSessionFromJson(json: string): RestoredSession {
     seqReads.push({
       id: sr.id,
       data: { ...traceData, name: sr.name },
+      createdAt: sr.createdAt,
       trimStart: sr.trimStart, trimEnd: sr.trimEnd,
       edits: sr.edits ?? [],
     })
@@ -867,7 +975,9 @@ export function importSessionFromJson(json: string): RestoredSession {
   return {
     tabs,
     activeTabId: data.activeTabId,
-    folders: data.folders ?? [],
+    folders: migrateFolders(data.folders),
+    itemMeta: data.itemMeta ?? {},
+    tagColors: data.tagColors ?? {},
     theme: data.theme ?? 'light',
     sequencingReads: seqReads,
     activeSequencingReadIds: data.activeSequencingReadIds ?? [],
@@ -919,6 +1029,30 @@ export function remapSessionIds(session: RestoredSession): RestoredSession {
     folderIdMap.set(f.id, newId())
   }
 
+  // Metadata is keyed by `${kind}:${id}`, so it has to follow its item
+  // through the remap. Without this, imported favourites would reattach to
+  // whichever existing items happened to hold the old ids.
+  const idMapFor = {
+    'sequence': tabIdMap,
+    'read': readIdMap,
+    'alignment': alignIdMap,
+    'read-alignment': raIdMap,
+    'contig': contigIdMap,
+  }
+  /** Rewrite one uid through its kind's map, or null if its item is not here. */
+  const remapUid = (uid: string): string | null => {
+    const parsed = parseUid(uid)
+    if (!parsed) return null
+    const mapped = idMapFor[parsed.kind].get(parsed.id)
+    return mapped ? toUid(parsed.kind, mapped) : null
+  }
+
+  const itemMeta: Record<string, ItemMeta> = {}
+  for (const [uid, meta] of Object.entries(session.itemMeta ?? {})) {
+    const next = remapUid(uid)
+    if (next) itemMeta[next] = meta
+  }
+
   return {
     tabs: session.tabs.map(t => ({
       ...t,
@@ -928,8 +1062,12 @@ export function remapSessionIds(session: RestoredSession): RestoredSession {
     folders: session.folders.map(f => ({
       ...f,
       id: folderIdMap.get(f.id) || f.id,
-      tabIds: f.tabIds.map(tid => tabIdMap.get(tid) || tid),
+      parentId: f.parentId ? (folderIdMap.get(f.parentId) ?? null) : null,
+      itemUids: f.itemUids.map(remapUid).filter((u): u is string => u !== null),
     })),
+    itemMeta,
+    // Tag names are not ids, so only the item side of a tag needs remapping.
+    tagColors: session.tagColors ?? {},
     theme: session.theme,
     sequencingReads: session.sequencingReads.map(r => ({
       ...r,

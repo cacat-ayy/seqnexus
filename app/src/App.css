@@ -1804,8 +1804,10 @@
   /* The toolbar is not here: dropping its labels depends on whether the row
      fits, which useToolbarDensity measures. */
 
-  /* Left sidebar: narrower */
-  .left-sidebar { width: 160px; min-width: 160px; }
+  /* Explorer: cap it, rather than set a width. The panel's width is an inline
+     style from the user's saved preference, and max-width still wins over
+     that, so the preference survives a trip through a narrow viewport. */
+  .explorer-sidebar { max-width: 160px; }
 
   /* Feature sidebar: allow narrower */
   .feature-sidebar { min-width: 160px; }
@@ -1815,8 +1817,8 @@
   /* Even more compact */
   .app-root { padding: var(--space-1); gap: var(--space-1); }
 
-  /* Left sidebar: collapse by default handled by JS, but allow very narrow */
-  .left-sidebar { width: 140px; min-width: 140px; }
+  /* Collapse by default is handled by JS; this just allows very narrow. */
+  .explorer-sidebar { max-width: 140px; }
 
   /* Feature sidebar: narrower still */
   .feature-sidebar { min-width: 140px; }

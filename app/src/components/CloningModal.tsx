@@ -636,7 +636,7 @@ export default function CloningModal({ open, onClose, initialMethod }: Props) {
       description: lines.join('\n'),
       sequence: new Sequence(product.sequence, product.topology),
       annotations: selectedAnns.map(a => new Annotation(a)),
-      ...(inheritedMeta ? { metadata: inheritedMeta } : {}),
+      metadata: { ...inheritedMeta, origin: 'cloning' },
     }
     openDocumentState(doc)
     onClose()

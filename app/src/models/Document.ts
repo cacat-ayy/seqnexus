@@ -16,6 +16,23 @@ import { Annotation, AnnotationData, adjustAnnotation } from './Annotation'
 
 export type Strandedness = 'single' | 'double'
 
+/**
+ * Where a document came from.
+ *
+ * On the document rather than on the tab so that `snapshot` and `restore`
+ * carry it for free, and so an exported sequence still says what produced
+ * it. The explorer turns it into a row badge.
+ */
+export type DocumentOrigin =
+  | 'import'     // read from a file the user opened or dropped
+  | 'ncbi'       // fetched by accession
+  | 'snapgene'   // read from a .dna file
+  | 'cloning'    // product of a cloning simulation
+  | 'optimized'  // output of the codon optimizer
+  | 'consensus'  // called from a chromatogram or contig
+  | 'paste'      // pasted sequence text
+  | 'new'        // created empty
+
 export interface SequenceMetadata {
   strandedness?: Strandedness
   damMethylated?: boolean
@@ -23,6 +40,7 @@ export interface SequenceMetadata {
   ecoKIMethylated?: boolean
   /** 0-based internal position that should display as "position 1". Circular only. */
   displayOrigin?: number
+  origin?: DocumentOrigin
 }
 
 export interface DocumentState {

@@ -10,6 +10,7 @@ import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
 import { X, Plus, Trash2, ChevronDown, ChevronRight, Loader2, FileText, AudioWaveform, ClipboardPaste, AlertTriangle, GripVertical, Scissors, Search, FolderOpen, Check } from 'lucide-react'
 import { reverseComplement } from '../models/complement'
 import { useEditorStore, applyEdits } from '../store'
+import { parseUid } from '../explorer/types'
 import { runAlignment, resolveEngine, type AlignmentHandle } from '../workers/alignment'
 import type { AlignmentRequest, AlignmentResult } from '../alignment/types'
 import type { MsaEngine } from '../wasm/types'
@@ -608,10 +609,14 @@ export default function AlignmentModal({ open, onClose, onResult, onReadAlignRes
                       : [...tabs]
                     ).sort((a, b) => a.doc.name.localeCompare(b.doc.name))
 
-                    // Group tabs by folder
+                    // Group tabs by folder. Folders hold uids of every kind
+                    // now, so only the sequence ones are relevant here.
                     const tabFolderMap = new Map<string, string>()
                     for (const f of folders) {
-                      for (const tid of f.tabIds) tabFolderMap.set(tid, f.id)
+                      for (const uid of f.itemUids) {
+                        const parsed = parseUid(uid)
+                        if (parsed?.kind === 'sequence') tabFolderMap.set(parsed.id, f.id)
+                      }
                     }
 
                     type FolderGroup = { folder: { id: string; name: string } | null; tabs: typeof filteredTabs }

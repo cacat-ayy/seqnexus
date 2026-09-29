@@ -234,7 +234,7 @@ export default function CodonOptimizeModal({ open, onClose }: Props) {
       description: doc.description,
       sequence: new Sequence(chars.join(''), doc.sequence.topology),
       annotations: doc.annotations.map(a => new Annotation(a.toData())),
-      metadata: doc.metadata,
+      metadata: { ...doc.metadata, origin: 'optimized' },
     })
     notify.success(`Opened "${doc.name} (optimized)"`)
     onClose()

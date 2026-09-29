@@ -16,7 +16,8 @@ import PrimerPanel from './components/PrimerPanel'
 import FindModal from './components/FindModal'
 const AnnotateModal = lazy(() => import('./components/AnnotateModal'))
 import NewSequenceModal, { type NewSequenceResult } from './components/NewSequenceModal'
-import FileExplorer from './components/FileExplorer'
+import ExplorerPanel from './components/explorer/ExplorerPanel'
+import { groupSelection, countSelectable } from './explorer/selection'
 import SequencePropertiesModal from './components/SequencePropertiesModal'
 import SequenceStatsPopover from './components/SequenceStatsPopover'
 const CloningModal = lazy(() => import('./components/CloningModal'))
@@ -48,7 +49,7 @@ import { findEnzymeSitesAsync } from './workers/enzyme-finder'
 import {
   File, Dna, FolderPlus, FileUp, FolderUp, ClipboardPaste, Save,
   Undo2, Redo2, Search, Scissors, FlaskConical, TestTube,
-  BarChart3, ZoomOut, ZoomIn, PanelLeftClose, PanelLeftOpen,
+  BarChart3, ZoomOut, ZoomIn, PanelLeftOpen,
   X, ChevronDown as ChevronDownSmall,
   SunMoon, Info, List, Lock, LockOpen, Tag, Globe, GalleryVertical, AlignLeft, ArrowLeft, Wand2,
   SlidersHorizontal,
@@ -211,14 +212,7 @@ function reportExport(count: number, filename: string): void {
 
 export default function App() {
   const activeTabId = useEditorStore(s => s.activeTabId)
-  const selectedExportableCount = useEditorStore(s => {
-    const sel = s.explorerSelectedIds
-    return s.tabs.filter(t => sel.has(t.id)).length
-      + s.sequencingReads.filter(r => sel.has(`seq_${r.id}`)).length
-      + s.alignments.filter(a => sel.has(a.id)).length
-      + s.readAlignments.filter(r => sel.has(r.id)).length
-      + s.contigs.filter(c => sel.has(c.id)).length
-  })
+  const selectedExportableCount = useEditorStore(s => countSelectable(s.explorerSelectedIds))
   const openDocument = useEditorStore(s => s.openDocument)
   const openDocumentState = useEditorStore(s => s.openDocumentState)
   const addSequencingRead = useEditorStore(s => s.addSequencingRead)
@@ -671,7 +665,6 @@ export default function App() {
   // Same reasoning for the file explorer, which subscribes to 36 store slices
   // and was previously re-rendered by every unrelated App state change.
   const handleOpenProperties = useCallback(() => setPropertiesModalOpen(true), [])
-  const handleOpenInfo = useCallback(() => setInfoOpen(true), [])
   const handleExportItems = useCallback((items: Partial<Record<ExportItemKind, string[]>>) => {
     setBulkExportItems(items)
     setExportModalOpen(true)
@@ -770,7 +763,7 @@ export default function App() {
       reader.onload = () => {
         try {
           const doc = parseSnapGene(reader.result as ArrayBuffer)
-          openDocumentState(doc)
+          openDocumentState({ ...doc, metadata: { ...doc.metadata, origin: 'snapgene' } })
         } catch (err) {
           notify.error(`Could not read "${file.name}"`, { detail: errorDetail(err) })
         }
@@ -914,13 +907,20 @@ export default function App() {
   }, [openDocument, openDocumentState, addSequencingRead, setSequencingTrim])
 
   // --- File menu actions ---
+  // Stable identities: the explorer is memo'd, so an inline arrow here would
+  // re-render it on every unrelated App state change. App.perf.test.tsx
+  // guards this.
+  const handleHideSidebar = useCallback(() => setSidebarOpen(false), [])
+  const handleShowSidebar = useCallback(() => setSidebarOpen(true), [])
+  const handleOpenFetch = useCallback(() => setFetchModalOpen(true), [])
+
   const handleNewSequence = useCallback(() => {
     setFileMenuOpen(false)
     setNewSeqModalOpen(true)
   }, [])
 
   const handleNewSequenceSubmit = useCallback((result: NewSequenceResult) => {
-    openDocument(result.name, result.sequence, result.topology, result.description)
+    openDocument(result.name, result.sequence, result.topology, result.description, 'new')
     setNewSeqModalOpen(false)
   }, [openDocument])
 
@@ -945,7 +945,9 @@ export default function App() {
         // Multi-record GenBank
         const docs = parseGenBankMulti(text)
         const tabIds: string[] = []
-        for (const d of docs) tabIds.push(openDocumentState(d))
+        for (const d of docs) {
+          tabIds.push(openDocumentState({ ...d, metadata: { ...d.metadata, origin: 'paste' } }))
+        }
         if (docs.length > 1) {
           const folderId = useEditorStore.getState().createFolder('Pasted sequences')
           for (const id of tabIds) useEditorStore.getState().moveTabToFolder(id, folderId)
@@ -967,7 +969,7 @@ export default function App() {
         }
         if (currentBases) records.push({ name: currentName, bases: currentBases.toUpperCase() })
         const tabIds: string[] = []
-        for (const rec of records) tabIds.push(openDocument(rec.name, rec.bases))
+        for (const rec of records) tabIds.push(openDocument(rec.name, rec.bases, 'linear', undefined, 'paste'))
         if (records.length > 1) {
           const folderId = useEditorStore.getState().createFolder('Pasted sequences')
           for (const id of tabIds) useEditorStore.getState().moveTabToFolder(id, folderId)
@@ -1037,6 +1039,8 @@ export default function App() {
       session.sequencingReads, session.activeSequencingReadIds,
       session.alignments, session.readAlignments, session.contigs,
       session.activeAlignmentId, session.activeContigId, session.activeReadAlignmentId,
+      session.itemMeta,
+      session.tagColors,
     )
     setSessionImportOpen(false)
     setSessionImportData(null)
@@ -1052,7 +1056,7 @@ export default function App() {
     mergeSession(
       session.tabs, session.folders,
       session.sequencingReads, session.alignments,
-      session.readAlignments, session.contigs,
+      session.readAlignments, session.contigs, session.itemMeta, session.tagColors,
     )
     setSessionImportOpen(false)
     setSessionImportData(null)
@@ -1505,20 +1509,7 @@ export default function App() {
                 Export…
               </button>
               <button className="file-menu-item" role="menuitem" onClick={() => {
-                const s = useEditorStore.getState()
-                const sel = s.explorerSelectedIds
-                const items: Partial<Record<ExportItemKind, string[]>> = {}
-                const seqIds = s.tabs.filter(t => sel.has(t.id)).map(t => t.id)
-                if (seqIds.length > 0) items.sequence = seqIds
-                const readIds = s.sequencingReads.filter(r => sel.has(`seq_${r.id}`)).map(r => `seq_${r.id}`)
-                if (readIds.length > 0) items.read = readIds
-                const alignIds = s.alignments.filter(a => sel.has(a.id)).map(a => a.id)
-                if (alignIds.length > 0) items.alignment = alignIds
-                const raIds = s.readAlignments.filter(r => sel.has(r.id)).map(r => r.id)
-                if (raIds.length > 0) items['read-alignment'] = raIds
-                const contigIds = s.contigs.filter(c => sel.has(c.id)).map(c => c.id)
-                if (contigIds.length > 0) items.contig = contigIds
-                setBulkExportItems(items)
+                setBulkExportItems(groupSelection(useEditorStore.getState().explorerSelectedIds))
                 setExportModalOpen(true)
                 setFileMenuOpen(false)
               }} disabled={selectedExportableCount < 2}>
@@ -1887,36 +1878,21 @@ export default function App() {
 
       {/* === Main Area === */}
       <div className="main-area">
-        {/* Left Sidebar - File Explorer */}
-        <aside className={`left-sidebar ${sidebarOpen ? '' : 'collapsed'}`}>
-          <div className="ls-header">
-            <span>Explorer</span>
-            <button
-              className="ls-toggle"
-              onClick={() => setSidebarOpen(false)}
-              title="Hide sidebar"
-            >
-              <PanelLeftClose size={14} />
-            </button>
-          </div>
-          <FileExplorer
-            onImportFile={handleFileOpen}
-            onOpenProperties={handleOpenProperties}
-            onOpenInfo={handleOpenInfo}
-            onAlignToRef={openRefPicker}
-            onExportItems={handleExportItems}
-            onQuickAlign={handleQuickAlign}
-          />
-        </aside>
-        {!sidebarOpen && (
-          <button
-            className="sidebar-show-btn"
-            onClick={() => setSidebarOpen(true)}
-            title="Show sidebar"
-          >
-            <PanelLeftOpen size={14} />
-          </button>
-        )}
+        {/* Left Sidebar - Explorer */}
+        <ExplorerPanel
+          open={sidebarOpen}
+          onCollapse={handleHideSidebar}
+          onExpand={handleShowSidebar}
+          onImportFile={handleFileOpen}
+          onOpenProperties={handleOpenProperties}
+          onNewSequence={handleNewSequence}
+          onFetch={handleOpenFetch}
+          onAlignToRef={openRefPicker}
+          onExportItems={handleExportItems}
+          onQuickAlign={handleQuickAlign}
+        />
+        {/* Collapsed: ExplorerPanel renders its own icon rail, so there is no
+            separate show button here any more. */}
 
         {/* Center Panel */}
         <div className="center-panel">
@@ -2506,7 +2482,10 @@ export default function App() {
       <FetchModal
         open={fetchModalOpen}
         onClose={() => setFetchModalOpen(false)}
-        onFetched={(doc) => { openDocumentState(doc); setFetchModalOpen(false) }}
+        onFetched={(doc) => {
+          openDocumentState({ ...doc, metadata: { ...doc.metadata, origin: 'ncbi' } })
+          setFetchModalOpen(false)
+        }}
       />
       <SessionExportModal
         open={sessionExportOpen}

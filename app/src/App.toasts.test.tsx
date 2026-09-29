@@ -17,7 +17,7 @@ describe('App notifications', () => {
     for (const tab of useEditorStore.getState().tabs) {
       useEditorStore.getState().closeTab(tab.id)
     }
-    useEditorStore.setState({ recentlyClosedTabs: [] })
+    useEditorStore.setState({ recentlyDeleted: [] })
   })
 
   it('mounts the toaster with both live regions', () => {

@@ -69,6 +69,8 @@ export function useSessionPersistence(
           saved.activeAlignmentId,
           saved.activeContigId,
           saved.activeReadAlignmentId,
+          saved.itemMeta,
+          saved.tagColors,
         )
         // Restore ORF/enzyme panel params so searches re-run on panel open
         const store = useEditorStore.getState()

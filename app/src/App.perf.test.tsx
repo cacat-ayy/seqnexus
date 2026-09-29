@@ -3,7 +3,7 @@
  *
  * App holds ~55 state hooks and ~49 store subscriptions, so it re-renders
  * constantly — every dialog toggle, every toast, every theme change. The
- * expensive children (the two canvas views, the file explorer, the feature
+ * expensive children (the two canvas views, the explorer, the feature
  * sidebar) are React.memo'd so those re-renders stop at their boundary.
  *
  * memo only holds if the props App passes keep their identity. Reintroducing
@@ -17,7 +17,7 @@ import { render, act } from '@testing-library/react'
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { memo } from 'react'
 
-const renders = { sequenceView: 0, plasmidMap: 0, fileExplorer: 0 }
+const renders = { sequenceView: 0, plasmidMap: 0, explorerPanel: 0 }
 
 vi.mock('./components/SequenceView', () => ({
   default: memo(function SequenceViewMock() {
@@ -33,10 +33,10 @@ vi.mock('./components/PlasmidMap', () => ({
   }),
 }))
 
-vi.mock('./components/FileExplorer', () => ({
-  default: memo(function FileExplorerMock() {
-    renders.fileExplorer++
-    return <div data-testid="file-explorer" />
+vi.mock('./components/explorer/ExplorerPanel', () => ({
+  default: memo(function ExplorerPanelMock() {
+    renders.explorerPanel++
+    return <div data-testid="explorer-panel" />
   }),
 }))
 
@@ -54,7 +54,7 @@ describe('App render cost', () => {
   beforeEach(() => {
     renders.sequenceView = 0
     renders.plasmidMap = 0
-    renders.fileExplorer = 0
+    renders.explorerPanel = 0
   })
 
   it('does not re-render the sequence view when an unrelated dialog opens', () => {
@@ -75,11 +75,11 @@ describe('App render cost', () => {
     expect(renders.sequenceView).toBe(before)
   })
 
-  it('does not re-render the file explorer when a dialog opens', () => {
+  it('does not re-render the explorer when a dialog opens', () => {
     render(<App />)
     openSequence()
 
-    const before = renders.fileExplorer
+    const before = renders.explorerPanel
     expect(before).toBeGreaterThan(0)
 
     const enzymeButton = document.querySelector<HTMLButtonElement>(
@@ -88,6 +88,6 @@ describe('App render cost', () => {
     expect(enzymeButton).toBeTruthy()
     act(() => { enzymeButton!.click() })
 
-    expect(renders.fileExplorer).toBe(before)
+    expect(renders.explorerPanel).toBe(before)
   })
 })
