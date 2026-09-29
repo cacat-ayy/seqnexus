@@ -27,7 +27,7 @@ self-contained HTML file.
 cd app
 npm install
 npm run dev           # dev server on :8000
-npm test              # 365+ tests
+npm test              # 900+ tests
 npx tsc -b --noEmit   # type check
 npm run build         # tsc -b && vite build
 ```
@@ -72,6 +72,8 @@ of each build.
 - **ORF finder** - 6-frame, configurable, Web Worker
 - **Restriction enzyme analysis** - 546 enzymes from REBASE, gel simulation
 - **Primer design** - nearest-neighbor Tm, penalty scoring, pair finder
+- **Codon optimization** - 19 genetic codes, host usage tables (built-in, imported
+  or derived), motif/homopolymer/GC/repeat constraints
 - **Sequence alignment** - pairwise (global/local) and multiple sequence alignment
 - **In-silico cloning** - digest/ligation, Gibson assembly, Golden Gate assembly
 - **NCBI BLAST** - search NCBI databases directly from the editor
@@ -425,6 +427,124 @@ pair_penalty = fwd_penalty + rev_penalty
 
 ---
 
+## Codon Optimization
+
+Rewrites a coding region for expression in another host: pick the codons the
+host translates well, keep the restriction sites your cloning strategy needs
+free, and stay inside what a synthesis vendor will accept.
+
+The protein is the invariant. Whatever the settings, the optimizer re-translates
+its own output and throws if it does not match the input protein, rather than
+returning a sequence that codes for something else.
+
+### Targets
+
+| Target | What it optimizes |
+|--------|-------------------|
+| Selection | The selected bases, read in frame from the first one |
+| Coding features | Every CDS-like feature, individually checkable |
+| Whole sequence | Frame 1 from position 0 |
+
+A feature on the minus strand is read and written back in its own orientation,
+`/codon_start` is honoured, and an origin-spanning feature on a circular
+sequence is followed round the join. Each region is reduced to a coding-strand
+string plus a map from every base back to its genomic index, so those three
+cases share one code path rather than three.
+
+Two CDSs that share bases cannot both be optimized: rewriting one changes the
+other's reading frame. The first wins and the overlap is reported.
+
+### Genetic codes
+
+19 NCBI translation tables (1-6, 9-14, 16, 21-26), stored as diffs against the
+standard code. This decides which codons are synonymous, so a mitochondrial
+gene is not truncated at a TGA that codes for tryptophan in its own code.
+`utils/codon.ts` re-exports table 1, so the app has one copy of the standard
+code rather than two that can drift.
+
+### Codon usage tables
+
+| Source | Notes |
+|--------|-------|
+| Built-in | E. coli K-12, B. subtilis, S. cerevisiae, P. pastoris, H. sapiens, CHO, Sf9, A. thaliana |
+| Imported | Kazusa blocks, CSV/TSV, or two-column lists. Persisted in IndexedDB. |
+| Derived | Counted from this document's own CDS features |
+
+The built-in tables are written from published genome-wide averages and are
+flagged `approximate` in the data and in the UI: the rankings and rare-codon
+calls are right, the low-order digits may differ from a particular reference.
+Import a table or derive one when the exact figures matter.
+
+Counts, frequencies per thousand and fractions within a family are all
+proportional inside a family, so the importer does not need to know which
+column it was handed: it takes the first number after each codon and
+normalises per amino acid.
+
+A family with no usage stays at zero rather than being spread evenly, so
+`unusableResidues` can report an amino acid the table cannot encode instead of
+the optimizer silently inventing a preference.
+
+### What gets changed
+
+- **Every codon**, choosing either the most frequent synonym or one sampled
+  from the host distribution. Sampling is seeded, so a run reproduces exactly,
+  and it avoids the long identical runs that "most frequent" produces.
+- **Rare codons only**, above a configurable within-family threshold.
+
+### Constraints
+
+| Constraint | Detail |
+|------------|--------|
+| Forbidden motifs | Enzyme groups, individual enzymes, custom IUPAC motifs, and presets for Type IIS sites, internal Shine-Dalgarno, polyA signals, cryptic splice sites and E. coli promoter boxes. Checked on both strands. |
+| Homopolymers | Separate limits for A/T and G/C runs |
+| GC content | Global bounds plus a sliding local window |
+| Repeats | Direct repeats over N bp |
+| Hairpins | Inverted repeats with a stem over N bp within a loop distance |
+| CpG | Avoided when asked, for mammalian constructs |
+| Locked codons | Start, stop, the first N codons, and anything under a protected non-coding feature |
+
+Constraints are checked across the region boundary into the untouched flanks,
+so a site that would straddle the edge is still avoided.
+
+### Algorithm
+
+Greedy left to right with bounded backtracking. Each codon takes the best
+synonym that leaves the window it can affect free of violations; when nothing
+fits, the walk steps back and tries the previous codon's next choice. Past the
+step budget it keeps the best remaining option and reports the violation rather
+than failing the whole run.
+
+A full dynamic program is not an option here: the state would have to be the
+last K bases, where K is the longest constraint window, so the table is 4^K
+wide.
+
+Direct repeats are the one constraint that is not local, since the other copy
+can be anywhere. They are tracked in an index built as the walk proceeds and
+rolled back on backtracking, which keeps the run linear where re-scanning per
+codon would make it quadratic.
+
+Optimization runs on the main thread. A few thousand codons take milliseconds,
+and the dialog previews on a 200 ms debounce; past 60 kb of target it waits for
+an explicit run instead.
+
+### Metrics
+
+CAI, GC, GC3, rare codon count and the longest A/T and G/C runs, before and
+after. CAI is the geometric mean of relative adaptiveness over the region,
+skipping single-codon families (Met, Trp), which carry no information about
+adaptation and would only drag every score toward 1.
+
+### Applying
+
+Applying is an equal-length substitution through `substituteBasesInPlace`: one
+undo entry, and no annotation moves, because no coordinate changes. This is why
+it does not reuse `replaceBases`, which deletes then inserts, and would drop
+the very CDS being optimized (an annotation fully inside a deleted range is
+removed). The result can also be opened as a new sequence, leaving the original
+untouched.
+
+---
+
 ## References
 
 - SantaLucia J Jr. (1998) "A unified view of polymer, dumbbell, and
@@ -457,3 +577,18 @@ pair_penalty = fwd_penalty + rev_penalty
 
 - Untergasser A et al. (2012) "Primer3 - new capabilities and interfaces."
   *Nucleic Acids Res* 40(15):e115.
+
+- Sharp PM, Li WH. (1987) "The codon adaptation index - a measure of directional
+  synonymous codon usage bias, and its potential applications."
+  *Nucleic Acids Res* 15:1281-1295.
+
+- Nakamura Y, Gojobori T, Ikemura T. (2000) "Codon usage tabulated from
+  international DNA sequence databases: status for the year 2000."
+  *Nucleic Acids Res* 28:292.
+
+- Elzanowski A, Ostell J. "The Genetic Codes." NCBI Taxonomy.
+  https://www.ncbi.nlm.nih.gov/Taxonomy/Utils/wprintgc.cgi
+
+- Hoover DM, Lubkowski J. (2002) "DNAWorks: an automated method for designing
+  oligonucleotides for PCR-based gene synthesis."
+  *Nucleic Acids Res* 30(10):e43.

@@ -20,6 +20,7 @@ import FileExplorer from './components/FileExplorer'
 import SequencePropertiesModal from './components/SequencePropertiesModal'
 import SequenceStatsPopover from './components/SequenceStatsPopover'
 const CloningModal = lazy(() => import('./components/CloningModal'))
+const CodonOptimizeModal = lazy(() => import('./components/CodonOptimizeModal'))
 const GelView = lazy(() => import('./components/GelView'))
 import { useEditorStore, isOriginSpanningSelection, selectionSegments, applyEdits, type SequencingRead } from './store'
 import { displayPosition, internalPosition } from './models/Document'
@@ -49,7 +50,7 @@ import {
   Undo2, Redo2, Search, Scissors, FlaskConical, TestTube,
   BarChart3, ZoomOut, ZoomIn, PanelLeftClose, PanelLeftOpen,
   X, ChevronDown as ChevronDownSmall,
-  SunMoon, Info, List, Lock, LockOpen, Tag, Globe, GalleryVertical, AlignLeft, ArrowLeft,
+  SunMoon, Info, List, Lock, LockOpen, Tag, Globe, GalleryVertical, AlignLeft, ArrowLeft, Wand2,
   SlidersHorizontal,
 } from 'lucide-react'
 const BlastModal = lazy(() => import('./components/BlastModal'))
@@ -348,6 +349,7 @@ export default function App() {
   const [orfModalOpen, setOrfModalOpen] = useState(false)
   const [enzymeModalOpen, setEnzymeModalOpen] = useState(false)
   const [annotateModalOpen, setAnnotateModalOpen] = useState(false)
+  const [codonModalOpen, setCodonModalOpen] = useState(false)
   const [propertiesModalOpen, setPropertiesModalOpen] = useState(false)
   const [cloningModalOpen, setCloningModalOpen] = useState(false)
   const [cloningInitialMethod, setCloningInitialMethod] = useState<import('./components/CloningModal').CloningMethod | undefined>(undefined)
@@ -1396,6 +1398,7 @@ export default function App() {
     { id: 'blast', label: 'BLAST Search', group: 'Analyse', icon: Globe, keywords: 'ncbi homology', disabled: noDoc, run: () => setBlastModalOpen(true) },
     { id: 'align', label: 'Align Sequences', group: 'Analyse', icon: AlignLeft, keywords: 'msa pairwise clustal', run: () => setAlignModalOpen(true) },
     { id: 'gel', label: 'Virtual Gel', group: 'Analyse', icon: GalleryVertical, keywords: 'electrophoresis', disabled: noDoc, run: () => setGelModalOpen(true) },
+    { id: 'codon-optimize', label: 'Codon Optimization', group: 'Analyse', icon: Wand2, keywords: 'codon usage rare harmonize express host', disabled: noDoc, run: () => setCodonModalOpen(true) },
     { id: 'properties', label: 'Sequence Properties', group: 'Analyse', icon: BarChart3, disabled: noDoc, run: () => setPropertiesModalOpen(true) },
 
     // --- Cloning ---
@@ -1634,6 +1637,9 @@ export default function App() {
           </button>
           <button className="tb" onClick={() => setGelModalOpen(true)} disabled={!activeTabId} title="Virtual gel electrophoresis">
             <span className="tb-icon"><GalleryVertical size={14} /></span><span className="tb-text">Gel</span>
+          </button>
+          <button className="tb" onClick={() => setCodonModalOpen(true)} disabled={!activeTabId} title="Codon optimization">
+            <span className="tb-icon"><Wand2 size={14} /></span><span className="tb-text">Optimize</span>
           </button>
         </div>
 
@@ -2521,6 +2527,10 @@ export default function App() {
         open={gelModalOpen}
         onClose={() => setGelModalOpen(false)}
         onExportPrompt={handleFilenamePrompt}
+      />
+      <CodonOptimizeModal
+        open={codonModalOpen}
+        onClose={() => setCodonModalOpen(false)}
       />
       </Suspense>
       {statsOpen && activeTabId && (

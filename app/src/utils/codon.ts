@@ -1,14 +1,16 @@
+/**
+ * Translation with the standard genetic code.
+ *
+ * The table itself now lives in codon/genetic-codes.ts as NCBI table 1, next
+ * to the other codes the optimizer offers. Keeping a second copy here is how
+ * the two would eventually disagree, so this re-exports that one. Callers that
+ * have no genetic code to work from keep using these functions unchanged.
+ */
+
+import { STANDARD_CODE_TABLE } from '../codon/genetic-codes'
+
 /** Standard genetic code codon table. */
-export const CODON_TABLE: Record<string, string> = {
-  TTT:'F',TTC:'F',TTA:'L',TTG:'L',CTT:'L',CTC:'L',CTA:'L',CTG:'L',
-  ATT:'I',ATC:'I',ATA:'I',ATG:'M',GTT:'V',GTC:'V',GTA:'V',GTG:'V',
-  TCT:'S',TCC:'S',TCA:'S',TCG:'S',CCT:'P',CCC:'P',CCA:'P',CCG:'P',
-  ACT:'T',ACC:'T',ACA:'T',ACG:'T',GCT:'A',GCC:'A',GCA:'A',GCG:'A',
-  TAT:'Y',TAC:'Y',TAA:'*',TAG:'*',CAT:'H',CAC:'H',CAA:'Q',CAG:'Q',
-  AAT:'N',AAC:'N',AAA:'K',AAG:'K',GAT:'D',GAC:'D',GAA:'E',GAG:'E',
-  TGT:'C',TGC:'C',TGA:'*',TGG:'W',CGT:'R',CGC:'R',CGA:'R',CGG:'R',
-  AGT:'S',AGC:'S',AGA:'R',AGG:'R',GGT:'G',GGC:'G',GGA:'G',GGG:'G',
-}
+export const CODON_TABLE: Record<string, string> = STANDARD_CODE_TABLE
 
 /** Translate a single codon to its amino acid letter. */
 export function translateCodon(codon: string): string {

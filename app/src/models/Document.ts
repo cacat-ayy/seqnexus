@@ -145,6 +145,44 @@ export function deleteBasesInPlace(
 }
 
 /**
+ * In-place substitution: rewrite bases without moving anything.
+ *
+ * Every edit must be the same length as the span it replaces, which is what
+ * makes this different from replaceBasesInPlace and why it exists. Codon
+ * optimization rewrites a CDS in situ; routing that through delete-then-insert
+ * would run the annotations through adjustAnnotation, and an annotation that
+ * sits entirely inside a deleted range is dropped. The CDS being optimized is
+ * exactly such an annotation, so the feature would delete itself.
+ *
+ * Coordinates do not change, so no annotation needs adjusting at all.
+ */
+export function assertSubstitutions(
+  state: DocumentState,
+  edits: readonly { start: number; end: number; bases: string }[],
+): void {
+  for (const edit of edits) {
+    if (edit.end - edit.start !== edit.bases.length) {
+      throw new Error('substituteBasesInPlace requires equal-length edits')
+    }
+    if (edit.start < 0 || edit.end > state.sequence.length) {
+      throw new Error('substituteBasesInPlace edit is out of range')
+    }
+  }
+}
+
+export function substituteBasesInPlace(
+  state: DocumentState,
+  edits: readonly { start: number; end: number; bases: string }[],
+): DocumentState {
+  if (edits.length === 0) return state
+  assertSubstitutions(state, edits)
+  for (const edit of edits) {
+    state.sequence.replaceInPlace(edit.start, edit.end, edit.bases)
+  }
+  return { ...state }
+}
+
+/**
  * In-place replace: mutates the sequence's PieceTable and adjusts annotations.
  */
 export function replaceBasesInPlace(

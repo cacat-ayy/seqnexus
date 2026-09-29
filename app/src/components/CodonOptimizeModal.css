@@ -1,0 +1,287 @@
+/* --- Codon optimization modal ---
+   Two columns: the settings you change on the left, what they did on the
+   right. The result column is what makes the constraint options usable, so it
+   gets equal width rather than being tucked under a disclosure. */
+.cod-modal {
+  width: 960px;
+  max-width: 95vw;
+}
+
+.cod-body {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: var(--space-4);
+  max-height: 68vh;
+  overflow: hidden;
+}
+
+.cod-settings,
+.cod-result {
+  overflow-y: auto;
+  min-width: 0;
+  padding-right: var(--space-1);
+}
+
+@media (max-width: 900px) {
+  .cod-body {
+    grid-template-columns: minmax(0, 1fr);
+    max-height: 72vh;
+    overflow-y: auto;
+  }
+  .cod-settings, .cod-result { overflow: visible; }
+}
+
+.cod-section {
+  padding-bottom: var(--space-3);
+  margin-bottom: var(--space-3);
+  border-bottom: 1px solid var(--border);
+}
+
+.cod-section:last-child { border-bottom: none; margin-bottom: 0; }
+
+.cod-heading {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1-5);
+  margin: 0 0 var(--space-2);
+  font-size: var(--text-sm);
+  font-weight: 700;
+  color: var(--text);
+}
+
+.cod-radios {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  margin-bottom: var(--space-2);
+}
+
+.cod-hint {
+  color: var(--text-muted);
+  font-size: var(--text-xs);
+  margin-left: auto;
+  padding-left: var(--space-2);
+}
+
+.cod-feature-list {
+  list-style: none;
+  margin: 0 0 var(--space-1);
+  padding: 0 0 0 var(--space-4);
+  max-height: 120px;
+  overflow-y: auto;
+}
+
+.cod-feature-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 170px;
+}
+
+.cod-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1-5);
+}
+
+.cod-row .select { flex: 1; min-width: 0; }
+
+.cod-source {
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+  margin-top: var(--space-1);
+}
+
+.cod-warn { color: var(--warning, #b7791f); }
+.cod-error { color: var(--danger, #e03131); }
+.cod-ok { color: var(--success, #2f9e44); }
+
+.cod-check-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: var(--space-1);
+  margin-bottom: var(--space-2);
+}
+
+.cod-input, .cod-textarea {
+  width: 100%;
+  margin-top: var(--space-1);
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+}
+
+.cod-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1);
+  margin-top: var(--space-1);
+}
+
+/* Click a chip to stop avoiding that enzyme: the same affordance the
+   restriction panel uses for its selected enzymes. */
+.cod-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  padding: 0 var(--space-1-5);
+  font-size: var(--text-xs);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-pill);
+  background: var(--bg-alt);
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+
+.cod-chip:hover {
+  border-color: var(--danger, #e03131);
+  color: var(--danger, #e03131);
+}
+
+.cod-disclosure {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  background: none;
+  border: none;
+  padding: 0;
+  font-size: var(--text-sm);
+  font-weight: 700;
+  color: var(--text);
+  cursor: pointer;
+}
+
+.cod-advanced {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1-5);
+  margin-top: var(--space-2);
+}
+
+.cod-num-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+  gap: var(--space-1-5);
+}
+
+.cod-num-grid label {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-1);
+  font-size: var(--text-xs);
+  color: var(--text-secondary);
+}
+
+.cod-num-grid .re-num { width: 64px; }
+
+/* --- Result column --- */
+.cod-placeholder {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-2);
+  color: var(--text-secondary);
+  font-size: var(--text-sm);
+}
+
+.cod-running {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1-5);
+  font-size: var(--text-sm);
+  color: var(--text-secondary);
+  margin-bottom: var(--space-2);
+}
+
+.cod-block {
+  font-size: var(--text-xs);
+  padding: var(--space-1-5) var(--space-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-input);
+  margin-bottom: var(--space-2);
+}
+
+.cod-metrics {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--text-sm);
+  margin-bottom: var(--space-2);
+}
+
+.cod-metrics th {
+  text-align: right;
+  font-weight: 600;
+  color: var(--text-muted);
+  font-size: var(--text-xs);
+  padding-bottom: var(--space-1);
+}
+
+.cod-metrics th:first-child { text-align: left; }
+
+.cod-metrics td {
+  padding: 2px 0;
+  border-top: 1px solid var(--border);
+  color: var(--text-secondary);
+}
+
+.cod-num {
+  text-align: right;
+  font-family: var(--font-mono);
+  color: var(--text);
+}
+
+/* Direction of travel, not a verdict: a lower GC is not better in itself, so
+   only the metrics with an agreed direction are coloured. */
+.cod-num.better { color: var(--success, #2f9e44); font-weight: 600; }
+.cod-num.worse { color: var(--warning, #b7791f); }
+
+.cod-summary {
+  font-size: var(--text-sm);
+  color: var(--text);
+  margin-bottom: var(--space-2);
+}
+
+.cod-violations {
+  margin: var(--space-1) 0 0;
+  padding-left: var(--space-4);
+}
+
+.cod-changes {
+  border-top: 1px solid var(--border);
+  padding-top: var(--space-2);
+}
+
+.cod-region-head {
+  display: flex;
+  align-items: center;
+  font-size: var(--text-sm);
+  font-weight: 600;
+  margin-bottom: var(--space-1);
+}
+
+.cod-change-list {
+  list-style: none;
+  margin: 0 0 var(--space-2);
+  padding: 0;
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+}
+
+.cod-change-list li {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1-5);
+  padding: 1px 0;
+}
+
+.cod-pos { color: var(--text-muted); min-width: 44px; text-align: right; }
+.cod-aa { color: var(--text-secondary); min-width: 14px; }
+.cod-codon { color: var(--text); }
+.cod-codon.cod-new { color: var(--accent); font-weight: 600; }
+.cod-arrow { color: var(--text-muted); }
+
+.cod-footer-note {
+  flex: 1;
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+}

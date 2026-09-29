@@ -17,6 +17,8 @@ import {
   insertBasesInPlace,
   deleteBasesInPlace,
   replaceBasesInPlace,
+  substituteBasesInPlace,
+  assertSubstitutions,
   rotateOrigin as rotateOriginDoc,
 } from './models/Document'
 import { reverseComplement } from './models/complement'
@@ -39,7 +41,11 @@ import type { CommonFeature } from './features/common-features'
 import {
   saveFeatureSource, loadFeatureSources as idbLoadFeatureSources,
   deleteFeatureSource as idbDeleteFeatureSource,
+  saveUsageTable, loadUsageTables as idbLoadUsageTables,
+  deleteUsageTable as idbDeleteUsageTable,
 } from './storage/idb'
+import { DEFAULT_CODON_SETTINGS, type CodonSettings } from './codon/settings'
+import type { CodonUsageTable } from './codon/usage-tables'
 
 const MAX_UNDO = 100
 
@@ -262,6 +268,7 @@ function makeIdGenerator(prefix: string) {
 }
 
 const featureSourceIds = makeIdGenerator('fsrc')
+const usageTableIds = makeIdGenerator('usage')
 const tabIds = makeIdGenerator('tab')
 const seqReadIds = makeIdGenerator('seqread')
 const folderIds = makeIdGenerator('folder')
@@ -273,6 +280,7 @@ const nextTabId = () => tabIds.next()
 const nextSeqReadId = () => seqReadIds.next()
 const nextFolderId = () => folderIds.next()
 const nextFeatureSourceId = () => featureSourceIds.next()
+const nextUsageTableId = () => usageTableIds.next()
 const nextAlignId = () => alignIds.next()
 const nextReadAlignId = () => readAlignIds.next()
 const nextContigId = () => contigIds.next()
@@ -434,6 +442,24 @@ interface EditorStore {
   autoAnnotateMinSimilarity: number
   autoAnnotateOverlapThreshold: number
   setAutoAnnotateParams: (params: Partial<{ autoAnnotateMinSimilarity: number; autoAnnotateOverlapThreshold: number }>) => void
+
+  // --- Codon optimization ---
+  /**
+   * Settings for the optimizer, kept here rather than in the modal so a run
+   * can be refined after closing it, like the ORF and enzyme parameters.
+   */
+  codonSettings: CodonSettings
+  setCodonSettings: (patch: Partial<CodonSettings>) => void
+  /** Usage tables the user imported. The built-ins live in code. */
+  customUsageTables: CodonUsageTable[]
+  loadCustomUsageTables: () => Promise<void>
+  addCustomUsageTable: (table: CodonUsageTable) => string
+  removeCustomUsageTable: (id: string) => void
+  /**
+   * Rewrite bases without moving anything: one undo entry, annotations
+   * untouched. Returns false when the document is read-only.
+   */
+  substituteBases: (edits: readonly { start: number; end: number; bases: string }[]) => boolean
 
   // --- Feature source databases (auto-annotation references) ---
   featureSources: FeatureSource[]
@@ -861,8 +887,14 @@ export const useEditorStore = create<EditorStore>((set, get) => {
    * Callers mint a fresh key per interaction (on pointerdown/focus), so two
    * separate drags never merge into one entry.
    *
-   * Returns false when there was nothing to do — no active tab, read-only, or
-   * the mutation was a no-op — in which case no undo entry is created.
+   * Returns false when there was nothing to do (no active tab, read-only, or
+   * the mutation was a no-op), in which case no undo entry is created.
+   *
+   * Only for mutations that leave the PieceTable alone. The snapshot is taken
+   * after `mutate` has run, which is harmless for annotation edits because
+   * they build a new array and leave the old one for the snapshot to capture,
+   * but would capture the post-edit bases for anything that rewrites the
+   * sequence in place. Those call pushUndo() first, as insert and delete do.
    */
   function transact(
     mutate: (doc: DocumentState) => DocumentState,
@@ -1144,6 +1176,53 @@ export const useEditorStore = create<EditorStore>((set, get) => {
     autoAnnotateMinSimilarity: 85,
     autoAnnotateOverlapThreshold: 75,
     setAutoAnnotateParams: (params) => set(params),
+
+    // Codon optimization
+    codonSettings: { ...DEFAULT_CODON_SETTINGS },
+    setCodonSettings: (patch) => set(state => ({
+      codonSettings: { ...state.codonSettings, ...patch },
+    })),
+    customUsageTables: [],
+    loadCustomUsageTables: async () => {
+      let stored: CodonUsageTable[] = []
+      try {
+        stored = (await idbLoadUsageTables()) as CodonUsageTable[]
+      } catch {
+        // No IndexedDB: the built-in tables still work, which is where this
+        // feature started anyway.
+        return
+      }
+      const tables = stored.filter(t => t && t.id && t.fractions)
+      for (const t of tables) {
+        const m = /^usage_(\d+)$/.exec(t.id)
+        if (m) usageTableIds.syncTo(parseInt(m[1], 10))
+      }
+      set({ customUsageTables: tables })
+    },
+    addCustomUsageTable: (table) => {
+      const id = nextUsageTableId()
+      const stored: CodonUsageTable = { ...table, id }
+      set(state => ({ customUsageTables: [...state.customUsageTables, stored] }))
+      void saveUsageTable(id, stored).catch(() => {})
+      return id
+    },
+    removeCustomUsageTable: (id) => {
+      set(state => ({ customUsageTables: state.customUsageTables.filter(t => t.id !== id) }))
+      void idbDeleteUsageTable(id).catch(() => {})
+    },
+    substituteBases: (edits) => {
+      if (edits.length === 0) return false
+      const tab = getActiveTab()
+      if (!tab || tab.readOnly) return false
+      // Validate before the snapshot, so a rejected edit cannot leave an undo
+      // entry behind for a change that never happened.
+      assertSubstitutions(tab.doc, edits)
+      // pushUndo first, not transact: this mutates the PieceTable in place, and
+      // transact snapshots after its mutation has already run.
+      pushUndo()
+      updateActiveTab({ doc: substituteBasesInPlace(tab.doc, edits) })
+      return true
+    },
 
     // Feature source databases
     featureSources: [builtinSource()],

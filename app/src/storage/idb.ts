@@ -9,12 +9,13 @@
 import { openDB, type IDBPDatabase } from 'idb'
 
 const DB_NAME = 'seqnexus'
-const DB_VERSION = 5
+const DB_VERSION = 6
 const STORE_NAME = 'sequences'
 const TRACE_STORE = 'traces'
 const ALIGN_STORE = 'alignments'
 const UNDO_STORE = 'undoHistory'
 const FEATURE_SOURCE_STORE = 'featureSources'
+const USAGE_TABLE_STORE = 'codonUsageTables'
 
 let _db: IDBPDatabase | null = null
 
@@ -36,6 +37,9 @@ async function getDB(): Promise<IDBPDatabase> {
       }
       if (!db.objectStoreNames.contains(FEATURE_SOURCE_STORE)) {
         db.createObjectStore(FEATURE_SOURCE_STORE)
+      }
+      if (!db.objectStoreNames.contains(USAGE_TABLE_STORE)) {
+        db.createObjectStore(USAGE_TABLE_STORE)
       }
     },
   })
@@ -135,6 +139,28 @@ export async function loadFeatureSources(): Promise<unknown[]> {
 export async function deleteFeatureSource(id: string): Promise<void> {
   const db = await getDB()
   await db.delete(FEATURE_SOURCE_STORE, id)
+}
+
+// ---- Codon usage tables (imported by the user) ----
+//
+// Same shape as the feature sources above and for the same reason: these
+// belong to the app rather than to any document, and they outlive the session
+// that imported them.
+
+export async function saveUsageTable(id: string, table: unknown): Promise<void> {
+  const db = await getDB()
+  await db.put(USAGE_TABLE_STORE, table, id)
+}
+
+export async function loadUsageTables(): Promise<unknown[]> {
+  const db = await getDB()
+  if (!db.objectStoreNames.contains(USAGE_TABLE_STORE)) return []
+  return db.getAll(USAGE_TABLE_STORE)
+}
+
+export async function deleteUsageTable(id: string): Promise<void> {
+  const db = await getDB()
+  await db.delete(USAGE_TABLE_STORE, id)
 }
 
 // ---- Trace data (sequencing reads) ----
