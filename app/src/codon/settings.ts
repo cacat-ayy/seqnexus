@@ -6,7 +6,7 @@
  */
 
 import {
-  ConstraintSet, MOTIF_PRESETS, motifsForEnzymeGroup, motifsForEnzymes,
+  ConstraintSet, MOTIF_PRESETS, enzymeNamesInGroup, motifsForEnzymes,
   parseCustomMotifs, type ConstraintOptions, type MotifSpec,
 } from './constraints'
 import { DEFAULT_GENETIC_CODE_ID } from './genetic-codes'
@@ -24,8 +24,10 @@ export interface CodonSettings {
   seed: number
 
   // Avoid
-  enzymeGroups: string[]
-  enzymeNames: string[]
+  /** One enzyme category, or '' for none. */
+  enzymeGroup: string
+  /** Enzymes of that category the user has unticked. */
+  enzymeExcluded: string[]
   presetIds: string[]
   customMotifs: string
   avoidCpG: boolean
@@ -61,13 +63,13 @@ export const DEFAULT_CODON_SETTINGS: CodonSettings = {
   rareThreshold: DEFAULT_OPTIMIZE_OPTIONS.rareThreshold,
   seed: DEFAULT_OPTIMIZE_OPTIONS.seed,
 
-  enzymeGroups: [],
-  enzymeNames: [],
+  enzymeGroup: '',
+  enzymeExcluded: [],
   presetIds: [],
   customMotifs: '',
   avoidCpG: false,
 
-  maxHomopolymerAT: 8,
+  maxHomopolymerAT: 10,
   maxHomopolymerGC: 6,
   minGC: 0,
   maxGC: 100,
@@ -80,11 +82,17 @@ export const DEFAULT_CODON_SETTINGS: CodonSettings = {
   protectFeatures: DEFAULT_TARGET_OPTIONS.protectFeatures,
 }
 
+/** The enzymes of the chosen category that are still ticked. */
+export function selectedEnzymeNames(settings: CodonSettings): string[] {
+  if (!settings.enzymeGroup) return []
+  const excluded = new Set(settings.enzymeExcluded)
+  return enzymeNamesInGroup(settings.enzymeGroup).filter(n => !excluded.has(n))
+}
+
 /** Every motif the settings ask to avoid, deduplicated by sequence. */
 export function motifsFor(settings: CodonSettings): MotifSpec[] {
   const all: MotifSpec[] = [
-    ...settings.enzymeGroups.flatMap(motifsForEnzymeGroup),
-    ...motifsForEnzymes(settings.enzymeNames),
+    ...motifsForEnzymes(selectedEnzymeNames(settings)),
     ...settings.presetIds.flatMap(id => MOTIF_PRESETS.find(p => p.id === id)?.motifs ?? []),
     ...parseCustomMotifs(settings.customMotifs),
   ]

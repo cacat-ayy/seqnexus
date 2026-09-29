@@ -345,7 +345,17 @@ function PlasmidMap(_props: PlasmidMapProps) {
   }, [])
 
   useEffect(() => { paint() }, [scene, viewport, paint])
-  useEffect(() => () => { if (rafRef.current) cancelAnimationFrame(rafRef.current) }, [])
+  useEffect(() => () => {
+    // Clearing the handle matters as much as cancelling it. Refs survive
+    // StrictMode's mount, unmount, remount cycle in development, so a handle
+    // left behind here reads as "a frame is already scheduled" forever after,
+    // and every later paint returns early: a map that hit-tests correctly and
+    // draws nothing, with no error anywhere.
+    if (rafRef.current) {
+      cancelAnimationFrame(rafRef.current)
+      rafRef.current = 0
+    }
+  }, [])
 
   // One observer for the component's life, rather than a new one per redraw.
   useEffect(() => {

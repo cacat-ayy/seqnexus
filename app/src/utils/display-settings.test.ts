@@ -17,11 +17,19 @@ describe('display settings persistence', () => {
       plasmidStyle: 'modern',
       showGcRing: false,
       showPlasmidLegend: false,
+      // Translation was always drawn, following the annotated features, so
+      // the defaults have to keep drawing it that way.
+      showTranslation: true,
+      translationFrame: 'selection-or-annotation',
+      translationCodeId: 1,
+      aminoAcidStyle: 'none',
+      threeLetterAminoAcids: false,
     })
   })
 
   it('round-trips a saved record', () => {
     const settings = {
+      ...DEFAULT_DISPLAY_SETTINGS,
       colorScheme: 'clustal' as const,
       colorTarget: 'background' as const,
       showComplement: false,
@@ -29,6 +37,11 @@ describe('display settings persistence', () => {
       plasmidStyle: 'publication' as const,
       showGcRing: true,
       showPlasmidLegend: true,
+      showTranslation: false,
+      translationFrame: 'all' as const,
+      translationCodeId: 11,
+      aminoAcidStyle: 'clustal' as const,
+      threeLetterAminoAcids: true,
     }
     saveDisplaySettings(settings)
     expect(loadDisplaySettings()).toEqual(settings)

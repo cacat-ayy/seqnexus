@@ -8,6 +8,7 @@
 import { describe, it, expect } from 'vitest'
 import {
   ConstraintSet, DEFAULT_CONSTRAINTS, MOTIF_PRESETS, RepeatIndex,
+  ENZYME_GROUP_OPTIONS, ALL_ENZYMES_GROUP, enzymeNamesInGroup,
   motifsForEnzymes, motifsForEnzymeGroup, parseCustomMotifs, gcPercentOf,
   type ConstraintOptions,
 } from './constraints'
@@ -53,6 +54,24 @@ describe('motifs', () => {
     expect(ecoRI.sequence).toBe('GAATTC')
     expect(motifsForEnzymeGroup('Golden Gate (Type IIS)').length).toBeGreaterThan(0)
     expect(motifsForEnzymeGroup('Not a group')).toEqual([])
+  })
+
+  it('offers every enzyme category, with the catch-all first', () => {
+    expect(ENZYME_GROUP_OPTIONS[0]).toBe(ALL_ENZYMES_GROUP)
+    expect(ENZYME_GROUP_OPTIONS).toContain('Golden Gate (Type IIS)')
+  })
+
+  it('lists a category as a sorted, duplicate-free set of names', () => {
+    const common = enzymeNamesInGroup('Common (6-cutters)')
+    expect(common).toContain('EcoRI')
+    expect([...common]).toEqual([...common].sort((a, b) => a.localeCompare(b)))
+    expect(new Set(common).size).toBe(common.length)
+
+    const all = enzymeNamesInGroup(ALL_ENZYMES_GROUP)
+    expect(all.length).toBeGreaterThan(common.length)
+    for (const name of common) expect(all).toContain(name)
+
+    expect(enzymeNamesInGroup('Not a group')).toEqual([])
   })
 
   it('ships presets that actually carry sequences', () => {

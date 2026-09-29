@@ -8,11 +8,9 @@
 import { describe, it, expect } from 'vitest'
 import {
   BUILTIN_USAGE_TABLES, familyFractions, relativeAdaptiveness, rareCodons,
-  bestCodons, deriveFromCds, unusableResidues, DEFAULT_USAGE_TABLE_ID,
+  bestCodons, unusableResidues, DEFAULT_USAGE_TABLE_ID,
 } from './usage-tables'
 import { geneticCode, synonymsFor } from './genetic-codes'
-import { Sequence } from '../models/Sequence'
-import { Annotation } from '../models/Annotation'
 
 const standard = geneticCode(1)
 
@@ -110,61 +108,6 @@ describe('rareCodons', () => {
     const many = rareCodons(table, standard, 20)
     expect(many.size).toBeGreaterThan(few.size)
     for (const c of few) expect(many.has(c)).toBe(true)
-  })
-})
-
-describe('deriveFromCds', () => {
-  /** ATG GGT GGT TAA on the plus strand at 0..12. */
-  const bases = 'ATGGGTGGTTAA' + 'CCCCCC'
-  const seq = () => new Sequence(bases, 'linear')
-
-  const cds = (over: Partial<{ start: number; end: number; strand: 1 | -1; qualifiers: Record<string, string[]> }> = {}) =>
-    new Annotation({
-      id: 'a1', name: 'test', type: 'CDS', start: 0, end: 12, strand: 1, ...over,
-    })
-
-  it('counts codons off the coding strand', () => {
-    const derived = deriveFromCds([cds()], seq(), standard)!
-    expect(derived.codonsCounted).toBe(4)
-    expect(derived.featuresUsed).toBe(1)
-    // Glycine seen only as GGT.
-    expect(derived.table.fractions.GGT).toBe(1)
-    expect(derived.table.fractions.GGC).toBe(0)
-  })
-
-  it('reads a minus-strand feature in its own orientation', () => {
-    // Reverse complement of ATGGGTGGTTAA is TTAACCACCCAT, so a minus-strand
-    // feature over those bases codes for the same protein.
-    const rc = new Sequence('TTAACCACCCAT', 'linear')
-    const derived = deriveFromCds(
-      [new Annotation({ id: 'a', name: 'r', type: 'CDS', start: 0, end: 12, strand: -1 })],
-      rc, standard,
-    )!
-    expect(derived.table.fractions.GGT).toBe(1)
-  })
-
-  it('honours /codon_start', () => {
-    const shifted = new Sequence('CATGGGTGGTTAA', 'linear')
-    const derived = deriveFromCds(
-      [new Annotation({
-        id: 'a', name: 'c', type: 'CDS', start: 0, end: 13, strand: 1,
-        qualifiers: { codon_start: ['2'] },
-      })],
-      shifted, standard,
-    )!
-    expect(derived.table.fractions.GGT).toBe(1)
-  })
-
-  it('spreads families it never saw rather than zeroing them', () => {
-    const derived = deriveFromCds([cds()], seq(), standard)!
-    // No leucine in the input: all six codons share the family evenly.
-    expect(derived.table.fractions.CTG).toBeCloseTo(1 / 6, 6)
-  })
-
-  it('ignores overlay annotations and returns null with nothing to count', () => {
-    const orf = new Annotation({ id: '_orf_1:0:12:1', name: 'ORF', type: 'CDS', start: 0, end: 12, strand: 1 })
-    expect(deriveFromCds([orf], seq(), standard)).toBeNull()
-    expect(deriveFromCds([], seq(), standard)).toBeNull()
   })
 })
 

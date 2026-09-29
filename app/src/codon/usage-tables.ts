@@ -19,9 +19,6 @@
  * approximation for those codes and exact for tables 1 and 11.
  */
 
-import type { Annotation } from '../models/Annotation'
-import type { Sequence } from '../models/Sequence'
-import { annotationCodingBases, isCodingAnnotation } from '../utils/annotation-sequence'
 import { geneticCode, synonymsFor, type GeneticCode } from './genetic-codes'
 
 export interface CodonUsageTable {
@@ -163,9 +160,6 @@ export const BUILTIN_USAGE_TABLES: CodonUsageTable[] = [
 
 export const DEFAULT_USAGE_TABLE_ID = 'ecoli-k12'
 
-/** Id given to the table derived from the open document. */
-export const DERIVED_TABLE_ID = 'derived'
-
 /**
  * Per-codon fraction within its family under the given code.
  *
@@ -175,8 +169,8 @@ export const DERIVED_TABLE_ID = 'derived'
  *
  * A family with no usage at all stays at zero rather than being spread
  * evenly. Deciding what an absent family means is a judgement call, and it is
- * made once, in deriveFromCds, where the reason is visible. Here a zero is
- * information: `unusableResidues` reports it and the UI warns before a run.
+ * made once, by whoever wrote the table, and a zero here is information:
+ * `unusableResidues` reports it and the UI warns before a run.
  */
 export function familyFractions(
   table: CodonUsageTable, code: GeneticCode,
@@ -253,81 +247,13 @@ export function bestCodons(
   return out
 }
 
-export interface DerivedUsage {
-  table: CodonUsageTable
-  /** Codons counted, so the UI can say how thin the table is. */
-  codonsCounted: number
-  /** How many coding features it came from. */
-  featuresUsed: number
-}
-
-/**
- * Build a usage table from the document's own coding features.
- *
- * Counts on the coding strand with `/codon_start` applied, via the same helper
- * the tooltip and the protein export use, so a minus-strand gene contributes
- * the codons it is actually read in rather than their reverse complements.
- */
-export function deriveFromCds(
-  annotations: readonly Annotation[],
-  sequence: Sequence,
-  code: GeneticCode,
-  name = "This document's CDSs",
-): DerivedUsage | null {
-  const counts: Record<string, number> = {}
-  let codonsCounted = 0
-  let featuresUsed = 0
-
-  for (const ann of annotations) {
-    if (!isCodingAnnotation(ann)) continue
-    if (ann.id.startsWith('_')) continue // ORF and primer overlays are not features
-    const bases = annotationCodingBases(ann, sequence).toUpperCase()
-    if (bases.length < 3) continue
-    featuresUsed++
-    for (let i = 0; i + 2 < bases.length; i += 3) {
-      const codon = bases.slice(i, i + 3)
-      if (!code.table[codon]) continue // skip anything with an ambiguity code
-      counts[codon] = (counts[codon] ?? 0) + 1
-      codonsCounted++
-    }
-  }
-
-  if (codonsCounted === 0) return null
-
-  // Normalised against the standard code, like the built-ins, so every
-  // consumer can treat all tables the same way.
-  const standard = geneticCode(1)
-  const fractions: Record<string, number> = {}
-  const residues = new Set(Object.values(standard.table))
-  for (const aa of residues) {
-    const family = synonymsFor(standard, aa)
-    const total = family.reduce((sum, c) => sum + (counts[c] ?? 0), 0)
-    for (const c of family) {
-      // An amino acid the document never uses falls back to an even spread:
-      // no evidence is not the same as evidence of zero.
-      fractions[c] = total > 0 ? (counts[c] ?? 0) / total : 1 / family.length
-    }
-  }
-
-  return {
-    table: {
-      id: DERIVED_TABLE_ID,
-      name,
-      source: `${codonsCounted} codons from ${featuresUsed} coding feature${featuresUsed === 1 ? '' : 's'}`,
-      approximate: false,
-      fractions,
-    },
-    codonsCounted,
-    featuresUsed,
-  }
-}
-
 /**
  * Amino acids the table has no usable codon for.
  *
- * A derived table built from a handful of features can easily have a family
- * that is all zeros; optimizing a protein containing that residue would have
- * nothing to choose from.
+ * An imported table can easily have a family that is all zeros, either
+ * because the source organism never used it or because the file was partial;
+ * optimizing a protein containing that residue would have nothing to choose
+ * from.
  */
 export function unusableResidues(
   table: CodonUsageTable, code: GeneticCode, protein: string,

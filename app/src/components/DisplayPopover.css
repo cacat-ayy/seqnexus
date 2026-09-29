@@ -6,7 +6,7 @@
 .dp-popover {
   position: fixed;
   z-index: var(--z-popover);
-  min-width: 212px;
+  min-width: 244px;
   max-height: calc(100vh - 16px);
   overflow-y: auto;
   padding: var(--space-2) 0 0;
@@ -108,12 +108,98 @@
 .dp-check:hover { background: var(--bg-hover); }
 .dp-check input { cursor: pointer; margin: 0; }
 
-.dp-note {
-  margin-top: var(--space-2);
-  padding: var(--space-1-5) var(--space-3);
-  border-top: 1px solid var(--border);
-  font-size: var(--text-2xs);
-  color: var(--text-muted);
+/* --- Translation ---
+   Three selects with labels beside them. The popover is narrow, so the label
+   is fixed-width and the control takes the rest rather than the two sharing
+   the row evenly and leaving "Genetic code" on two lines. */
+.dp-fields {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  padding-left: var(--space-1);
+  margin-top: var(--space-0-5);
+}
+
+.dp-field {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: var(--text-xs);
+  color: var(--text-secondary);
+}
+
+.dp-field-label {
+  flex: 0 0 74px;
+}
+
+/* --- Amino acid palette dropdown ---
+   Built rather than a native select, because the point of it is the coloured
+   preview and a select can only show one colour per option. The trigger is
+   sized and bordered like the two selects above it so the three rows read as
+   one column of controls. */
+.dp-aa-picker {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+}
+
+.dp-aa-trigger {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1-5);
+  width: 100%;
+  padding: 2px var(--space-1);
+  font-family: inherit;
+  font-size: var(--text-xs);
+  color: var(--text);
+  background: var(--input-bg);
+  border: 1px solid var(--input-border);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+}
+
+.dp-aa-trigger:hover { border-color: var(--border-hover); }
+.dp-aa-trigger.open { border-color: var(--accent); }
+
+.dp-aa-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-align: left;
+}
+
+.dp-aa-caret { flex-shrink: 0; color: var(--text-muted); }
+
+/* Overlays the rows below it rather than pushing them down, which is what
+   makes it a dropdown and not a disclosure. The popover scrolls, so the menu
+   is kept short enough to fit and scrolls itself if the list ever grows. */
+.dp-aa-menu {
+  position: absolute;
+  top: calc(100% + 2px);
+  left: 0;
+  right: 0;
+  z-index: 1;
+  max-height: 232px;
+  overflow-y: auto;
+  padding: var(--space-0-5);
+  background: var(--bg-alt);
+  border: 1px solid var(--border-hover);
+  border-radius: var(--radius-sm);
+  box-shadow: var(--shadow-popover);
+}
+
+.dp-aa-menu.up {
+  top: auto;
+  bottom: calc(100% + 2px);
+}
+
+.dp-select {
+  flex: 1;
+  min-width: 0;
+  font-size: var(--text-xs);
+  padding: 2px var(--space-1);
 }
 
 /* --- Letters / Background selector --- */

@@ -53,6 +53,11 @@ export interface LayoutToggles {
   showComplement?: boolean
   /** Reserve lanes for annotation bars beneath the sequence. */
   showAnnotations?: boolean
+  /**
+   * Translation rows to reserve. Zero hides the translation entirely; the
+   * frame modes ask for one row per frame, up to all six.
+   */
+  translationRows?: number
 }
 
 export function getLayout(
@@ -64,6 +69,7 @@ export function getLayout(
 ): ZoomLayout {
   const wantComplement = toggles.showComplement ?? true
   const wantAnnotations = toggles.showAnnotations ?? true
+  const wantTranslationRows = Math.max(0, Math.min(6, toggles.translationRows ?? 2))
   const z = Math.max(0, Math.min(20, zoomLevel))
   const mode = getRenderMode(z)
   // Dynamic left margin based on the widest position label
@@ -99,7 +105,9 @@ export function getLayout(
   // letters to draw it with.
   const showComplement = mode === 'letters' && wantComplement
   const strandGap = showComplement ? 2 : 0
-  const maxTranslationRows = mode === 'letters' ? 2 : 0
+  // Only letters zoom has room for residues; below that the row is a few
+  // pixels tall and there is nothing to align them to.
+  const maxTranslationRows = mode === 'letters' ? wantTranslationRows : 0
   // 34 = two 16px letter rows plus the 2px gap between them. Dropping the
   // complement has to shrink the row, not just skip the draw, or every row
   // carries a blank strand's worth of space.

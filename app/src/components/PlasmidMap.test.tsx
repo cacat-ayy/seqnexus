@@ -1,9 +1,51 @@
+import { StrictMode } from 'react'
 import { render, act, screen } from '@testing-library/react'
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import PlasmidMap from './PlasmidMap'
 import { useEditorStore } from '../store'
 
 const store = () => useEditorStore.getState()
+
+/**
+ * A container with a real size, a canvas that records what it is told to do.
+ *
+ * jsdom reports every element as zero-sized, so without the first part the
+ * component never builds a scene and any assertion about drawing is vacuous.
+ */
+function stubLayoutAndCanvas() {
+  // Plain defineProperty rather than vi.spyOn: these are inherited getters,
+  // and stacking spies on them across tests unwinds into a self-referential
+  // getter that blows the stack in whichever test runs next.
+  for (const prop of ['clientWidth', 'clientHeight'] as const) {
+    Object.defineProperty(HTMLDivElement.prototype, prop, { configurable: true, get: () => 600 })
+  }
+  const calls: string[] = []
+  const ctx = new Proxy({
+    measureText: (t: string) => ({ width: t.length * 6 }),
+  } as Record<string, unknown>, {
+    get: (obj, prop: string) => prop in obj ? obj[prop] : () => { calls.push(prop) },
+    set: (obj, prop: string, value) => { obj[prop] = value; return true },
+  })
+  const getContext = vi.spyOn(HTMLCanvasElement.prototype, 'getContext')
+    .mockReturnValue(ctx as unknown as CanvasRenderingContext2D)
+
+  return {
+    calls,
+    restore() {
+      getContext.mockRestore()
+      // Reflect rather than `delete`: the DOM types declare these readonly.
+      Reflect.deleteProperty(HTMLDivElement.prototype, 'clientWidth')
+      Reflect.deleteProperty(HTMLDivElement.prototype, 'clientHeight')
+    },
+  }
+}
+
+/** Two frames: one for the size effect to land, one for the paint it schedules. */
+async function frames(n = 2) {
+  for (let i = 0; i < n; i++) {
+    await act(async () => { await new Promise(r => requestAnimationFrame(() => r(null))) })
+  }
+}
 
 function openPlasmid() {
   for (const tab of store().tabs) store().closeTab(tab.id)
@@ -40,6 +82,45 @@ describe('PlasmidMap', () => {
     // A reset that is always visible is noise; one that appears only when
     // there is something to reset is the affordance.
     expect(screen.queryByRole('button', { name: 'Reset zoom to fit' })).toBeNull()
+  })
+
+  it('actually draws the scene once the container has a size', async () => {
+    // "A canvas exists" is not the same as "the map rendered": every other
+    // test in this file passes over a blank canvas, because jsdom's zero-sized
+    // elements make the component short-circuit before it builds a scene.
+    const stub = stubLayoutAndCanvas()
+
+    render(<PlasmidMap />)
+    await frames()
+
+    // The backbone circle and the feature arc, at the very least.
+    expect(stub.calls.filter(c => c === 'arc').length).toBeGreaterThan(1)
+    expect(stub.calls).toContain('fill')
+    expect(stub.calls).toContain('fillText')
+
+    stub.restore()
+  })
+
+  it('still draws after StrictMode mounts it twice', async () => {
+    // The regression this exists for: the unmount cleanup cancelled the
+    // pending frame but left its handle in the ref, and refs survive
+    // StrictMode's mount/unmount/remount. Every later paint then saw a frame
+    // "already scheduled" and returned. The map hit-tested perfectly and drew
+    // nothing, in development only, with nothing in the console.
+    const stub = stubLayoutAndCanvas()
+
+    render(<StrictMode><PlasmidMap /></StrictMode>)
+    await frames()
+
+    expect(stub.calls.filter(c => c === 'arc').length).toBeGreaterThan(1)
+
+    // And it keeps repainting afterwards, rather than painting once and wedging.
+    stub.calls.length = 0
+    act(() => { store().setHoveredAnnotation('f1') })
+    await frames()
+    expect(stub.calls.length).toBeGreaterThan(0)
+
+    stub.restore()
   })
 
   it('binds each canvas listener once, not once per hover', () => {

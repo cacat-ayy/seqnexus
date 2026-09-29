@@ -1,10 +1,13 @@
-import { render, screen, act } from '@testing-library/react'
+import { render, screen, act, fireEvent } from '@testing-library/react'
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { createRef } from 'react'
 import DisplayPopover from './DisplayPopover'
 import { useEditorStore } from '../store'
 import { COLOR_SCHEMES } from '../utils/base-colors'
 import { PLASMID_STYLES } from '../plasmid/styles'
+import { GENETIC_CODES } from '../codon/genetic-codes'
+import { AMINO_ACID_STYLES, TRANSLATION_FRAMES } from '../codon/translation-display'
+import { loadDisplaySettings } from '../utils/display-settings'
 
 const store = () => useEditorStore.getState()
 
@@ -29,14 +32,18 @@ describe('DisplayPopover', () => {
 
   it('offers every colour scheme', () => {
     show()
-    for (const s of COLOR_SCHEMES) expect(screen.getByText(s.label)).toBeTruthy()
+    // Scoped to the scheme list: the amino acid palettes share several names
+    // with the base ones, Clustal and MacClade among them.
+    const labels = [...document.querySelectorAll('.dp-scheme-list .dp-scheme-label')]
+      .map(el => el.textContent)
+    for (const s of COLOR_SCHEMES) expect(labels).toContain(s.label)
   })
 
   it('marks exactly one scheme as chosen', () => {
     show()
     // Scoped to the scheme list: the Letters/Background selector is also a
     // radiogroup, and its checked button would otherwise be counted here.
-    const schemes = [...document.querySelectorAll('.dp-scheme-list [role="radio"]')]
+    const schemes = [...document.querySelectorAll('[aria-labelledby="dp-scheme-label"] [role="radio"]')]
     const checked = schemes.filter(r => r.getAttribute('aria-checked') === 'true')
     expect(checked).toHaveLength(1)
     expect(checked[0].textContent).toContain('Nucleotide')
@@ -44,7 +51,9 @@ describe('DisplayPopover', () => {
 
   it('selecting a scheme updates the store', () => {
     show()
-    act(() => { screen.getByText('Clustal').closest('button')!.click() })
+    const clustal = [...document.querySelectorAll<HTMLButtonElement>('.dp-scheme-list .dp-scheme')]
+      .find(b => b.textContent?.includes('Clustal'))!
+    act(() => { clustal.click() })
     expect(store().colorScheme).toBe('clustal')
   })
 
@@ -52,7 +61,7 @@ describe('DisplayPopover', () => {
     show()
     // The swatch is the only way to tell GC-vs-AT from Purine-vs-Pyrimidine
     // at a glance, so it must actually be colourised.
-    const swatches = document.querySelectorAll('.dp-swatch')
+    const swatches = document.querySelectorAll('[aria-labelledby="dp-scheme-label"] .dp-swatch')
     expect(swatches).toHaveLength(COLOR_SCHEMES.length)
     const nucleotide = screen.getByText('Nucleotide').closest('button')!
     const letters = nucleotide.querySelectorAll<HTMLElement>('.dp-swatch span')
@@ -75,10 +84,6 @@ describe('DisplayPopover', () => {
     expect(store().showAnnotationTracks).toBe(false)
   })
 
-  it('says the settings are global, since its neighbours are per-document', () => {
-    show()
-    expect(screen.getByText(/Applies to all sequences/i)).toBeTruthy()
-  })
 })
 
 describe('colour target', () => {
@@ -184,5 +189,159 @@ describe('DisplayPopover: plasmid map', () => {
     expect(store().showGcRing).toBe(true)
     act(() => { screen.getByLabelText('Feature colour key').click() })
     expect(store().showPlasmidLegend).toBe(true)
+  })
+})
+
+describe('translation', () => {
+  beforeEach(() => {
+    localStorage.clear()
+    act(() => {
+      const s = store()
+      if (!s.showTranslation) s.toggleTranslation()
+      s.setTranslationFrame('selection-or-annotation')
+      s.setTranslationCode(1)
+      s.setAminoAcidStyle('none')
+      if (s.threeLetterAminoAcids) s.toggleThreeLetterAminoAcids()
+    })
+  })
+
+  const field = (label: string): HTMLSelectElement => {
+    const row = [...document.querySelectorAll('.dp-field')]
+      .find(el => el.querySelector('.dp-field-label')?.textContent === label)
+    if (!row) throw new Error(`no field "${label}"`)
+    return row.querySelector('select')!
+  }
+
+  const aaTrigger = (): HTMLButtonElement => {
+    const el = document.querySelector<HTMLButtonElement>('.dp-aa-trigger')
+    if (!el) throw new Error('no palette dropdown')
+    return el
+  }
+
+  const openAaMenu = () => {
+    if (!document.querySelector('.dp-aa-menu')) act(() => { aaTrigger().click() })
+  }
+
+  const aaRows = (): HTMLButtonElement[] =>
+    [...document.querySelectorAll<HTMLButtonElement>('.dp-aa-menu .dp-scheme')]
+
+  const aaRow = (label: string): HTMLButtonElement => {
+    const row = aaRows().find(el => el.querySelector('.dp-scheme-label')?.textContent === label)
+    if (!row) throw new Error(`no palette "${label}"`)
+    return row
+  }
+
+  const checkbox = (label: string): HTMLInputElement => {
+    const row = [...document.querySelectorAll('.dp-check')]
+      .find(el => el.textContent?.includes(label))
+    if (!row) throw new Error(`no checkbox "${label}"`)
+    return row.querySelector('input')!
+  }
+
+  it('shows amino acids by default, following the features', () => {
+    show()
+    expect(checkbox('Show amino acids').checked).toBe(true)
+    expect(field('Frame').value).toBe('selection-or-annotation')
+  })
+
+  it('hides the options when the translation is off', () => {
+    show()
+    act(() => { checkbox('Show amino acids').click() })
+
+    expect(store().showTranslation).toBe(false)
+    expect(document.querySelectorAll('.dp-field')).toHaveLength(0)
+    expect(document.querySelectorAll('[aria-labelledby="dp-aa-label"]')).toHaveLength(0)
+  })
+
+  it('offers every frame, grouped', () => {
+    show()
+    const options = [...field('Frame').querySelectorAll('option')].map(o => o.value)
+    expect(options).toHaveLength(TRANSLATION_FRAMES.length)
+    expect(options).toContain('all')
+    expect(options).toContain('r23')
+    expect(field('Frame').querySelectorAll('optgroup').length).toBeGreaterThan(1)
+  })
+
+  it('offers the same genetic codes as the optimizer', () => {
+    show()
+    const options = [...field('Genetic code').querySelectorAll('option')].map(o => Number(o.value))
+    expect(options).toEqual(GENETIC_CODES.map(c => c.id))
+  })
+
+  it('offers every amino acid palette, previewed in its own colours', () => {
+    show()
+    // Closed by default: the trigger previews the current palette on its own.
+    expect(document.querySelector('.dp-aa-menu')).toBeNull()
+    expect(aaTrigger().querySelectorAll('.dp-swatch span')).toHaveLength(5)
+
+    openAaMenu()
+    const rows = aaRows()
+    expect(rows.map(r => r.querySelector('.dp-scheme-label')?.textContent))
+      .toEqual(AMINO_ACID_STYLES.map(s => s.label))
+
+    // Each row previews the same residues, so the rows differ only by colour.
+    for (const row of rows) {
+      expect(row.querySelectorAll('.dp-swatch span')).toHaveLength(5)
+    }
+
+    // And the preview is actually colourised, not just the label.
+    const clustal = rows.find(r => r.textContent?.includes('Clustal'))!
+    const colours = [...clustal.querySelectorAll<HTMLElement>('.dp-swatch span')]
+      .map(el => el.style.color)
+    expect(new Set(colours).size).toBeGreaterThan(1)
+    expect(colours).not.toContain('currentcolor')
+  })
+
+  it('writes each choice to the store', () => {
+    show()
+    act(() => { fireEvent.change(field('Frame'), { target: { value: 'all' } }) })
+    expect(store().translationFrame).toBe('all')
+
+    act(() => { fireEvent.change(field('Genetic code'), { target: { value: '2' } }) })
+    expect(store().translationCodeId).toBe(2)
+
+    openAaMenu()
+    act(() => { aaRow('Clustal').click() })
+    expect(store().aminoAcidStyle).toBe('clustal')
+    expect(document.querySelector('.dp-aa-menu')).toBeNull()
+
+    act(() => { checkbox('Three-letter codes').click() })
+    expect(store().threeLetterAminoAcids).toBe(true)
+  })
+
+  it('closes the palette menu on a second click, on Escape and on an outside click', () => {
+    show()
+    openAaMenu()
+    expect(document.querySelector('.dp-aa-menu')).toBeTruthy()
+
+    act(() => { aaTrigger().click() })
+    expect(document.querySelector('.dp-aa-menu')).toBeNull()
+
+    openAaMenu()
+    act(() => {
+      document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))
+    })
+    expect(document.querySelector('.dp-aa-menu')).toBeNull()
+
+    openAaMenu()
+    act(() => { document.body.dispatchEvent(new MouseEvent('mousedown', { bubbles: true })) })
+    expect(document.querySelector('.dp-aa-menu')).toBeNull()
+  })
+
+  it('previews the chosen palette on the closed trigger', () => {
+    show()
+    openAaMenu()
+    act(() => { aaRow('RasMol').click() })
+
+    expect(aaTrigger().textContent).toContain('RasMol')
+    const colours = [...aaTrigger().querySelectorAll<HTMLElement>('.dp-swatch span')]
+      .map(el => el.style.color)
+    expect(new Set(colours).size).toBeGreaterThan(1)
+  })
+
+  it('remembers the choices across a reload', () => {
+    show()
+    act(() => { fireEvent.change(field('Frame'), { target: { value: 'f2' } }) })
+    expect(loadDisplaySettings().translationFrame).toBe('f2')
   })
 })

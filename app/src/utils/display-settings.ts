@@ -22,6 +22,11 @@ import {
 import {
   DEFAULT_PLASMID_STYLE, PLASMID_STYLES, type PlasmidStyleId,
 } from '../plasmid/styles'
+import {
+  AMINO_ACID_STYLES, DEFAULT_AMINO_ACID_STYLE, DEFAULT_TRANSLATION_FRAME,
+  TRANSLATION_FRAMES, type AminoAcidStyleId, type TranslationFrameId,
+} from '../codon/translation-display'
+import { DEFAULT_GENETIC_CODE_ID, GENETIC_CODES } from '../codon/genetic-codes'
 
 const STORAGE_KEY = 'seqnexus:display-settings'
 
@@ -39,6 +44,16 @@ export interface DisplaySettings {
   showGcRing: boolean
   /** Draw a feature-type colour key in the corner of the map. */
   showPlasmidLegend: boolean
+  /** Draw amino acids under the sequence. */
+  showTranslation: boolean
+  /** Which reading frames, or whether to follow the annotated features. */
+  translationFrame: TranslationFrameId
+  /** The code the view translates with. The optimizer has its own. */
+  translationCodeId: number
+  /** How the residues are coloured. */
+  aminoAcidStyle: AminoAcidStyleId
+  /** Spell residues Ala rather than A. */
+  threeLetterAminoAcids: boolean
 }
 
 export const DEFAULT_DISPLAY_SETTINGS: DisplaySettings = {
@@ -53,11 +68,21 @@ export const DEFAULT_DISPLAY_SETTINGS: DisplaySettings = {
   // they already know until they ask for more on it.
   showGcRing: false,
   showPlasmidLegend: false,
+  // On, following the features, which is exactly what the view drew before
+  // any of this was configurable.
+  showTranslation: true,
+  translationFrame: DEFAULT_TRANSLATION_FRAME,
+  translationCodeId: DEFAULT_GENETIC_CODE_ID,
+  aminoAcidStyle: DEFAULT_AMINO_ACID_STYLE,
+  threeLetterAminoAcids: false,
 }
 
 const VALID_SCHEMES = new Set(COLOR_SCHEMES.map(s => s.id))
 const VALID_TARGETS = new Set(COLOR_TARGETS.map(t => t.id))
 const VALID_PLASMID_STYLES = new Set(PLASMID_STYLES.map(s => s.id))
+const VALID_FRAMES = new Set(TRANSLATION_FRAMES.map(f => f.id))
+const VALID_AA_STYLES = new Set(AMINO_ACID_STYLES.map(s => s.id))
+const VALID_CODES = new Set(GENETIC_CODES.map(c => c.id))
 
 /**
  * Read preferences synchronously, before first paint.
@@ -93,6 +118,21 @@ export function loadDisplaySettings(): DisplaySettings {
       showPlasmidLegend: typeof parsed.showPlasmidLegend === 'boolean'
         ? parsed.showPlasmidLegend
         : DEFAULT_DISPLAY_SETTINGS.showPlasmidLegend,
+      showTranslation: typeof parsed.showTranslation === 'boolean'
+        ? parsed.showTranslation
+        : DEFAULT_DISPLAY_SETTINGS.showTranslation,
+      translationFrame: VALID_FRAMES.has(parsed.translationFrame as TranslationFrameId)
+        ? parsed.translationFrame as TranslationFrameId
+        : DEFAULT_DISPLAY_SETTINGS.translationFrame,
+      translationCodeId: VALID_CODES.has(parsed.translationCodeId as number)
+        ? parsed.translationCodeId as number
+        : DEFAULT_DISPLAY_SETTINGS.translationCodeId,
+      aminoAcidStyle: VALID_AA_STYLES.has(parsed.aminoAcidStyle as AminoAcidStyleId)
+        ? parsed.aminoAcidStyle as AminoAcidStyleId
+        : DEFAULT_DISPLAY_SETTINGS.aminoAcidStyle,
+      threeLetterAminoAcids: typeof parsed.threeLetterAminoAcids === 'boolean'
+        ? parsed.threeLetterAminoAcids
+        : DEFAULT_DISPLAY_SETTINGS.threeLetterAminoAcids,
     }
   } catch {
     return { ...DEFAULT_DISPLAY_SETTINGS }

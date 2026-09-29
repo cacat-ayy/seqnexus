@@ -123,13 +123,23 @@ export const MOTIF_PRESETS: { id: string; label: string; description: string; mo
   },
 ]
 
+/** The catch-all option, kept out of ENZYME_GROUPS so the database stays data. */
+export const ALL_ENZYMES_GROUP = 'All enzymes'
+
+/** Enzyme category names, for the picker. */
+export const ENZYME_GROUP_OPTIONS: string[] = [ALL_ENZYMES_GROUP, ...Object.keys(ENZYME_GROUPS)]
+
+/** Enzyme names in a category, sorted, with duplicates removed. */
+export function enzymeNamesInGroup(group: string): string[] {
+  const names = group === ALL_ENZYMES_GROUP
+    ? ENZYME_DB.map(e => e.name)
+    : ENZYME_GROUPS[group] ?? []
+  return [...new Set(names)].sort((a, b) => a.localeCompare(b))
+}
+
 /** Motif specs for a named enzyme group from the enzyme database. */
 export function motifsForEnzymeGroup(group: string): MotifSpec[] {
-  const names = ENZYME_GROUPS[group]
-  if (!names) return []
-  return names
-    .map(name => ({ name, sequence: getEnzyme(name)?.recognition ?? '' }))
-    .filter(m => m.sequence.length > 0)
+  return motifsForEnzymes(enzymeNamesInGroup(group))
 }
 
 export function motifsForEnzymes(names: readonly string[]): MotifSpec[] {

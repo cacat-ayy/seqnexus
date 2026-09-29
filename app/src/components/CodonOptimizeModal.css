@@ -2,16 +2,30 @@
    Two columns: the settings you change on the left, what they did on the
    right. The result column is what makes the constraint options usable, so it
    gets equal width rather than being tucked under a disclosure. */
+/* Shorter than the shared 85vh: the dialog is wide, and a tall wide box on a
+   laptop leaves no sequence visible behind it. The columns scroll, so height
+   buys less here than it looks like it should. */
 .cod-modal {
   width: 960px;
   max-width: 95vw;
+  max-height: 72vh;
 }
 
+/* The two columns scroll on their own, which only works if they are allowed to
+   be shorter than their contents. Grid items default to min-height:auto, so
+   without the min-height:0 below the row grows past the dialog, .modal-dialog
+   clips it, and the overflow is unreachable: text cut off with no scrollbar.
+   grid-template-rows does the same job for the row itself.
+
+   The height comes from .modal-dialog (max-height:85vh, flex column) via
+   .modal-body's flex:1. Setting a vh max-height here as well would either
+   fight that or leave a gap, depending on the window. */
 .cod-body {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr);
   gap: var(--space-4);
-  max-height: 68vh;
+  min-height: 0;
   overflow: hidden;
 }
 
@@ -19,13 +33,31 @@
 .cod-result {
   overflow-y: auto;
   min-width: 0;
+  min-height: 0;
   padding-right: var(--space-1);
 }
 
+/* A rule between the panes, so two independently scrolling columns read as
+   two columns rather than as one body with a stray scrollbar down the middle. */
+.cod-result {
+  border-left: 1px solid var(--border);
+  padding-left: var(--space-4);
+}
+
+@media (max-width: 900px) {
+  .cod-result {
+    border-left: none;
+    border-top: 1px solid var(--border);
+    padding-left: 0;
+    padding-top: var(--space-3);
+  }
+}
+
+/* Stacked: one scroller for everything rather than two competing ones. */
 @media (max-width: 900px) {
   .cod-body {
     grid-template-columns: minmax(0, 1fr);
-    max-height: 72vh;
+    grid-template-rows: auto;
     overflow-y: auto;
   }
   .cod-settings, .cod-result { overflow: visible; }
@@ -71,11 +103,14 @@
   overflow-y: auto;
 }
 
+/* Flex-shrink with an ellipsis rather than a fixed max-width: the column is
+   half the dialog, and the dialog is 95vw on a small screen. */
 .cod-feature-name {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  max-width: 170px;
+  flex: 1;
+  min-width: 0;
 }
 
 .cod-row {
@@ -98,9 +133,21 @@
 
 .cod-check-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(170px, 1fr));
   gap: var(--space-1);
   margin-bottom: var(--space-2);
+}
+
+/* These labels are sentences, not words ("Internal ribosome binding sites"),
+   so they line-wrap inside their cell instead of running out of it. */
+.cod-check-grid .re-check {
+  align-items: flex-start;
+  min-width: 0;
+}
+
+.cod-check-grid .re-check input[type="checkbox"] {
+  margin-top: 2px;
+  flex-shrink: 0;
 }
 
 .cod-input, .cod-textarea {
@@ -110,31 +157,71 @@
   font-size: var(--text-xs);
 }
 
-.cod-chips {
+/* --- Enzyme picker ---
+   A category, then its enzymes with a filter. Everything starts ticked, so the
+   list is there to take things out of, not to build a selection up from. */
+.cod-enzyme-bar {
   display: flex;
-  flex-wrap: wrap;
-  gap: var(--space-1);
-  margin-top: var(--space-1);
+  align-items: center;
+  gap: var(--space-2);
+  margin-top: var(--space-1-5);
 }
 
-/* Click a chip to stop avoiding that enzyme: the same affordance the
-   restriction panel uses for its selected enzymes. */
-.cod-chip {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--space-1);
-  padding: 0 var(--space-1-5);
+.cod-enzyme-search {
+  flex: 1;
+  min-width: 0;
+  padding: 2px var(--space-2);
+}
+
+.cod-enzyme-actions {
+  display: flex;
+  gap: var(--space-2);
+  margin: var(--space-1) 0;
+}
+
+.cod-linkish {
+  background: none;
+  border: none;
+  padding: 0;
   font-size: var(--text-xs);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-pill);
-  background: var(--bg-alt);
-  color: var(--text-secondary);
+  color: var(--accent);
   cursor: pointer;
 }
 
-.cod-chip:hover {
-  border-color: var(--danger, #e03131);
-  color: var(--danger, #e03131);
+.cod-linkish:disabled {
+  color: var(--text-muted);
+  cursor: default;
+}
+
+.cod-enzyme-list {
+  list-style: none;
+  margin: 0;
+  padding: 0 var(--space-1) 0 0;
+  max-height: 150px;
+  overflow-y: auto;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-input);
+  background: var(--bg);
+}
+
+.cod-enzyme-list li {
+  padding: 1px var(--space-2);
+}
+
+.cod-enzyme-list .re-check { width: 100%; }
+
+.cod-enzyme-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cod-enzyme-site {
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  color: var(--text-muted);
 }
 
 .cod-disclosure {
@@ -157,10 +244,12 @@
   margin-top: var(--space-2);
 }
 
+/* Wide enough for the longest label ("Max hairpin stem") beside its input.
+   At the old 140px the label wrapped to three lines next to a 64px box. */
 .cod-num-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
-  gap: var(--space-1-5);
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: var(--space-1-5) var(--space-2);
 }
 
 .cod-num-grid label {
@@ -170,9 +259,13 @@
   gap: var(--space-1);
   font-size: var(--text-xs);
   color: var(--text-secondary);
+  min-width: 0;
 }
 
-.cod-num-grid .re-num { width: 64px; }
+.cod-num-grid .re-num {
+  width: 58px;
+  flex-shrink: 0;
+}
 
 /* --- Result column --- */
 .cod-placeholder {
@@ -251,18 +344,49 @@
   padding-top: var(--space-2);
 }
 
+/* A row, not a button that looks like one: it spans the column so the whole
+   strip is a target, and the count stays readable at the right edge. */
 .cod-region-head {
   display: flex;
   align-items: center;
+  gap: var(--space-1);
+  width: 100%;
+  padding: var(--space-1) var(--space-1) var(--space-1) 0;
+  background: none;
+  border: none;
+  border-radius: var(--radius-sm);
+  font-family: inherit;
   font-size: var(--text-sm);
   font-weight: 600;
-  margin-bottom: var(--space-1);
+  color: var(--text);
+  text-align: left;
+  cursor: pointer;
+}
+
+.cod-region-head:hover { background: var(--bg-hover); }
+
+.cod-region-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cod-region-head .cod-hint { margin-left: 0; }
+
+/* Dotted underline on the metric names, so it is discoverable that hovering
+   one explains it. */
+.cod-metric-label {
+  text-decoration: underline dotted var(--border-hover);
+  text-underline-offset: 3px;
+  cursor: help;
 }
 
 .cod-change-list {
   list-style: none;
   margin: 0 0 var(--space-2);
-  padding: 0;
+  padding: 0 0 0 var(--space-4);
   font-family: var(--font-mono);
   font-size: var(--text-xs);
 }
@@ -280,8 +404,8 @@
 .cod-codon.cod-new { color: var(--accent); font-weight: 600; }
 .cod-arrow { color: var(--text-muted); }
 
-.cod-footer-note {
-  flex: 1;
-  font-size: var(--text-xs);
-  color: var(--text-muted);
+/* Three buttons: on a narrow window they wrap rather than pushing Apply off
+   the edge. */
+.cod-modal .modal-footer {
+  flex-wrap: wrap;
 }

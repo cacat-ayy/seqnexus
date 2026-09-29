@@ -9,20 +9,23 @@ import './CodonOptimizeModal.css'
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { X, Loader2, ChevronDown, ChevronRight, Upload, Trash2 } from 'lucide-react'
+import { X, Loader2, ChevronDown, ChevronRight, Upload, Trash2, Search } from 'lucide-react'
 import { useEditorStore } from '../store'
 import { Sequence } from '../models/Sequence'
 import { Annotation } from '../models/Annotation'
-import { ENZYME_GROUPS } from '../enzymes/db'
+import { getEnzyme } from '../enzymes/db'
 import { GENETIC_CODES, geneticCode } from '../codon/genetic-codes'
 import {
-  BUILTIN_USAGE_TABLES, DERIVED_TABLE_ID, deriveFromCds, type CodonUsageTable,
+  BUILTIN_USAGE_TABLES, type CodonUsageTable,
 } from '../codon/usage-tables'
 import { parseUsageTable, describeUsageImport, UsageImportError } from '../codon/usage-import'
-import { MOTIF_PRESETS } from '../codon/constraints'
+import {
+  MOTIF_PRESETS, ENZYME_GROUP_OPTIONS, enzymeNamesInGroup,
+} from '../codon/constraints'
 import { codingFeatures } from '../codon/targets'
 import {
-  constraintSetFor, motifsFor, targetOptionsFor, DEFAULT_CODON_SETTINGS,
+  constraintSetFor, motifsFor, targetOptionsFor, selectedEnzymeNames,
+  DEFAULT_CODON_SETTINGS,
 } from '../codon/settings'
 import { combinedMetrics, runOptimization, type OptimizationRun } from '../codon/run'
 import { notify } from '../toast'
@@ -36,7 +39,8 @@ interface Props {
 
 /** Past this many bases a run is only made on request, not while typing. */
 const AUTO_RUN_LIMIT = 60_000
-const IMPORT_ACCEPT = '.txt,.csv,.tsv,.tab,.dat'
+/** What cusp and CodonFrequency actually write, plus the .txt people rename them to. */
+const IMPORT_ACCEPT = '.cusp,.cod,.txt'
 
 function formatMetric(value: number | null, digits = 1, suffix = ''): string {
   if (value === null || Number.isNaN(value)) return '-'
@@ -45,8 +49,10 @@ function formatMetric(value: number | null, digits = 1, suffix = ''): string {
 
 /** One before/after row of the summary table. */
 function MetricRow(
-  { label, before, after, format, higherIsBetter }: {
+  { label, tip, before, after, format, higherIsBetter }: {
     label: string
+    /** What the number means. These are not self-explanatory to everyone. */
+    tip: string
     before: number | null
     after: number | null
     format: (v: number | null) => string
@@ -58,8 +64,8 @@ function MetricRow(
     ? (higherIsBetter ? after > before : after < before)
     : null
   return (
-    <tr>
-      <td>{label}</td>
+    <tr title={tip}>
+      <td><span className="cod-metric-label">{label}</span></td>
       <td className="cod-num">{format(before)}</td>
       <td className={`cod-num ${better === true ? 'better' : better === false ? 'worse' : ''}`}>
         {format(after)}
@@ -83,6 +89,9 @@ export default function CodonOptimizeModal({ open, onClose }: Props) {
 
   const [featureIds, setFeatureIds] = useState<Set<string>>(new Set())
   const [advancedOpen, setAdvancedOpen] = useState(false)
+  // Regions start collapsed and each one is opened on demand, so a run over a
+  // plasmid's worth of CDSs does not open as hundreds of codon rows.
+  const [expandedRegions, setExpandedRegions] = useState<Set<string>>(new Set())
   const [enzymeQuery, setEnzymeQuery] = useState('')
   const [result, setResult] = useState<OptimizationRun | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -96,18 +105,24 @@ export default function CodonOptimizeModal({ open, onClose }: Props) {
   const features = useMemo(() => codingFeatures(doc.annotations), [doc.annotations])
   const code = useMemo(() => geneticCode(settings.geneticCodeId), [settings.geneticCodeId])
 
-  /** The table derived from this document, rebuilt when its features change. */
-  const derived = useMemo(
-    () => (open ? deriveFromCds(doc.annotations, doc.sequence, code) : null),
-    [open, doc.annotations, doc.sequence, code],
+  /** Enzymes of the chosen category, and the subset the filter box shows. */
+  const groupEnzymes = useMemo(
+    () => settings.enzymeGroup ? enzymeNamesInGroup(settings.enzymeGroup) : [],
+    [settings.enzymeGroup],
   )
+  const visibleEnzymes = useMemo(() => {
+    const q = enzymeQuery.trim().toLowerCase()
+    if (!q) return groupEnzymes
+    return groupEnzymes.filter(name =>
+      name.toLowerCase().includes(q) ||
+      (getEnzyme(name)?.recognition ?? '').toLowerCase().includes(q))
+  }, [groupEnzymes, enzymeQuery])
 
-  const table: CodonUsageTable | null = useMemo(() => {
-    if (settings.usageTableId === DERIVED_TABLE_ID) return derived?.table ?? null
-    return BUILTIN_USAGE_TABLES.find(t => t.id === settings.usageTableId)
+  const table: CodonUsageTable | null = useMemo(() =>
+    BUILTIN_USAGE_TABLES.find(t => t.id === settings.usageTableId)
       ?? customTables.find(t => t.id === settings.usageTableId)
-      ?? null
-  }, [settings.usageTableId, derived, customTables])
+      ?? null,
+  [settings.usageTableId, customTables])
 
   const selectionRange = selection.anchor !== selection.caret
     ? { start: Math.min(selection.anchor, selection.caret), end: Math.max(selection.anchor, selection.caret) }
@@ -281,20 +296,20 @@ export default function CodonOptimizeModal({ open, onClose }: Props) {
                 </label>
                 <label className="re-check">
                   <input
+                    type="radio" name="cod-target" checked={settings.target === 'whole'}
+                    onChange={() => patch({ target: 'whole' })}
+                  />
+                  Whole sequence
+                  <span className="cod-hint">{doc.sequence.length} bp</span>
+                </label>
+                <label className="re-check">
+                  <input
                     type="radio" name="cod-target" checked={settings.target === 'cds'}
                     disabled={features.length === 0}
                     onChange={() => patch({ target: 'cds' })}
                   />
                   Coding features
                   <span className="cod-hint">{features.length}</span>
-                </label>
-                <label className="re-check">
-                  <input
-                    type="radio" name="cod-target" checked={settings.target === 'whole'}
-                    onChange={() => patch({ target: 'whole' })}
-                  />
-                  Whole sequence
-                  <span className="cod-hint">{doc.sequence.length} bp</span>
                 </label>
               </div>
 
@@ -359,18 +374,11 @@ export default function CodonOptimizeModal({ open, onClose }: Props) {
                         ))}
                       </optgroup>
                     )}
-                    <optgroup label="From this document">
-                      <option value={DERIVED_TABLE_ID} disabled={!derived}>
-                        {derived
-                          ? `This document's CDSs (${derived.codonsCounted} codons)`
-                          : 'This document has no CDS features'}
-                      </option>
-                    </optgroup>
                   </select>
                   <button
                     className="btn btn-sm"
                     onClick={() => importRef.current?.click()}
-                    title="Import a Kazusa, CSV or two-column codon usage table"
+                    title="Import an EMBOSS cusp (.cusp) or GCG CodonFrequency (.cod) table"
                   >
                     <Upload size={12} /> Import
                   </button>
@@ -395,8 +403,8 @@ export default function CodonOptimizeModal({ open, onClose }: Props) {
                 {table && <div className="cod-source">{table.source}</div>}
                 {table?.approximate && (
                   <div className="cod-source cod-warn">
-                    Published averages, rounded. Import your own table or derive one from this
-                    document if the exact figures matter.
+                    Published averages, rounded. Import an EMBOSS cusp (.cusp) or GCG
+                    CodonFrequency (.cod) table if the exact figures matter.
                   </div>
                 )}
                 {tableMessage && (
@@ -426,6 +434,16 @@ export default function CodonOptimizeModal({ open, onClose }: Props) {
                 </label>
               </div>
 
+              <div className="ann-similarity-row">
+                <label htmlFor="cod-rare">Rare below</label>
+                <input
+                  id="cod-rare" type="range" className="ann-slider" min={1} max={30}
+                  value={settings.rareThreshold}
+                  onChange={e => patch({ rareThreshold: Number(e.target.value) })}
+                />
+                <span className="ann-sim-value">{settings.rareThreshold}%</span>
+              </div>
+
               {settings.mode === 'all' && (
                 <div className="re-field">
                   <label className="re-field-label" htmlFor="cod-strategy">Codon choice</label>
@@ -439,16 +457,6 @@ export default function CodonOptimizeModal({ open, onClose }: Props) {
                   </select>
                 </div>
               )}
-
-              <div className="ann-similarity-row">
-                <label htmlFor="cod-rare">Rare below</label>
-                <input
-                  id="cod-rare" type="range" className="ann-slider" min={1} max={30}
-                  value={settings.rareThreshold}
-                  onChange={e => patch({ rareThreshold: Number(e.target.value) })}
-                />
-                <span className="ann-sim-value">{settings.rareThreshold}%</span>
-              </div>
             </section>
 
             <section className="cod-section">
@@ -476,44 +484,77 @@ export default function CodonOptimizeModal({ open, onClose }: Props) {
                 </label>
               </div>
 
+              {/* Pick a category, then untick what you do not care about.
+                  Every enzyme in the category starts ticked, because choosing
+                  a category is already the statement "keep these out". */}
               <div className="re-field">
-                <label className="re-field-label">Restriction sites</label>
-                <div className="cod-check-grid">
-                  {Object.keys(ENZYME_GROUPS).slice(0, 4).map(group => (
-                    <label className="re-check" key={group}>
-                      <input
-                        type="checkbox"
-                        checked={settings.enzymeGroups.includes(group)}
-                        onChange={() => patch({ enzymeGroups: toggleIn(settings.enzymeGroups, group) })}
-                      />
-                      {group}
-                    </label>
+                <label className="re-field-label" htmlFor="cod-enzyme-group">Restriction sites</label>
+                <select
+                  id="cod-enzyme-group" className="select"
+                  value={settings.enzymeGroup}
+                  onChange={e => patch({ enzymeGroup: e.target.value, enzymeExcluded: [] })}
+                >
+                  <option value="">None</option>
+                  {ENZYME_GROUP_OPTIONS.map(group => (
+                    <option key={group} value={group}>
+                      {group} ({enzymeNamesInGroup(group).length})
+                    </option>
                   ))}
-                </div>
-                <input
-                  className="input cod-input"
-                  placeholder="Add single enzymes, e.g. EcoRI BamHI"
-                  value={enzymeQuery}
-                  onChange={e => setEnzymeQuery(e.target.value)}
-                  onKeyDown={e => {
-                    if (e.key !== 'Enter') return
-                    const names = enzymeQuery.split(/[\s,]+/).filter(Boolean)
-                    patch({ enzymeNames: [...new Set([...settings.enzymeNames, ...names])] })
-                    setEnzymeQuery('')
-                  }}
-                />
-                {settings.enzymeNames.length > 0 && (
-                  <div className="cod-chips">
-                    {settings.enzymeNames.map(name => (
+                </select>
+
+                {settings.enzymeGroup && (
+                  <>
+                    <div className="cod-enzyme-bar">
+                      <div className="ann-search-box cod-enzyme-search">
+                        <Search size={13} />
+                        <input
+                          className="ann-search-input"
+                          placeholder="Filter enzymes"
+                          value={enzymeQuery}
+                          onChange={e => setEnzymeQuery(e.target.value)}
+                        />
+                      </div>
+                      <span className="cod-hint">
+                        {selectedEnzymeNames(settings).length} of {groupEnzymes.length}
+                      </span>
+                    </div>
+                    <div className="cod-enzyme-actions">
                       <button
-                        key={name} className="cod-chip"
-                        onClick={() => patch({ enzymeNames: settings.enzymeNames.filter(n => n !== name) })}
-                        title={`Stop avoiding ${name}`}
+                        className="cod-linkish"
+                        onClick={() => patch({ enzymeExcluded: [] })}
+                        disabled={settings.enzymeExcluded.length === 0}
                       >
-                        {name} <X size={10} />
+                        Select all
                       </button>
-                    ))}
-                  </div>
+                      <button
+                        className="cod-linkish"
+                        onClick={() => patch({ enzymeExcluded: [...groupEnzymes] })}
+                        disabled={settings.enzymeExcluded.length === groupEnzymes.length}
+                      >
+                        Clear
+                      </button>
+                    </div>
+                    <ul className="cod-enzyme-list">
+                      {visibleEnzymes.map(name => (
+                        <li key={name}>
+                          <label className="re-check">
+                            <input
+                              type="checkbox"
+                              checked={!settings.enzymeExcluded.includes(name)}
+                              onChange={() => patch({
+                                enzymeExcluded: toggleIn(settings.enzymeExcluded, name),
+                              })}
+                            />
+                            <span className="cod-enzyme-name">{name}</span>
+                            <span className="cod-enzyme-site">{getEnzyme(name)?.recognition}</span>
+                          </label>
+                        </li>
+                      ))}
+                      {visibleEnzymes.length === 0 && (
+                        <li className="cod-hint">No enzyme matches "{enzymeQuery}"</li>
+                      )}
+                    </ul>
+                  </>
                 )}
               </div>
 
@@ -535,7 +576,7 @@ export default function CodonOptimizeModal({ open, onClose }: Props) {
               {advancedOpen && (
                 <div className="cod-advanced">
                   <div className="cod-num-grid">
-                    <label>
+                    <label title="Longest run of a single A or T the optimizer may leave behind. Runs longer than this cause polymerase slippage and synthesis failures. 0 turns the check off.">
                       Max A/T run
                       <input
                         type="number" className="re-num" min={0} max={30}
@@ -543,7 +584,7 @@ export default function CodonOptimizeModal({ open, onClose }: Props) {
                         onChange={e => patch({ maxHomopolymerAT: Number(e.target.value) })}
                       />
                     </label>
-                    <label>
+                    <label title="Longest run of a single G or C. Usually set shorter than the A/T limit. 0 turns the check off. Some runs cannot be avoided: tryptophan is only TGG, and every valine and glycine codon starts with G.">
                       Max G/C run
                       <input
                         type="number" className="re-num" min={0} max={30}
@@ -551,7 +592,7 @@ export default function CodonOptimizeModal({ open, onClose }: Props) {
                         onChange={e => patch({ maxHomopolymerGC: Number(e.target.value) })}
                       />
                     </label>
-                    <label>
+                    <label title="Lowest GC content accepted for the region, and for each sliding window when a window size is set. 0 turns the lower bound off.">
                       Min GC %
                       <input
                         type="number" className="re-num" min={0} max={100}
@@ -559,7 +600,7 @@ export default function CodonOptimizeModal({ open, onClose }: Props) {
                         onChange={e => patch({ minGC: Number(e.target.value) })}
                       />
                     </label>
-                    <label>
+                    <label title="Highest GC content accepted for the region, and for each sliding window when a window size is set. 100 turns the upper bound off.">
                       Max GC %
                       <input
                         type="number" className="re-num" min={0} max={100}
@@ -567,7 +608,7 @@ export default function CodonOptimizeModal({ open, onClose }: Props) {
                         onChange={e => patch({ maxGC: Number(e.target.value) })}
                       />
                     </label>
-                    <label>
+                    <label title="Width in bases of the window slid along the region and checked against the GC bounds. It catches a GC-rich stretch that an acceptable average would hide. 0 checks only the region as a whole.">
                       GC window
                       <input
                         type="number" className="re-num" min={0} max={500} step={10}
@@ -575,7 +616,7 @@ export default function CodonOptimizeModal({ open, onClose }: Props) {
                         onChange={e => patch({ gcWindow: Number(e.target.value) })}
                       />
                     </label>
-                    <label>
+                    <label title="Longest exact direct repeat allowed anywhere in the region. Repeats confuse gene synthesis and assembly. 0 turns the check off.">
                       Max repeat
                       <input
                         type="number" className="re-num" min={0} max={50}
@@ -583,7 +624,7 @@ export default function CodonOptimizeModal({ open, onClose }: Props) {
                         onChange={e => patch({ maxRepeat: Number(e.target.value) })}
                       />
                     </label>
-                    <label>
+                    <label title="Longest inverted repeat allowed, used as a cheap stand-in for secondary structure. Only arms within 30 bases of each other count as a hairpin. 0 turns the check off.">
                       Max hairpin stem
                       <input
                         type="number" className="re-num" min={0} max={30}
@@ -591,7 +632,7 @@ export default function CodonOptimizeModal({ open, onClose }: Props) {
                         onChange={e => patch({ maxHairpinStem: Number(e.target.value) })}
                       />
                     </label>
-                    <label>
+                    <label title="Leave this many codons at the 5' end exactly as they are, for a translation ramp, a tag, or a cloning junction you do not want touched.">
                       Keep first codons
                       <input
                         type="number" className="re-num" min={0} max={100}
@@ -599,7 +640,7 @@ export default function CodonOptimizeModal({ open, onClose }: Props) {
                         onChange={e => patch({ keepFirstCodons: Number(e.target.value) })}
                       />
                     </label>
-                    <label>
+                    <label title="Seeds the sampled codon choice, so the same settings always produce the same sequence. Only used by the sampled strategy.">
                       Seed
                       <input
                         type="number" className="re-num" min={1}
@@ -608,21 +649,30 @@ export default function CodonOptimizeModal({ open, onClose }: Props) {
                       />
                     </label>
                   </div>
-                  <label className="re-check">
+                  <label
+                    className="re-check"
+                    title="Leave the initiator codon exactly as it is. Switching this off lets the optimizer swap it for another codon of the same amino acid, which is rarely what you want."
+                  >
                     <input
                       type="checkbox" checked={settings.keepStartCodon}
                       onChange={e => patch({ keepStartCodon: e.target.checked })}
                     />
                     Keep the start codon
                   </label>
-                  <label className="re-check">
+                  <label
+                    className="re-check"
+                    title="Leave a terminal stop codon as it is. Switching this off lets the optimizer pick the host's preferred stop instead."
+                  >
                     <input
                       type="checkbox" checked={settings.keepStopCodon}
                       onChange={e => patch({ keepStopCodon: e.target.checked })}
                     />
                     Keep the stop codon
                   </label>
-                  <label className="re-check" title="Leave bases under other annotated features untouched">
+                  <label
+                    className="re-check"
+                    title="Do not rewrite bases that sit under another annotated feature, such as a ribosome binding site, a primer site or a tag. Those codons are listed as locked in the run."
+                  >
                     <input
                       type="checkbox" checked={settings.protectFeatures}
                       onChange={e => patch({ protectFeatures: e.target.checked })}
@@ -632,6 +682,7 @@ export default function CodonOptimizeModal({ open, onClose }: Props) {
                   <button
                     className="btn btn-sm"
                     onClick={() => setSettings({ ...DEFAULT_CODON_SETTINGS })}
+                    title="Put every setting in this dialog back to its default, including the target and the usage table."
                   >
                     Reset to defaults
                   </button>
@@ -671,26 +722,42 @@ export default function CodonOptimizeModal({ open, onClose }: Props) {
                     <MetricRow
                       label="CAI" before={before.cai} after={after.cai} higherIsBetter
                       format={v => formatMetric(v, 3)}
+                      tip={'Codon Adaptation Index, 0 to 1. The geometric mean of how each codon '
+                        + 'rates against the best codon for its amino acid in the chosen host. '
+                        + '1.0 would be the host favourite everywhere. Methionine and tryptophan '
+                        + 'are left out: with one codon each they say nothing about adaptation.'}
                     />
                     <MetricRow
                       label="GC" before={before.gc} after={after.gc}
                       format={v => formatMetric(v, 1, '%')}
+                      tip={'G and C as a percentage of the optimized region. Synthesis vendors '
+                        + 'usually want this between about 30 and 70 percent.'}
                     />
                     <MetricRow
                       label="GC3" before={before.gc3} after={after.gc3}
                       format={v => formatMetric(v, 1, '%')}
+                      tip={'GC at the third base of each codon, which is the position synonymous '
+                        + 'choice mostly moves. It tracks the host bias more closely than overall GC.'}
                     />
                     <MetricRow
                       label="Rare codons" before={before.rareCodons} after={after.rareCodons}
                       higherIsBetter={false} format={v => formatMetric(v, 0)}
+                      tip={`Codons used less than ${settings.rareThreshold}% of the time within `
+                        + 'their amino acid family in this host. Families with a single codon '
+                        + 'never count as rare.'}
                     />
                     <MetricRow
                       label="Longest A/T run" before={before.longestRunAT} after={after.longestRunAT}
                       higherIsBetter={false} format={v => formatMetric(v, 0)}
+                      tip={'Longest run of a single A or T. Long runs cause polymerase slippage '
+                        + 'and are a common reason a synthesis order is rejected. AATT is not a '
+                        + 'run of four: only the same base repeated counts.'}
                     />
                     <MetricRow
                       label="Longest G/C run" before={before.longestRunGC} after={after.longestRunGC}
                       higherIsBetter={false} format={v => formatMetric(v, 0)}
+                      tip={'Longest run of a single G or C. Same problem as an A/T run, and '
+                        + 'usually tolerated at a shorter length.'}
                     />
                   </tbody>
                 </table>
@@ -729,33 +796,51 @@ export default function CodonOptimizeModal({ open, onClose }: Props) {
                   </div>
                 )}
 
+                {/* One collapsed row per region. The codon list is long and
+                    rarely the thing being read: the counts are. */}
                 <div className="cod-changes">
-                  {result.regions.map(region => (
-                    <div key={region.id}>
-                      {result.regions.length > 1 && (
-                        <div className="cod-region-head">
-                          {region.label}
-                          <span className="cod-hint">{region.changes.length} changed</span>
-                        </div>
-                      )}
-                      <ul className="cod-change-list">
-                        {region.changes.slice(0, 200).map(change => (
-                          <li key={change.index}>
-                            <span className="cod-pos">{change.index + 1}</span>
-                            <span className="cod-aa">{change.aa}</span>
-                            <span className="cod-codon">{change.from}</span>
-                            <span className="cod-arrow">to</span>
-                            <span className="cod-codon cod-new">{change.to}</span>
-                          </li>
-                        ))}
-                        {region.changes.length > 200 && (
-                          <li className="cod-hint">
-                            and {region.changes.length - 200} more
-                          </li>
+                  {result.regions.map(region => {
+                    const open = expandedRegions.has(region.id)
+                    return (
+                      <div key={region.id}>
+                        <button
+                          className="cod-region-head"
+                          onClick={() => setExpandedRegions(prev => {
+                            const next = new Set(prev)
+                            if (next.has(region.id)) next.delete(region.id)
+                            else next.add(region.id)
+                            return next
+                          })}
+                          aria-expanded={open}
+                          title={`${region.changes.length} of ${region.after.codons} codons changed, ${region.identity.toFixed(1)}% identical to the original`}
+                        >
+                          {open ? <ChevronDown size={13} /> : <ChevronRight size={13} />}
+                          <span className="cod-region-name">{region.label}</span>
+                          <span className="cod-hint">
+                            {region.changes.length} change{region.changes.length === 1 ? '' : 's'}
+                          </span>
+                        </button>
+                        {open && (
+                          <ul className="cod-change-list">
+                            {region.changes.slice(0, 200).map(change => (
+                              <li key={change.index}>
+                                <span className="cod-pos">{change.index + 1}</span>
+                                <span className="cod-aa">{change.aa}</span>
+                                <span className="cod-codon">{change.from}</span>
+                                <span className="cod-arrow">to</span>
+                                <span className="cod-codon cod-new">{change.to}</span>
+                              </li>
+                            ))}
+                            {region.changes.length > 200 && (
+                              <li className="cod-hint">
+                                and {region.changes.length - 200} more
+                              </li>
+                            )}
+                          </ul>
                         )}
-                      </ul>
-                    </div>
-                  ))}
+                      </div>
+                    )
+                  })}
                 </div>
               </>
             )}
@@ -767,23 +852,29 @@ export default function CodonOptimizeModal({ open, onClose }: Props) {
         </div>
 
         <div className="modal-footer">
-          <span className="cod-footer-note">
-            {readOnly ? 'This document is read-only' : 'Applying replaces the bases in place, as one undo step'}
-          </span>
           <button className="btn" onClick={onClose}>Cancel</button>
           <button
             className="btn"
-            onClick={handleOpenCopy}
-            disabled={!result || result.totalChanges === 0}
-          >
-            Open as new sequence
-          </button>
-          <button
-            className="btn btn-primary"
             onClick={handleApply}
             disabled={!result || result.totalChanges === 0 || readOnly}
+            // The note that used to sit in the footer said this; on the button
+            // it is where the decision is made, and it still explains itself
+            // when the document is locked.
+            title={readOnly
+              ? 'This document is read-only'
+              : 'Replaces the bases in place, as one undo step'}
           >
-            Apply
+            Apply to sequence
+          </button>
+          {/* The primary action: it cannot lose anything, where applying
+              rewrites the document the user is looking at. */}
+          <button
+            className="btn btn-primary"
+            onClick={handleOpenCopy}
+            disabled={!result || result.totalChanges === 0}
+            title="Open the result as a new sequence and leave this one untouched"
+          >
+            Open as new sequence
           </button>
         </div>
       </div>

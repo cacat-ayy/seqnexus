@@ -72,8 +72,9 @@ of each build.
 - **ORF finder** - 6-frame, configurable, Web Worker
 - **Restriction enzyme analysis** - 546 enzymes from REBASE, gel simulation
 - **Primer design** - nearest-neighbor Tm, penalty scoring, pair finder
-- **Codon optimization** - 19 genetic codes, host usage tables (built-in, imported
-  or derived), motif/homopolymer/GC/repeat constraints
+- **Codon optimization** - 19 genetic codes, host usage tables (built-in, or
+  imported from EMBOSS cusp / GCG CodonFrequency), motif/homopolymer/GC/repeat
+  constraints
 - **Sequence alignment** - pairwise (global/local) and multiple sequence alignment
 - **In-silico cloning** - digest/ligation, Gibson assembly, Golden Gate assembly
 - **NCBI BLAST** - search NCBI databases directly from the editor
@@ -467,18 +468,27 @@ code rather than two that can drift.
 | Source | Notes |
 |--------|-------|
 | Built-in | E. coli K-12, B. subtilis, S. cerevisiae, P. pastoris, H. sapiens, CHO, Sf9, A. thaliana |
-| Imported | Kazusa blocks, CSV/TSV, or two-column lists. Persisted in IndexedDB. |
-| Derived | Counted from this document's own CDS features |
+| Imported | EMBOSS cusp (.cusp) and GCG CodonFrequency (.cod). Persisted in IndexedDB. |
 
 The built-in tables are written from published genome-wide averages and are
 flagged `approximate` in the data and in the UI: the rankings and rare-codon
 calls are right, the low-order digits may differ from a particular reference.
-Import a table or derive one when the exact figures matter.
+Import a table when the exact figures matter.
 
-Counts, frequencies per thousand and fractions within a family are all
-proportional inside a family, so the importer does not need to know which
-column it was handed: it takes the first number after each codon and
-normalises per amino acid.
+Both formats are whitespace-aligned tables with a header naming their columns,
+and they order those columns differently:
+
+```
+cusp    #Codon AA Fraction Frequency Number
+GCG      AmAcid Codon Number /1000 Fraction ..
+```
+
+So the header is read and the columns taken by name, preferring Fraction, then
+the per-thousand frequency, then the raw count. Within a family all three are
+proportional, so the choice is about robustness rather than correctness: some
+GCG tables ship with the count column zeroed. Anything else with one codon and
+one number per line is still accepted as a plain list, which covers a Kazusa
+block or a quick paste.
 
 A family with no usage stays at zero rather than being spread evenly, so
 `unusableResidues` can report an amino acid the table cannot encode instead of

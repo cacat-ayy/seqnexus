@@ -45,6 +45,9 @@ import {
   deleteUsageTable as idbDeleteUsageTable,
 } from './storage/idb'
 import { DEFAULT_CODON_SETTINGS, type CodonSettings } from './codon/settings'
+import type {
+  AminoAcidStyleId, TranslationFrameId,
+} from './codon/translation-display'
 import type { CodonUsageTable } from './codon/usage-tables'
 
 const MAX_UNDO = 100
@@ -368,6 +371,17 @@ interface EditorStore {
   toggleGcRing: () => void
   showPlasmidLegend: boolean
   togglePlasmidLegend: () => void
+  /** Amino acids under the sequence, and how they are drawn. */
+  showTranslation: boolean
+  toggleTranslation: () => void
+  translationFrame: TranslationFrameId
+  setTranslationFrame: (id: TranslationFrameId) => void
+  translationCodeId: number
+  setTranslationCode: (id: number) => void
+  aminoAcidStyle: AminoAcidStyleId
+  setAminoAcidStyle: (id: AminoAcidStyleId) => void
+  threeLetterAminoAcids: boolean
+  toggleThreeLetterAminoAcids: () => void
 
   // Hover state (cross-view, not per-tab)
   hoveredAnnotationId: string | null
@@ -804,6 +818,11 @@ function displaySnapshot(s: EditorStore): DisplaySettings {
     plasmidStyle: s.plasmidStyle,
     showGcRing: s.showGcRing,
     showPlasmidLegend: s.showPlasmidLegend,
+    showTranslation: s.showTranslation,
+    translationFrame: s.translationFrame,
+    translationCodeId: s.translationCodeId,
+    aminoAcidStyle: s.aminoAcidStyle,
+    threeLetterAminoAcids: s.threeLetterAminoAcids,
   }
 }
 
@@ -1011,6 +1030,11 @@ export const useEditorStore = create<EditorStore>((set, get) => {
         plasmidStyle: initial.plasmidStyle,
         showGcRing: initial.showGcRing,
         showPlasmidLegend: initial.showPlasmidLegend,
+        showTranslation: initial.showTranslation,
+        translationFrame: initial.translationFrame,
+        translationCodeId: initial.translationCodeId,
+        aminoAcidStyle: initial.aminoAcidStyle,
+        threeLetterAminoAcids: initial.threeLetterAminoAcids,
         setColorScheme: (id: ColorSchemeId) => {
           set({ colorScheme: id })
           persist({ colorScheme: id })
@@ -1042,6 +1066,28 @@ export const useEditorStore = create<EditorStore>((set, get) => {
           const next = !get().showPlasmidLegend
           set({ showPlasmidLegend: next })
           persist({ showPlasmidLegend: next })
+        },
+        toggleTranslation: () => {
+          const next = !get().showTranslation
+          set({ showTranslation: next })
+          persist({ showTranslation: next })
+        },
+        setTranslationFrame: (id: TranslationFrameId) => {
+          set({ translationFrame: id })
+          persist({ translationFrame: id })
+        },
+        setTranslationCode: (id: number) => {
+          set({ translationCodeId: id })
+          persist({ translationCodeId: id })
+        },
+        setAminoAcidStyle: (id: AminoAcidStyleId) => {
+          set({ aminoAcidStyle: id })
+          persist({ aminoAcidStyle: id })
+        },
+        toggleThreeLetterAminoAcids: () => {
+          const next = !get().threeLetterAminoAcids
+          set({ threeLetterAminoAcids: next })
+          persist({ threeLetterAminoAcids: next })
         },
       }
     })(),

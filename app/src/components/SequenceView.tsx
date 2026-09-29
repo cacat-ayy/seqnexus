@@ -72,6 +72,10 @@ function getCanvasColors(container: HTMLElement): CanvasColors {
 
 import { visibleStroke, contrastText } from '../utils/color'
 import { buildBasePalette } from '../utils/base-colors'
+import { geneticCode } from '../codon/genetic-codes'
+import {
+  aminoAcidColor, aminoAcidLabel, framesFor, translationRowCount,
+} from '../codon/translation-display'
 import {
   proposalsFrom, proposalAnnotations, isAutoAnnotationId, keyFromAutoId,
 } from '../utils/auto-annotations'
@@ -601,6 +605,11 @@ function SequenceView({ onFindRequest, onAnnotateRequest, onEditFeature }: Seque
   const colorTarget = useEditorStore(s => s.colorTarget)
   const showComplement = useEditorStore(s => s.showComplement)
   const showAnnotationTracks = useEditorStore(s => s.showAnnotationTracks)
+  const showTranslation = useEditorStore(s => s.showTranslation)
+  const translationFrame = useEditorStore(s => s.translationFrame)
+  const translationCodeId = useEditorStore(s => s.translationCodeId)
+  const aminoAcidStyle = useEditorStore(s => s.aminoAcidStyle)
+  const threeLetterAminoAcids = useEditorStore(s => s.threeLetterAminoAcids)
   const selection = useEditorStore(s => s.selection)
   const search = useEditorStore(s => s.search)
   const zoomLevel = useEditorStore(s => s.zoomLevel)
@@ -727,6 +736,20 @@ function SequenceView({ onFindRequest, onAnnotateRequest, onEditFeature }: Seque
     )
   }, [showAutoAnnotations, allAutoAnnotations, doc.annotations, autoOverlapThreshold])
 
+  /**
+   * Which reading frames to draw, and how many rows that needs.
+   *
+   * An empty frame list means the annotation modes, which draw one row per
+   * distinct feature translation instead, and keep the two rows the view has
+   * always reserved for them.
+   */
+  const translationFrames = useMemo(
+    () => (showTranslation ? framesFor(translationFrame) : []),
+    [showTranslation, translationFrame],
+  )
+  const translationRows = showTranslation ? translationRowCount(translationFrame) : 0
+  const translationCode = useMemo(() => geneticCode(translationCodeId), [translationCodeId])
+
   // Filter out hidden annotations
   const hiddenSet = useMemo(() => new Set(hiddenAnnotationIds), [hiddenAnnotationIds])
   const visibleAnnotations = useMemo(() =>
@@ -775,6 +798,11 @@ function SequenceView({ onFindRequest, onAnnotateRequest, onEditFeature }: Seque
   const colorTargetRef = useRef(colorTarget)
   const showComplementRef = useRef(showComplement)
   const showAnnotationTracksRef = useRef(showAnnotationTracks)
+  const translationFramesRef = useRef(translationFrames)
+  const translationRowsRef = useRef(translationRows)
+  const translationCodeRef = useRef(translationCode)
+  const aminoAcidStyleRef = useRef(aminoAcidStyle)
+  const threeLetterRef = useRef(threeLetterAminoAcids)
   const allAnnotationsRef = useRef(allAnnotations)
   const autoPicksRef = useRef(autoAnnotationPicks)
   const orfPicksRef = useRef(orfPicks)
@@ -795,6 +823,11 @@ function SequenceView({ onFindRequest, onAnnotateRequest, onEditFeature }: Seque
   colorTargetRef.current = colorTarget
   showComplementRef.current = showComplement
   showAnnotationTracksRef.current = showAnnotationTracks
+  translationFramesRef.current = translationFrames
+  translationRowsRef.current = translationRows
+  translationCodeRef.current = translationCode
+  aminoAcidStyleRef.current = aminoAcidStyle
+  threeLetterRef.current = threeLetterAminoAcids
   allAnnotationsRef.current = allAnnotations
   autoPicksRef.current = autoAnnotationPicks
   orfPicksRef.current = orfPicks
@@ -811,6 +844,7 @@ function SequenceView({ onFindRequest, onAnnotateRequest, onEditFeature }: Seque
     const L = getLayout(zoomLevelRef.current, width, showEnzymesNow, docRef.current.sequence.length, {
       showComplement: showComplementRef.current,
       showAnnotations: showAnnotationTracksRef.current,
+      translationRows: translationRowsRef.current,
     })
     layoutRef.current = L
 
@@ -1622,7 +1656,66 @@ function SequenceView({ onFindRequest, onAnnotateRequest, onEditFeature }: Seque
       }
 
       // --- Amino acid translation (letters mode only) ---
-      if (L.mode === 'letters') {
+      //
+      // Two shapes, chosen in the display popover. Frame mode translates the
+      // sequence itself in fixed reading frames, which is a simple walk; the
+      // annotation modes translate each feature, which has to respect its
+      // strand and /codon_start and so keeps the older, fiddlier path below.
+      const frames = translationFramesRef.current
+      if (L.mode === 'letters' && L.maxTranslationRows > 0 && frames.length > 0) {
+        const code = translationCodeRef.current
+        const aaStyle = aminoAcidStyleRef.current
+        const threeLetter = threeLetterRef.current
+        const seqLen = doc.sequence.length
+
+        ctx.font = threeLetter ? '9px monospace' : '10px monospace'
+        ctx.textBaseline = 'middle'
+        ctx.textAlign = 'center'
+
+        for (const frame of frames.slice(0, L.maxTranslationRows)) {
+          // Codon boundaries in genomic coordinates. A reverse frame counts
+          // its offset from the 3' end, which is where its ribosome starts.
+          const anchor = frame.strand === 1 ? frame.offset : (seqLen - frame.offset) % 3
+          const first = rowStart + ((anchor - rowStart) % 3 + 3) % 3
+
+          for (let pos = first; pos + 2 < Math.min(rowEnd + 2, seqLen); pos += 3) {
+            const bases = doc.sequence.basesIn(pos, Math.min(pos + 3, seqLen)).toUpperCase()
+            if (bases.length < 3) break
+            const codon = frame.strand === 1 ? bases : reverseComplementStr(bases)
+            const aa = code.table[codon] ?? '?'
+            const codonIdx = Math.floor((pos - anchor) / 3)
+
+            // Alternating block behind every other codon, the same cue the
+            // feature translations use to show where codons begin and end.
+            if (codonIdx % 2 === 0) {
+              const bgFirst = Math.max(pos, rowStart)
+              const bgLast = Math.min(pos + 2, rowEnd - 1)
+              if (bgFirst <= bgLast) {
+                ctx.fillStyle = COLORS.selectionBg
+                ctx.fillRect(
+                  baseX(bgFirst, rowStart, L), cy,
+                  baseX(bgLast, rowStart, L) + L.bpWidth - baseX(bgFirst, rowStart, L),
+                  L.translationRowH,
+                )
+              }
+            }
+
+            const middle = pos + 1
+            if (middle < rowStart || middle >= rowEnd) continue
+            ctx.fillStyle = aminoAcidColor(aaStyle, aa, COLORS.text)
+            ctx.fillText(
+              aminoAcidLabel(aa, threeLetter),
+              baseX(middle, rowStart, L) + L.bpWidth / 2,
+              cy + L.translationRowH / 2,
+            )
+          }
+          cy += L.translationRowH + L.translationGap
+        }
+        ctx.textAlign = 'left'
+        ctx.textBaseline = 'top'
+      }
+
+      if (L.mode === 'letters' && L.maxTranslationRows > 0 && frames.length === 0) {
         const cdsAnnotations = annBatch.filter(a => a.ann.type === 'CDS' && a.ann.strand !== 0).map(a => a.ann)
 
         // Read only the visible portion of each CDS (plus codon-alignment buffer)
@@ -1703,7 +1796,13 @@ function SequenceView({ onFindRequest, onAnnotateRequest, onEditFeature }: Seque
           }
 
           // Draw AA letters
-          ctx.font = '10px monospace'
+          const threeLetter = threeLetterRef.current
+          const aaStyle = aminoAcidStyleRef.current
+          const code = translationCodeRef.current
+          // "By annotation" colouring means the feature's own colour, which is
+          // the one thing the residue palettes cannot supply.
+          const plainColor = aaStyle === 'annotation' ? ann.color : COLORS.text
+          ctx.font = threeLetter ? '9px monospace' : '10px monospace'
           ctx.textBaseline = 'middle'
           ctx.textAlign = 'center'
           const aaHalfBp = L.bpWidth / 2
@@ -1713,7 +1812,7 @@ function SequenceView({ onFindRequest, onAnnotateRequest, onEditFeature }: Seque
             const lOffset = localOffset(ann, pos, data)
             if (lOffset < 0 || lOffset + 3 > seqForTranslation.length) continue
             const codon = seqForTranslation.slice(lOffset, lOffset + 3)
-            const aa = translateCodon(codon)
+            const aa = code.table[codon.toUpperCase()] ?? '?'
             let middleBase: number
             if (ann.strand === 1) {
               middleBase = pos + 1
@@ -1724,8 +1823,8 @@ function SequenceView({ onFindRequest, onAnnotateRequest, onEditFeature }: Seque
             }
             if (middleBase < rowStart || middleBase >= rowEnd) continue
             const x = baseX(middleBase, rowStart, L) + aaHalfBp
-            ctx.fillStyle = aa === '*' ? '#c0392b' : COLORS.text
-            ctx.fillText(aa, x, cy + L.translationRowH / 2)
+            ctx.fillStyle = aminoAcidColor(aaStyle, aa, plainColor)
+            ctx.fillText(aminoAcidLabel(aa, threeLetter), x, cy + L.translationRowH / 2)
           }
           ctx.textAlign = 'left'
           ctx.textBaseline = 'top'
@@ -2620,7 +2719,7 @@ function SequenceView({ onFindRequest, onAnnotateRequest, onEditFeature }: Seque
   // Redraw when any render-affecting state changes
   useEffect(() => {
     draw()
-  }, [doc, selection, search, caretVisible, annTree, zoomLevel, hoveredAnnotationId, enzymeCutSites, hoveredEnzymeGroup, showEnzymes, autoAnnotationPicks, orfPicks, draw])
+  }, [doc, selection, search, caretVisible, annTree, zoomLevel, hoveredAnnotationId, enzymeCutSites, hoveredEnzymeGroup, showEnzymes, autoAnnotationPicks, orfPicks, translationFrames, translationRows, translationCode, aminoAcidStyle, threeLetterAminoAcids, draw])
 
   const showMinimap = doc.sequence.length >= MINIMAP_SEQ_THRESHOLD
 

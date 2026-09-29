@@ -43,7 +43,11 @@ export interface OptimizeOptions {
 export const DEFAULT_OPTIMIZE_OPTIONS = {
   mode: 'all' as OptimizationMode,
   strategy: 'most-frequent' as CodonStrategy,
-  rareThreshold: 10,
+  // A codon used less than this often within its family counts as rare.
+  // Seven rather than ten: at ten, codons that are merely the third choice of
+  // a six-codon family get swept up, which overstates how much of a gene is
+  // actually a translation problem.
+  rareThreshold: 7,
   seed: 1,
   backtrackBudget: 20_000,
 }

@@ -132,5 +132,28 @@ describe('layout responds to the toggles', () => {
     const L = getLayout(LETTERS_ZOOM, 900, false, 1000)
     expect(L.showComplement).toBe(true)
     expect(L.maxAnnotationRows).toBe(4)
+    // Two rows, which is what the annotation-driven translation has always had.
+    expect(L.maxTranslationRows).toBe(2)
+  })
+
+  it('reserves a row per translation frame, and none when it is off', () => {
+    const sixFrames = getLayout(LETTERS_ZOOM, 900, false, 1000, { translationRows: 6 })
+    const oneFrame = getLayout(LETTERS_ZOOM, 900, false, 1000, { translationRows: 1 })
+    const off = getLayout(LETTERS_ZOOM, 900, false, 1000, { translationRows: 0 })
+
+    expect(sixFrames.maxTranslationRows).toBe(6)
+    expect(oneFrame.maxTranslationRows).toBe(1)
+    expect(off.maxTranslationRows).toBe(0)
+    expect(sixFrames.rowHeight).toBeGreaterThan(oneFrame.rowHeight)
+    expect(off.rowHeight).toBeLessThan(oneFrame.rowHeight)
+  })
+
+  it('never draws a translation below letters zoom', () => {
+    expect(getLayout(DOTS_ZOOM, 900, false, 1000, { translationRows: 6 }).maxTranslationRows).toBe(0)
+  })
+
+  it('agrees between rowHeight and rowHeightForLanes with translation on', () => {
+    const L = getLayout(LETTERS_ZOOM, 900, false, 1000, { translationRows: 6, showAnnotations: false })
+    expect(rowHeightForLanes(L, 0)).toBe(L.rowHeight)
   })
 })
