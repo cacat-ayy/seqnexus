@@ -10,9 +10,10 @@ import { useMemo } from 'react'
 import { useEditorStore } from '../store'
 import type { ExplorerItem, ItemKind } from './types'
 import {
-  sequenceToItem, readToItem, alignmentToItem, readAlignmentToItem, contigToItem,
+  sequenceToItem, readToItem, alignmentToItem, readAlignmentToItem, contigToItem, oligoToItem,
   type AdapterContext, type OpenTarget,
 } from './adapters'
+import { findBindingSites } from '../primers/binding'
 
 export interface ExplorerItems {
   /** Every visible item, kind order then name. */
@@ -64,6 +65,18 @@ export function useExplorerItems(): ExplorerItems {
   const activeReadAlignmentId = useEditorStore(s => s.activeReadAlignmentId)
   const contigs = useEditorStore(s => s.contigs)
   const activeContigId = useEditorStore(s => s.activeContigId)
+  const oligos = useEditorStore(s => s.oligos)
+
+  // Which library oligos bind the open sequence. Its own memo, keyed on the
+  // bases, so a rename or a star does not re-run the binding search.
+  const openDoc = tabs.find(t => t.id === activeTabId)?.doc
+  const openBases = oligos.length > 0 ? openDoc?.sequence.bases ?? '' : ''
+  const openTopology = openDoc?.sequence.topology ?? 'linear'
+  const oligosBindingOpen = useMemo(() => {
+    if (!openBases) return new Set<string>()
+    const sites = findBindingSites(oligos, openBases, openTopology)
+    return new Set([...sites].filter(([, s]) => s.length > 0).map(([id]) => id))
+  }, [oligos, openBases, openTopology])
 
   return useMemo(() => {
     const open = resolveOpen({
@@ -78,6 +91,8 @@ export function useExplorerItems(): ExplorerItems {
       open,
       includedReadIds: activeSequencingReadIds,
       tabNameById: new Map(tabs.map(t => [t.id, t.doc.name])),
+      oligosBindingOpen,
+      openSequenceName: tabs.find(t => t.id === activeTabId)?.doc.name,
     }
 
     // Read alignments owned by a contig are listed inside it, not alongside
@@ -94,17 +109,18 @@ export function useExplorerItems(): ExplorerItems {
         .filter(ra => !contigOwned.has(ra.id))
         .map(ra => readAlignmentToItem(ra, ctx)),
       'contig': contigs.map(c => contigToItem(c, ctx)),
+      'oligo': oligos.map(o => oligoToItem(o, ctx)),
     }
 
     const items = [
       ...byKind['sequence'], ...byKind['read'], ...byKind['alignment'],
-      ...byKind['read-alignment'], ...byKind['contig'],
+      ...byKind['read-alignment'], ...byKind['contig'], ...byKind['oligo'],
     ]
 
     return { items, byKind, byUid: new Map(items.map(i => [i.uid, i])), open }
   }, [
     tabs, activeTabId, sequencingReads, activeSequencingReadIds,
     alignments, activeAlignmentId, readAlignments, activeReadAlignmentId,
-    contigs, activeContigId,
+    contigs, activeContigId, oligos, oligosBindingOpen,
   ])
 }

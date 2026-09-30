@@ -22,6 +22,7 @@ import ExplorerContextMenu, {
   type ExplorerMenuTarget, type SelectionCapabilities,
 } from './ExplorerContextMenu'
 import ExplorerNoteDialog from './ExplorerNoteDialog'
+import { OligoExportDialog, OligoImportDialog } from '../primers/OligoDialogs'
 import ExplorerTagEditor from './ExplorerTagEditor'
 import ExplorerBulkBar from './ExplorerBulkBar'
 import ExplorerFolderPicker from './ExplorerFolderPicker'
@@ -332,10 +333,18 @@ function ExplorerPanel({
     })
   }, [folders])
 
+  // --- Primer library ---
+  const libraryOligos = useEditorStore(s => s.oligos)
+  const [oligoImportOpen, setOligoImportOpen] = useState(false)
+  const [oligoExportIds, setOligoExportIds] = useState<string[] | null>(null)
+
   // --- Export ---
   const exportItems = useCallback((uids: Iterable<string>) => {
     setCtxMenu(null)
-    const grouped = groupSelection(uids)
+    // Oligos have their own formats (CSV, FASTA, order sheet); everything
+    // else goes through the sequence export dialog.
+    const { oligo: oligoIds, ...grouped } = groupSelection(uids)
+    if (oligoIds?.length) setOligoExportIds(oligoIds)
     if (Object.keys(grouped).length === 0) return
     onExportItems?.(grouped)
   }, [onExportItems])
@@ -548,6 +557,7 @@ function ExplorerPanel({
         onSort={(by, dir) => patchSettings({ sortBy: by, sortDir: dir })}
         onToggleNestDerived={() => patchSettings({ nestDerived: !settings.nestDerived })}
         onNewSequence={() => onNewSequence?.()}
+        onAddOligos={() => setOligoImportOpen(true)}
         onNewFolder={() => useEditorStore.getState().createFolder('New Folder')}
         onFetch={() => onFetch?.()}
         onPickFiles={() => fileInputRef.current?.click()}
@@ -630,7 +640,6 @@ function ExplorerPanel({
           density={settings.density}
           selected={selectedIds}
           starred={starred}
-          notes={notes}
           tagsByUid={tagsByUid}
           tagColors={tagColors}
           renamingKey={renamingKey}
@@ -781,6 +790,24 @@ function ExplorerPanel({
         message={confirmState?.message ?? ''}
         buttons={confirmState?.buttons ?? []}
         onResult={confirmState?.onResult ?? (() => {})}
+      />
+
+      <OligoImportDialog
+        open={oligoImportOpen}
+        onClose={() => setOligoImportOpen(false)}
+        onImport={list => {
+          setOligoImportOpen(false)
+          const ids = useEditorStore.getState().addLibraryOligos(list)
+          notify.success(ids.length === list.length
+            ? `Added ${ids.length} oligo${ids.length === 1 ? '' : 's'} to the library`
+            : `Added ${ids.length}; ${list.length - ids.length} were already in the library`)
+        }}
+      />
+      <OligoExportDialog
+        open={oligoExportIds !== null}
+        onClose={() => setOligoExportIds(null)}
+        oligos={libraryOligos.filter(o => oligoExportIds?.includes(o.id))}
+        baseName="oligos"
       />
     </aside>
   )

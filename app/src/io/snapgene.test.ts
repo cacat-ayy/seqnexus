@@ -12,6 +12,7 @@ import { parseSnapGene, writeSnapGene, _resetIdCounter } from './snapgene'
 import { Sequence } from '../models/Sequence'
 import { Annotation } from '../models/Annotation'
 import type { DocumentState } from '../models/Document'
+import { reverseComplement } from '../models/complement'
 
 beforeEach(() => {
   _resetIdCounter()
@@ -29,6 +30,7 @@ function buildSnapGeneFile(opts: {
   ecoKI?: boolean
   featuresXml?: string
   notesXml?: string
+  primersXml?: string
 }): ArrayBuffer {
   const parts: Uint8Array[] = []
 
@@ -61,6 +63,11 @@ function buildSnapGeneFile(opts: {
   if (opts.notesXml) {
     const xmlBytes = new TextEncoder().encode(opts.notesXml)
     parts.push(makePacket(0x06, xmlBytes))
+  }
+
+  // Primers packet (type 0x05)
+  if (opts.primersXml) {
+    parts.push(makePacket(0x05, new TextEncoder().encode(opts.primersXml)))
   }
 
   // Concatenate all parts
@@ -180,6 +187,19 @@ describe('parseSnapGene', () => {
 // writeSnapGene tests
 // ---------------------------------------------------------------------------
 
+/** 200 bp with no long repeats, so every primer binds exactly once. */
+const PLASMID = (() => {
+  let x = 11
+  let s = ''
+  for (let i = 0; i < 200; i++) {
+    x ^= x << 13; x ^= x >>> 17; x ^= x << 5
+    s += 'ACGT'[(x >>> 7) & 3]
+  }
+  return s
+})()
+
+const revcomp = (s: string) => reverseComplement(s)
+
 function makeDoc(overrides?: Partial<DocumentState>): DocumentState {
   return {
     name: 'pTest',
@@ -269,9 +289,11 @@ describe('writeSnapGene', () => {
     expect(plac.strand).toBe(-1)
   })
 
-  it('round-trips primer annotations in separate packet', () => {
+  // SnapGene has no primer feature, only primers, so a primer_bind feature
+  // comes back as a primer carrying the bases it covered.
+  it('writes primer_bind features as primers', () => {
     const doc = makeDoc({
-      sequence: new Sequence('A'.repeat(100)),
+      sequence: new Sequence(PLASMID),
       annotations: [
         new Annotation({
           id: 'p1', name: 'Fwd-primer', type: 'primer_bind',
@@ -283,35 +305,56 @@ describe('writeSnapGene', () => {
         }),
       ],
     })
-    const buf = writeSnapGene(doc)
-    _resetIdCounter()
-    const parsed = parseSnapGene(buf)
-    expect(parsed.annotations.length).toBe(2)
-
-    const fwd = parsed.annotations.find(a => a.name === 'Fwd-primer')!
-    expect(fwd.type).toBe('primer_bind')
-    expect(fwd.start).toBe(5)
-    expect(fwd.end).toBe(25)
-    expect(fwd.strand).toBe(1)
-
-    const rev = parsed.annotations.find(a => a.name === 'Rev-primer')!
-    expect(rev.strand).toBe(-1)
+    const parsed = parseSnapGene(writeSnapGene(doc))
+    expect(parsed.annotations).toHaveLength(0)
+    expect(parsed.primers?.map(p => [p.name, p.sequence])).toEqual([
+      ['Fwd-primer', PLASMID.slice(5, 25)],
+      ['Rev-primer', revcomp(PLASMID.slice(70, 90))],
+    ])
   })
 
-  it('handles mixed features and primers', () => {
+  it('keeps features and primers apart', () => {
     const doc = makeDoc({
-      sequence: new Sequence('A'.repeat(200)),
+      sequence: new Sequence(PLASMID),
       annotations: [
         new Annotation({ id: 'f1', name: 'GFP', type: 'CDS', start: 10, end: 100, strand: 1 }),
-        new Annotation({ id: 'p1', name: 'SeqPrimer', type: 'primer_bind', start: 5, end: 25, strand: 1 }),
       ],
+      primers: [{ id: 'o1', name: 'SeqPrimer', sequence: PLASMID.slice(5, 25), role: 'primer' }],
     })
-    const buf = writeSnapGene(doc)
-    _resetIdCounter()
-    const parsed = parseSnapGene(buf)
-    expect(parsed.annotations.length).toBe(2)
-    expect(parsed.annotations.find(a => a.type === 'CDS')).toBeTruthy()
-    expect(parsed.annotations.find(a => a.type === 'primer_bind')).toBeTruthy()
+    const parsed = parseSnapGene(writeSnapGene(doc))
+    expect(parsed.annotations.map(a => a.type)).toEqual(['CDS'])
+    expect(parsed.primers?.map(p => p.name)).toEqual(['SeqPrimer'])
+  })
+
+  // The bug this model exists to fix: only the binding location used to be
+  // read, so a restriction-site tail was gone after one save.
+  it('round-trips a primer with a 5\' tail', () => {
+    const oligo = 'GAATTCAA' + PLASMID.slice(40, 60)
+    const doc = makeDoc({
+      sequence: new Sequence(PLASMID),
+      primers: [{ id: 'o1', name: 'EcoRI-fwd', sequence: oligo, role: 'primer', notes: 'adds EcoRI' }],
+    })
+    const parsed = parseSnapGene(writeSnapGene(doc))
+    expect(parsed.primers).toHaveLength(1)
+    expect(parsed.primers![0]).toMatchObject({ name: 'EcoRI-fwd', sequence: oligo, notes: 'adds EcoRI' })
+  })
+
+  it('reads the oligo from the sequence attribute rather than the site', () => {
+    const buf = buildSnapGeneFile({
+      sequence: PLASMID,
+      primersXml: '<Primers><Primer name="T7" sequence="taatacgactcactataggg">'
+        + '<BindingSite location="1-20" boundStrand="1" /></Primer></Primers>',
+    })
+    expect(parseSnapGene(buf).primers?.[0].sequence).toBe('TAATACGACTCACTATAGGG')
+  })
+
+  it('falls back to the bases under the site when no sequence is recorded', () => {
+    const buf = buildSnapGeneFile({
+      sequence: PLASMID,
+      primersXml: '<Primers><Primer name="Rev">'
+        + '<BindingSite location="71-90" boundStrand="0" /></Primer></Primers>',
+    })
+    expect(parseSnapGene(buf).primers?.[0].sequence).toBe(revcomp(PLASMID.slice(70, 90)))
   })
 
   it('handles empty annotations', () => {

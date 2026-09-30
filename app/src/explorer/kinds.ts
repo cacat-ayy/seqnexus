@@ -6,7 +6,7 @@
  * now; topology is a pip on top of it and a word in the metadata line.
  */
 
-import { Dna, Activity, AlignLeft, ArrowRightLeft, Layers, type LucideIcon } from 'lucide-react'
+import { Dna, Activity, AlignLeft, ArrowRightLeft, Layers, MoveRight, type LucideIcon } from 'lucide-react'
 import type { ItemKind } from './types'
 
 export const KIND_ICON: Record<ItemKind, LucideIcon> = {
@@ -15,6 +15,8 @@ export const KIND_ICON: Record<ItemKind, LucideIcon> = {
   'alignment': AlignLeft,
   'read-alignment': ArrowRightLeft,
   'contig': Layers,
+  // A primer is drawn as an arrow everywhere else in the app.
+  'oligo': MoveRight,
 }
 
 export const KIND_LABEL: Record<ItemKind, string> = {
@@ -23,6 +25,7 @@ export const KIND_LABEL: Record<ItemKind, string> = {
   'alignment': 'Alignment',
   'read-alignment': 'Read alignment',
   'contig': 'Contig',
+  'oligo': 'Oligo',
 }
 
 /** Group headings, in the order the tree lists them. */
@@ -32,10 +35,11 @@ export const KIND_GROUP_LABEL: Record<ItemKind, string> = {
   'alignment': 'Alignments',
   'read-alignment': 'Read alignments',
   'contig': 'Contigs',
+  'oligo': 'Oligos',
 }
 
 export const KIND_ORDER: readonly ItemKind[] = [
-  'sequence', 'read', 'alignment', 'read-alignment', 'contig',
+  'sequence', 'read', 'alignment', 'read-alignment', 'contig', 'oligo',
 ] as const
 
 /**

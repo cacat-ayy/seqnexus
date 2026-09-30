@@ -12,6 +12,8 @@
 import { Sequence, type Topology } from '../models/Sequence'
 import { Annotation, type AnnotationData, type Strand } from '../models/Annotation'
 import type { DocumentState, SequenceMetadata } from '../models/Document'
+import { cleanOligo, newPrimerId, primerOligoFromFeature, type PrimerData } from '../primers/oligo'
+import { findBindingSites } from '../primers/binding'
 
 // Packet type constants
 const PACKET_DNA       = 0x00
@@ -81,6 +83,7 @@ export function parseSnapGene(buffer: ArrayBuffer): DocumentState {
   let topology: Topology = 'linear'
   let name = 'Untitled'
   const annotations: AnnotationData[] = []
+  const rawPrimers: RawPrimer[] = []
   const metadata: SequenceMetadata = {
     strandedness: 'double',
   }
@@ -123,7 +126,7 @@ export function parseSnapGene(buffer: ArrayBuffer): DocumentState {
 
       case PACKET_PRIMERS: {
         const xml = new TextDecoder().decode(bytes.slice(dataStart, dataEnd))
-        parsePrimerXml(xml, annotations)
+        parsePrimerXml(xml, rawPrimers)
         break
       }
 
@@ -137,10 +140,13 @@ export function parseSnapGene(buffer: ArrayBuffer): DocumentState {
     throw new Error('No DNA sequence packet found in SnapGene file')
   }
 
+  const seq = new Sequence(sequence.toUpperCase(), topology)
+  const primers = resolvePrimers(rawPrimers, seq)
   return {
     name,
-    sequence: new Sequence(sequence.toUpperCase(), topology),
+    sequence: seq,
     annotations: annotations.map(d => new Annotation(d)),
+    ...(primers.length > 0 ? { primers } : {}),
     metadata,
   }
 }
@@ -232,35 +238,60 @@ function parseNotesXml(xml: string): string | null {
   return null
 }
 
-function parsePrimerXml(xml: string, annotations: AnnotationData[]): void {
+/** A <Primer> as written, before the template is known. */
+interface RawPrimer {
+  name: string
+  /** The full oligo, tails included. Absent in files that only record sites. */
+  sequence: string | null
+  description: string
+  sites: { start: number; end: number; strand: Strand }[]
+}
+
+function parsePrimerXml(xml: string, out: RawPrimer[]): void {
   const doc = new DOMParser().parseFromString(xml, 'text/xml')
-  const primers = doc.querySelectorAll('Primer')
-
-  for (const primer of primers) {
-    const primerName = stripHtml(primer.getAttribute('name') || 'Primer')
-
-    const bindingSites = primer.querySelectorAll('BindingSite')
-    for (const site of bindingSites) {
-      const range = site.getAttribute('location') || ''
-      const match = range.match(/(\d+)-(\d+)/)
+  for (const primer of doc.querySelectorAll('Primer')) {
+    const sites: RawPrimer['sites'] = []
+    for (const site of primer.querySelectorAll('BindingSite')) {
+      const match = (site.getAttribute('location') || '').match(/(\d+)-(\d+)/)
       if (!match) continue
-
-      const start = parseInt(match[1], 10) - 1 // 1-based → 0-based
-      const end = parseInt(match[2], 10)
       const boundStrand = site.getAttribute('boundStrand')
-      const strand: Strand = boundStrand === '1' ? 1 : boundStrand === '0' ? -1 : 1
-
-      annotations.push({
-        id: nextId(),
-        name: primerName,
-        type: 'primer_bind',
-        start,
-        end,
-        strand,
-        color: strand === 1 ? '#3b82f6' : '#ef4444',
+      sites.push({
+        start: parseInt(match[1], 10) - 1, // 1-based → 0-based
+        end: parseInt(match[2], 10),
+        strand: boundStrand === '0' ? -1 : 1,
       })
     }
+    out.push({
+      name: stripHtml(primer.getAttribute('name') || 'Primer'),
+      sequence: cleanOligo(primer.getAttribute('sequence') || ''),
+      description: stripHtml(primer.getAttribute('description') || ''),
+      sites,
+    })
   }
+}
+
+/**
+ * Primers as oligos. The recorded sequence is used as is, which is what
+ * keeps a tail; binding sites in the file are ignored because they are
+ * recomputed from it. A primer written without a sequence falls back to the
+ * bases under its first site.
+ */
+function resolvePrimers(raw: RawPrimer[], template: Sequence): PrimerData[] {
+  const primers: PrimerData[] = []
+  for (const r of raw) {
+    const site = r.sites[0]
+    const oligo = r.sequence
+      ?? (site ? primerOligoFromFeature({ ...site, qualifiers: {} }, template) : null)
+    if (!oligo) continue
+    primers.push({
+      id: newPrimerId(),
+      name: r.name,
+      sequence: oligo,
+      role: 'primer',
+      ...(r.description ? { notes: r.description } : {}),
+    })
+  }
+  return primers
 }
 
 // ---------------------------------------------------------------------------
@@ -344,17 +375,31 @@ function buildFeaturesPacket(annotations: Annotation[], seqLen: number): Uint8Ar
   return makePacket(PACKET_FEATURES, new TextEncoder().encode(xml))
 }
 
-function buildPrimersPacket(annotations: Annotation[]): Uint8Array | null {
-  const primers = annotations.filter(a => a.type === 'primer_bind')
+/**
+ * The document's primers, plus any `primer_bind` features, as SnapGene
+ * primers. SnapGene has no primer feature, so a feature can only survive the
+ * trip as a primer; its oligo is whatever it records, or the bases it covers.
+ */
+function buildPrimersPacket(state: DocumentState): Uint8Array | null {
+  const legacy: PrimerData[] = []
+  for (const ann of state.annotations) {
+    if (ann.type !== 'primer_bind') continue
+    const oligo = primerOligoFromFeature(ann, state.sequence)
+    if (oligo) legacy.push({ id: ann.id, name: ann.name, sequence: oligo, role: 'primer' })
+  }
+  const primers = [...(state.primers ?? []), ...legacy]
   if (primers.length === 0) return null
 
+  const sites = findBindingSites(primers, state.sequence.bases, state.sequence.topology)
   const parts: string[] = ['<Primers>']
-  for (const ann of primers) {
-    parts.push(`<Primer name="${escXml(ann.name)}">`)
-    // boundStrand: 1 = forward, 0 = reverse
-    const boundStrand = ann.strand === -1 ? '0' : '1'
-    const rangeStr = `${ann.start + 1}-${ann.end > ann.start ? ann.end : ann.end || ann.start + 1}`
-    parts.push(`<BindingSite location="${rangeStr}" boundStrand="${boundStrand}" />`)
+  for (const p of primers) {
+    const desc = p.notes ? ` description="${escXml(p.notes)}"` : ''
+    parts.push(`<Primer name="${escXml(p.name)}" sequence="${escXml(p.sequence)}"${desc}>`)
+    for (const site of sites.get(p.id) ?? []) {
+      // boundStrand: 1 = forward, 0 = reverse
+      const boundStrand = site.strand === -1 ? '0' : '1'
+      parts.push(`<BindingSite location="${site.start + 1}-${site.end}" boundStrand="${boundStrand}" />`)
+    }
     parts.push('</Primer>')
   }
   parts.push('</Primers>')
@@ -380,7 +425,7 @@ export function writeSnapGene(state: DocumentState): ArrayBuffer {
   const featuresPacket = buildFeaturesPacket(state.annotations, state.sequence.length)
   if (featuresPacket) packets.push(featuresPacket)
 
-  const primersPacket = buildPrimersPacket(state.annotations)
+  const primersPacket = buildPrimersPacket(state)
   if (primersPacket) packets.push(primersPacket)
 
   packets.push(buildNotesPacket(state.name))

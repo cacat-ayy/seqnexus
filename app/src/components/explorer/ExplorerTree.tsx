@@ -77,7 +77,6 @@ interface Props {
   density: Density
   selected: ReadonlySet<string>
   starred: ReadonlySet<string>
-  notes: Record<string, string | undefined>
   tagsByUid: Readonly<Record<string, string[] | undefined>>
   tagColors: Record<string, string>
   /** uid or folder id currently being renamed inline. */
@@ -96,7 +95,7 @@ interface Props {
 const DRAG_MIME = 'application/x-seqnexus-tab'
 
 export default function ExplorerTree({
-  nodes, density, selected, starred, notes, tagsByUid, tagColors, renamingKey, draggingUids,
+  nodes, density, selected, starred, tagsByUid, tagColors, renamingKey, draggingUids,
   handlers, scrollToUid, focusIndex, onKeyDown, onFocusIndex,
 }: Props) {
   const ref = useRef<HTMLDivElement>(null)
@@ -357,7 +356,6 @@ export default function ExplorerTree({
               selected={selected.has(item.uid)}
               dragging={draggingUids.has(item.uid)}
               starred={starred.has(item.uid)}
-              note={notes[item.uid]}
               tags={tagsByUid[item.uid] ?? EMPTY_TAGS}
               tagColors={tagColors}
               renaming={renamingKey === item.uid}

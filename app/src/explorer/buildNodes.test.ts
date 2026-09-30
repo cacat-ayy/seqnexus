@@ -18,7 +18,7 @@ function item(
   }
 }
 
-const empty = { sequence: [], read: [], alignment: [], 'read-alignment': [], contig: [] }
+const empty = { sequence: [], read: [], alignment: [], 'read-alignment': [], contig: [], oligo: [] }
 
 /** A folder with the fields a test does not care about filled in. */
 function folder(over: Partial<ExplorerFolder> & { id: string }): ExplorerFolder {
@@ -402,5 +402,34 @@ describe('buildNodes filtering', () => {
       filter: i => i.kind === 'read',
     })
     expect(groups(nodes)).toEqual(['read'])
+  })
+})
+
+describe('buildNodes keys', () => {
+  // Keys are React keys. A duplicate let a deleted folder's row stay mounted
+  // over its neighbours, because the same folder is drawn under every kind
+  // it holds and the same item under Favorites and each of its tags.
+  const seq = item('sequence', 't1', 'plasmid')
+  const read = item('read', 'r1', 'read')
+  const aln = item('alignment', 'a1', 'aln', { derivedFrom: [seq.uid] })
+  const shared = {
+    byKind: { sequence: [seq], read: [read], alignment: [aln] },
+    folders: [
+      folder({ id: 'f1', itemUids: [seq.uid, read.uid] }),
+      folder({ id: 'f2', parentId: 'f1' }),
+    ],
+    starred: [seq.uid],
+    tags: { [seq.uid]: ['a', 'b'] },
+    nestDerived: true,
+  }
+
+  it.each<GroupBy>(['type', 'folder', 'tag', 'date', 'flat'])('are unique in %s mode', groupBy => {
+    const keys = build({ ...shared, groupBy }).nodes.map(n => n.key)
+    expect(new Set(keys).size).toBe(keys.length)
+  })
+
+  it('still draws a folder under each kind it holds', () => {
+    const { nodes } = build(shared)
+    expect(nodes.filter(n => n.type === 'folder' && n.folder.id === 'f1')).toHaveLength(2)
   })
 })

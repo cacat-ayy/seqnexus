@@ -21,7 +21,11 @@ import {
   substituteBasesInPlace,
   assertSubstitutions,
   rotateOrigin as rotateOriginDoc,
+  addPrimers,
+  updatePrimer,
+  removePrimers,
 } from './models/Document'
+import { newPrimerId, primerOligoFromFeature, type PrimerData, type LibraryOligo, type OligoRole } from './primers/oligo'
 import { reverseComplement } from './models/complement'
 import type { ColorSchemeId, ColorTarget } from './utils/base-colors'
 import { loadDisplaySettings, saveDisplaySettings, type DisplaySettings } from './utils/display-settings'
@@ -29,7 +33,7 @@ import type { PlasmidStyleId } from './plasmid/styles'
 import type { Ab1Data } from './io/ab1'
 import type { CutSite } from './enzymes/finder'
 import type { ORFResult } from './workers/orf-finder'
-import type { PrimerPair } from './primers/finder'
+import type { DesignResult } from './primers/design/types'
 import type { AlignmentResult } from './alignment/types'
 import { toUid, parseUid, type ItemMeta } from './explorer/types'
 import { PRESET_COLORS } from './utils/annotation-constants'
@@ -145,16 +149,42 @@ export interface DocumentTab {
   hiddenAnnotationIds: string[]
   showOrfs: boolean
   showEnzymes: boolean
-  showPrimers: boolean
   showAutoAnnotations: boolean
   // Cached analysis results (preserved across tab switches)
   orfResults: ORFResult[]
   enzymeCutSites: CutSite[]
   enzymeNames: string[]
-  primerResults: PrimerPair[]
-  selectedPrimerIndices: Set<number>
+  primerDesign: PrimerDesignState
   autoAnnotations: AnnotationMatch[]
 }
+
+/**
+ * The primer workbench's session on one tab: the last design run and what
+ * has been picked from it. Picks are oligo sequences, not candidate ids, so
+ * a pick trimmed or extended by hand is still a pick; where it binds is
+ * worked out the same way as for a saved primer.
+ */
+export interface DesignPicks {
+  forward: string | null
+  reverse: string | null
+  probe: string | null
+}
+
+export interface PrimerDesignState {
+  result: DesignResult | null
+  picks: DesignPicks
+  /** Many unsaved oligos at once, e.g. a sequencing primer set. */
+  batch: { name: string; sequence: string }[]
+}
+
+export const EMPTY_DESIGN: PrimerDesignState = {
+  result: null,
+  picks: { forward: null, reverse: null, probe: null },
+  batch: [],
+}
+
+export type SidebarTab = 'features' | 'primers'
+export type PrimerView = 'list' | 'design'
 
 export interface ExplorerFolder {
   id: string
@@ -200,6 +230,7 @@ export type DeletedItem =
    *  whole contig list is snapshotted rather than reconstructed. */
   | { kind: 'read-alignment'; index: number; folderId: string | null; readAlignment: ReadAlignment; contigs: Contig[] }
   | { kind: 'contig'; index: number; folderId: string | null; contig: Contig }
+  | { kind: 'oligo'; index: number; folderId: string | null; oligo: LibraryOligo }
 
 /** How many deletes can be taken back. Small on purpose: this is an undo
     buffer, and every entry pins a full sequence or trace in memory. */
@@ -316,6 +347,7 @@ const folderIds = makeIdGenerator('folder')
 const alignIds = makeIdGenerator('align')
 const readAlignIds = makeIdGenerator('readalign')
 const contigIds = makeIdGenerator('contig')
+const oligoIds = makeIdGenerator('libo')
 
 const nextTabId = () => tabIds.next()
 const nextSeqReadId = () => seqReadIds.next()
@@ -325,6 +357,7 @@ const nextUsageTableId = () => usageTableIds.next()
 const nextAlignId = () => alignIds.next()
 const nextReadAlignId = () => readAlignIds.next()
 const nextContigId = () => contigIds.next()
+const nextOligoId = () => oligoIds.next()
 
 /**
  * A folder and every folder beneath it, including itself.
@@ -510,7 +543,7 @@ interface EditorStore {
   setAllAnnotationsVisible: () => void
 
   // --- Global display preferences ---
-  // Unlike showOrfs/showEnzymes/showPrimers, which are per tab, these are
+  // Unlike showOrfs/showEnzymes, which are per tab, these are
   // user preferences: they apply to every document and persist across
   // sessions in their own localStorage key.
   colorScheme: ColorSchemeId
@@ -546,6 +579,10 @@ interface EditorStore {
   // Edit annotation: when set, opens the Features panel and expands this annotation
   editAnnotationId: string | null
   setEditAnnotation: (id: string | null) => void
+  /** Primer the Primers panel should open and scroll to, e.g. after a
+   *  double-click on it in the sequence. Null once the panel has shown it. */
+  focusedPrimerId: string | null
+  setFocusedPrimer: (id: string | null) => void
   requestAddAnnotation: boolean
   setRequestAddAnnotation: (v: boolean) => void
   smoothScrollRequested: boolean
@@ -583,12 +620,23 @@ interface EditorStore {
   orfAllowInterior: boolean
   setOrfParams: (params: Partial<{ orfMinCodons: number; orfStartCodons: string[]; orfAllowInterior: boolean }>) => void
 
-  // Primer display state (cross-view)
-  primerResults: PrimerPair[]
-  selectedPrimerIndices: Set<number>
-  setPrimerResults: (pairs: PrimerPair[]) => void
-  toggleSelectedPrimer: (idx: number) => void
-  clearPrimers: () => void
+  // Primer workbench session for the active tab (cross-view: the sequence
+  // and map draw the picks as previews)
+  primerDesign: PrimerDesignState
+  setDesignResult: (result: DesignResult | null) => void
+  setDesignPicks: (patch: Partial<DesignPicks>) => void
+  setDesignBatch: (batch: PrimerDesignState['batch']) => void
+  clearDesign: () => void
+
+  // Right sidebar: which tab, and which view of the Primers tab
+  sidebarTab: SidebarTab
+  setSidebarTab: (tab: SidebarTab) => void
+  primerView: PrimerView
+  setPrimerView: (view: PrimerView) => void
+  /** Bumped by openSidebar; App opens the sidebar whenever it changes. */
+  sidebarRequest: number
+  /** Show a sidebar tab (and, for Primers, a view), opening the sidebar. */
+  openSidebar: (tab: SidebarTab, view?: PrimerView) => void
 
   // --- Auto-annotation (cross-view) ---
   // Proposals, not features: they are drawn on the sequence and only enter the
@@ -643,11 +691,9 @@ interface EditorStore {
   // Visibility toggles for overlay layers
   showOrfs: boolean
   showEnzymes: boolean
-  showPrimers: boolean
   showAutoAnnotations: boolean
   toggleOrfs: () => void
   toggleEnzymes: () => void
-  togglePrimers: () => void
   toggleAutoAnnotations: () => void
 
   // Tab management
@@ -723,6 +769,17 @@ interface EditorStore {
     patch: Partial<Omit<AnnotationData, 'id'>>,
     opts?: { coalesceKey?: string },
   ) => void
+  /** Primers are oligos on the document; each of these is one undo entry. */
+  addPrimers: (primers: PrimerData[]) => void
+  updatePrimer: (id: string, patch: Partial<Omit<PrimerData, 'id'>>) => void
+  removePrimers: (ids: Iterable<string>) => void
+  /**
+   * Turn `primer_bind` features into primers, in one undo entry. The oligo is
+   * the feature's recorded sequence when it has one (which keeps any tail),
+   * otherwise the bases it covers read along its strand. Returns how many
+   * were converted.
+   */
+  convertFeaturesToPrimers: (ids: Iterable<string>) => number
   setSelection: (sel: Selection) => void
   setCaret: (pos: number) => void
   undo: () => void
@@ -742,7 +799,7 @@ interface EditorStore {
 
   // Session restore (bulk-load tabs + folders + sequencing reads + alignments from persistence)
   restoreSession: (
-    tabs: { id: string; doc: DocumentState; createdAt?: number; modifiedAt?: number; viewMode: ViewMode; zoomLevel: number; hiddenAnnotationIds?: string[]; showOrfs?: boolean; showEnzymes?: boolean; showPrimers?: boolean; showAutoAnnotations?: boolean; readOnly?: boolean; undoStack?: UndoSnapshot[]; redoStack?: UndoSnapshot[] }[],
+    tabs: { id: string; doc: DocumentState; createdAt?: number; modifiedAt?: number; viewMode: ViewMode; zoomLevel: number; hiddenAnnotationIds?: string[]; showOrfs?: boolean; showEnzymes?: boolean; showAutoAnnotations?: boolean; readOnly?: boolean; undoStack?: UndoSnapshot[]; redoStack?: UndoSnapshot[] }[],
     activeTabId: string | null,
     folders: ExplorerFolder[],
     seqReads?: { id: string; data: Ab1Data; createdAt?: number; trimStart: number; trimEnd: number; edits: BaseEdit[] }[],
@@ -755,11 +812,12 @@ interface EditorStore {
     activeReadAlignmentId?: string | null,
     itemMeta?: Record<string, ItemMeta>,
     tagColors?: Record<string, string>,
+    oligos?: LibraryOligo[],
   ) => void
 
   // Merge imported session into existing state (adds items alongside existing ones)
   mergeSession: (
-    tabs: { id: string; doc: DocumentState; createdAt?: number; modifiedAt?: number; viewMode: ViewMode; zoomLevel: number; hiddenAnnotationIds?: string[]; showOrfs?: boolean; showEnzymes?: boolean; showPrimers?: boolean; showAutoAnnotations?: boolean; readOnly?: boolean }[],
+    tabs: { id: string; doc: DocumentState; createdAt?: number; modifiedAt?: number; viewMode: ViewMode; zoomLevel: number; hiddenAnnotationIds?: string[]; showOrfs?: boolean; showEnzymes?: boolean; showAutoAnnotations?: boolean; readOnly?: boolean }[],
     folders: ExplorerFolder[],
     seqReads?: { id: string; data: Ab1Data; createdAt?: number; trimStart: number; trimEnd: number; edits: BaseEdit[] }[],
     savedAlignments?: SavedAlignment[],
@@ -767,6 +825,7 @@ interface EditorStore {
     savedContigs?: Contig[],
     itemMeta?: Record<string, ItemMeta>,
     tagColors?: Record<string, string>,
+    oligos?: LibraryOligo[],
   ) => void
 
   // Legacy compat
@@ -786,6 +845,23 @@ interface EditorStore {
   resetSequencingEdits: (id: string) => void
   undoSequencing: (id: string) => void
   redoSequencing: (id: string) => void
+
+  // Primer library: oligos kept across sequences, listed in the explorer
+  oligos: LibraryOligo[]
+  /** Add to the library; returns the new ids. Oligos already there (same
+   *  sequence and name) are skipped rather than duplicated. */
+  addLibraryOligos: (oligos: Omit<LibraryOligo, 'id' | 'createdAt'>[]) => string[]
+  updateLibraryOligo: (id: string, patch: Partial<Omit<LibraryOligo, 'id' | 'createdAt'>>) => void
+  /** Into the delete buffer, like every explorer item. */
+  removeLibraryOligo: (id: string) => void
+  /** Ask the workbench's Check task to look at an oligo. */
+  checkRequest: { sequence: string; role: OligoRole; at: number } | null
+  /**
+   * Tab most recently opened by the user (file, paste, product), not by a
+   * session restore; App uses it to say which library primers bind it.
+   */
+  lastOpenedTabId: string | null
+  requestCheck: (sequence: string, role?: OligoRole) => void
 
   // Alignments
   alignments: SavedAlignment[]
@@ -826,7 +902,17 @@ const emptyDoc: DocumentState = {
   annotations: [],
 }
 
-const emptySearch: SearchState = { query: '', options: { ...defaultSearchOptions }, matches: [], currentMatch: -1 }
+const SIDEBAR_TAB_KEY = 'seqnexus_feature_sidebar_tab'
+
+function loadSidebarTab(): SidebarTab {
+  try {
+    return localStorage.getItem(SIDEBAR_TAB_KEY) === 'primers' ? 'primers' : 'features'
+  } catch {
+    return 'features'
+  }
+}
+
+const emptySearch: SearchState ={ query: '', options: { ...defaultSearchOptions }, matches: [], currentMatch: -1 }
 
 const DEFAULT_ZOOM = 14  // default zoom level - shows individual letters
 
@@ -847,13 +933,11 @@ function makeTab(doc: DocumentState): DocumentTab {
     hiddenAnnotationIds: [],
     showOrfs: false,
     showEnzymes: false,
-    showPrimers: false,
     showAutoAnnotations: false,
     orfResults: [],
     enzymeCutSites: [],
     enzymeNames: [],
-    primerResults: [],
-    selectedPrimerIndices: new Set(),
+    primerDesign: EMPTY_DESIGN,
     autoAnnotations: [],
   }
 }
@@ -1014,7 +1098,6 @@ export const useEditorStore = create<EditorStore>((set, get) => {
         hiddenAnnotationIds: active.hiddenAnnotationIds,
         showOrfs: active.showOrfs,
         showEnzymes: active.showEnzymes,
-        showPrimers: active.showPrimers,
         showAutoAnnotations: active.showAutoAnnotations,
       } : {}),
     })
@@ -1261,6 +1344,11 @@ export const useEditorStore = create<EditorStore>((set, get) => {
     setHoveredAnnotation: (id) => set({ hoveredAnnotationId: id }),
     editAnnotationId: null,
     setEditAnnotation: (id) => set({ editAnnotationId: id }),
+    focusedPrimerId: null,
+    setFocusedPrimer: (id) => {
+      set({ focusedPrimerId: id })
+      if (id) get().openSidebar('primers', 'list')
+    },
     requestAddAnnotation: false,
     setRequestAddAnnotation: (v) => set({ requestAddAnnotation: v }),
     smoothScrollRequested: false,
@@ -1318,22 +1406,41 @@ export const useEditorStore = create<EditorStore>((set, get) => {
     orfAllowInterior: true,
     setOrfParams: (params) => set(params),
 
-    // Primer display
-    primerResults: [],
-    selectedPrimerIndices: new Set<number>(),
-    setPrimerResults: (pairs) => {
-      const sel = pairs.length > 0 ? new Set([0]) : new Set<number>()
-      set({ primerResults: pairs, selectedPrimerIndices: sel })
-      updateActiveTab({ primerResults: pairs, selectedPrimerIndices: sel })
+    // Primer workbench
+    primerDesign: EMPTY_DESIGN,
+    setDesignResult: (result) => {
+      const primerDesign = { ...get().primerDesign, result }
+      set({ primerDesign })
+      updateActiveTab({ primerDesign })
     },
-    toggleSelectedPrimer: (idx) => {
-      const prev = get().selectedPrimerIndices
-      const next = new Set(prev)
-      if (next.has(idx)) next.delete(idx)
-      else next.add(idx)
-      set({ selectedPrimerIndices: next })
+    setDesignPicks: (patch) => {
+      const cur = get().primerDesign
+      const primerDesign = { ...cur, picks: { ...cur.picks, ...patch } }
+      set({ primerDesign })
+      updateActiveTab({ primerDesign })
     },
-    clearPrimers: () => { set({ primerResults: [], selectedPrimerIndices: new Set() }); updateActiveTab({ primerResults: [], selectedPrimerIndices: new Set() }) },
+    setDesignBatch: (batch) => {
+      const primerDesign = { ...get().primerDesign, batch }
+      set({ primerDesign })
+      updateActiveTab({ primerDesign })
+    },
+    clearDesign: () => {
+      set({ primerDesign: EMPTY_DESIGN })
+      updateActiveTab({ primerDesign: EMPTY_DESIGN })
+    },
+
+    sidebarTab: loadSidebarTab(),
+    setSidebarTab: (sidebarTab) => {
+      set({ sidebarTab })
+      try { localStorage.setItem(SIDEBAR_TAB_KEY, sidebarTab) } catch { /* private mode */ }
+    },
+    primerView: 'list',
+    setPrimerView: (primerView) => set({ primerView }),
+    sidebarRequest: 0,
+    openSidebar: (tab, view) => {
+      get().setSidebarTab(tab)
+      set(s => ({ sidebarRequest: s.sidebarRequest + 1, ...(view ? { primerView: view } : {}) }))
+    },
 
     // Auto-annotation proposals
     autoAnnotations: [],
@@ -1499,7 +1606,6 @@ export const useEditorStore = create<EditorStore>((set, get) => {
     // Visibility toggles
     showOrfs: false,
     showEnzymes: false,
-    showPrimers: false,
     showAutoAnnotations: false,
     toggleOrfs: () => {
       const tab = getActiveTab()
@@ -1514,12 +1620,6 @@ export const useEditorStore = create<EditorStore>((set, get) => {
       if (!tab) return
       const next = !tab.showEnzymes
       updateActiveTab({ showEnzymes: next })
-    },
-    togglePrimers: () => {
-      const tab = getActiveTab()
-      if (!tab) return
-      const next = !tab.showPrimers
-      updateActiveTab({ showPrimers: next })
     },
     toggleAutoAnnotations: () => {
       const tab = getActiveTab()
@@ -1625,6 +1725,7 @@ export const useEditorStore = create<EditorStore>((set, get) => {
         ...s.alignments.map(a => toUid('alignment', a.id)),
         ...s.readAlignments.map(ra => toUid('read-alignment', ra.id)),
         ...s.contigs.map(c => toUid('contig', c.id)),
+        ...s.oligos.map(o => toUid('oligo', o.id)),
       ])
       const next: Record<string, ItemMeta> = {}
       let dropped = false
@@ -1666,7 +1767,7 @@ export const useEditorStore = create<EditorStore>((set, get) => {
 
       // The whole subtree goes, and so does everything filed anywhere in it.
       const doomedFolders = folderSubtree(state.folders, folderId)
-      const doomed = { sequence: new Set<string>(), read: new Set<string>(), alignment: new Set<string>(), 'read-alignment': new Set<string>(), contig: new Set<string>() }
+      const doomed = { sequence: new Set<string>(), read: new Set<string>(), alignment: new Set<string>(), 'read-alignment': new Set<string>(), contig: new Set<string>(), oligo: new Set<string>() }
       for (const f of state.folders) {
         if (!doomedFolders.has(f.id)) continue
         for (const uid of f.itemUids) {
@@ -1704,11 +1805,11 @@ export const useEditorStore = create<EditorStore>((set, get) => {
         hiddenAnnotationIds: active?.hiddenAnnotationIds ?? [],
         showOrfs: active?.showOrfs ?? false,
         showEnzymes: active?.showEnzymes ?? false,
-        showPrimers: active?.showPrimers ?? false,
         showAutoAnnotations: active?.showAutoAnnotations ?? false,
         autoAnnotations: active?.autoAnnotations ?? [],
         autoAnnotationPicks: new Set<string>(),
         orfPicks: new Set<string>(),
+        primerDesign: active?.primerDesign ?? EMPTY_DESIGN,
         sequencingReads: state.sequencingReads.filter(r => !doomed.read.has(r.id)),
         activeSequencingReadIds: state.activeSequencingReadIds.filter(id => !doomed.read.has(id)),
         alignments: state.alignments.filter(a => !doomed.alignment.has(a.id)),
@@ -1717,6 +1818,7 @@ export const useEditorStore = create<EditorStore>((set, get) => {
         activeReadAlignmentId: survivingRaIds.has(state.activeReadAlignmentId ?? '') ? state.activeReadAlignmentId : null,
         contigs,
         activeContigId: contigIds.has(state.activeContigId ?? '') ? state.activeContigId : null,
+        oligos: state.oligos.filter(o => !doomed.oligo.has(o.id)),
         folders: state.folders.filter(f => !doomedFolders.has(f.id)),
       })
     },
@@ -1777,11 +1879,12 @@ export const useEditorStore = create<EditorStore>((set, get) => {
         hiddenAnnotationIds: tab.hiddenAnnotationIds,
         showOrfs: tab.showOrfs,
         showEnzymes: tab.showEnzymes,
-        showPrimers: tab.showPrimers,
         showAutoAnnotations: tab.showAutoAnnotations,
         autoAnnotations: [],
         autoAnnotationPicks: new Set<string>(),
         orfPicks: new Set<string>(),
+        lastOpenedTabId: tab.id,
+        primerDesign: tab.primerDesign,
       }))
       return tab.id
     },
@@ -1800,11 +1903,12 @@ export const useEditorStore = create<EditorStore>((set, get) => {
         hiddenAnnotationIds: tab.hiddenAnnotationIds,
         showOrfs: tab.showOrfs,
         showEnzymes: tab.showEnzymes,
-        showPrimers: tab.showPrimers,
         showAutoAnnotations: tab.showAutoAnnotations,
         autoAnnotations: [],
         autoAnnotationPicks: new Set<string>(),
         orfPicks: new Set<string>(),
+        lastOpenedTabId: tab.id,
+        primerDesign: tab.primerDesign,
       }))
       return tab.id
     },
@@ -1832,11 +1936,11 @@ export const useEditorStore = create<EditorStore>((set, get) => {
         hiddenAnnotationIds: active?.hiddenAnnotationIds ?? [],
         showOrfs: active?.showOrfs ?? false,
         showEnzymes: active?.showEnzymes ?? false,
-        showPrimers: active?.showPrimers ?? false,
         showAutoAnnotations: active?.showAutoAnnotations ?? false,
         autoAnnotations: active?.autoAnnotations ?? [],
         autoAnnotationPicks: new Set<string>(),
         orfPicks: new Set<string>(),
+        primerDesign: active?.primerDesign ?? EMPTY_DESIGN,
         // Remove closed tab from any folder
         folders: withoutItem(folders, toUid('sequence', tabId)),
         // Keep enough to put it back. Deleting a sequence discards it
@@ -1916,6 +2020,14 @@ export const useEditorStore = create<EditorStore>((set, get) => {
           get().setActiveContig(last.contig.id)
           return
         }
+        case 'oligo': {
+          set({
+            oligos: insertAt(state.oligos, last.index, last.oligo),
+            folders: withItem(state.folders, toUid('oligo', last.oligo.id), last.folderId),
+            recentlyDeleted: rest,
+          })
+          return
+        }
       }
     },
 
@@ -1937,8 +2049,7 @@ export const useEditorStore = create<EditorStore>((set, get) => {
           orfResults: state.orfResults,
           enzymeCutSites: state.enzymeCutSites,
           enzymeNames: state.enzymeNames,
-          primerResults: state.primerResults,
-          selectedPrimerIndices: state.selectedPrimerIndices,
+          primerDesign: state.primerDesign,
           autoAnnotations: state.autoAnnotations,
         } : t)
       }
@@ -1959,14 +2070,12 @@ export const useEditorStore = create<EditorStore>((set, get) => {
         hiddenAnnotationIds: tab.hiddenAnnotationIds,
         showOrfs: tab.showOrfs,
         showEnzymes: tab.showEnzymes,
-        showPrimers: tab.showPrimers,
         showAutoAnnotations: tab.showAutoAnnotations,
         // Restore cached results from the incoming tab
         orfResults: tab.orfResults,
         enzymeCutSites: tab.enzymeCutSites,
         enzymeNames: tab.enzymeNames,
-        primerResults: tab.primerResults,
-        selectedPrimerIndices: tab.selectedPrimerIndices,
+        primerDesign: tab.primerDesign,
         autoAnnotations: tab.autoAnnotations,
         // Picks belong to what was on screen, not to the app.
         autoAnnotationPicks: new Set<string>(),
@@ -2006,11 +2115,11 @@ export const useEditorStore = create<EditorStore>((set, get) => {
         hiddenAnnotationIds: newTab.hiddenAnnotationIds,
         showOrfs: newTab.showOrfs,
         showEnzymes: newTab.showEnzymes,
-        showPrimers: newTab.showPrimers,
         showAutoAnnotations: newTab.showAutoAnnotations,
         autoAnnotations: [],
         autoAnnotationPicks: new Set<string>(),
         orfPicks: new Set<string>(),
+        primerDesign: newTab.primerDesign,
       }))
     },
 
@@ -2029,7 +2138,7 @@ export const useEditorStore = create<EditorStore>((set, get) => {
       updateActiveTab({ readOnly: !tab.readOnly })
     },
 
-    restoreSession(restoredTabs, restoredActiveId, restoredFolders, seqReads, activeSeqReadIds, savedAlignments, savedReadAlignments, savedContigs, restoredActiveAlignmentId, restoredActiveContigId, restoredActiveReadAlignmentId, restoredItemMeta, restoredTagColors) {
+    restoreSession(restoredTabs, restoredActiveId, restoredFolders, seqReads, activeSeqReadIds, savedAlignments, savedReadAlignments, savedContigs, restoredActiveAlignmentId, restoredActiveContigId, restoredActiveReadAlignmentId, restoredItemMeta, restoredTagColors, restoredOligos) {
       const tabs: DocumentTab[] = restoredTabs.map(rt => ({
         id: rt.id,
         doc: rt.doc,
@@ -2045,13 +2154,11 @@ export const useEditorStore = create<EditorStore>((set, get) => {
         hiddenAnnotationIds: rt.hiddenAnnotationIds ?? [],
         showOrfs: rt.showOrfs ?? false,
         showEnzymes: rt.showEnzymes ?? false,
-        showPrimers: rt.showPrimers ?? false,
         showAutoAnnotations: rt.showAutoAnnotations ?? false,
         orfResults: [],
         enzymeCutSites: [],
         enzymeNames: [],
-        primerResults: [],
-        selectedPrimerIndices: new Set(),
+        primerDesign: EMPTY_DESIGN,
         autoAnnotations: [],
       }))
       // Sync ID counters above all restored IDs to avoid collisions
@@ -2094,6 +2201,7 @@ export const useEditorStore = create<EditorStore>((set, get) => {
         syncId(c.id, contigIds, 'contig')
         return c
       })
+      for (const o of restoredOligos ?? []) syncId(o.id, oligoIds, 'libo')
 
       // Determine which view was last active – validate that the referenced entity still exists
       const validActiveAlignId = restoredActiveAlignmentId && alignments.some(a => a.id === restoredActiveAlignmentId)
@@ -2119,11 +2227,11 @@ export const useEditorStore = create<EditorStore>((set, get) => {
         hiddenAnnotationIds: active?.hiddenAnnotationIds ?? [],
         showOrfs: active?.showOrfs ?? false,
         showEnzymes: active?.showEnzymes ?? false,
-        showPrimers: active?.showPrimers ?? false,
         showAutoAnnotations: active?.showAutoAnnotations ?? false,
         autoAnnotations: active?.autoAnnotations ?? [],
         autoAnnotationPicks: new Set<string>(),
         orfPicks: new Set<string>(),
+        primerDesign: active?.primerDesign ?? EMPTY_DESIGN,
         folders: restoredFolders,
         sequencingReads,
         activeSequencingReadIds: activeSeqReadIds ?? [],
@@ -2133,12 +2241,13 @@ export const useEditorStore = create<EditorStore>((set, get) => {
         activeReadAlignmentId: validActiveRAId,
         contigs,
         activeContigId: validActiveContigId,
+        oligos: restoredOligos ?? [],
         itemMeta: restoredItemMeta ?? {},
         tagColors: restoredTagColors ?? {},
       })
     },
 
-    mergeSession(mergedTabs, mergedFolders, seqReads, savedAlignments, savedReadAlignments, savedContigs, importedItemMeta, importedTagColors) {
+    mergeSession(mergedTabs, mergedFolders, seqReads, savedAlignments, savedReadAlignments, savedContigs, importedItemMeta, importedTagColors, importedOligos) {
       const state = get()
 
       // Convert imported tabs to DocumentTab objects
@@ -2157,13 +2266,11 @@ export const useEditorStore = create<EditorStore>((set, get) => {
         hiddenAnnotationIds: rt.hiddenAnnotationIds ?? [],
         showOrfs: rt.showOrfs ?? false,
         showEnzymes: rt.showEnzymes ?? false,
-        showPrimers: rt.showPrimers ?? false,
         showAutoAnnotations: rt.showAutoAnnotations ?? false,
         orfResults: [],
         enzymeCutSites: [],
         enzymeNames: [],
-        primerResults: [],
-        selectedPrimerIndices: new Set(),
+        primerDesign: EMPTY_DESIGN,
         autoAnnotations: [],
       }))
 
@@ -2202,6 +2309,7 @@ export const useEditorStore = create<EditorStore>((set, get) => {
         alignments: [...state.alignments, ...(savedAlignments ?? [])],
         readAlignments: [...state.readAlignments, ...(savedReadAlignments ?? [])],
         contigs: [...state.contigs, ...(savedContigs ?? [])],
+        oligos: [...state.oligos, ...(importedOligos ?? [])],
         // Imported ids were remapped before this call, so the incoming keys
         // cannot collide with metadata already in the map.
         itemMeta: { ...state.itemMeta, ...(importedItemMeta ?? {}) },
@@ -2342,6 +2450,43 @@ export const useEditorStore = create<EditorStore>((set, get) => {
 
     updateAnnotations(ids, patch, opts) {
       transact(doc => updateAnnotations(doc, ids, patch), opts)
+    },
+
+    addPrimers(primers) {
+      transact(doc => addPrimers(doc, primers))
+    },
+
+    updatePrimer(id, patch) {
+      transact(doc => updatePrimer(doc, id, patch))
+    },
+
+    removePrimers(ids) {
+      transact(doc => removePrimers(doc, ids))
+    },
+
+    convertFeaturesToPrimers(ids) {
+      const wanted = new Set(ids)
+      let converted = 0
+      transact(doc => {
+        const primers: PrimerData[] = []
+        const done: string[] = []
+        for (const ann of doc.annotations) {
+          if (!wanted.has(ann.id) || ann.type !== 'primer_bind') continue
+          const oligo = primerOligoFromFeature(ann, doc.sequence)
+          if (!oligo) continue
+          primers.push({
+            id: newPrimerId(),
+            name: ann.name,
+            sequence: oligo,
+            role: 'primer',
+            ...(ann.qualifiers.note?.length ? { notes: ann.qualifiers.note.join('\n') } : {}),
+          })
+          done.push(ann.id)
+        }
+        converted = primers.length
+        return addPrimers(removeAnnotations(doc, done), primers)
+      })
+      return converted
     },
 
     setSelection(sel) {
@@ -2855,6 +3000,47 @@ export const useEditorStore = create<EditorStore>((set, get) => {
           c.id === id ? { ...c, name } : c
         ),
       }))
+    },
+
+    // --- Primer library ---
+    oligos: [],
+    addLibraryOligos(incoming) {
+      const s = get()
+      const have = new Set(s.oligos.map(o => `${o.name}\u0000${o.sequence}`))
+      const now = Date.now()
+      const added: LibraryOligo[] = []
+      for (const o of incoming) {
+        const key = `${o.name}\u0000${o.sequence}`
+        if (have.has(key)) continue
+        have.add(key)
+        added.push({ ...o, id: nextOligoId(), createdAt: now })
+      }
+      if (added.length > 0) set({ oligos: [...s.oligos, ...added] })
+      return added.map(o => o.id)
+    },
+    updateLibraryOligo(id, patch) {
+      set(s => ({ oligos: s.oligos.map(o => (o.id === id ? { ...o, ...patch } : o)) }))
+    },
+    removeLibraryOligo(id) {
+      set(s => {
+        const index = s.oligos.findIndex(o => o.id === id)
+        if (index === -1) return {}
+        return {
+          oligos: s.oligos.filter(o => o.id !== id),
+          folders: withoutItem(s.folders, toUid('oligo', id)),
+          recentlyDeleted: pushDeleted(s.recentlyDeleted, {
+            kind: 'oligo', index,
+            folderId: folderOf(s.folders, toUid('oligo', id)),
+            oligo: s.oligos[index],
+          }),
+        }
+      })
+    },
+    lastOpenedTabId: null,
+    checkRequest: null,
+    requestCheck(sequence, role = 'primer') {
+      set({ checkRequest: { sequence, role, at: Date.now() } })
+      get().openSidebar('primers', 'design')
     },
 
     setActiveContig(id) {

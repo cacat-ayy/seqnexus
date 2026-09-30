@@ -56,7 +56,7 @@ export function useSessionPersistence(
       if (cancelled) return
       const warnings = consumeLoadWarnings()
       if (warnings.length > 0) setSessionLoadWarnings(warnings)
-      if (saved && (saved.tabs.length > 0 || saved.sequencingReads.length > 0 || saved.alignments.length > 0 || saved.readAlignments.length > 0 || saved.contigs.length > 0)) {
+      if (saved && (saved.tabs.length > 0 || saved.sequencingReads.length > 0 || saved.alignments.length > 0 || saved.readAlignments.length > 0 || saved.contigs.length > 0 || saved.oligos.length > 0)) {
         useEditorStore.getState().restoreSession(
           saved.tabs,
           saved.activeTabId,
@@ -71,6 +71,7 @@ export function useSessionPersistence(
           saved.activeReadAlignmentId,
           saved.itemMeta,
           saved.tagColors,
+          saved.oligos,
         )
         // Restore ORF/enzyme panel params so searches re-run on panel open
         const store = useEditorStore.getState()

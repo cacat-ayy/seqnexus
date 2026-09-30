@@ -18,6 +18,16 @@ import type { ExplorerFolder } from '../store'
 import type { ExplorerItem, GroupBy, ItemKind, SortBy, SortDir } from './types'
 import { KIND_GROUP_LABEL, KIND_ORDER, ALWAYS_SHOWN_KINDS } from './kinds'
 
+/**
+ * `key` is the React key, so it has to be unique across the whole list. The
+ * same folder or item can be drawn more than once (a folder under every kind
+ * it holds, an item in Favorites and in its group, under each of its tags),
+ * so non-group keys are the node's path from its group down. Duplicates left
+ * a deleted folder's row mounted over its neighbours until a reload.
+ *
+ * A group's key is its identity (collapse state, the Favorites check), and
+ * each group appears once, so group keys stay bare.
+ */
 export type ExplorerNode =
   | { type: 'group'; key: string; label: string; count: number; collapsed: boolean; depth: 0 }
   | { type: 'folder'; key: string; folder: ExplorerFolder; count: number; depth: number }
@@ -67,7 +77,7 @@ const EMPTY_MESSAGE: Partial<Record<ItemKind, string>> = {
 }
 
 const KIND_RANK: Record<ItemKind, number> = {
-  'sequence': 0, 'read': 1, 'alignment': 2, 'read-alignment': 3, 'contig': 4,
+  'sequence': 0, 'read': 1, 'alignment': 2, 'read-alignment': 3, 'contig': 4, 'oligo': 5,
 }
 
 /** Compare two items by the active sort. Name is the tiebreak throughout. */
@@ -160,15 +170,17 @@ export function buildNodes(input: BuildNodesInput, now = Date.now()): BuildNodes
   const topLevel = (items: ExplorerItem[]) =>
     nested.size === 0 ? items : items.filter(i => !nested.has(i.uid))
 
-  const pushItems = (items: ExplorerItem[], depth: number) => {
+  /** `path` is the key of whatever the items are drawn under. */
+  const pushItems = (items: ExplorerItem[], depth: number, path: string) => {
     for (const item of items) {
-      nodes.push({ type: 'item', key: `${item.uid}@${depth}`, item, depth })
+      const key = `${path}/${item.uid}`
+      nodes.push({ type: 'item', key, item, depth })
       itemUids.push(item.uid)
       // Depth-capped rather than cycle-guarded: a child can only be a
       // non-sequence and a parent can only be a sequence, so a cycle cannot
       // form, but the cap keeps a future change from hanging the tree.
       const children = childrenOfItem.get(item.uid)
-      if (children && depth < MAX_FOLDER_DEPTH) pushItems(children.sort(sort), depth + 1)
+      if (children && depth < MAX_FOLDER_DEPTH) pushItems(children.sort(sort), depth + 1, key)
     }
   }
 
@@ -183,7 +195,7 @@ export function buildNodes(input: BuildNodesInput, now = Date.now()): BuildNodes
   // whether or not its parent happens to be on screen.
   const favorites = visible.filter(i => starred.has(i.uid)).sort(sort)
   if (favorites.length > 0 && pushGroup(FAVORITES_KEY, 'Favorites', favorites.length)) {
-    pushItems(favorites, 1)
+    pushItems(favorites, 1, FAVORITES_KEY)
   }
 
   /**
@@ -205,6 +217,7 @@ export function buildNodes(input: BuildNodesInput, now = Date.now()): BuildNodes
     pool: Map<string, ExplorerItem>,
     depth: number,
     seen: Set<string>,
+    path: string,
   ): number {
     let drawn = 0
     if (depth > MAX_FOLDER_DEPTH) return 0
@@ -227,14 +240,15 @@ export function buildNodes(input: BuildNodesInput, now = Date.now()): BuildNodes
       const subtreeCount = own.length + countSubtree(folder.id, pool, depth + 1, new Set(seen))
       if (query && subtreeCount === 0 && !matchedFolders.has(folder.id)) continue
 
-      nodes.push({ type: 'folder', key: folder.id, folder, count: subtreeCount, depth })
+      const key = `${path}/${folder.id}`
+      nodes.push({ type: 'folder', key, folder, count: subtreeCount, depth })
       drawn += subtreeCount
       if (folder.collapsed) continue
 
-      const drawnBelow = pushFolderTree(folder.id, pool, depth + 1, seen)
-      pushItems(own, depth + 1)
+      const drawnBelow = pushFolderTree(folder.id, pool, depth + 1, seen, key)
+      pushItems(own, depth + 1, key)
       if (own.length === 0 && drawnBelow === 0) {
-        nodes.push({ type: 'empty', key: `${folder.id}:empty`, message: 'Drag items here', depth: depth + 1 })
+        nodes.push({ type: 'empty', key: `${key}:empty`, message: 'Drag items here', depth: depth + 1 })
       }
     }
     return drawn
@@ -262,14 +276,14 @@ export function buildNodes(input: BuildNodesInput, now = Date.now()): BuildNodes
 
   // --- The main body, per mode ---
   if (groupBy === 'flat') {
-    pushItems(topLevel(visible).slice().sort(sort), 0)
+    pushItems(topLevel(visible).slice().sort(sort), 0, '')
 
   } else if (groupBy === 'folder') {
-    const drawn = pushFolderTree(null, visibleByUid, 0, new Set())
+    const drawn = pushFolderTree(null, visibleByUid, 0, new Set(), '')
     const loose = topLevel(visible).filter(i => !filedUids.has(i.uid)).sort(sort)
     if (loose.length > 0) {
       if (pushGroup(UNGROUPED_KEY, drawn > 0 ? 'Ungrouped' : 'All items', loose.length)) {
-        pushItems(loose, 1)
+        pushItems(loose, 1, UNGROUPED_KEY)
       }
     }
 
@@ -289,10 +303,10 @@ export function buildNodes(input: BuildNodesInput, now = Date.now()): BuildNodes
     }
     for (const tag of [...byTag.keys()].sort((a, b) => a.localeCompare(b))) {
       const items = byTag.get(tag)!.sort(sort)
-      if (pushGroup(`tag:${tag}`, tag, items.length)) pushItems(items, 1)
+      if (pushGroup(`tag:${tag}`, tag, items.length)) pushItems(items, 1, `tag:${tag}`)
     }
     if (untagged.length > 0 && pushGroup(UNTAGGED_KEY, 'Untagged', untagged.length)) {
-      pushItems(untagged.sort(sort), 1)
+      pushItems(untagged.sort(sort), 1, UNTAGGED_KEY)
     }
 
   } else if (groupBy === 'date') {
@@ -304,7 +318,7 @@ export function buildNodes(input: BuildNodesInput, now = Date.now()): BuildNodes
       else buckets.set(b.key, { label: b.label, rank: b.rank, items: [item] })
     }
     for (const [key, bucket] of [...buckets.entries()].sort((a, b) => a[1].rank - b[1].rank)) {
-      if (pushGroup(key, bucket.label, bucket.items.length)) pushItems(bucket.items.sort(sort), 1)
+      if (pushGroup(key, bucket.label, bucket.items.length)) pushItems(bucket.items.sort(sort), 1, key)
     }
 
   } else {
@@ -323,9 +337,9 @@ export function buildNodes(input: BuildNodesInput, now = Date.now()): BuildNodes
       if (!hasContent && (query || filter || !ALWAYS_SHOWN_KINDS.has(kind))) continue
       if (!pushGroup(kind, KIND_GROUP_LABEL[kind], all.length)) continue
 
-      const drawn = pushFolderTree(null, pool, 1, new Set())
+      const drawn = pushFolderTree(null, pool, 1, new Set(), kind)
       if (loose.length > 0) {
-        pushItems(loose, 1)
+        pushItems(loose, 1, kind)
       } else if (drawn === 0) {
         const message = EMPTY_MESSAGE[kind]
         if (message) nodes.push({ type: 'empty', key: `${kind}:empty`, message, depth: 1 })

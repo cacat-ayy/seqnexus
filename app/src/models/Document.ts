@@ -13,6 +13,7 @@
 import { Sequence, Topology } from './Sequence'
 import type { PieceTableSnapshot } from './Sequence'
 import { Annotation, AnnotationData, adjustAnnotation } from './Annotation'
+import type { PrimerData } from '../primers/oligo'
 
 export type Strandedness = 'single' | 'double'
 
@@ -28,6 +29,7 @@ export type DocumentOrigin =
   | 'ncbi'       // fetched by accession
   | 'snapgene'   // read from a .dna file
   | 'cloning'    // product of a cloning simulation
+  | 'pcr'        // product of an in-silico PCR
   | 'optimized'  // output of the codon optimizer
   | 'consensus'  // called from a chromatogram or contig
   | 'paste'      // pasted sequence text
@@ -48,6 +50,12 @@ export interface DocumentState {
   description?: string
   sequence: Sequence
   annotations: Annotation[]
+  /**
+   * Primers and probes carried by this document, as oligos. Where they bind
+   * is derived, never stored, so base edits need not touch this list and it
+   * rides through every `{ ...state }` edit unchanged.
+   */
+  primers?: PrimerData[]
   metadata?: SequenceMetadata
 }
 
@@ -57,7 +65,13 @@ export interface DocumentSnapshot {
   bases: string
   topology: Topology
   annotations: AnnotationData[]
+  primers?: PrimerData[]
   metadata?: SequenceMetadata
+}
+
+/** Only written when present, so documents without primers serialize as before. */
+function primersField(primers: PrimerData[] | undefined): { primers?: PrimerData[] } {
+  return primers && primers.length > 0 ? { primers } : {}
 }
 
 /** Serialize a DocumentState to a plain object for persistence/duplication. */
@@ -68,6 +82,7 @@ export function snapshot(state: DocumentState): DocumentSnapshot {
     bases: state.sequence.bases,
     topology: state.sequence.topology,
     annotations: state.annotations.map(a => a.toData()),
+    ...primersField(state.primers),
     metadata: state.metadata,
   }
 }
@@ -79,6 +94,7 @@ export function restore(snap: DocumentSnapshot): DocumentState {
     description: snap.description,
     sequence: new Sequence(snap.bases, snap.topology),
     annotations: snap.annotations.map(d => new Annotation(d)),
+    ...primersField(snap.primers),
     metadata: snap.metadata,
   }
 }
@@ -92,6 +108,7 @@ export interface UndoSnapshot {
   ptSnapshot: PieceTableSnapshot
   topology: Topology
   annotations: AnnotationData[]
+  primers?: PrimerData[]
   name: string
   description?: string
   metadata?: SequenceMetadata
@@ -103,6 +120,9 @@ export function undoSnapshot(state: DocumentState): UndoSnapshot {
     ptSnapshot: state.sequence.pieceTable.snapshot(),
     topology: state.sequence.topology,
     annotations: state.annotations.map(a => a.toData()),
+    // PrimerData objects are never mutated, only replaced, so sharing them
+    // with the snapshot is safe.
+    ...primersField(state.primers),
     name: state.name,
     description: state.description,
     metadata: state.metadata,
@@ -121,6 +141,7 @@ export function restoreUndo(snap: UndoSnapshot, currentSequence: Sequence): Docu
     description: snap.description,
     sequence: currentSequence,
     annotations: snap.annotations.map(d => new Annotation(d)),
+    ...primersField(snap.primers),
     metadata: snap.metadata,
   }
 }
@@ -323,6 +344,35 @@ export function removeAnnotations(
   const annotations = state.annotations.filter(a => !doomed.has(a.id))
   if (annotations.length === state.annotations.length) return state
   return { ...state, annotations }
+}
+
+// ---------------------------------------------------------------------------
+// Primers. No coordinates to maintain: binding is recomputed from the bases.
+// Each returns `state` itself for a no-op, so the store's transact() can tell
+// nothing happened and skip the undo entry.
+// ---------------------------------------------------------------------------
+
+export function addPrimers(state: DocumentState, primers: readonly PrimerData[]): DocumentState {
+  if (primers.length === 0) return state
+  return { ...state, primers: [...(state.primers ?? []), ...primers] }
+}
+
+export function updatePrimer(
+  state: DocumentState,
+  id: string,
+  patch: Partial<Omit<PrimerData, 'id'>>,
+): DocumentState {
+  const list = state.primers ?? []
+  if (!list.some(p => p.id === id)) return state
+  return { ...state, primers: list.map(p => (p.id === id ? { ...p, ...patch } : p)) }
+}
+
+export function removePrimers(state: DocumentState, ids: Iterable<string>): DocumentState {
+  const doomed = new Set(ids)
+  const list = state.primers ?? []
+  const primers = list.filter(p => !doomed.has(p.id))
+  if (primers.length === list.length) return state
+  return { ...state, primers }
 }
 
 /**

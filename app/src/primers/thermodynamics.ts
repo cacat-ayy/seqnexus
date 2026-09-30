@@ -2,17 +2,21 @@
  * Nearest-neighbor thermodynamic parameters and Tm calculation.
  *
  * Uses the unified SantaLucia (1998) nearest-neighbor parameters for
- * DNA/DNA duplexes. Salt correction uses the Owczarzy et al. (2004)
- * monovalent cation formula.
+ * DNA/DNA duplexes. `calcTm` delegates to thermo/duplex.ts, which applies
+ * the Owczarzy et al. (2008) salt correction (monovalent and Mg²⁺, with
+ * dNTP binding) and also handles mismatched duplexes.
  *
  * Reference:
  *   SantaLucia J Jr. (1998) "A unified view of polymer, dumbbell, and
  *   oligonucleotide DNA nearest-neighbor thermodynamics."
  *   Proc Natl Acad Sci USA 95:1460-1465.
  *
- *   Owczarzy R et al. (2004) "Effects of sodium ions on DNA duplex
- *   oligomers." Biochemistry 43:3537-3554.
+ *   Owczarzy R et al. (2008) "Predicting stability of DNA duplexes in
+ *   solutions containing magnesium and monovalent cations."
+ *   Biochemistry 47:5336-5353.
  */
+
+import { duplexTm, complementStrand } from './thermo/duplex'
 
 // ---------------------------------------------------------------------------
 // Nearest-neighbor parameters: ΔH (cal/mol) and ΔS (cal/mol·K)
@@ -51,8 +55,6 @@ const INIT_DH_GC = 100    // cal/mol - initiation with terminal G-C
 const INIT_DS_GC = -2.8   // cal/mol·K
 const INIT_DH_AT = 2300   // cal/mol - initiation with terminal A-T
 const INIT_DS_AT = 4.1    // cal/mol·K
-
-const R = 1.987 // gas constant cal/(mol·K)
 
 /**
  * Compute raw ΔH and ΔS for a DNA oligo using nearest-neighbor parameters.
@@ -132,56 +134,16 @@ export function calcTm(
     opts = optsOrPrimerConc
   }
 
-  const primerConc = opts.primerConc ?? 250
-  const naConc = opts.naConc ?? 50
-  const mgConc = opts.mgConc ?? 0
-  const dntpConc = opts.dntpConc ?? 0
-
-  const { dH, dS } = nnParams(seq)
-
-  // Primer concentration correction: assume self-complementary is rare,
-  // use Ct/4 for non-self-complementary (the common case).
-  const Ct = primerConc * 1e-9 // convert nM to M
-
-  // Base Tm at 1M NaCl
-  const tm1M = dH / (dS + R * Math.log(Ct / 4)) - 273.15
-  const invTm1M = 1 / (tm1M + 273.15)
-  const fGC = gcFraction(seq)
-
-  // Free Mg²⁺ after dNTP chelation (1:1 stoichiometry)
-  const freeMg = Math.max(0, mgConc - dntpConc)
-
-  // Decide which salt correction to use
-  if (freeMg > 0) {
-    // Owczarzy et al. (2008) - divalent cation correction
-    // Simplified equation 16 for [Mg²⁺] dominant conditions
-    const Mg = freeMg * 1e-3 // convert mM to M
-    const lnMg = Math.log(Mg)
-    const N = seq.length
-
-    const a = 3.92e-5
-    const b = -9.11e-6
-    const c = 6.26e-5
-    const d = 1.42e-5
-    const e = -4.82e-4
-    const f = 5.25e-4
-    const g = 8.31e-5
-
-    const invTmMg = invTm1M
-      + a + b * lnMg + fGC * (c + d * lnMg)
-      + (1 / (2 * (N - 1))) * (e + f * lnMg + g * lnMg * lnMg)
-
-    return 1 / invTmMg - 273.15
-  } else {
-    // Owczarzy et al. (2004) - monovalent cation correction
-    const Na = naConc * 1e-3 // convert mM to M
-    const lnNa = Math.log(Na)
-    const invTmNa = invTm1M
-      + (4.29e-5 * fGC - 3.95e-5) * lnNa
-      + 9.40e-6 * lnNa * lnNa
-
-    return 1 / invTmNa - 273.15
-  }
+  // Owczarzy (2008) throughout. The version before this used the Mg²⁺
+  // equation alone whenever any Mg²⁺ was left after subtracting the dNTPs
+  // 1:1, ignoring the monovalent salt and the ratio test that decides which
+  // correction applies; see thermo/duplex.ts.
+  return duplexTm(seq, complementStrand(seq), {
+    oligoConc: opts.primerConc ?? 250,
+    mono: opts.naConc ?? 50,
+    mg: opts.mgConc ?? 0,
+    dntp: opts.dntpConc ?? 0,
+  })
 }
 
 /**

@@ -82,7 +82,7 @@ function annotationCoverage(annotations: Annotation[], seqLen: number): number {
   // Merge intervals
   const intervals: [number, number][] = []
   for (const ann of annotations) {
-    if (ann.id.startsWith('_orf_') || ann.id.startsWith('_primer_')) continue
+    if (ann.id.startsWith('_orf_')) continue
     if (ann.start <= ann.end) {
       intervals.push([ann.start, ann.end])
     } else {
@@ -108,7 +108,7 @@ function annotationCoverage(annotations: Annotation[], seqLen: number): number {
 function annotationTypeCounts(annotations: Annotation[]): Map<string, number> {
   const counts = new Map<string, number>()
   for (const ann of annotations) {
-    if (ann.id.startsWith('_orf_') || ann.id.startsWith('_primer_')) continue
+    if (ann.id.startsWith('_orf_')) continue
     counts.set(ann.type, (counts.get(ann.type) || 0) + 1)
   }
   return counts

@@ -12,7 +12,6 @@ import EmptyState from './components/EmptyState'
 import DisplayPopover from './components/DisplayPopover'
 import { downloadBlob } from './utils/download'
 import { copyText } from './utils/clipboard'
-import PrimerPanel from './components/PrimerPanel'
 import FindModal from './components/FindModal'
 const AnnotateModal = lazy(() => import('./components/AnnotateModal'))
 import NewSequenceModal, { type NewSequenceResult } from './components/NewSequenceModal'
@@ -34,6 +33,7 @@ import { parseGeneious } from './io/geneious'
 import { parseAb1, autoTrim } from './io/ab1'
 import { parseScf } from './io/scf'
 import { parseFastq, meanQuality } from './io/fastq'
+import { libraryMatches } from './primers/library'
 import { notify } from './toast'
 import { useSessionPersistence } from './hooks/useSessionPersistence'
 import { usePopoverDismiss } from './hooks/usePopoverDismiss'
@@ -245,11 +245,12 @@ export default function App() {
   const addAnnotation = useEditorStore(s => s.addAnnotation)
   const showOrfs = useEditorStore(s => s.showOrfs)
   const showEnzymes = useEditorStore(s => s.showEnzymes)
-  const showPrimers = useEditorStore(s => s.showPrimers)
   const showAutoAnnotations = useEditorStore(s => s.showAutoAnnotations)
   const toggleOrfs = useEditorStore(s => s.toggleOrfs)
   const toggleEnzymes = useEditorStore(s => s.toggleEnzymes)
-  const togglePrimers = useEditorStore(s => s.togglePrimers)
+  const sidebarTab = useEditorStore(s => s.sidebarTab)
+  const openSidebar = useEditorStore(s => s.openSidebar)
+  const primerCount = useEditorStore(s => s.doc.primers?.length ?? 0)
   const toggleAutoAnnotations = useEditorStore(s => s.toggleAutoAnnotations)
   const autoAnnotations = useEditorStore(s => s.autoAnnotations)
   const autoAnnotationPicks = useEditorStore(s => s.autoAnnotationPicks)
@@ -261,7 +262,6 @@ export default function App() {
   const orfResults = useEditorStore(s => s.orfResults)
   const enzymeCutSites = useEditorStore(s => s.enzymeCutSites)
   const enzymeNames = useEditorStore(s => s.enzymeNames)
-  const primerResults = useEditorStore(s => s.primerResults)
   const setEnzymeCutSites = useEditorStore(s => s.setEnzymeCutSites)
   // Inline name editing in view-info bar
   const [editingViewName, setEditingViewName] = useState(false)
@@ -339,7 +339,6 @@ export default function App() {
   const displayBtnRef = useRef<HTMLDivElement>(null)
   const [fileMenuOpen, setFileMenuOpen] = useState(false)
   const [newSeqModalOpen, setNewSeqModalOpen] = useState(false)
-  const [primerModalOpen, setPrimerModalOpen] = useState(false)
   const [orfModalOpen, setOrfModalOpen] = useState(false)
   const [enzymeModalOpen, setEnzymeModalOpen] = useState(false)
   const [annotateModalOpen, setAnnotateModalOpen] = useState(false)
@@ -479,6 +478,41 @@ export default function App() {
       setFeaturesPanelOpen(true)
     }
   }, [editAnnotationId])
+
+  // Anything that sends the user to a sidebar tab (a primer double-clicked
+  // on the canvas, the Primers toolbar button) goes through openSidebar,
+  // which bumps this counter.
+  const sidebarRequest = useEditorStore(s => s.sidebarRequest)
+  useEffect(() => {
+    if (sidebarRequest > 0) setFeaturesPanelOpen(true)
+  }, [sidebarRequest])
+
+  // A sequence the user just opened: say if primers in the library bind it,
+  // with a way to add them. Session restores do not set lastOpenedTabId, so
+  // reloading the page stays quiet.
+  const lastOpenedTabId = useEditorStore(s => s.lastOpenedTabId)
+  useEffect(() => {
+    if (!lastOpenedTabId) return
+    const s = useEditorStore.getState()
+    const tab = s.tabs.find(t => t.id === lastOpenedTabId)
+    if (!tab || s.oligos.length === 0) return
+    const matches = libraryMatches(s.oligos, tab.doc)
+    if (matches.length === 0) return
+    notify.info(
+      `${matches.length} library primer${matches.length === 1 ? '' : 's'} bind${matches.length === 1 ? 's' : ''} ${tab.doc.name}`,
+      {
+        detail: matches.slice(0, 4).map(m => m.oligo.name).join(', ') + (matches.length > 4 ? '…' : ''),
+        action: { label: 'Show', onClick: () => useEditorStore.getState().openSidebar('primers', 'list') },
+      },
+    )
+  }, [lastOpenedTabId])
+
+  /** Panel-bar buttons: show that tab, or close the sidebar if it is showing. */
+  const toggleSidebarTab = useCallback((tab: 'features' | 'primers') => {
+    if (featuresPanelOpen && useEditorStore.getState().sidebarTab === tab) setFeaturesPanelOpen(false)
+    else openSidebar(tab)
+  }, [featuresPanelOpen, openSidebar])
+  const openPrimerDesign = useCallback(() => openSidebar('primers', 'design'), [openSidebar])
 
   // Re-scan enzyme cut sites when the sequence changes and enzymes are active.
   // Debounced to avoid expensive rescans on every keystroke.
@@ -1041,6 +1075,7 @@ export default function App() {
       session.activeAlignmentId, session.activeContigId, session.activeReadAlignmentId,
       session.itemMeta,
       session.tagColors,
+      session.oligos,
     )
     setSessionImportOpen(false)
     setSessionImportData(null)
@@ -1057,6 +1092,7 @@ export default function App() {
       session.tabs, session.folders,
       session.sequencingReads, session.alignments,
       session.readAlignments, session.contigs, session.itemMeta, session.tagColors,
+      session.oligos,
     )
     setSessionImportOpen(false)
     setSessionImportData(null)
@@ -1339,7 +1375,6 @@ export default function App() {
   // Stable handlers for the empty-state actions.
   const handleOpenOrfPanel = useCallback(() => setOrfModalOpen(true), [])
   const handleOpenEnzymePanel = useCallback(() => setEnzymeModalOpen(true), [])
-  const handleOpenPrimerPanel = useCallback(() => setPrimerModalOpen(true), [])
   const handleOpenAnnotatePanel = useCallback(() => setAnnotateModalOpen(true), [])
 
   /** Convert suggestions to features, and say how many, since the overlay
@@ -1398,7 +1433,7 @@ export default function App() {
     { id: 'annotate', label: 'Annotate Features', group: 'Analyse', icon: Tag, disabled: noDoc, run: () => setAnnotateModalOpen(true) },
     { id: 'orfs', label: 'Find ORFs', group: 'Analyse', icon: Dna, keywords: 'open reading frame', disabled: noDoc, run: () => setOrfModalOpen(true) },
     { id: 'enzymes', label: 'Restriction Enzymes', group: 'Analyse', icon: Scissors, keywords: 'digest cut sites', disabled: noDoc, run: () => setEnzymeModalOpen(true) },
-    { id: 'primers', label: 'Design Primers', group: 'Analyse', icon: FlaskConical, keywords: 'pcr tm oligo', disabled: noDoc, run: () => setPrimerModalOpen(true) },
+    { id: 'primers', label: 'Design Primers', group: 'Analyse', icon: FlaskConical, keywords: 'pcr tm oligo', disabled: noDoc, run: openPrimerDesign },
     { id: 'blast', label: 'BLAST Search', group: 'Analyse', icon: Globe, keywords: 'ncbi homology', disabled: noDoc, run: () => setBlastModalOpen(true) },
     { id: 'align', label: 'Align Sequences', group: 'Analyse', icon: AlignLeft, keywords: 'msa pairwise clustal', run: () => setAlignModalOpen(true) },
     { id: 'gel', label: 'Virtual Gel', group: 'Analyse', icon: GalleryVertical, keywords: 'electrophoresis', disabled: noDoc, run: () => setGelModalOpen(true) },
@@ -1422,7 +1457,7 @@ export default function App() {
     // --- View ---
     { id: 'toggle-orfs', label: 'Toggle ORF Display', group: 'View', icon: Dna, disabled: noDoc, run: () => toggleOrfs() },
     { id: 'toggle-enzymes', label: 'Toggle Enzyme Display', group: 'View', icon: Scissors, disabled: noDoc, run: () => toggleEnzymes() },
-    { id: 'toggle-primers', label: 'Toggle Primer Display', group: 'View', icon: FlaskConical, disabled: noDoc, run: () => togglePrimers() },
+    { id: 'toggle-primers', label: 'Show Saved Primers', group: 'View', icon: FlaskConical, disabled: noDoc, run: () => openSidebar('primers', 'list') },
     { id: 'toggle-auto-annotations', label: 'Toggle Auto-Annotation Suggestions', group: 'View', icon: Tag, disabled: noDoc, keywords: 'annotate suggest features', run: () => toggleAutoAnnotations() },
     { id: 'toggle-features', label: 'Toggle Feature Sidebar', group: 'View', icon: List, disabled: noDoc, run: () => setFeaturesPanelOpen(v => !v) },
     { id: 'toggle-sidebar', label: 'Toggle File Explorer', group: 'View', icon: PanelLeftOpen, run: () => setSidebarOpen(v => !v) },
@@ -1430,7 +1465,7 @@ export default function App() {
     { id: 'about', label: 'About SeqNexus', group: 'View', icon: Info, keywords: 'help version', run: () => setInfoOpen(true) },
   ], [
     mod, noDoc, readOnly, undo, redo, handleOpenFind, handleNewSequence, handleNewFolder,
-    handleImportClipboard, toggleOrfs, toggleEnzymes, togglePrimers, toggleAutoAnnotations,
+    handleImportClipboard, toggleOrfs, toggleEnzymes, openSidebar, openPrimerDesign, toggleAutoAnnotations,
   ])
 
   return (
@@ -1578,7 +1613,7 @@ export default function App() {
           <button className="tb" onClick={() => setEnzymeModalOpen(true)} disabled={!activeTabId} title="Restriction enzyme analysis">
             <span className="tb-icon"><Scissors size={14} /></span><span className="tb-text">Enzymes</span>
           </button>
-          <button className="tb" onClick={() => setPrimerModalOpen(true)} disabled={!activeTabId} title="Primer design & search">
+          <button className="tb" onClick={openPrimerDesign} disabled={!activeTabId} title="Design primers">
             <span className="tb-icon"><FlaskConical size={14} /></span><span className="tb-text">Primers</span>
           </button>
           <div className="tb-split" ref={cloningBtnRef}>
@@ -2119,9 +2154,9 @@ export default function App() {
               {/* Panel bar */}
               <div className="panel-bar">
                 <button
-                  className={`panel-bar-btn ${featuresPanelOpen ? 'active' : ''}`}
-                  onClick={() => setFeaturesPanelOpen(v => !v)}
-                  aria-pressed={featuresPanelOpen}
+                  className={`panel-bar-btn ${featuresPanelOpen && sidebarTab === 'features' ? 'active' : ''}`}
+                  onClick={() => toggleSidebarTab('features')}
+                  aria-pressed={featuresPanelOpen && sidebarTab === 'features'}
                   title="Toggle feature sidebar"
                 >
                   <List size={13} /> Features
@@ -2165,12 +2200,13 @@ export default function App() {
                   )}
                 </button>
                 <button
-                  className={`panel-bar-btn ${showPrimers ? 'active' : ''}`}
-                  onClick={() => togglePrimers()}
-                  aria-pressed={showPrimers}
-                  title="Toggle primer display"
+                  className={`panel-bar-btn ${featuresPanelOpen && sidebarTab === 'primers' ? 'active' : ''}`}
+                  onClick={() => toggleSidebarTab('primers')}
+                  aria-pressed={featuresPanelOpen && sidebarTab === 'primers'}
+                  title="Toggle the primers sidebar"
                 >
                   <FlaskConical size={13} /> Primers
+                  {primerCount > 0 && <span className="panel-bar-count">{primerCount}</span>}
                 </button>
                 <button
                   className={`panel-bar-btn ${showAutoAnnotations ? 'active' : ''}`}
@@ -2232,9 +2268,6 @@ export default function App() {
                       )}
                       {showEnzymes && enzymeCutSites.length === 0 && (
                         <EmptyState icon={Scissors} message="No enzyme sites found" actionLabel="select enzymes" onAction={handleOpenEnzymePanel} />
-                      )}
-                      {showPrimers && primerResults.length === 0 && (
-                        <EmptyState icon={FlaskConical} message="No primers found" actionLabel="configure search" onAction={handleOpenPrimerPanel} />
                       )}
                       {showAutoAnnotations && !autoAnnotateScanning && autoProposals.length === 0 && (
                         <EmptyState icon={Tag} message="No features to suggest" actionLabel="adjust similarity" onAction={handleOpenAnnotatePanel} />
@@ -2415,16 +2448,6 @@ export default function App() {
         onClose={() => setEnzymeModalOpen(false)}
       />
 
-      <PrimerPanel
-        open={primerModalOpen}
-        onClose={() => {
-          setPrimerModalOpen(false)
-          const s = useEditorStore.getState()
-          if (s.selectedPrimerIndices.size > 0 && !s.showPrimers) {
-            s.togglePrimers()
-          }
-        }}
-      />
 
       <Suspense fallback={null}>
       <AnnotateModal

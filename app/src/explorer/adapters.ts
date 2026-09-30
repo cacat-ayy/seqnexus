@@ -6,7 +6,9 @@
  * works on `ExplorerItem` and never branches on kind again.
  */
 
-import { Lock, TriangleAlert, Globe, FlaskConical, Wand2, Activity } from 'lucide-react'
+import { Lock, TriangleAlert, Globe, FlaskConical, Wand2, Activity, TestTube, Link2 } from 'lucide-react'
+import type { LibraryOligo } from '../primers/oligo'
+import { oligoTm } from '../primers/display'
 import type {
   DocumentTab, SequencingRead, SavedAlignment, ReadAlignment, Contig,
 } from '../store'
@@ -35,6 +37,9 @@ export interface AdapterContext {
   includedReadIds: readonly string[]
   /** For naming the reference of a read alignment or contig. */
   tabNameById: ReadonlyMap<string, string>
+  /** Library oligos that bind the open sequence, and its name. */
+  oligosBindingOpen?: ReadonlySet<string>
+  openSequenceName?: string
 }
 
 const ALGORITHM_LABEL: Record<SavedAlignment['algorithm'], string> = {
@@ -58,8 +63,39 @@ const READ_ONLY_BADGE: ItemBadge = {
 const ORIGIN_BADGE: Partial<Record<NonNullable<DocumentOrigin>, ItemBadge>> = {
   ncbi: { key: 'origin', label: 'Fetched from NCBI', icon: Globe, tone: 'neutral' },
   cloning: { key: 'origin', label: 'Cloning product', icon: FlaskConical, tone: 'neutral' },
+  pcr: { key: 'origin', label: 'PCR product', icon: TestTube, tone: 'neutral' },
   optimized: { key: 'origin', label: 'Codon optimized', icon: Wand2, tone: 'neutral' },
   consensus: { key: 'origin', label: 'Called from a trace', icon: Activity, tone: 'neutral' },
+}
+
+/**
+ * A library oligo. It is never "open"; the useful fact about it is whether
+ * it binds the sequence that is, which is what the badge says.
+ */
+export function oligoToItem(oligo: LibraryOligo, ctx: AdapterContext): ExplorerItem {
+  const badges: ItemBadge[] = []
+  if (ctx.oligosBindingOpen?.has(oligo.id)) {
+    badges.push({ key: 'binds', label: `Binds ${ctx.openSequenceName ?? 'the open sequence'}`, icon: Link2, tone: 'neutral' })
+  }
+  const stats = [`${oligo.sequence.length} nt`, `Tm ${oligoTm(oligo.sequence).toFixed(1)}°`]
+  if (oligo.role === 'probe') stats.push('probe')
+  return {
+    uid: toUid('oligo', oligo.id),
+    kind: 'oligo',
+    id: oligo.id,
+    name: oligo.name,
+    createdAt: oligo.createdAt,
+    size: oligo.sequence.length,
+    isOpen: false,
+    isIncluded: false,
+    isDirty: false,
+    isReadOnly: false,
+    isCircular: false,
+    canDuplicate: false,
+    stats,
+    badges,
+    derivedFrom: [],
+  }
 }
 
 function isOpen(ctx: AdapterContext, kind: ItemKind, id: string): boolean {

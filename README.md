@@ -71,7 +71,9 @@ of each build.
 - **Find/replace** with regex support
 - **ORF finder** - 6-frame, configurable, Web Worker
 - **Restriction enzyme analysis** - 546 enzymes from REBASE, gel simulation
-- **Primer design** - nearest-neighbor Tm, penalty scoring, pair finder
+- **Primers** - primers and probes as oligos with 5'/3' overhangs and
+  mismatches, binding sites found automatically; a docked design workbench
+  with a candidate track, per-primer inspector and live pair checks
 - **Codon optimization** - 19 genetic codes, host usage tables (built-in, or
   imported from EMBOSS cusp / GCG CodonFrequency), motif/homopolymer/GC/repeat
   constraints
@@ -134,7 +136,7 @@ constant regardless of sequence length.
 Compute-intensive operations run off the main thread:
 - `orf-finder.worker` - 6-frame ORF scanning
 - `enzyme-finder.worker` - restriction site scanning (546 enzymes, IUPAC expansion)
-- `primer-finder.worker` - primer pair enumeration and scoring
+- `primer-design.worker` - primer candidate enumeration, scoring and pairing (long-lived)
 - `genbank-parser.worker` - streaming GenBank parser for large files
 - `annotate-list.worker` - annotation matching with k-mer pre-filter
 - `alignment.worker` - pairwise and multiple sequence alignment
@@ -359,21 +361,79 @@ uses ZIP-compressed Java XMLSerializable format.
 
 ---
 
-## Primer Design Algorithm
+## Primers
 
-The primer design tool finds optimal PCR primer pairs flanking a user-selected
-target region. It uses a native TypeScript implementation of the nearest-neighbor
-thermodynamic model, the same approach used by Primer3.
+### Primers as oligos
 
-### Overview
+A primer is stored as the oligo you would order: its full 5'→3' sequence,
+tails included (`app/src/primers/oligo.ts`). Where it binds is never stored.
+It is recomputed from the sequence (`binding.ts`): 10-mer seeds find candidate
+diagonals on both strands in one pass over the template, and the best-scoring
+run of paired bases along each diagonal is the annealed part. Whatever lies
+outside that run is a tail, so overhangs (restriction sites, homology arms,
+promoters) need no special handling. Mismatches inside the run are allowed;
+a primer only counts as bound where its 3' end pairs, a probe anywhere.
+
+Tailed primers have two Tms, both shown: the annealed part (first cycles)
+and the whole oligo (once the tail is copied into the product). SnapGene
+files keep the full sequence; GenBank writes one `primer_bind` feature per
+binding site with the oligo in `/primer_sequence`.
+
+### Design workbench
+
+The Design view of the sidebar's Primers tab, with five tasks:
+
+- **PCR / qPCR** - a pair (and optionally a TaqMan probe) around a target
+- **Cloning** - binding parts that start exactly at the insert's ends, behind
+  restriction-site tails (with padding, and a warning if the enzyme also cuts
+  the insert) or homology arms read off a vector (Gibson / In-Fusion)
+- **Mutagenesis** - substitutions, insertions and deletions, back-to-back
+  (Q5 SDM style) or overlapping (QuikChange rule, Tm ≥ 78 °C); the mutant
+  can be opened as a new sequence
+- **Sequencing** - primers tiled so reads overlap across a region, each
+  binding the template exactly once
+- **Check a primer** - where an oligo binds in every open sequence
+
+Any forward/reverse pick can be run as an in-silico PCR (`primers/pcr.ts`):
+the product opens as a new sequence with both 5' tails built in and the
+template's features carried over, ready for the cloning dialog.
+
+### Primer library
+
+Oligos you keep across sequences, listed in the explorer's **Oligos** group
+(folders, tags, notes, stars and search as for any item). A library oligo
+that binds the open sequence carries a badge; opening one shows where it
+binds in every open sequence. When you open a sequence that library primers
+bind, a notice offers them, and the Primers tab lists them with Add buttons.
+Library oligos are copied onto a sequence, not linked, so editing one leaves
+the other alone.
+
+Oligos come in by paste or file (CSV/TSV with Name and Sequence columns,
+"name sequence" lines, bare sequences or FASTA; unreadable lines are
+listed) and go out as CSV, FASTA or a tab-separated order sheet (Name,
+Sequence, Scale, Purification, as vendor bulk-entry forms take them). The
+library is saved with the session and included in session export.
+
+In the PCR task the target follows the selection; regions can be excluded. Each run returns the best pairs and the
+whole candidate landscape (best candidate per 3' end), drawn as a track so
+either side can be picked on its own. Picks are oligo sequences: they can be
+trimmed or extended along the template, are drawn on the sequence and map as
+dashed previews, and are re-scored as a pair live. Presets set the ranges;
+buffer presets set the salt and oligo concentrations for the Tm model.
+
+### Overview of the search
 
 1. **Enumerate candidates** - slide windows of varying length upstream (forward)
-   and downstream (reverse) of the target region
+   and downstream (reverse) of the target region, skipping excluded regions
 2. **Score each candidate** - evaluate against thermodynamic and structural
-   criteria, producing a weighted penalty score
-3. **Pair candidates** - combine forward and reverse primers, filter by product
+   criteria, producing a weighted penalty with a per-term breakdown
+3. **Pair candidates** - combine the best 200 of each side, filter by product
    size, and add pair-level penalties (Tm matching, cross-dimer)
-4. **Rank and return** - sort pairs by total penalty, return top results
+4. **Rank and return** - sort pairs by total penalty; return the top pairs and
+   the thinned candidate lists
+
+A target longer than the maximum product is reported, not worked around by
+changing the settings.
 
 ### Individual Primer Scoring
 
@@ -415,6 +475,22 @@ pair_penalty = fwd_penalty + rev_penalty
              + cross_dimer_penalty               (3' cross-dimer)
 ```
 
+### Thermodynamics
+
+Tm uses the unified nearest-neighbour parameters with the Owczarzy (2008)
+salt correction (monovalent and Mg²⁺, with Mg²⁺ bound by dNTPs), and is
+validated against Biopython's `Tm_NN` reference values. A primer's Tm at a
+binding site is taken against the template bases it faces: internal
+mismatches use the Allawi & SantaLucia / Peyret tables and the first tail
+base the terminal-mismatch table (tables from Biopython, BSD 3-Clause; see
+`primers/thermo/tables.ts`). Dimer ΔG allows single internal mismatches;
+loops and bulges are not modelled. An off-target scan reports weaker sites
+where a primer's last 8 bases pair perfectly.
+
+The cross-dimer check considers the 3' end of both primers. (Before the
+workbench it checked the second primer's 5' end by mistake, so a dimer on the
+reverse primer's 3' end went unpenalised.)
+
 ### User-Configurable Parameters
 
 | Parameter | Default | Description |
@@ -423,8 +499,13 @@ pair_penalty = fwd_penalty + rev_penalty
 | Optimal Tm | 60 °C | Target Tm for penalty calculation |
 | Primer length | 18-25 bp | Min/max primer length |
 | Product size | 150-1000 bp | Min/max amplicon size |
+| GC content | 40-60% | Min/max GC of each primer |
 | Na⁺ concentration | 50 mM | Monovalent cation concentration for Tm calculation |
+| Mg²⁺ / dNTPs | 1.5 / 0.8 mM | Divalent correction, free Mg²⁺ = Mg²⁺ − dNTPs |
 | Primer concentration | 250 nM | Oligo concentration for Tm calculation |
+
+Presets: Standard PCR, GC-rich template, Long amplicon (1-5 kb) and qPCR with
+probe (70-150 bp, probe Tm 68-72 °C).
 
 ---
 

@@ -13,7 +13,7 @@ import { Annotation } from '../models/Annotation'
 import type { AnnotationMatch } from '../workers/annotate-list'
 
 /**
- * Proposal ids are prefixed like ORF and primer overlays (`_orf_`, `_primer_`)
+ * Proposal ids are prefixed like ORF and primer overlays (`_orf_`, `_oligo_`)
  * so the rest of the app keeps treating them as "not a real feature".
  */
 export const AUTO_ID_PREFIX = '_auto_'

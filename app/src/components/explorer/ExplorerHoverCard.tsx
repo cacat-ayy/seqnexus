@@ -12,6 +12,8 @@ import { useClampedPosition } from '../../hooks/useClampedPosition'
 import { KIND_LABEL } from '../../explorer/kinds'
 import type { ExplorerItem } from '../../explorer/types'
 import { PlasmidThumbnail, QualitySparkline } from './ExplorerPreview'
+import OligoSequence from '../primers/OligoSequence'
+import { findBindingSites, type BindingSite } from '../../primers/binding'
 
 interface Props {
   item: ExplorerItem
@@ -45,7 +47,18 @@ export default function ExplorerHoverCard({ item, x, y, note, tags, tagColors }:
 
   const tab = item.kind === 'sequence' ? store.tabs.find(t => t.id === item.id) : undefined
   const read = item.kind === 'read' ? store.sequencingReads.find(r => r.id === item.id) : undefined
-  const bases = previewBases(item)
+  const oligo = item.kind === 'oligo' ? store.oligos.find(o => o.id === item.id) : undefined
+  const bases = oligo ? null : previewBases(item)
+
+  // An oligo is shown against the open sequence: which part anneals there
+  // (tails in lowercase) and where. Computed on hover only.
+  let oligoSite: BindingSite | null = null
+  let siteCount = 0
+  if (oligo && store.doc.sequence.length > 0) {
+    const sites = findBindingSites([oligo], store.doc.sequence.bases, store.doc.sequence.topology).get(oligo.id) ?? []
+    oligoSite = sites[0] ?? null
+    siteCount = sites.length
+  }
 
   return (
     <div ref={ref} className="ex-hovercard" style={{ position: 'fixed', left: pos.left, top: pos.top }}>
@@ -68,6 +81,20 @@ export default function ExplorerHoverCard({ item, x, y, note, tags, tagColors }:
       )}
 
       {bases && <div className="ex-hovercard-bases">{bases}{bases.length === 60 ? '…' : ''}</div>}
+
+      {oligo && (
+        <>
+          <div className="ex-hovercard-bases"><OligoSequence sequence={oligo.sequence} site={oligoSite} /></div>
+          {store.doc.sequence.length > 0 && (
+            <div className="ex-hovercard-desc">
+              {oligoSite
+                ? `Binds ${store.doc.name} at ${oligoSite.start + 1}..${oligoSite.end} ${oligoSite.strand === 1 ? '(+)' : '(−)'}${siteCount > 1 ? ` and ${siteCount - 1} more` : ''}`
+                : `Does not bind ${store.doc.name}`}
+            </div>
+          )}
+          {oligo.notes && <div className="ex-hovercard-desc">{oligo.notes}</div>}
+        </>
+      )}
 
       {tags.length > 0 && (
         <div className="ex-hovercard-tags">

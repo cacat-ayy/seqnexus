@@ -8,6 +8,8 @@
 import { Sequence, Topology } from '../models/Sequence'
 import { Annotation, AnnotationData, Strand } from '../models/Annotation'
 import { DocumentState, type SequenceMetadata, type Strandedness } from '../models/Document'
+import { cleanOligo, newPrimerId, type PrimerData } from '../primers/oligo'
+import { findBindingSites } from '../primers/binding'
 
 let _idPrefix = Math.random().toString(36).slice(2, 6)
 let _nextId = 0
@@ -163,12 +165,14 @@ export function parseGenBank(text: string): DocumentState {
   const bases = baseChunks.join('')
 
   const metadata: SequenceMetadata = { strandedness }
+  const { primers, rest } = primersFromFeatures(annotations)
 
   return {
     name,
     description: description || undefined,
     sequence: new Sequence(bases.toUpperCase(), topology),
-    annotations: annotations.map(d => new Annotation(d)),
+    annotations: rest.map(d => new Annotation(d)),
+    ...(primers.length > 0 ? { primers } : {}),
     metadata,
   }
 
@@ -269,7 +273,7 @@ export function writeGenBank(state: DocumentState): string {
 
   // FEATURES
   lines.push('FEATURES             Location/Qualifiers')
-  for (const ann of state.annotations) {
+  for (const ann of [...state.annotations, ...primerFeatures(state)]) {
     const loc = formatLocation(ann, bp)
     lines.push(`     ${padRight(ann.type, 16)}${loc}`)
 
@@ -304,6 +308,73 @@ export function writeGenBank(state: DocumentState): string {
 
   lines.push('//')
   return lines.join('\n')
+}
+
+// ---------------------------------------------------------------------------
+// Primers
+//
+// GenBank has no primer record, only `primer_bind` features over where one
+// anneals. So each binding site is written as such a feature, and the full
+// oligo (which is the only place a tail exists) rides along in
+// /primer_sequence. On the way back in, features carrying that qualifier are
+// folded back into primers; a plain primer_bind from elsewhere stays a
+// feature. A primer that binds nowhere has no location and cannot be written.
+// ---------------------------------------------------------------------------
+
+const PRIMER_SEQ = 'primer_sequence'
+const PRIMER_ROLE = 'primer_role'
+
+function primerFeatures(state: DocumentState): Annotation[] {
+  const primers = state.primers ?? []
+  if (primers.length === 0) return []
+  const sites = findBindingSites(primers, state.sequence.bases, state.sequence.topology)
+  const out: Annotation[] = []
+  for (const p of primers) {
+    for (const [i, site] of (sites.get(p.id) ?? []).entries()) {
+      out.push(new Annotation({
+        id: `${p.id}_site${i}`,
+        name: p.name,
+        type: 'primer_bind',
+        start: site.start,
+        end: site.end,
+        strand: site.strand,
+        qualifiers: {
+          label: [p.name],
+          [PRIMER_SEQ]: [p.sequence],
+          ...(p.role === 'probe' ? { [PRIMER_ROLE]: ['probe'] } : {}),
+          ...(p.notes ? { note: [p.notes] } : {}),
+        },
+      }))
+    }
+  }
+  return out
+}
+
+function primersFromFeatures(annotations: AnnotationData[]): {
+  primers: PrimerData[]
+  rest: AnnotationData[]
+} {
+  const primers: PrimerData[] = []
+  const rest: AnnotationData[] = []
+  const byKey = new Map<string, PrimerData>()
+  for (const ann of annotations) {
+    const q = ann.qualifiers ?? {}
+    const oligo = ann.type === 'primer_bind' && q[PRIMER_SEQ]?.[0] ? cleanOligo(q[PRIMER_SEQ][0]) : null
+    if (!oligo) { rest.push(ann); continue }
+    // One primer per name and oligo, however many sites it was written at.
+    const key = `${ann.name}\u0000${oligo}`
+    if (byKey.has(key)) continue
+    const primer: PrimerData = {
+      id: newPrimerId(),
+      name: ann.name,
+      sequence: oligo,
+      role: q[PRIMER_ROLE]?.[0] === 'probe' ? 'probe' : 'primer',
+      ...(q.note?.[0] ? { notes: q.note.join('\n') } : {}),
+    }
+    byKey.set(key, primer)
+    primers.push(primer)
+  }
+  return { primers, rest }
 }
 
 function formatLocation(ann: Annotation, seqLen: number): string {

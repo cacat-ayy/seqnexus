@@ -10,7 +10,7 @@
 import { memo, useEffect, useRef, useState } from 'react'
 import { MoreHorizontal, Star, Layers } from 'lucide-react'
 import type { Density, ExplorerItem } from '../../explorer/types'
-import { KIND_ICON, KIND_LABEL } from '../../explorer/kinds'
+import { KIND_ICON } from '../../explorer/kinds'
 
 export interface ExplorerRowProps {
   index: number
@@ -24,7 +24,6 @@ export interface ExplorerRowProps {
   selected: boolean
   dragging: boolean
   starred: boolean
-  note?: string
   tags: string[]
   tagColors: Record<string, string>
   renaming: boolean
@@ -41,22 +40,8 @@ export interface ExplorerRowProps {
   onHoverEnd: () => void
 }
 
-/**
- * Name, facts, tags and note in one string, for the native tooltip.
- *
- * The tags matter here: at compact and comfortable density they are drawn as
- * coloured dots, and a dot that means nothing without the tooltip would be
- * decoration rather than information.
- */
-function tooltip(item: ExplorerItem, note: string | undefined, tags: string[]): string {
-  const lines = [item.name, `${KIND_LABEL[item.kind]} · ${item.stats.join(' · ')}`]
-  if (tags.length > 0) lines.push(tags.join(', '))
-  if (note) lines.push(note)
-  return lines.join('\n')
-}
-
 function ExplorerRow({
-  index, focused, item, depth, density, top, height, selected, dragging, starred, note, tags, tagColors, renaming,
+  index, focused, item, depth, density, top, height, selected, dragging, starred, tags, tagColors, renaming,
   onClick, onContextMenu, onToggleStar, onOpenMenu,
   onRenameSubmit, onRenameCancel, onStartRename, onDragStart, onDragEnd, onHover, onHoverEnd,
 }: ExplorerRowProps) {
@@ -97,7 +82,8 @@ function ExplorerRow({
       data-uid={item.uid}
       data-index={index}
       tabIndex={focused ? 0 : -1}
-      title={renaming ? undefined : tooltip(item, note, tags)}
+      // No title attribute: ExplorerHoverCard already shows the name, facts,
+      // tags and note, and a native tooltip on top of it made two at once.
       onClick={e => { if (!renaming) onClick(e, item) }}
       onContextMenu={e => onContextMenu(e, item)}
       onMouseMove={e => onHover(item, e)}
@@ -158,6 +144,10 @@ function ExplorerRow({
                   <span
                     key={tag}
                     className="ex-tag-dot"
+                    // A bare dot needs its tag named for screen readers now
+                    // that the row's tooltip no longer lists the tags.
+                    role="img"
+                    aria-label={tag}
                     style={{ '--tag-color': tagColors[tag] } as React.CSSProperties}
                   />
                 ))}

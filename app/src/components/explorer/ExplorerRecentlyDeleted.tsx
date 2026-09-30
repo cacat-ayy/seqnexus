@@ -24,6 +24,7 @@ function describe(entry: DeletedItem): { name: string; kind: ItemKind } {
     case 'alignment': return { name: entry.alignment.name, kind: 'alignment' }
     case 'read-alignment': return { name: entry.readAlignment.name, kind: 'read-alignment' }
     case 'contig': return { name: entry.contig.name, kind: 'contig' }
+    case 'oligo': return { name: entry.oligo.name, kind: 'oligo' }
   }
 }
 

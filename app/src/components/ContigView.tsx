@@ -16,6 +16,7 @@ import { replaceBasesInPlace, undoSnapshot } from '../models/Document'
 import InlineChromatogram from './InlineChromatogram'
 import { buildReadMapping, computeContigStats } from '../alignment/contig'
 import { copyText } from '../utils/clipboard'
+import { isWidgetKeyTarget } from '../utils/key-target'
 
 const ZOOM_LEVELS: [number, number][] = [
   [1, 0], [2, 0], [3, 0], [4, 0],
@@ -300,8 +301,7 @@ export default function ContigView({ contig, onZoomChange, onViewReadAlignment, 
   // Keyboard shortcuts
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
-      const tag = (e.target as HTMLElement)?.tagName
-      if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return
+      if (isWidgetKeyTarget(e.target)) return
       if (e.key === '[') { e.preventDefault(); prevDisagreement() }
       if (e.key === ']') { e.preventDefault(); nextDisagreement() }
     }

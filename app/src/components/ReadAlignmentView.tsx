@@ -17,6 +17,7 @@ import ChromatogramView, { type ChromZoomHandle } from './ChromatogramView'
 import { runAlignment } from '../workers/alignment'
 import { DEFAULT_DNA_SCORING } from '../alignment/types'
 import { notify } from '../toast'
+import { isWidgetKeyTarget } from '../utils/key-target'
 
 /** Zoom levels: [cellWidth, fontSize] – levels 0-3 hide letters */
 const ZOOM_LEVELS: [number, number][] = [
@@ -241,9 +242,8 @@ export default function ReadAlignmentView({ ra, onZoomChange }: Props) {
   // Keyboard shortcuts: [ for previous mismatch, ] for next mismatch
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
-      // Don't intercept when typing in inputs
-      const tag = (e.target as HTMLElement)?.tagName
-      if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return
+      // Don't intercept typing in inputs or keys meant for the explorer tree
+      if (isWidgetKeyTarget(e.target)) return
       if (e.key === '[') { e.preventDefault(); prevMismatch() }
       if (e.key === ']') { e.preventDefault(); nextMismatch() }
     }

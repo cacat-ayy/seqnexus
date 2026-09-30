@@ -18,7 +18,7 @@ const TOGGLES = [
   ['Toggle feature sidebar', 'Features'],
   ['Toggle ORF display', 'ORFs'],
   ['Toggle restriction enzyme display', 'REs'],
-  ['Toggle primer display', 'Primers'],
+  ['Toggle the primers sidebar', 'Primers'],
   ['Toggle auto-annotation suggestions', 'Auto'],
 ] as const
 
@@ -78,5 +78,20 @@ describe('panel bar toggles', () => {
 
     expect(orfs.classList.contains('active')).toBe(true)
     expect(res.classList.contains('active')).toBe(true)
+  })
+
+  // Features and Primers are two tabs of one sidebar, so these two are the
+  // exception: showing one tab is not showing the other.
+  it('Features and Primers switch the one sidebar between its tabs', () => {
+    render(<App />)
+    const features = toggle('Toggle feature sidebar')
+    const primers = toggle('Toggle the primers sidebar')
+
+    act(() => { features.click() })
+    expect(features.classList.contains('active')).toBe(true)
+    act(() => { primers.click() })
+    expect(primers.classList.contains('active')).toBe(true)
+    expect(features.classList.contains('active')).toBe(false)
+    expect(store().sidebarTab).toBe('primers')
   })
 })

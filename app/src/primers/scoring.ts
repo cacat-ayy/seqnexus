@@ -68,12 +68,34 @@ export interface PrimerCandidate {
   gc: number
   /** Length in bases. */
   length: number
-  /** Penalty score (lower = better). */
+  /** Penalty score (lower = better). The sum of `terms`. */
   penalty: number
+  /** What the penalty is made of, largest contributors first when shown. */
+  terms: PenaltyTerm[]
+  /** Raw measurements behind the terms, for display. */
+  checks: PrimerChecks
   /** Whether this primer passes all hard constraints. */
   ok: boolean
   /** Reasons for rejection (empty if ok). */
   problems: string[]
+}
+
+export interface PenaltyTerm {
+  label: string
+  penalty: number
+}
+
+export interface PrimerChecks {
+  /** Longest hairpin stem, bp. */
+  hairpinStem: number
+  /** Longest self-complementary run, bp. */
+  selfDimerRun: number
+  /** Longest run the 3' end forms with the oligo itself, bp. */
+  endDimerRun: number
+  homopolymer: number
+  gcClamp: boolean
+  /** ΔG of the last five bases at 37 °C, kcal/mol. Null under 5 nt. */
+  end3dG: number | null
 }
 
 // ---------------------------------------------------------------------------
@@ -223,7 +245,10 @@ export function scorePrimer(
   const gc = gcPercent(s)
   const len = s.length
   const problems: string[] = []
-  let penalty = 0
+  // Every penalty is recorded with its reason, so the designer can show why
+  // a candidate scored as it did instead of one unexplained number.
+  const terms: PenaltyTerm[] = []
+  const add = (label: string, value: number) => { if (value > 0) terms.push({ label, penalty: value }) }
 
   // --- Hard constraints ---
   if (tm < constraints.minTm) problems.push(`Tm ${tm.toFixed(1)}°C < ${constraints.minTm}°C`)
@@ -239,59 +264,56 @@ export function scorePrimer(
   // --- Soft penalties (weighted) ---
 
   // Tm deviation from optimal: 1 point per °C
-  penalty += Math.abs(tm - constraints.optTm) * 1.0
+  add('Tm off optimum', Math.abs(tm - constraints.optTm) * 1.0)
 
   // Length deviation from optimal: 0.5 points per base
-  penalty += Math.abs(len - constraints.optLength) * 0.5
+  add('Length off optimum', Math.abs(len - constraints.optLength) * 0.5)
 
   // GC% deviation from optimal (50%): 0.1 points per %
-  penalty += Math.abs(gc - 50) * 0.1
+  add('GC off 50%', Math.abs(gc - 50) * 0.1)
 
   // GC clamp: penalize if no G/C in last 2 bases
-  if (!hasGCClamp(s)) {
-    penalty += 1.0
-  }
+  const gcClamp = hasGCClamp(s)
+  if (!gcClamp) add('No 3′ GC clamp', 1.0)
 
   // 3' stability: ΔG of last 5 bases should be moderate
   // Too stable (very negative) = mispriming; too weak = poor binding
   const tail5 = s.slice(-5)
-  if (tail5.length === 5) {
-    const dg = deltaG37(tail5)
-    if (dg < -9.0) penalty += 2.0  // too stable
-    if (dg > -5.0) penalty += 1.0  // too weak
+  const end3dG = tail5.length === 5 ? deltaG37(tail5) : null
+  if (end3dG !== null) {
+    if (end3dG < -9.0) add('3′ end too stable', 2.0)
+    if (end3dG > -5.0) add('3′ end too weak', 1.0)
   }
 
   // Self-complementarity penalty
   const selfComp = selfComplementarity(s)
   if (selfComp >= 8) {
-    penalty += 3.0
+    add('Self-dimer', 3.0)
     problems.push(`Self-dimer (${selfComp} bp match)`)
   } else if (selfComp >= 5) {
-    penalty += 1.0
+    add('Self-dimer', 1.0)
   }
 
   // 3' end self-complementarity (more severe)
   const endComp = endSelfComplementarity(s)
   if (endComp >= 4) {
-    penalty += 4.0
+    add('3′ self-dimer', 4.0)
     problems.push(`3' self-dimer (${endComp} bp match)`)
   } else if (endComp >= 3) {
-    penalty += 1.5
+    add('3′ self-dimer', 1.5)
   }
 
   // Hairpin penalty
   const hp = hairpinScore(s)
   if (hp >= 4) {
-    penalty += 2.0
+    add('Hairpin', 2.0)
     problems.push(`Hairpin (${hp} bp stem)`)
   } else if (hp >= 3) {
-    penalty += 0.5
+    add('Hairpin', 0.5)
   }
 
   // Homopolymer run penalty (soft, in addition to hard cutoff)
-  if (homoRun >= 3) {
-    penalty += (homoRun - 2) * 0.5
-  }
+  if (homoRun >= 3) add('Homopolymer run', (homoRun - 2) * 0.5)
 
   return {
     start,
@@ -301,7 +323,9 @@ export function scorePrimer(
     tm,
     gc,
     length: len,
-    penalty,
+    penalty: terms.reduce((sum, t) => sum + t.penalty, 0),
+    terms,
+    checks: { hairpinStem: hp, selfDimerRun: selfComp, endDimerRun: endComp, homopolymer: homoRun, gcClamp, end3dG },
     ok: problems.length === 0,
     problems,
   }

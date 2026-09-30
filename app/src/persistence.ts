@@ -10,6 +10,7 @@ import { useEditorStore, type ExplorerFolder, type ViewMode, type BaseEdit, type
 import type { Ab1Data } from './io/ab1'
 import type { AlignmentResult } from './alignment/types'
 import { toUid, parseUid, type ItemMeta } from './explorer/types'
+import type { LibraryOligo } from './primers/oligo'
 import { type DocumentSnapshot, type DocumentState, type UndoSnapshot, snapshot, restore } from './models/Document'
 import { PieceTable, type PieceTableSnapshot } from './models/PieceTable'
 import { Sequence } from './models/Sequence'
@@ -70,7 +71,6 @@ interface SerializedTabV2 {
   hiddenAnnotationIds?: string[]
   showOrfs?: boolean
   showEnzymes?: boolean
-  showPrimers?: boolean
   showAutoAnnotations?: boolean
   readOnly?: boolean
 }
@@ -133,6 +133,8 @@ interface SerializedSessionV2 {
   alignments?: SerializedAlignment[]
   readAlignments?: SerializedReadAlignment[]
   contigs?: SerializedContig[]
+  /** The primer library. Plain data; optional so older sessions still load. */
+  oligos?: LibraryOligo[]
   activeAlignmentId?: string | null
   activeContigId?: string | null
   activeReadAlignmentId?: string | null
@@ -198,6 +200,7 @@ function liveItemMeta(state: ReturnType<typeof useEditorStore.getState>): Record
     ...state.alignments.map(a => toUid('alignment', a.id)),
     ...state.readAlignments.map(ra => toUid('read-alignment', ra.id)),
     ...state.contigs.map(c => toUid('contig', c.id)),
+    ...state.oligos.map(o => toUid('oligo', o.id)),
   ])
   const out: Record<string, ItemMeta> = {}
   let any = false
@@ -249,7 +252,6 @@ function buildSessionData(theme: string): {
       hiddenAnnotationIds: tab.hiddenAnnotationIds.length > 0 ? tab.hiddenAnnotationIds : undefined,
       showOrfs: tab.showOrfs || undefined,
       showEnzymes: tab.showEnzymes || undefined,
-      showPrimers: tab.showPrimers || undefined,
       showAutoAnnotations: tab.showAutoAnnotations || undefined,
       readOnly: tab.readOnly || undefined,
     })
@@ -317,6 +319,7 @@ function buildSessionData(theme: string): {
       alignments: serializedAlignments,
       readAlignments: serializedReadAlignments,
       contigs: serializedContigs.length > 0 ? serializedContigs : undefined,
+      oligos: state.oligos.length > 0 ? state.oligos : undefined,
       orfParams: {
         minCodons: state.orfMinCodons,
         startCodons: state.orfStartCodons,
@@ -420,7 +423,7 @@ export interface RestoredSeqRead {
 }
 
 export interface RestoredSession {
-  tabs: { id: string; doc: DocumentState; createdAt?: number; modifiedAt?: number; viewMode: ViewMode; zoomLevel: number; hiddenAnnotationIds?: string[]; showOrfs?: boolean; showEnzymes?: boolean; showPrimers?: boolean; showAutoAnnotations?: boolean; readOnly?: boolean; undoStack?: UndoSnapshot[]; redoStack?: UndoSnapshot[] }[]
+  tabs: { id: string; doc: DocumentState; createdAt?: number; modifiedAt?: number; viewMode: ViewMode; zoomLevel: number; hiddenAnnotationIds?: string[]; showOrfs?: boolean; showEnzymes?: boolean; showAutoAnnotations?: boolean; readOnly?: boolean; undoStack?: UndoSnapshot[]; redoStack?: UndoSnapshot[] }[]
   activeTabId: string | null
   folders: ExplorerFolder[]
   /** Favourites and notes, keyed by explorer uid. */
@@ -432,6 +435,7 @@ export interface RestoredSession {
   alignments: SavedAlignment[]
   readAlignments: ReadAlignment[]
   contigs: Contig[]
+  oligos: LibraryOligo[]
   activeAlignmentId?: string | null
   activeContigId?: string | null
   activeReadAlignmentId?: string | null
@@ -542,6 +546,7 @@ async function loadV2(data: SerializedSessionV2): Promise<RestoredSession | null
           description: st.doc.description,
           sequence: seq,
           annotations: (st.doc.annotations ?? []).map((d: AnnotationData) => new Annotation(d)),
+          ...(st.doc.primers?.length ? { primers: st.doc.primers } : {}),
           metadata: st.doc.metadata,
         }
         undoStack = undoData.undoStack ?? []
@@ -566,7 +571,6 @@ async function loadV2(data: SerializedSessionV2): Promise<RestoredSession | null
       hiddenAnnotationIds: st.hiddenAnnotationIds,
       showOrfs: st.showOrfs,
       showEnzymes: st.showEnzymes,
-      showPrimers: st.showPrimers,
       showAutoAnnotations: st.showAutoAnnotations,
       readOnly: st.readOnly,
       undoStack,
@@ -697,6 +701,7 @@ async function loadV2(data: SerializedSessionV2): Promise<RestoredSession | null
     alignments,
     readAlignments,
     contigs: validContigs,
+    oligos: data.oligos ?? [],
     activeAlignmentId: data.activeAlignmentId ?? null,
     activeContigId: data.activeContigId ?? null,
     activeReadAlignmentId: data.activeReadAlignmentId ?? null,
@@ -825,6 +830,7 @@ export function exportSessionToJson(theme: string, opts: SessionExportOptions): 
       ...[...alignIds].map(id => toUid('alignment', id)),
       ...[...raIds].map(id => toUid('read-alignment', id)),
       ...(meta.contigs ?? []).map(c => toUid('contig', c.id)),
+      ...(meta.oligos ?? []).map(o => toUid('oligo', o.id)),
     ])
     const filtered = Object.fromEntries(
       Object.entries(meta.itemMeta).filter(([uid]) => kept.has(uid)),
@@ -917,7 +923,7 @@ export function importSessionFromJson(json: string): RestoredSession {
       id: st.id, doc, createdAt: st.createdAt, modifiedAt: st.modifiedAt,
       viewMode: st.viewMode, zoomLevel: st.zoomLevel,
       hiddenAnnotationIds: st.hiddenAnnotationIds,
-      showOrfs: st.showOrfs, showEnzymes: st.showEnzymes, showPrimers: st.showPrimers,
+      showOrfs: st.showOrfs, showEnzymes: st.showEnzymes,
       showAutoAnnotations: st.showAutoAnnotations,
       readOnly: st.readOnly,
     })
@@ -984,6 +990,7 @@ export function importSessionFromJson(json: string): RestoredSession {
     alignments,
     readAlignments,
     contigs,
+    oligos: data.oligos ?? [],
     activeAlignmentId: data.activeAlignmentId ?? null,
     activeContigId: data.activeContigId ?? null,
     activeReadAlignmentId: data.activeReadAlignmentId ?? null,
@@ -1022,6 +1029,8 @@ export function remapSessionIds(session: RestoredSession): RestoredSession {
   for (const ra of session.readAlignments) {
     raIdMap.set(ra.id, newId())
   }
+  const oligoIdMap = new Map<string, string>()
+  for (const o of session.oligos) oligoIdMap.set(o.id, newId())
   for (const c of session.contigs) {
     contigIdMap.set(c.id, newId())
   }
@@ -1038,6 +1047,7 @@ export function remapSessionIds(session: RestoredSession): RestoredSession {
     'alignment': alignIdMap,
     'read-alignment': raIdMap,
     'contig': contigIdMap,
+    'oligo': oligoIdMap,
   }
   /** Rewrite one uid through its kind's map, or null if its item is not here. */
   const remapUid = (uid: string): string | null => {
@@ -1084,6 +1094,7 @@ export function remapSessionIds(session: RestoredSession): RestoredSession {
       readId: readIdMap.get(ra.readId) || ra.readId,
       tabId: tabIdMap.get(ra.tabId) || ra.tabId,
     })),
+    oligos: session.oligos.map(o => ({ ...o, id: oligoIdMap.get(o.id) || o.id })),
     contigs: session.contigs.map(c => ({
       ...c,
       id: contigIdMap.get(c.id) || c.id,

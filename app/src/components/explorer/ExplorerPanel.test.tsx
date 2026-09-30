@@ -96,6 +96,15 @@ describe('ExplorerPanel', () => {
     expect(stats?.textContent).toBe('4.0 kb · circular · 0 features')
   })
 
+  // The hover card is the row's tooltip. A title attribute as well put a
+  // plain-text tooltip on screen next to it.
+  it('leaves the row tooltip to the hover card', () => {
+    store().openDocument('pTest', 'ATGC')
+    renderPanel()
+    expect(rows()).toHaveLength(1)
+    expect(rows()[0].hasAttribute('title')).toBe(false)
+  })
+
   // Five independent active ids in the store, but only one centre panel.
   it('marks exactly one row as open', () => {
     store().openDocument('a', 'ATGC')

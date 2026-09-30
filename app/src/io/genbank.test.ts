@@ -3,6 +3,7 @@ import { parseGenBank, writeGenBank, _resetIdCounter } from './genbank'
 import { Sequence } from '../models/Sequence'
 import { Annotation } from '../models/Annotation'
 import { DocumentState } from '../models/Document'
+import { reverseComplement } from '../models/complement'
 
 beforeEach(() => {
   _resetIdCounter()
@@ -158,5 +159,62 @@ describe('round-trip', () => {
       expect(doc2.annotations[i].end).toBe(doc1.annotations[i].end)
       expect(doc2.annotations[i].strand).toBe(doc1.annotations[i].strand)
     }
+  })
+})
+
+describe('primers', () => {
+  /** 300 bp with no long repeats. */
+  const BASES = (() => {
+    let x = 3
+    let s = ''
+    for (let i = 0; i < 300; i++) {
+      x ^= x << 13; x ^= x >>> 17; x ^= x << 5
+      s += 'ACGT'[(x >>> 7) & 3]
+    }
+    return s
+  })()
+
+  const doc = (primers: DocumentState['primers'], topology: 'linear' | 'circular' = 'linear'): DocumentState => ({
+    name: 'pTest', sequence: new Sequence(BASES, topology), annotations: [], primers,
+  })
+
+  it('writes a primer as primer_bind over the annealed part, with the whole oligo', () => {
+    // Ending the tail in BASES[120] guarantees it cannot pair there (its
+    // complement would have to equal itself), so the site stops at 120.
+    const oligo = 'GGATCCA' + BASES[120] + reverseComplement(BASES.slice(100, 120))
+    const out = writeGenBank(doc([{ id: 'o1', name: 'BamHI-rev', sequence: oligo, role: 'primer' }]))
+    expect(out).toContain('primer_bind     complement(101..120)')
+    expect(out).toContain(`/primer_sequence="${oligo}"`)
+  })
+
+  it('round-trips a tailed primer and a probe', () => {
+    const fwd = 'GAATTCAA' + BASES.slice(20, 40)
+    const probe = BASES.slice(150, 175)
+    const written = writeGenBank(doc([
+      { id: 'o1', name: 'EcoRI-fwd', sequence: fwd, role: 'primer', notes: 'adds EcoRI' },
+      { id: 'o2', name: 'TaqMan', sequence: probe, role: 'probe' },
+    ]))
+    const back = parseGenBank(written)
+    expect(back.annotations).toHaveLength(0)
+    expect(back.primers?.map(p => [p.name, p.sequence, p.role, p.notes])).toEqual([
+      ['EcoRI-fwd', fwd, 'primer', 'adds EcoRI'],
+      ['TaqMan', probe, 'probe', undefined],
+    ])
+  })
+
+  it('reads a primer written at two sites back as one primer', () => {
+    const repeat = BASES.slice(50, 72)
+    const d = { ...doc([{ id: 'o1', name: 'Twice', sequence: repeat, role: 'primer' as const }]) }
+    d.sequence = new Sequence(BASES + repeat)
+    const written = writeGenBank(d)
+    expect(written.match(/primer_bind/g)).toHaveLength(2)
+    expect(parseGenBank(written).primers).toHaveLength(1)
+  })
+
+  it('leaves a primer_bind from elsewhere as a feature', () => {
+    const gb = SAMPLE_GB.replace('     promoter        complement(200..250)', '     primer_bind     complement(200..220)')
+    const parsed = parseGenBank(gb)
+    expect(parsed.primers).toBeUndefined()
+    expect(parsed.annotations.map(a => a.type)).toContain('primer_bind')
   })
 })

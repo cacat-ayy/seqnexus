@@ -80,6 +80,13 @@ import {
   proposalsFrom, proposalAnnotations, isAutoAnnotationId, keyFromAutoId,
 } from '../utils/auto-annotations'
 import { orfIdFor, orfName, keyFromOrfId } from '../utils/orf-features'
+import { isWidgetKeyTarget } from '../utils/key-target'
+import { usePrimerSites, useDesignPreview, DESIGN_ROLES, designOligoId } from '../primers/usePrimerSites'
+import { primerItems, isPrimerItemId, type PrimerItem } from '../primers/display'
+import { drawPrimerItem } from './primer-draw'
+import PrimerTooltip, { PrimerTooltipContent } from './primers/PrimerTooltip'
+import { newPrimerId } from '../primers/oligo'
+import { notify } from '../toast'
 
 // Module-level layout ref - set during draw(), used by hit-test helpers
 function baseX(i: number, rowStart: number, L: ZoomLayout): number {
@@ -223,8 +230,10 @@ function hitTestAnnotationEdge(
   if (annRowIdx >= stacked.length) return null
 
   for (const ann of stacked[annRowIdx]) {
-    // Skip ORFs and auto-generated primers
-    if (ann.type.startsWith('ORF') || ann.id.startsWith('orf_') || ann.id.startsWith('primer_')) continue
+    // Skip ORFs and primers: neither has an edge to drag. A primer's extent
+    // is its sequence, so it is resized by editing the oligo.
+    if (ann.type.startsWith('ORF') || ann.id.startsWith('orf_') || ann.id.startsWith('primer_')
+      || isPrimerItemId(ann.id)) continue
 
     const visRange = annVisibleRange(ann, rowStart, rowEnd)
     if (!visRange) continue
@@ -617,19 +626,17 @@ function SequenceView({ onFindRequest, onAnnotateRequest, onEditFeature }: Seque
   const hiddenAnnotationIds = useEditorStore(s => s.hiddenAnnotationIds)
   const showOrfs = useEditorStore(s => s.showOrfs)
   const showEnzymes = useEditorStore(s => s.showEnzymes)
-  const showPrimers = useEditorStore(s => s.showPrimers)
   const showAutoAnnotations = useEditorStore(s => s.showAutoAnnotations)
   const allEnzymeCutSites = useEditorStore(s => s.enzymeCutSites)
   const allOrfResults = useEditorStore(s => s.orfResults)
-  const allPrimerResults = useEditorStore(s => s.primerResults)
+  const designPicks = useEditorStore(s => s.primerDesign.picks)
+  const designBatch = useEditorStore(s => s.primerDesign.batch)
   const allAutoAnnotations = useEditorStore(s => s.autoAnnotations)
   const autoAnnotationPicks = useEditorStore(s => s.autoAnnotationPicks)
   const orfPicks = useEditorStore(s => s.orfPicks)
   const autoOverlapThreshold = useEditorStore(s => s.autoAnnotateOverlapThreshold)
   const enzymeCutSites = showEnzymes ? allEnzymeCutSites : []
   const orfResults = showOrfs ? allOrfResults : []
-  const primerResults = showPrimers ? allPrimerResults : []
-  const selectedPrimerIndices = useEditorStore(s => s.selectedPrimerIndices)
 
   // Actions used in JSX event handlers (context menu)
   const setSelection = useEditorStore(s => s.setSelection)
@@ -682,46 +689,22 @@ function SequenceView({ onFindRequest, onAnnotateRequest, onEditFeature }: Seque
     })
   }, [orfResults])
 
-  // Convert selected primer pairs to Annotation objects for rendering
-  const primerAnnotations = useMemo(() => {
-    if (selectedPrimerIndices.size === 0) return []
-    const anns: Annotation[] = []
-    for (const idx of selectedPrimerIndices) {
-      const pair = primerResults[idx]
-      if (!pair) continue
-      const suffix = selectedPrimerIndices.size > 1 ? ` #${idx + 1}` : ''
-      anns.push(new Annotation({
-        id: `_primer_fwd_${idx}`,
-        name: `FWD${suffix} ${pair.forward.tm.toFixed(1)}°C`,
-        type: 'primer_bind',
-        start: pair.forward.start,
-        end: pair.forward.end,
-        strand: 1,
-        color: '#3b82f6',
-      }))
-      anns.push(new Annotation({
-        id: `_primer_rev_${idx}`,
-        name: `REV${suffix} ${pair.reverse.tm.toFixed(1)}°C`,
-        type: 'primer_bind',
-        start: pair.reverse.start,
-        end: pair.reverse.end,
-        strand: -1,
-        color: '#ef4444',
-      }))
-      if (pair.probe) {
-        anns.push(new Annotation({
-          id: `_primer_probe_${idx}`,
-          name: `PRB${suffix} ${pair.probe.tm.toFixed(1)}°C`,
-          type: 'primer_bind',
-          start: pair.probe.start,
-          end: pair.probe.end,
-          strand: pair.probe.strand,
-          color: '#f59e0b',
-        }))
-      }
-    }
-    return anns
-  }, [primerResults, selectedPrimerIndices])
+  // Primers: one lane item per binding site, spanning its tails too. Saved
+  // primers and the workbench's unsaved picks go through the same path; the
+  // picks are flagged as previews and drawn dashed.
+  const primerSites = usePrimerSites(doc)
+  const designPreview = useDesignPreview(doc, designPicks, designBatch)
+  const allPrimerItems = useMemo(
+    () => [...primerItems(doc.primers ?? [], primerSites, doc.sequence.length), ...designPreview.items],
+    [doc.primers, primerSites, doc.sequence.length, designPreview.items],
+  )
+  const primerItemById = useMemo(
+    () => new Map<string, PrimerItem>(allPrimerItems.map(i => [i.annotation.id, i])),
+    [allPrimerItems],
+  )
+  /** How many sites the primer behind an item has, for the tooltip. */
+  const siteCountOf = (item: PrimerItem) =>
+    (item.preview ? designPreview.sites : primerSites).get(item.primer.id)?.length ?? 1
 
   /**
    * Auto-annotation proposals, as annotations.
@@ -765,21 +748,21 @@ function SequenceView({ onFindRequest, onAnnotateRequest, onEditFeature }: Seque
     for (const ann of orfAnnotations) {
       tree.insert(ann)
     }
-    for (const ann of primerAnnotations) {
-      tree.insert(ann)
+    for (const item of allPrimerItems) {
+      tree.insert(item.annotation)
     }
     for (const ann of autoAnnotations) {
       tree.insert(ann)
     }
     return tree
-  }, [visibleAnnotations, orfAnnotations, primerAnnotations, autoAnnotations])
+  }, [visibleAnnotations, orfAnnotations, allPrimerItems, autoAnnotations])
 
   // Combined list for hit-testing (visible annotations + ORFs + primers + proposals)
   const allAnnotations = useMemo(() => {
-    const extra = [...orfAnnotations, ...primerAnnotations, ...autoAnnotations]
+    const extra = [...orfAnnotations, ...allPrimerItems.map(i => i.annotation), ...autoAnnotations]
     if (extra.length === 0) return visibleAnnotations
     return [...visibleAnnotations, ...extra]
-  }, [visibleAnnotations, orfAnnotations, primerAnnotations, autoAnnotations])
+  }, [visibleAnnotations, orfAnnotations, allPrimerItems, autoAnnotations])
 
   // --- Refs mirroring frequently-changing state ---
   // Allows draw() and event handlers to stay referentially stable
@@ -806,6 +789,7 @@ function SequenceView({ onFindRequest, onAnnotateRequest, onEditFeature }: Seque
   const allAnnotationsRef = useRef(allAnnotations)
   const autoPicksRef = useRef(autoAnnotationPicks)
   const orfPicksRef = useRef(orfPicks)
+  const primerItemByIdRef = useRef(primerItemById)
   const onFindRequestRef = useRef(onFindRequest)
 
   // Sync refs on every render (cheap assignments, no effects needed)
@@ -831,6 +815,7 @@ function SequenceView({ onFindRequest, onAnnotateRequest, onEditFeature }: Seque
   allAnnotationsRef.current = allAnnotations
   autoPicksRef.current = autoAnnotationPicks
   orfPicksRef.current = orfPicks
+  primerItemByIdRef.current = primerItemById
   onFindRequestRef.current = onFindRequest
 
   const draw = useCallback(() => {
@@ -1495,7 +1480,12 @@ function SequenceView({ onFindRequest, onAnnotateRequest, onEditFeature }: Seque
       const orfPicksNow = orfPicksRef.current
       const colorGroups = new Map<string, typeof annBatch>()
       const proposalBatch: typeof annBatch = []
+      const primerBatch: typeof annBatch = []
       for (const a of annBatch) {
+        if (isPrimerItemId(a.ann.id)) {
+          primerBatch.push(a)
+          continue
+        }
         const orfK = keyFromOrfId(a.ann.id)
         if (isAutoAnnotationId(a.ann.id) || (orfK !== null && orfPicksNow.has(orfK))) {
           proposalBatch.push(a)
@@ -1557,9 +1547,24 @@ function SequenceView({ onFindRequest, onAnnotateRequest, onEditFeature }: Seque
         ctx.setLineDash([])
       }
 
+      // Primers: annealed bar, raised tail, mismatch marks. Drawn one by one,
+      // since each is several shapes and there are few of them.
+      const primerItemsNow = primerItemByIdRef.current
+      for (const a of primerBatch) {
+        const item = primerItemsNow.get(a.ann.id)
+        if (!item) continue
+        drawPrimerItem(ctx, item, a.cy, rowStart, rowEnd, L, doc.sequence.length, {
+          hovered: a.ann.id === hoveredAnnotationId,
+          preview: item.preview,
+          stroke: visibleStroke(a.ann.color),
+          mismatch: COLORS.enzyme,
+        })
+      }
+      ctx.globalAlpha = 1
+
       // Draw hovered annotation on top
       for (const a of annBatch) {
-        if (a.ann.id !== hoveredAnnotationId) continue
+        if (a.ann.id !== hoveredAnnotationId || isPrimerItemId(a.ann.id)) continue
         ctx.fillStyle = a.ann.color
         ctx.globalAlpha = 0.55
         ctx.beginPath()
@@ -1582,7 +1587,7 @@ function SequenceView({ onFindRequest, onAnnotateRequest, onEditFeature }: Seque
       ctx.textAlign = 'center'
       for (const a of annBatch) {
         const barW = a.x2 - a.x1
-        if (barW <= 20) continue
+        if (barW <= 20 || isPrimerItemId(a.ann.id)) continue
         const h = L.annotationRowH
         const arrowW = Math.min(6, barW / 3)
         const cw = Math.min(5, barW / 4)
@@ -2118,6 +2123,13 @@ function SequenceView({ onFindRequest, onAnnotateRequest, onEditFeature }: Seque
           return
         }
       }
+      // A primer selects the bases it anneals to, not its tail's footprint:
+      // the tail is not on the template.
+      const site = primerItemByIdRef.current.get(hitAnn.id)?.site
+      if (site) {
+        useEditorStore.getState().setSelection({ anchor: site.start, caret: site.end })
+        return
+      }
       useEditorStore.getState().setSelection({ anchor: hitAnn.start, caret: hitAnn.end })
       return
     }
@@ -2290,6 +2302,14 @@ function SequenceView({ onFindRequest, onAnnotateRequest, onEditFeature }: Seque
     const py = e.clientY - rect.top
     const seqLen = docRef.current.sequence.length
     const hitAnn = hitTestAnnotation(px, py + canvasTopRef.current, seqLen, annTreeRef.current, layoutRef.current, rowLayoutRef.current)
+    // Primers are not features; they are edited from the Primers panel, and
+    // an unsaved pick from the workbench that picked it.
+    if (hitAnn && isPrimerItemId(hitAnn.id)) {
+      const item = primerItemByIdRef.current.get(hitAnn.id)
+      if (item?.preview) useEditorStore.getState().openSidebar('primers', 'design')
+      else if (item) useEditorStore.getState().setFocusedPrimer(item.primer.id)
+      return
+    }
     if (hitAnn) {
       useEditorStore.getState().setEditAnnotation(hitAnn.id)
       onEditFeature?.(hitAnn.id)
@@ -2353,9 +2373,9 @@ function SequenceView({ onFindRequest, onAnnotateRequest, onEditFeature }: Seque
   const readOnly = useEditorStore(s => s.readOnly)
 
   const handleKeyDown = useCallback((e: KeyboardEvent) => {
-    // Don't capture keystrokes aimed at text inputs, textareas, or contenteditable
-    const tag = (e.target as HTMLElement)?.tagName
-    if (tag === 'INPUT' || tag === 'TEXTAREA' || (e.target as HTMLElement)?.isContentEditable) return
+    // Don't capture keystrokes aimed at text fields or at a widget that runs
+    // its own keys, such as the explorer tree
+    if (isWidgetKeyTarget(e.target)) return
 
     const store = useEditorStore.getState()
     const curDoc = docRef.current
@@ -2549,8 +2569,7 @@ function SequenceView({ onFindRequest, onAnnotateRequest, onEditFeature }: Seque
   }, [])
 
   const handlePaste = useCallback((e: ClipboardEvent) => {
-    const tag = (e.target as HTMLElement)?.tagName
-    if (tag === 'INPUT' || tag === 'TEXTAREA' || (e.target as HTMLElement)?.isContentEditable) return
+    if (isWidgetKeyTarget(e.target)) return
 
     const store = useEditorStore.getState()
     if (store.readOnly) return
@@ -2760,6 +2779,17 @@ function SequenceView({ onFindRequest, onAnnotateRequest, onEditFeature }: Seque
         />
       )}
       {!ctxMenu && annTooltip && (() => {
+        const primerItem = primerItemById.get(annTooltip.key)
+        if (primerItem) {
+          return (
+            <PrimerTooltip
+              item={primerItem}
+              siteCount={siteCountOf(primerItem)}
+              x={annTooltip.x}
+              y={annTooltip.y}
+            />
+          )
+        }
         const ann = allAnnotations.find(a => a.id === annTooltip.key)
         if (!ann) return null
         return (
@@ -2776,10 +2806,11 @@ function SequenceView({ onFindRequest, onAnnotateRequest, onEditFeature }: Seque
       {ctxMenu && (() => {
         const ctxSegs = selectionSegments(selection, doc.sequence.topology, doc.sequence.length)
         const hasSelection = ctxSegs.length > 0
-        const ctxAnn = ctxMenu.annId
+        const ctxPrimer = ctxMenu.annId ? primerItemById.get(ctxMenu.annId) ?? null : null
+        const ctxAnn = ctxMenu.annId && !ctxPrimer
           ? allAnnotations.find(a => a.id === ctxMenu.annId) ?? null
           : null
-        const isUserAnn = ctxAnn && !ctxAnn.id.startsWith('_orf_') && !ctxAnn.id.startsWith('_primer_')
+        const isUserAnn = ctxAnn && !ctxAnn.id.startsWith('_orf_')
           && !isAutoAnnotationId(ctxAnn.id)
 
         const ctxEnzymeGroup = ctxMenu.enzymeGroup
@@ -2866,6 +2897,54 @@ function SequenceView({ onFindRequest, onAnnotateRequest, onEditFeature }: Seque
           copyText(protein, `Copied ${protein.length} aa from "${ctxAnn!.name}"`)
           setCtxMenu(null)
         }
+        const handleSelectPrimerSite = () => {
+          if (!ctxPrimer) return
+          setSelection({ anchor: ctxPrimer.site.start, caret: ctxPrimer.site.end })
+          setCtxMenu(null)
+        }
+        const handleCopyOligo = () => {
+          if (!ctxPrimer) return
+          copyText(ctxPrimer.primer.sequence, `Copied ${ctxPrimer.primer.name} (${ctxPrimer.primer.sequence.length} nt)`)
+          setCtxMenu(null)
+        }
+        const handleDeletePrimer = () => {
+          if (!ctxPrimer) return
+          useEditorStore.getState().removePrimers([ctxPrimer.primer.id])
+          notify.success(`Deleted primer "${ctxPrimer.primer.name}"`, {
+            action: { label: 'Undo', onClick: () => useEditorStore.getState().undo() },
+          })
+          setCtxMenu(null)
+        }
+        const handleDiscardPick = () => {
+          if (!ctxPrimer) return
+          const s = useEditorStore.getState()
+          const role = DESIGN_ROLES.find(r => designOligoId(r) === ctxPrimer.primer.id)
+          if (role) s.setDesignPicks({ [role]: null })
+          const batchIndex = /^design-batch-(\d+)$/.exec(ctxPrimer.primer.id)?.[1]
+          if (batchIndex !== undefined) {
+            s.setDesignBatch(s.primerDesign.batch.filter((_, i) => i !== Number(batchIndex)))
+          }
+          setCtxMenu(null)
+        }
+        const handleConvertToPrimer = () => {
+          if (!ctxAnn) return
+          useEditorStore.getState().convertFeaturesToPrimers([ctxAnn.id])
+          setCtxMenu(null)
+        }
+        /** A new primer from the selection, read along the chosen strand. */
+        const handleNewPrimer = (strand: 1 | -1) => {
+          const bases = getCtxSelectedBases().toUpperCase()
+          const oligo = strand === 1 ? bases : reverseComplementStr(bases)
+          const s = useEditorStore.getState()
+          const n = (s.doc.primers?.length ?? 0) + 1
+          const id = newPrimerId()
+          s.addPrimers([{ id, name: `Primer ${n}${strand === 1 ? 'F' : 'R'}`, sequence: oligo, role: 'primer' }])
+          s.setFocusedPrimer(id)
+          setCtxMenu(null)
+        }
+        const selectionLen = ctxSegs.reduce((n, [s, e]) => n + e - s, 0)
+        const canMakePrimer = !readOnly && selectionLen >= 10 && selectionLen <= 200
+
         const handleCopyRecognition = () => {
           if (!ctxEnzymeGroup) return
           const primary = ctxEnzymeGroup.sites[0]
@@ -2887,6 +2966,14 @@ function SequenceView({ onFindRequest, onAnnotateRequest, onEditFeature }: Seque
         return (
           <ContextMenuPopup x={ctxMenu.x} y={ctxMenu.y}>
             {/* Embedded tooltip content */}
+            {ctxPrimer && (
+              <div className="ctx-menu-tooltip-embed">
+                <PrimerTooltipContent
+                  item={ctxPrimer}
+                  siteCount={siteCountOf(ctxPrimer)}
+                />
+              </div>
+            )}
             {ctxAnn && (
               <div className="ctx-menu-tooltip-embed">
                 <AnnotationTooltipContent ann={ctxAnn} sequence={doc.sequence} />
@@ -2919,9 +3006,37 @@ function SequenceView({ onFindRequest, onAnnotateRequest, onEditFeature }: Seque
                     Edit Annotation
                   </button>
                 )}
+                {isUserAnn && !readOnly && ctxAnn.type === 'primer_bind' && (
+                  <button className="ctx-menu-item" onClick={handleConvertToPrimer}>
+                    Convert to Primer
+                  </button>
+                )}
                 {isUserAnn && !readOnly && (
                   <button className="ctx-menu-item ctx-menu-danger" onClick={handleDeleteAnnotation}>
                     Delete Annotation
+                  </button>
+                )}
+                <div className="ctx-menu-sep" />
+              </>
+            )}
+
+            {/* Primer actions */}
+            {ctxPrimer && (
+              <>
+                <button className="ctx-menu-item" onClick={handleSelectPrimerSite}>
+                  Select Binding Site
+                </button>
+                <button className="ctx-menu-item" onClick={handleCopyOligo}>
+                  Copy Oligo Sequence
+                </button>
+                {!readOnly && !ctxPrimer.preview && (
+                  <button className="ctx-menu-item ctx-menu-danger" onClick={handleDeletePrimer}>
+                    Delete Primer
+                  </button>
+                )}
+                {ctxPrimer.preview && (
+                  <button className="ctx-menu-item" onClick={handleDiscardPick}>
+                    Discard Pick
                   </button>
                 )}
                 <div className="ctx-menu-sep" />
@@ -2956,6 +3071,16 @@ function SequenceView({ onFindRequest, onAnnotateRequest, onEditFeature }: Seque
                 <button className="ctx-menu-item" onClick={handleCopyProtein}>
                   Copy Protein Translation
                 </button>
+                {canMakePrimer && (
+                  <>
+                    <button className="ctx-menu-item" onClick={() => handleNewPrimer(1)}>
+                      New Forward Primer from Selection
+                    </button>
+                    <button className="ctx-menu-item" onClick={() => handleNewPrimer(-1)}>
+                      New Reverse Primer from Selection
+                    </button>
+                  </>
+                )}
                 <div className="ctx-menu-sep" />
               </>
             )}

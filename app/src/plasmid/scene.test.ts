@@ -92,6 +92,37 @@ describe('buildPlasmidScene', () => {
   })
 })
 
+// The explorer's hover-card thumbnail: the card already prints the name,
+// length and topology, and feature names are unreadable at 132px.
+describe('thumbnail options', () => {
+  const texts = (items: SceneItem[]) => items.flatMap(i =>
+    i.kind === 'text' || i.kind === 'curvedText' ? [i.text] : [])
+
+  it('draws feature names by default', () => {
+    const t = texts(buildPlasmidScene(input()).items)
+    expect(t).toContain('ampR')
+    expect(t).toContain('ori')
+  })
+
+  it('keeps the features but drops their names', () => {
+    const labelled = buildPlasmidScene(input())
+    const bare = buildPlasmidScene(input({ showFeatureLabels: false }))
+    const t = texts(bare.items)
+    expect(t).not.toContain('ampR')
+    expect(t).not.toContain('ori')
+    // Same arcs, and still hoverable.
+    expect(bare.items.filter(i => i.kind === 'arcBand'))
+      .toEqual(labelled.items.filter(i => i.kind === 'arcBand'))
+    expect(bare.hitRegions).toEqual(labelled.hitRegions)
+  })
+
+  it('leaves the centre empty', () => {
+    const t = texts(buildPlasmidScene(input({ showCentre: false })).items)
+    expect(t).not.toContain('pUC19')
+    expect(t.some(s => s.includes('bp') || s.includes('circular'))).toBe(false)
+  })
+})
+
 describe('selection', () => {
   it('draws a slim band, not a slab three arc-widths wide', () => {
     const style = getPlasmidStyle('modern')

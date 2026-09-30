@@ -33,6 +33,9 @@ import EnzymeTooltip, { EnzymeGroupTooltipContent } from './EnzymeTooltip'
 import { groupCutSites, enzymeGroupKey, type GroupedCutSite } from './SequenceView'
 import ContextMenuPopup from './ContextMenuPopup'
 import ConfirmDialog from './ConfirmDialog'
+import PrimerTooltip from './primers/PrimerTooltip'
+import { usePrimerSites, useDesignPreview } from '../primers/usePrimerSites'
+import { primerItems, isPrimerItemId, type PrimerItem } from '../primers/display'
 
 import {
   buildPlasmidScene, type PlasmidScene, type ScenePrimer, type SceneEnzymeGroup,
@@ -101,12 +104,11 @@ function PlasmidMap(_props: PlasmidMapProps) {
 
   const showOrfs = useEditorStore(s => s.showOrfs)
   const showEnzymes = useEditorStore(s => s.showEnzymes)
-  const showPrimers = useEditorStore(s => s.showPrimers)
   const showAutoAnnotations = useEditorStore(s => s.showAutoAnnotations)
   const allEnzymeCutSites = useEditorStore(s => s.enzymeCutSites)
   const allOrfResults = useEditorStore(s => s.orfResults)
-  const allPrimerResults = useEditorStore(s => s.primerResults)
-  const selectedPrimerIndices = useEditorStore(s => s.selectedPrimerIndices)
+  const designPicks = useEditorStore(s => s.primerDesign.picks)
+  const designBatch = useEditorStore(s => s.primerDesign.batch)
   const allAutoAnnotations = useEditorStore(s => s.autoAnnotations)
   const autoAnnotationPicks = useEditorStore(s => s.autoAnnotationPicks)
   const orfPicks = useEditorStore(s => s.orfPicks)
@@ -218,22 +220,31 @@ function PlasmidMap(_props: PlasmidMapProps) {
     return m
   }, [groupedEnzymeSites])
 
-  const scenePrimers: ScenePrimer[] = useMemo(() => {
-    if (!showPrimers || allPrimerResults.length === 0) return []
-    const out: ScenePrimer[] = []
-    allPrimerResults.forEach((pair, i) => {
-      const selected = selectedPrimerIndices.has(i)
-      out.push({
-        id: `primer_${i}_f`, name: `Primer ${i + 1} F`,
-        start: pair.forward.start, end: pair.forward.end, strand: 1, selected,
-      })
-      out.push({
-        id: `primer_${i}_r`, name: `Primer ${i + 1} R`,
-        start: pair.reverse.start, end: pair.reverse.end, strand: -1, selected,
-      })
-    })
-    return out
-  }, [showPrimers, allPrimerResults, selectedPrimerIndices])
+  // Saved primers and the workbench's unsaved picks, one item per binding site.
+  const primerSites = usePrimerSites(doc)
+  const designPreview = useDesignPreview(doc, designPicks, designBatch)
+  const allPrimerItems = useMemo(
+    () => [...primerItems(doc.primers ?? [], primerSites, doc.sequence.length), ...designPreview.items],
+    [doc.primers, primerSites, doc.sequence.length, designPreview.items],
+  )
+  const primerItemById = useMemo(
+    () => new Map<string, PrimerItem>(allPrimerItems.map(i => [i.annotation.id, i])),
+    [allPrimerItems],
+  )
+
+  // An unsaved pick is outlined in the accent colour, which is how the map
+  // already marks anything picked but not yet in the document.
+  const scenePrimers: ScenePrimer[] = useMemo(() => allPrimerItems.map(({ site, annotation, preview }) => ({
+    id: annotation.id,
+    name: annotation.name,
+    start: site.start,
+    end: site.end,
+    strand: site.strand,
+    selected: !!preview,
+    color: annotation.color,
+    tail5: site.tail5.length > 0,
+    tail3: site.tail3.length > 0,
+  })), [allPrimerItems])
 
   /** Scanned once per sequence rather than once per redraw. */
   const methylation = useMemo(
@@ -504,7 +515,11 @@ function PlasmidMap(_props: PlasmidMapProps) {
       hideEnzymeTooltip()
     }
 
-    const featureId = hit?.type === 'feature' ? hit.id : null
+    // Saved primers hover like features, so the sequence view in split mode
+    // highlights the same site.
+    const featureId = hit?.type === 'feature' || (hit?.type === 'primer' && isPrimerItemId(hit.id))
+      ? hit.id
+      : null
     if (featureId !== store.hoveredAnnotationId) setHoveredAnnotation(featureId)
     if (featureId) showAnnTooltip({ x: e.clientX + 12, y: e.clientY - 10, key: featureId })
     else hideAnnTooltip()
@@ -546,10 +561,16 @@ function PlasmidMap(_props: PlasmidMapProps) {
       _props.onEditFeature?.(hit.id)
       return
     }
+    if (hit?.type === 'primer') {
+      const item = primerItemById.get(hit.id)
+      if (item?.preview) useEditorStore.getState().openSidebar('primers', 'design')
+      else if (item) useEditorStore.getState().setFocusedPrimer(item.primer.id)
+      return
+    }
     // Empty space returns the view to fit, which is the escape hatch from a
     // zoom the user cannot otherwise undo with the pointer.
     if (!hit) setViewport(FIT)
-  }, [doc.sequence.length, toSceneXY, hitTest, _props])
+  }, [doc.sequence.length, toSceneXY, hitTest, _props, primerItemById])
 
   const handleWheel = useCallback((e: WheelEvent) => {
     if (!e.ctrlKey && !e.metaKey && Math.abs(e.deltaY) < 1) return
@@ -772,6 +793,17 @@ function PlasmidMap(_props: PlasmidMapProps) {
       })()}
       {/* Hover tooltips - hidden when context menu is open */}
       {!ctxMenu && annTooltip && (() => {
+        const primerItem = primerItemById.get(annTooltip.key)
+        if (primerItem) {
+          return (
+            <PrimerTooltip
+              item={primerItem}
+              siteCount={(primerItem.preview ? designPreview.sites : primerSites).get(primerItem.primer.id)?.length ?? 1}
+              x={annTooltip.x}
+              y={annTooltip.y}
+            />
+          )
+        }
         const ann = allAnnotations.find(a => a.id === annTooltip.key)
         if (!ann) return null
         return (
@@ -799,7 +831,7 @@ function PlasmidMap(_props: PlasmidMapProps) {
         const ctxAnn = ctxMenu.annId
           ? allAnnotations.find(a => a.id === ctxMenu.annId) ?? null
           : null
-        const isUserAnn = ctxAnn && !ctxAnn.id.startsWith('_orf_') && !ctxAnn.id.startsWith('_primer_')
+        const isUserAnn = ctxAnn && !ctxAnn.id.startsWith('_orf_')
           && !isAutoAnnotationId(ctxAnn.id)
         const ctxEnzymeGroup = ctxMenu.enzymeGroup
         // Use first site for single-enzyme actions (copy recognition, lookup)

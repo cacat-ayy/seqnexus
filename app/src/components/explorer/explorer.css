@@ -994,10 +994,10 @@
 }
 .ex-note-input:focus { border-color: var(--accent); }
 
-/* --- Add menu ---
-   Positioning only; the look comes from the shared .ctx-menu rules. */
+/* --- Toolbar menus (add / group / sort) ---
+   Placed by ToolbarMenu with fixed coordinates; the look comes from the
+   shared .ctx-menu rules. */
 
 .ex-menu {
-  position: absolute;
   min-width: 180px;
 }

@@ -100,10 +100,16 @@ export interface SceneEnzymeGroup {
 export interface ScenePrimer {
   id: string
   name: string
+  /** The annealed span. */
   start: number
   end: number
   strand: 1 | -1
   selected: boolean
+  /** Overrides the theme's primer colour. */
+  color?: string
+  /** A non-annealing tail hangs off this end, drawn as a short flag. */
+  tail5?: boolean
+  tail3?: boolean
 }
 
 export interface SceneGcSeries {
@@ -145,6 +151,12 @@ export interface PlasmidSceneInput {
   gc: SceneGcSeries | null
   gcPercent: number | null
   legend: { label: string; color: string }[] | null
+
+  /** Draw feature names on and around the arcs. Default true. */
+  showFeatureLabels?: boolean
+  /** Draw the name, length and topology in the middle. Default true. The
+   *  explorer's hover card turns both off: it prints the same facts itself. */
+  showCentre?: boolean
 }
 
 // ---- Inner label placement ----
@@ -254,6 +266,7 @@ export function buildPlasmidScene(input: PlasmidSceneInput): PlasmidScene {
     proposalIds, pickedIds, enzymeGroups, hoveredEnzymeKey, primers,
     selection, selectionSpansOrigin, selectionLength, methylation, gc,
     gcPercent, legend, displayOrigin, name, topology,
+    showFeatureLabels = true, showCentre = true,
   } = input
 
   const items: SceneItem[] = []
@@ -401,14 +414,28 @@ export function buildPlasmidScene(input: PlasmidSceneInput): PlasmidScene {
     for (const p of primers) {
       const startAngle = posToAngle(p.start, seqLen)
       const span = annArcSpan(p.start, p.end, seqLen)
+      const fill = p.color ?? colors.primer
       items.push({
         kind: 'arcBand', cx, cy, radius: primerR,
         startAngle, span, width: p.selected ? primerW + 2 : primerW,
-        strand: p.strand, fill: colors.primer,
+        strand: p.strand, fill,
         stroke: p.selected ? colors.accent : undefined,
         strokeWidth: p.selected ? 1.5 : undefined,
         alpha: p.selected ? 1 : 0.75,
       })
+      // A tail does not pair, so it is not an arc: it is a flag lifting off
+      // the end it hangs from, pointing into the map.
+      const flagAt = (pos: number) => {
+        const a = posToAngle(pos, seqLen)
+        items.push({
+          kind: 'line',
+          x1: cx + Math.cos(a) * primerR, y1: cy + Math.sin(a) * primerR,
+          x2: cx + Math.cos(a) * (primerR - 9), y2: cy + Math.sin(a) * (primerR - 9),
+          stroke: fill, width: 1.5,
+        })
+      }
+      if (p.tail5) flagAt(p.strand === 1 ? p.start : p.end)
+      if (p.tail3) flagAt(p.strand === 1 ? p.end : p.start)
       hitRegions.push({
         kind: 'arc', id: p.id, type: 'primer',
         radius: primerR, halfWidth: primerW / 2 + 3, startAngle, span,
@@ -538,6 +565,7 @@ export function buildPlasmidScene(input: PlasmidSceneInput): PlasmidScene {
         radius, halfWidth: width / 2 + 3, startAngle, span,
       })
 
+      if (!showFeatureLabels) continue
       const labelFont = font(style.labelSize, hovered)
       const textWidth = measureText(ann.name, labelFont)
       const arcLength = Math.abs(span) * radius
@@ -580,38 +608,40 @@ export function buildPlasmidScene(input: PlasmidSceneInput): PlasmidScene {
   }
 
   // --- Centre block ---
-  const nameFont = font(style.centreNameSize, true)
-  const maxNameW = baseRadius * 1.5
-  let centreName = name
-  if (measureText(centreName, nameFont) > maxNameW) {
-    while (centreName.length > 1 && measureText(centreName + '…', nameFont) > maxNameW) {
-      centreName = centreName.slice(0, -1)
+  if (showCentre) {
+    const nameFont = font(style.centreNameSize, true)
+    const maxNameW = baseRadius * 1.5
+    let centreName = name
+    if (measureText(centreName, nameFont) > maxNameW) {
+      while (centreName.length > 1 && measureText(centreName + '…', nameFont) > maxNameW) {
+        centreName = centreName.slice(0, -1)
+      }
+      centreName += '…'
     }
-    centreName += '…'
-  }
-  items.push({
-    kind: 'text', x: cx, y: cy - 12, text: centreName, font: nameFont,
-    fill: colors.text, align: 'center', baseline: 'middle',
-  })
-
-  const meta = [
-    formatBpShort(seqLen),
-    gcPercent != null ? `${gcPercent.toFixed(0)}% GC` : null,
-    topology === 'circular' ? 'circular' : 'linear',
-  ].filter(Boolean).join('  ·  ')
-  items.push({
-    kind: 'text', x: cx, y: cy + 8, text: meta,
-    font: font(style.centreMetaSize), fill: colors.textMuted,
-    align: 'center', baseline: 'middle',
-  })
-
-  if (hasSelection) {
     items.push({
-      kind: 'text', x: cx, y: cy + 26,
-      text: `${selectionLength} bp selected`,
-      font: font(style.centreMetaSize), fill: colors.accent,
+      kind: 'text', x: cx, y: cy - 12, text: centreName, font: nameFont,
+      fill: colors.text, align: 'center', baseline: 'middle',
+    })
+
+    const meta = [
+      formatBpShort(seqLen),
+      gcPercent != null ? `${gcPercent.toFixed(0)}% GC` : null,
+      topology === 'circular' ? 'circular' : 'linear',
+    ].filter(Boolean).join('  ·  ')
+    items.push({
+      kind: 'text', x: cx, y: cy + 8, text: meta,
+      font: font(style.centreMetaSize), fill: colors.textMuted,
       align: 'center', baseline: 'middle',
     })
+
+    if (hasSelection) {
+      items.push({
+        kind: 'text', x: cx, y: cy + 26,
+        text: `${selectionLength} bp selected`,
+        font: font(style.centreMetaSize), fill: colors.accent,
+        align: 'center', baseline: 'middle',
+      })
+    }
   }
 
   // --- Legend ---

@@ -43,7 +43,14 @@ export const PlasmidThumbnail = memo(function PlasmidThumbnail({ doc }: { doc: D
     canvas.height = SIZE * dpr
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
 
-    const style = getPlasmidStyle(undefined)
+    // Just the features: at 132px the ruler numbers are text clutter too, and
+    // the full map's 16px arcs read as slabs, so they are drawn slimmer.
+    const style = {
+      ...getPlasmidStyle(undefined),
+      showTickLabels: false,
+      arcWidth: 7,
+      arcGap: 2,
+    }
     const scene = buildPlasmidScene({
       size: SIZE,
       seqLen: doc.sequence.length,
@@ -69,6 +76,10 @@ export const PlasmidThumbnail = memo(function PlasmidThumbnail({ doc }: { doc: D
       gc: null,
       gcPercent: null,
       legend: null,
+      // The hover card prints the name, length and topology beside the
+      // picture, and feature names are unreadable at this size.
+      showFeatureLabels: false,
+      showCentre: false,
     })
     renderSceneToCanvas(ctx, scene)
   }, [doc])

@@ -13,6 +13,8 @@ import type { Strand } from '../models/Annotation'
 import { defaultColorForType } from '../models/Annotation'
 import AnnotationTooltip from './AnnotationTooltip'
 import FeatureBulkBar from './FeatureBulkBar'
+import PrimerList from './primers/PrimerList'
+import PrimerWorkbench from './primers/PrimerWorkbench'
 import ConfirmDialog from './ConfirmDialog'
 import { useListMultiSelect } from '../hooks/useListMultiSelect'
 import { Plus, X, ChevronRight, ChevronDown, Eye, EyeOff, Search, PanelRightClose, ChevronsDownUp, ChevronsUpDown } from 'lucide-react'
@@ -236,13 +238,25 @@ function FeatureSidebar({ open, onClose }: FeatureSidebarProps) {
     localStorage.setItem(STORAGE_KEY_WIDTH, String(finalWidth))
   }, [])
 
+  // Features and Primers share the sidebar as two tabs; the Primers tab has
+  // a list view and the design workbench. Both live in the store so the
+  // toolbar, panel bar and canvas can send the user to either.
+  const tab = useEditorStore(s => s.sidebarTab)
+  const switchTab = useEditorStore(s => s.setSidebarTab)
+  const primerView = useEditorStore(s => s.primerView)
+  const setPrimerView = useEditorStore(s => s.setPrimerView)
+  const [addingPrimer, setAddingPrimer] = useState(false)
+  const primerCount = useEditorStore(s => s.doc.primers?.length ?? 0)
+  const activeTabId = useEditorStore(s => s.activeTabId)
+
   // When editAnnotationId is set from outside, expand that annotation
   useEffect(() => {
     if (editAnnotationId) {
+      switchTab('features')
       setExpandedId(editAnnotationId)
       setEditAnnotation(null)
     }
-  }, [editAnnotationId, setEditAnnotation])
+  }, [editAnnotationId, setEditAnnotation, switchTab])
 
   // Tooltip state
   const [tooltip, setTooltip] = useState<{ ann: Annotation; x: number; y: number } | null>(null)
@@ -348,7 +362,7 @@ function FeatureSidebar({ open, onClose }: FeatureSidebarProps) {
 
   // Filter annotations (exclude ORF and primer display pseudo-annotations)
   const userAnnotations = useMemo(() =>
-    annotations.filter(a => !a.id.startsWith('_orf_') && !a.id.startsWith('_primer_')),
+    annotations.filter(a => !a.id.startsWith('_orf_')),
     [annotations]
   )
 
@@ -430,9 +444,39 @@ function FeatureSidebar({ open, onClose }: FeatureSidebarProps) {
       <aside className="feature-sidebar" style={{ width }}>
         {/* Header */}
         <div className="fs-header">
-          <span className="fs-title">Features</span>
-          <span className="fs-count">{userAnnotations.length}</span>
+          <div className="fs-tabs" role="tablist" aria-label="Sidebar">
+            <button
+              className={`fs-tab ${tab === 'features' ? 'active' : ''}`}
+              role="tab"
+              aria-selected={tab === 'features'}
+              onClick={() => switchTab('features')}
+            >
+              <span className="fs-title">Features</span>
+              <span className="fs-count">{userAnnotations.length}</span>
+            </button>
+            <button
+              className={`fs-tab ${tab === 'primers' ? 'active' : ''}`}
+              role="tab"
+              aria-selected={tab === 'primers'}
+              onClick={() => switchTab('primers')}
+            >
+              <span className="fs-title">Primers</span>
+              <span className="fs-count">{primerCount}</span>
+            </button>
+          </div>
           <div className="fs-header-actions">
+            {tab === 'primers' ? (
+              primerView === 'list' && (
+                <button
+                  className="fs-icon-btn"
+                  onClick={() => setAddingPrimer(v => !v)}
+                  title={addingPrimer ? 'Cancel' : 'Add primer'}
+                >
+                  {addingPrimer ? <X size={14} /> : <Plus size={14} />}
+                </button>
+              )
+            ) : (
+              <>
             <button
               className="fs-icon-btn"
               onClick={() => {
@@ -453,6 +497,8 @@ function FeatureSidebar({ open, onClose }: FeatureSidebarProps) {
             >
               {adding ? <X size={14} /> : <Plus size={14} />}
             </button>
+              </>
+            )}
             <button
               className="fs-icon-btn"
               onClick={onClose}
@@ -463,6 +509,34 @@ function FeatureSidebar({ open, onClose }: FeatureSidebarProps) {
           </div>
         </div>
 
+        {tab === 'primers' ? (
+          <>
+            <div className="fs-segmented" role="tablist" aria-label="Primers view">
+              <button
+                role="tab"
+                aria-selected={primerView === 'list'}
+                className={primerView === 'list' ? 'active' : ''}
+                onClick={() => setPrimerView('list')}
+              >
+                Saved
+              </button>
+              <button
+                role="tab"
+                aria-selected={primerView === 'design'}
+                className={primerView === 'design' ? 'active' : ''}
+                onClick={() => setPrimerView('design')}
+              >
+                Design
+              </button>
+            </div>
+            {primerView === 'design'
+              // Keyed by tab: a target or excluded region from another
+              // sequence means nothing here.
+              ? <PrimerWorkbench key={activeTabId ?? 'none'} />
+              : <PrimerList adding={addingPrimer} onAddingChange={setAddingPrimer} />}
+          </>
+        ) : (
+        <>
         {selectedAnnotations.length > 0 && (
           <FeatureBulkBar
             selected={selectedAnnotations}
@@ -792,6 +866,8 @@ function FeatureSidebar({ open, onClose }: FeatureSidebarProps) {
             </div>
           )}
         </div>
+        </>
+        )}
 
         {/* Hover tooltip */}
         {tooltip && (
