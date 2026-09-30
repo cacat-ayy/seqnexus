@@ -67,7 +67,7 @@ describe('App render cost', () => {
     // Toggle a piece of App-local state that the sequence view does not read.
     // The ORF finder button is one of the ~22 dialog flags living in App.
     const orfButton = document.querySelector<HTMLButtonElement>(
-      'button[title="Open reading frame finder"]',
+      'button[aria-label="Find ORFs"]',
     )
     expect(orfButton).toBeTruthy()
     act(() => { orfButton!.click() })
@@ -83,7 +83,7 @@ describe('App render cost', () => {
     expect(before).toBeGreaterThan(0)
 
     const enzymeButton = document.querySelector<HTMLButtonElement>(
-      'button[title="Restriction enzyme analysis"]',
+      'button[aria-label="Restriction enzymes"]',
     )
     expect(enzymeButton).toBeTruthy()
     act(() => { enzymeButton!.click() })

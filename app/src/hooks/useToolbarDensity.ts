@@ -12,17 +12,33 @@ export type ToolbarDensity = 'full' | 'tight' | 'icons'
 
 const DENSITIES: ToolbarDensity[] = ['full', 'tight', 'icons']
 
-/**
- * When content overflows, scrollWidth covers the left padding but not the
- * right, so a row that overflows by a few pixels still measures as fitting.
- * Keeping a slack equal to the toolbar's horizontal padding absorbs that.
- */
-const OVERFLOW_SLACK = 8
-
 export interface ToolbarFit {
   density: ToolbarDensity
   /** True when even `icons` overflows and wrapping is the lesser evil. */
   wrapped: boolean
+}
+
+/**
+ * Whether the row's items spill past the toolbar's content box.
+ *
+ * scrollWidth cannot answer this. A flex spacer grows to fill any spare room,
+ * so a row that fits reports scrollWidth === clientWidth rather than less;
+ * and a row that overflows by a few pixels only pushes into the right padding,
+ * which scrollWidth does not count, so it reads as fitting too. The last
+ * item's right edge against the inner edge of the box has neither problem:
+ * the items do not shrink, so once they run out of room the last one is
+ * pushed past it.
+ */
+function overflows(el: HTMLElement): boolean {
+  const last = el.lastElementChild
+  if (!last) return false
+  const style = getComputedStyle(el)
+  const inner =
+    el.getBoundingClientRect().right -
+    (parseFloat(style.borderRightWidth) || 0) -
+    (parseFloat(style.paddingRight) || 0)
+  // Half a pixel of tolerance for subpixel layout.
+  return last.getBoundingClientRect().right > inner + 0.5
 }
 
 /**
@@ -59,14 +75,13 @@ export function useToolbarDensity(ref: RefObject<HTMLElement | null>): ToolbarFi
     const measure = () => {
       frame = 0
       // A hidden toolbar (or jsdom, which does no layout) measures zero —
-      // there is nothing to decide, and 0 > 0 would read as "overflowing".
+      // there is nothing to decide, and any comparison would be noise.
       if (el.clientWidth === 0) return
 
-      const limit = el.clientWidth - OVERFLOW_SLACK
       let chosen = DENSITIES[DENSITIES.length - 1]
       for (const d of DENSITIES) {
         apply(d, false)
-        if (el.scrollWidth <= limit) {
+        if (!overflows(el)) {
           chosen = d
           break
         }
@@ -74,7 +89,7 @@ export function useToolbarDensity(ref: RefObject<HTMLElement | null>): ToolbarFi
       // Narrower than even the icon row: let it wrap rather than push the
       // trailing buttons past the edge of the window where nobody can hit them.
       apply(chosen, false)
-      const wrapped = el.scrollWidth > limit
+      const wrapped = overflows(el)
       apply(chosen, wrapped)
       setFit(prev =>
         prev.density === chosen && prev.wrapped === wrapped ? prev : { density: chosen, wrapped },

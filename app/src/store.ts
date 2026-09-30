@@ -1177,10 +1177,27 @@ export const useEditorStore = create<EditorStore>((set, get) => {
     saveDisplaySettings(displaySnapshot(get()))
   }
 
-  function pushUndo() {
+  /** "feature “lacZ”" for one item, "3 features" for several. */
+  function describeItems(noun: string, names: readonly (string | undefined)[]): string {
+    if (names.length === 1) return names[0] ? `${noun} “${names[0]}”` : noun
+    return `${names.length} ${noun}s`
+  }
+
+  function annotationNames(ids: Iterable<string>): string[] {
+    const annotations = getActiveTab()?.doc.annotations ?? []
+    return [...ids].map(id => annotations.find(a => a.id === id)?.name ?? '')
+  }
+
+  function primerNames(ids: Iterable<string>): string[] {
+    const primers = getActiveTab()?.doc.primers ?? []
+    return [...ids].map(id => primers.find(p => p.id === id)?.name ?? '')
+  }
+
+  /** `label` names the change about to be made, for the Undo tooltip. */
+  function pushUndo(label?: string) {
     const tab = getActiveTab()
     if (!tab) return
-    const stack = [...tab.undoStack, undoSnapshot(tab.doc)]
+    const stack = [...tab.undoStack, { ...undoSnapshot(tab.doc), label }]
     if (stack.length > MAX_UNDO) stack.shift()
     updateActiveTab({ undoStack: stack, redoStack: [], modifiedAt: Date.now() })
     endCoalesce()
@@ -1213,7 +1230,7 @@ export const useEditorStore = create<EditorStore>((set, get) => {
    */
   function transact(
     mutate: (doc: DocumentState) => DocumentState,
-    opts?: { coalesceKey?: string },
+    opts?: { coalesceKey?: string; label?: string },
   ): boolean {
     const tab = getActiveTab()
     if (!tab || tab.readOnly) return false
@@ -1232,7 +1249,7 @@ export const useEditorStore = create<EditorStore>((set, get) => {
       // The existing top-of-stack already holds the pre-interaction state.
       updateActiveTab({ doc, modifiedAt: Date.now() })
     } else {
-      const undoStack = [...tab.undoStack, undoSnapshot(tab.doc)]
+      const undoStack = [...tab.undoStack, { ...undoSnapshot(tab.doc), label: opts?.label }]
       if (undoStack.length > MAX_UNDO) undoStack.shift()
       updateActiveTab({ doc, undoStack, redoStack: [], modifiedAt: Date.now() })
     }
@@ -1585,7 +1602,7 @@ export const useEditorStore = create<EditorStore>((set, get) => {
       assertSubstitutions(tab.doc, edits)
       // pushUndo first, not transact: this mutates the PieceTable in place, and
       // transact snapshots after its mutation has already run.
-      pushUndo()
+      pushUndo('Substitute bases')
       updateActiveTab({ doc: substituteBasesInPlace(tab.doc, edits) })
       return true
     },
@@ -2405,7 +2422,7 @@ export const useEditorStore = create<EditorStore>((set, get) => {
     updateDocumentProperties(props) {
       const tab = getActiveTab()
       if (!tab) return
-      pushUndo()
+      pushUndo('Edit sequence properties')
       const doc = { ...tab.doc }
       if (props.name !== undefined) doc.name = props.name
       if (props.description !== undefined) doc.description = props.description
@@ -2451,7 +2468,7 @@ export const useEditorStore = create<EditorStore>((set, get) => {
       if (!tab) return
       if (tab.doc.sequence.topology !== 'circular') return
       if (newOrigin === 0) return
-      pushUndo()
+      pushUndo('Move origin')
       const doc = rotateOriginDoc(tab.doc, newOrigin)
       updateActiveTab({ doc })
     },
@@ -2459,21 +2476,21 @@ export const useEditorStore = create<EditorStore>((set, get) => {
     insert(pos, fragment) {
       const tab = getActiveTab()
       if (!tab || tab.readOnly) return
-      pushUndo()
+      pushUndo(`Insert ${fragment.length.toLocaleString()} bp`)
       updateActiveTab({ doc: insertBasesInPlace(tab.doc, pos, fragment) })
     },
 
     delete(start, end) {
       const tab = getActiveTab()
       if (!tab || tab.readOnly) return
-      pushUndo()
+      pushUndo(`Delete ${Math.abs(end - start).toLocaleString()} bp`)
       updateActiveTab({ doc: deleteBasesInPlace(tab.doc, start, end) })
     },
 
     deleteTwo(start1, end1, start2, end2, insertAtZero) {
       const tab = getActiveTab()
       if (!tab || tab.readOnly) return
-      pushUndo()
+      pushUndo(`Delete ${(Math.abs(end1 - start1) + Math.abs(end2 - start2)).toLocaleString()} bp`)
       let doc = deleteBasesInPlace(tab.doc, start1, end1)
       doc = deleteBasesInPlace(doc, start2, end2)
       if (insertAtZero) doc = insertBasesInPlace(doc, 0, insertAtZero)
@@ -2483,7 +2500,7 @@ export const useEditorStore = create<EditorStore>((set, get) => {
     replace(start, end, fragment) {
       const tab = getActiveTab()
       if (!tab || tab.readOnly) return
-      pushUndo()
+      pushUndo(`Replace ${Math.abs(end - start).toLocaleString()} bp`)
       updateActiveTab({ doc: replaceBasesInPlace(tab.doc, start, end, fragment) })
     },
 
@@ -2491,40 +2508,45 @@ export const useEditorStore = create<EditorStore>((set, get) => {
     // and one store write, whether it touches one annotation or five hundred.
 
     addAnnotation(data) {
-      if (transact(doc => addAnnotation(doc, data))) revealAnnotationTracks()
+      const label = `Add ${describeItems('feature', [data.name])}`
+      if (transact(doc => addAnnotation(doc, data), { label })) revealAnnotationTracks()
     },
 
     addAnnotations(dataArray) {
       if (dataArray.length === 0) return
-      if (transact(doc => dataArray.reduce(addAnnotation, doc))) revealAnnotationTracks()
+      const label = `Add ${describeItems('feature', dataArray.map(d => d.name))}`
+      if (transact(doc => dataArray.reduce(addAnnotation, doc), { label })) revealAnnotationTracks()
     },
 
     removeAnnotation(id) {
-      transact(doc => removeAnnotation(doc, id))
+      transact(doc => removeAnnotation(doc, id), { label: `Delete ${describeItems('feature', annotationNames([id]))}` })
     },
 
     removeAnnotations(ids) {
-      transact(doc => removeAnnotations(doc, ids))
+      transact(doc => removeAnnotations(doc, ids), { label: `Delete ${describeItems('feature', annotationNames(ids))}` })
     },
 
     updateAnnotation(id, patch) {
-      transact(doc => updateAnnotation(doc, id, patch))
+      transact(doc => updateAnnotation(doc, id, patch), { label: `Edit ${describeItems('feature', annotationNames([id]))}` })
     },
 
     updateAnnotations(ids, patch, opts) {
-      transact(doc => updateAnnotations(doc, ids, patch), opts)
+      transact(doc => updateAnnotations(doc, ids, patch), {
+        ...opts,
+        label: `Edit ${describeItems('feature', annotationNames(ids))}`,
+      })
     },
 
     addPrimers(primers) {
-      transact(doc => addPrimers(doc, primers))
+      transact(doc => addPrimers(doc, primers), { label: `Add ${describeItems('primer', primers.map(p => p.name))}` })
     },
 
     updatePrimer(id, patch) {
-      transact(doc => updatePrimer(doc, id, patch))
+      transact(doc => updatePrimer(doc, id, patch), { label: `Edit ${describeItems('primer', primerNames([id]))}` })
     },
 
     removePrimers(ids) {
-      transact(doc => removePrimers(doc, ids))
+      transact(doc => removePrimers(doc, ids), { label: `Delete ${describeItems('primer', primerNames(ids))}` })
     },
 
     convertFeaturesToPrimers(ids) {
@@ -2548,7 +2570,7 @@ export const useEditorStore = create<EditorStore>((set, get) => {
         }
         converted = primers.length
         return addPrimers(removeAnnotations(doc, done), primers)
-      })
+      }, { label: 'Convert features to primers' })
       return converted
     },
 
@@ -2567,7 +2589,8 @@ export const useEditorStore = create<EditorStore>((set, get) => {
       // the user has just stepped away from.
       endCoalesce()
       const prev = tab.undoStack[tab.undoStack.length - 1]
-      const redoSnap = undoSnapshot(tab.doc)
+      // The redo entry reapplies the same change, so it keeps the same name.
+      const redoSnap = { ...undoSnapshot(tab.doc), label: prev.label }
       updateActiveTab({
         doc: restoreUndo(prev, tab.doc.sequence),
         undoStack: tab.undoStack.slice(0, -1),
@@ -2581,7 +2604,7 @@ export const useEditorStore = create<EditorStore>((set, get) => {
       if (!tab || tab.readOnly || tab.redoStack.length === 0) return
       endCoalesce()
       const next = tab.redoStack[tab.redoStack.length - 1]
-      const undoSnap = undoSnapshot(tab.doc)
+      const undoSnap = { ...undoSnapshot(tab.doc), label: next.label }
       updateActiveTab({
         doc: restoreUndo(next, tab.doc.sequence),
         redoStack: tab.redoStack.slice(0, -1),
@@ -2642,7 +2665,7 @@ export const useEditorStore = create<EditorStore>((set, get) => {
       const tab = getActiveTab()
       if (!tab || tab.readOnly || tab.search.currentMatch < 0 || tab.search.currentMatch >= tab.search.matches.length) return
       const [s, e] = tab.search.matches[tab.search.currentMatch]
-      pushUndo()
+      pushUndo('Replace match')
       const newDoc = replaceBasesInPlace(get().doc, s, e, replacement.toUpperCase())
       const bases = newDoc.sequence.bases
       const circular = newDoc.sequence.topology === 'circular'
@@ -2659,7 +2682,8 @@ export const useEditorStore = create<EditorStore>((set, get) => {
     replaceAllMatches(replacement) {
       const tab = getActiveTab()
       if (!tab || tab.readOnly || tab.search.matches.length === 0) return
-      pushUndo()
+      const n = tab.search.matches.length
+      pushUndo(`Replace ${n.toLocaleString()} match${n === 1 ? '' : 'es'}`)
       const upper = replacement.toUpperCase()
       let doc = tab.doc
       for (let i = tab.search.matches.length - 1; i >= 0; i--) {

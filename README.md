@@ -784,3 +784,23 @@ untouched.
 - Hoover DM, Lubkowski J. (2002) "DNAWorks: an automated method for designing
   oligonucleotides for PCR-based gene synthesis."
   *Nucleic Acids Res* 30(10):e43.
+
+## License
+
+Copyright (C) 2026 Christopher Acatay
+
+SeqNexus is free software: you can redistribute it and/or modify it under the
+terms of the GNU Affero General Public License, version 3, as published by the
+Free Software Foundation. See [LICENSE](LICENSE) for the full text.
+
+In short: you may use, study, modify and share SeqNexus. If you distribute a
+modified version, or run one as a service that other people use over a network,
+you must make its complete source code available to those users under the same
+license.
+
+Figures, sequence files and other output you create with SeqNexus are yours and
+are not covered by this license; use them freely in publications, presentations,
+theses and commercial work.
+
+SeqNexus is distributed WITHOUT ANY WARRANTY; without even the implied warranty
+of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.

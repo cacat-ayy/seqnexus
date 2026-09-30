@@ -113,6 +113,12 @@ export interface UndoSnapshot {
   name: string
   description?: string
   metadata?: SequenceMetadata
+  /**
+   * What the change this entry reverts was, in a few words ("Add feature
+   * “lacZ”"), for the Undo and Redo tooltips. Optional: entries saved before
+   * labels existed, and edits made outside the store's mutators, have none.
+   */
+  label?: string
 }
 
 /** Create a lightweight undo snapshot. O(p) - no string materialization. */

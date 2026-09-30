@@ -2413,7 +2413,9 @@ function SequenceView({ onFindRequest, onAnnotateRequest, onEditFeature }: Seque
       }
     }
 
-    if (ctrlOrMeta && e.key === 'z') {
+    // Shift turns the key into 'Z', and Shift+Z is redo: the Mac shortcut the
+    // Redo tooltip advertises there.
+    if (ctrlOrMeta && (e.key === 'z' || e.key === 'Z')) {
       if (ro) { roBlock(); return }
       e.preventDefault()
       if (e.shiftKey) { store.redo() } else { store.undo() }

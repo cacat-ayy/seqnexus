@@ -39,6 +39,7 @@ import { loadStoredWorkspace, clearStoredWorkspace } from './gel/workspace'
 import { useSessionPersistence } from './hooks/useSessionPersistence'
 import { usePopoverDismiss } from './hooks/usePopoverDismiss'
 import { useToolbarDensity } from './hooks/useToolbarDensity'
+import { ToolbarTooltip, tip } from './components/ToolbarTooltip'
 import { useAutoAnnotateScan } from './hooks/useAutoAnnotateScan'
 import { proposalsFrom, matchKey } from './utils/auto-annotations'
 import { convertibleOrfs, orfKey } from './utils/orf-features'
@@ -50,7 +51,7 @@ import { getEnzyme, type RestrictionEnzyme } from './enzymes/db'
 import { findEnzymeSitesAsync } from './workers/enzyme-finder'
 import {
   File, Dna, FolderPlus, FileUp, FolderUp, ClipboardPaste, Save,
-  Undo2, Redo2, Search, Scissors, FlaskConical, TestTube,
+  Undo2, Redo2, Search, TextSearch, Scissors, FlaskConical, TestTube,
   BarChart3, ZoomOut, ZoomIn, PanelLeftOpen,
   X, ChevronDown as ChevronDownSmall,
   SunMoon, Info, List, Lock, LockOpen, Tag, Globe, GalleryVertical, AlignLeft, ArrowLeft, Wand2,
@@ -212,6 +213,11 @@ function reportExport(count: number, filename: string): void {
   }
 }
 
+function topLabel(stack: readonly { label?: string }[] | undefined): string | null {
+  if (!stack || stack.length === 0) return null
+  return stack[stack.length - 1].label ?? ''
+}
+
 export default function App() {
   const activeTabId = useEditorStore(s => s.activeTabId)
   const selectedExportableCount = useEditorStore(s => countSelectable(s.explorerSelectedIds))
@@ -234,6 +240,10 @@ export default function App() {
   const undo = useEditorStore(s => s.undo)
   const redo = useEditorStore(s => s.redo)
   const readOnly = useEditorStore(s => s.readOnly)
+  // The change the next Undo/Redo would revert or reapply: its label, '' for
+  // an unlabelled entry, or null when there is nothing to step to.
+  const undoTop = useEditorStore(s => topLabel(s.tabs.find(t => t.id === s.activeTabId)?.undoStack))
+  const redoTop = useEditorStore(s => topLabel(s.tabs.find(t => t.id === s.activeTabId)?.redoStack))
   const toggleReadOnly = useEditorStore(s => s.toggleReadOnly)
   const readOnlyBlockCount = useEditorStore(s => s.readOnlyBlockCount)
   const [lockFlash, setLockFlash] = useState(false)
@@ -1449,6 +1459,21 @@ export default function App() {
   const isMac = typeof navigator !== 'undefined' && /Mac|iPhone|iPad/.test(navigator.platform)
   const mod = isMac ? '⌘' : 'Ctrl+'
   const noDoc = !activeTabId
+  // Redo is Shift+Cmd+Z on a Mac; Cmd+Y is not a Mac convention.
+  const redoKey = isMac ? '⌘⇧Z' : 'Ctrl+Y'
+
+  // Shared by the Undo/Redo buttons and their palette entries, so the two
+  // cannot disagree about whether there is anything to step to.
+  const undoDisabled = activeGel ? activeGel.undoStack.length === 0 : noDoc || readOnly || undoTop === null
+  const redoDisabled = activeGel ? activeGel.redoStack.length === 0 : noDoc || readOnly || redoTop === null
+  const stepWhy = (verb: 'undo' | 'redo') =>
+    !activeGel && noDoc ? `Open a sequence to ${verb} its edits`
+      : !activeGel && readOnly ? 'This sequence is read-only. Unlock it to edit'
+      : `Nothing to ${verb}`
+
+  // Why most of the analysis tools are greyed out: they act on a sequence,
+  // and an alignment, read or gel on screen is not one.
+  const needsSequence = 'Open a sequence to use this'
 
   const commands = useMemo<Command[]>(() => [
     // --- File ---
@@ -1463,9 +1488,9 @@ export default function App() {
     { id: 'session-import', label: 'Import Session', group: 'File', run: () => sessionImportInputRef.current?.click() },
 
     // --- Edit ---
-    { id: 'undo', label: 'Undo', group: 'Edit', icon: Undo2, shortcut: `${mod}Z`, disabled: activeGel ? activeGel.undoStack.length === 0 : noDoc || readOnly, run: () => (activeGel ? undoGel(activeGel.id) : undo()) },
-    { id: 'redo', label: 'Redo', group: 'Edit', icon: Redo2, shortcut: `${mod}Y`, disabled: activeGel ? activeGel.redoStack.length === 0 : noDoc || readOnly, run: () => (activeGel ? redoGel(activeGel.id) : redo()) },
-    { id: 'find', label: 'Find & Replace', group: 'Edit', icon: Search, shortcut: `${mod}F`, run: handleOpenFind },
+    { id: 'undo', label: 'Undo', group: 'Edit', icon: Undo2, shortcut: `${mod}Z`, disabled: undoDisabled, run: () => (activeGel ? undoGel(activeGel.id) : undo()) },
+    { id: 'redo', label: 'Redo', group: 'Edit', icon: Redo2, shortcut: redoKey, disabled: redoDisabled, run: () => (activeGel ? redoGel(activeGel.id) : redo()) },
+    { id: 'find', label: 'Find & Replace', group: 'Edit', icon: TextSearch, shortcut: `${mod}F`, run: handleOpenFind },
     { id: 'goto', label: 'Go to Position', group: 'Edit', shortcut: `${mod}G`, disabled: noDoc, run: () => { setGotoValue(''); setGotoActive(true); requestAnimationFrame(() => gotoInputRef.current?.focus()) } },
 
     // --- Analyse ---
@@ -1504,7 +1529,7 @@ export default function App() {
     { id: 'theme', label: 'Change Theme', group: 'View', icon: SunMoon, keywords: 'dark light appearance', run: () => setThemeOpen(true) },
     { id: 'about', label: 'About SeqNexus', group: 'View', icon: Info, keywords: 'help version', run: () => setInfoOpen(true) },
   ], [
-    mod, noDoc, readOnly, undo, redo, handleOpenFind, handleNewSequence, handleNewFolder, openGel, activeGel, undoGel, redoGel,
+    mod, redoKey, noDoc, undoDisabled, redoDisabled, undo, redo, handleOpenFind, handleNewSequence, handleNewFolder, openGel, activeGel, undoGel, redoGel,
     handleImportClipboard, toggleOrfs, toggleEnzymes, openSidebar, openPrimerDesign, toggleAutoAnnotations,
   ])
 
@@ -1540,11 +1565,11 @@ export default function App() {
     >
       {/* === Top Toolbar === */}
       <div className={toolbarClass} ref={toolbarRef}>
-        <a href="index.html" className="tb toolbar-icon-btn toolbar-back" title="Back to homepage">
+        <a href="index.html" className="tb toolbar-icon-btn toolbar-back" {...tip({ label: 'Back to homepage' })}>
           <ArrowLeft size={16} />
         </a>
         <div className="toolbar-group file-menu-wrap" ref={fileMenuRef}>
-          <button className="tb" onClick={() => setFileMenuOpen(v => !v)} title="File menu" aria-haspopup="menu" aria-expanded={fileMenuOpen}>
+          <button className="tb" onClick={() => setFileMenuOpen(v => !v)} {...tip({ label: 'File', desc: 'New, import and export' })} aria-haspopup="menu" aria-expanded={fileMenuOpen}>
             <span className="tb-icon"><File size={14} /></span><span className="tb-text">File</span> <ChevronDownSmall size={10} />
           </button>
           {fileMenuOpen && (
@@ -1629,35 +1654,45 @@ export default function App() {
         </div>
 
         <div className="toolbar-group">
-          <button className="tb" onClick={() => (activeGel ? undoGel(activeGel.id) : undo())} disabled={activeGel ? activeGel.undoStack.length === 0 : !activeTabId || readOnly} title="Undo (Ctrl+Z)">
+          <button
+            className="tb"
+            onClick={() => (activeGel ? undoGel(activeGel.id) : undo())}
+            disabled={undoDisabled}
+            {...tip({ label: 'Undo', shortcut: `${mod}Z`, desc: activeGel ? undefined : undoTop || undefined, why: stepWhy('undo') })}
+          >
             <Undo2 size={14} />
           </button>
-          <button className="tb" onClick={() => (activeGel ? redoGel(activeGel.id) : redo())} disabled={activeGel ? activeGel.redoStack.length === 0 : !activeTabId || readOnly} title="Redo (Ctrl+Y)">
+          <button
+            className="tb"
+            onClick={() => (activeGel ? redoGel(activeGel.id) : redo())}
+            disabled={redoDisabled}
+            {...tip({ label: 'Redo', shortcut: redoKey, desc: activeGel ? undefined : redoTop || undefined, why: stepWhy('redo') })}
+          >
             <Redo2 size={14} />
           </button>
         </div>
 
         <div className="toolbar-group">
-          <button className="tb" onClick={handleOpenFind} disabled={!activeTabId && activeSequencingReadIds.length === 0 && !activeAlignmentId && !activeContigId} title="Find & Replace (Ctrl+F)">
-            <span className="tb-icon"><Search size={14} /></span><span className="tb-text">Find</span>
+          <button className="tb" onClick={handleOpenFind} disabled={!activeTabId && activeSequencingReadIds.length === 0 && !activeAlignmentId && !activeContigId} {...tip({ label: 'Find & Replace', shortcut: `${mod}F`, desc: 'Search the open sequence, read, alignment or contig', why: 'Open something to search it' })}>
+            <span className="tb-icon"><TextSearch size={14} /></span><span className="tb-text">Find</span>
           </button>
         </div>
 
         <div className="toolbar-group">
-          <button className="tb" onClick={() => setAnnotateModalOpen(true)} disabled={!activeTabId} title="Annotate sequence features">
+          <button className="tb" onClick={() => setAnnotateModalOpen(true)} disabled={!activeTabId} {...tip({ label: 'Annotate features', desc: 'Detect known features such as promoters, markers and origins', why: needsSequence })}>
             <span className="tb-icon"><Tag size={14} /></span><span className="tb-text">Annotate</span>
           </button>
-          <button className="tb" onClick={() => setOrfModalOpen(true)} disabled={!activeTabId} title="Open reading frame finder">
+          <button className="tb" onClick={() => setOrfModalOpen(true)} disabled={!activeTabId} {...tip({ label: 'Find ORFs', desc: 'Scan all six frames for open reading frames', why: needsSequence })}>
             <span className="tb-icon"><Dna size={14} /></span><span className="tb-text">ORFs</span>
           </button>
-          <button className="tb" onClick={() => setEnzymeModalOpen(true)} disabled={!activeTabId} title="Restriction enzyme analysis">
+          <button className="tb" onClick={() => setEnzymeModalOpen(true)} disabled={!activeTabId} {...tip({ label: 'Restriction enzymes', desc: 'Find cut sites and choose enzymes to show', why: needsSequence })}>
             <span className="tb-icon"><Scissors size={14} /></span><span className="tb-text">Enzymes</span>
           </button>
-          <button className="tb" onClick={openPrimerDesign} disabled={!activeTabId} title="Design primers">
+          <button className="tb" onClick={openPrimerDesign} disabled={!activeTabId} {...tip({ label: 'Primers', desc: 'Design primers and manage the primer library', why: needsSequence })}>
             <span className="tb-icon"><FlaskConical size={14} /></span><span className="tb-text">Primers</span>
           </button>
           <div className="tb-split" ref={cloningBtnRef}>
-            <button className="tb" onClick={() => { setCloningInitialMethod(undefined); setCloningModalOpen(true) }} disabled={!activeTabId} title="In-silico cloning">
+            <button className="tb" onClick={() => { setCloningInitialMethod(undefined); setCloningModalOpen(true) }} disabled={!activeTabId} {...tip({ label: 'Cloning', desc: 'Simulate restriction, Gibson, Golden Gate and other assemblies', why: needsSequence })}>
               <span className="tb-icon"><TestTube size={14} /></span><span className="tb-text">Cloning</span>
             </button>
             <button
@@ -1666,8 +1701,8 @@ export default function App() {
               onClick={() => setCloningDropdownOpen(v => !v)}
               aria-haspopup="menu"
               aria-expanded={cloningDropdownOpen}
-              aria-label="More cloning methods"
-              >
+              {...tip({ label: 'More cloning methods', why: needsSequence })}
+            >
               <ChevronDownSmall size={12} />
             </button>
             {cloningDropdownOpen && activeTabId && (
@@ -1693,18 +1728,23 @@ export default function App() {
               </div>
             )}
           </div>
-          <button className="tb" onClick={() => setBlastModalOpen(true)} disabled={!activeTabId} title={blastPhase === 'polling' ? 'BLAST search running...' : blastPhase === 'results' ? 'BLAST results ready' : 'NCBI BLAST search'}>
+          <button className="tb" onClick={() => setBlastModalOpen(true)} disabled={!activeTabId} {...tip({
+            label: 'BLAST',
+            desc: 'Search NCBI for similar sequences',
+            status: blastPhase === 'polling' ? 'Search running…' : blastPhase === 'results' ? 'Results ready' : undefined,
+            why: needsSequence,
+          })}>
             <span className="tb-icon"><Globe size={14} /></span><span className="tb-text">BLAST</span>
             {blastPhase === 'polling' && <span className="tb-badge tb-badge-pulse" />}
             {blastPhase === 'results' && <span className="tb-badge tb-badge-done" />}
           </button>
-          <button className="tb" onClick={() => setAlignModalOpen(true)} title="Sequence alignment">
+          <button className="tb" onClick={() => setAlignModalOpen(true)} {...tip({ label: 'Align', desc: 'Pairwise and multiple sequence alignment' })}>
             <span className="tb-icon"><AlignLeft size={14} /></span><span className="tb-text">Align</span>
           </button>
-          <button className={`tb ${gelOpen ? 'active' : ''}`} onClick={() => (gelOpen ? setActiveGel(null) : openGel())} aria-pressed={gelOpen} title="Virtual gel electrophoresis">
+          <button className={`tb ${gelOpen ? 'active' : ''}`} onClick={() => (gelOpen ? setActiveGel(null) : openGel())} aria-pressed={gelOpen} {...tip({ label: 'Gel', desc: gelOpen ? 'Close the gel and return to the sequence' : 'Simulate agarose gel electrophoresis' })}>
             <span className="tb-icon"><GalleryVertical size={14} /></span><span className="tb-text">Gel</span>
           </button>
-          <button className="tb" onClick={() => setCodonModalOpen(true)} disabled={!activeTabId} title="Codon optimization">
+          <button className="tb" onClick={() => setCodonModalOpen(true)} disabled={!activeTabId} {...tip({ label: 'Optimize codons', desc: 'Recode a coding sequence for an expression host', why: needsSequence })}>
             <span className="tb-icon"><Wand2 size={14} /></span><span className="tb-text">Optimize</span>
           </button>
         </div>
@@ -1716,11 +1756,11 @@ export default function App() {
               const cz = activeContig.zoomLevel
               return (
                 <>
-                  <button className="tb" onClick={() => setContigZoom(activeContig.id, cz - 1)} disabled={cz <= 0} title="Zoom out">
+                  <button className="tb" onClick={() => setContigZoom(activeContig.id, cz - 1)} disabled={cz <= 0} {...tip({ label: 'Zoom out' })}>
                     <span className="tb-icon"><ZoomOut size={14} /></span>
                   </button>
                   <span className="tb zoom-label" title={`Zoom level ${cz}`}>{Math.round(cz / 9 * 100)}%</span>
-                  <button className="tb" onClick={() => setContigZoom(activeContig.id, cz + 1)} disabled={cz >= 9} title="Zoom in">
+                  <button className="tb" onClick={() => setContigZoom(activeContig.id, cz + 1)} disabled={cz >= 9} {...tip({ label: 'Zoom in' })}>
                     <span className="tb-icon"><ZoomIn size={14} /></span>
                   </button>
                 </>
@@ -1731,11 +1771,11 @@ export default function App() {
               const rz = activeRA.zoomLevel
               return (
                 <>
-                  <button className="tb" onClick={() => setReadAlignmentZoom(activeRA.id, rz - 1)} disabled={rz <= 0} title="Zoom out">
+                  <button className="tb" onClick={() => setReadAlignmentZoom(activeRA.id, rz - 1)} disabled={rz <= 0} {...tip({ label: 'Zoom out' })}>
                     <span className="tb-icon"><ZoomOut size={14} /></span>
                   </button>
                   <span className="tb zoom-label" title={`Zoom level ${rz}`}>{Math.round(rz / 9 * 100)}%</span>
-                  <button className="tb" onClick={() => setReadAlignmentZoom(activeRA.id, rz + 1)} disabled={rz >= 9} title="Zoom in">
+                  <button className="tb" onClick={() => setReadAlignmentZoom(activeRA.id, rz + 1)} disabled={rz >= 9} {...tip({ label: 'Zoom in' })}>
                     <span className="tb-icon"><ZoomIn size={14} /></span>
                   </button>
                 </>
@@ -1746,11 +1786,11 @@ export default function App() {
               const az = activeAlign.zoomLevel
               return (
                 <>
-                  <button className="tb" onClick={() => setAlignmentZoom(activeAlign.id, az - 1)} disabled={az <= 0} title="Zoom out">
+                  <button className="tb" onClick={() => setAlignmentZoom(activeAlign.id, az - 1)} disabled={az <= 0} {...tip({ label: 'Zoom out' })}>
                     <span className="tb-icon"><ZoomOut size={14} /></span>
                   </button>
                   <span className="tb zoom-label" title={`Zoom level ${az}`}>{Math.round(az / 9 * 100)}%</span>
-                  <button className="tb" onClick={() => setAlignmentZoom(activeAlign.id, az + 1)} disabled={az >= 9} title="Zoom in">
+                  <button className="tb" onClick={() => setAlignmentZoom(activeAlign.id, az + 1)} disabled={az >= 9} {...tip({ label: 'Zoom in' })}>
                     <span className="tb-icon"><ZoomIn size={14} /></span>
                   </button>
                 </>
@@ -1759,11 +1799,11 @@ export default function App() {
             if (activeSequencingReadIds.length > 0) {
               return (
                 <>
-                  <button className="tb" onClick={() => chromZoomRef.current?.zoomOut()} disabled={chromZoomPct <= 0} title="Zoom out">
+                  <button className="tb" onClick={() => chromZoomRef.current?.zoomOut()} disabled={chromZoomPct <= 0} {...tip({ label: 'Zoom out' })}>
                     <span className="tb-icon"><ZoomOut size={14} /></span>
                   </button>
                   <span className="tb zoom-label">{chromZoomPct}%</span>
-                  <button className="tb" onClick={() => chromZoomRef.current?.zoomIn()} disabled={chromZoomPct >= 100} title="Zoom in">
+                  <button className="tb" onClick={() => chromZoomRef.current?.zoomIn()} disabled={chromZoomPct >= 100} {...tip({ label: 'Zoom in' })}>
                     <span className="tb-icon"><ZoomIn size={14} /></span>
                   </button>
                 </>
@@ -1771,11 +1811,11 @@ export default function App() {
             }
             return (
               <>
-                <button className="tb" onClick={() => setZoom(zoomLevel - 1)} disabled={!activeTabId || zoomLevel <= 0} title="Zoom out">
+                <button className="tb" onClick={() => setZoom(zoomLevel - 1)} disabled={!activeTabId || zoomLevel <= 0} {...tip({ label: 'Zoom out' })}>
                   <span className="tb-icon"><ZoomOut size={14} /></span>
                 </button>
                 <span className="tb zoom-label" title={`Zoom level ${zoomLevel}`}>{Math.round(zoomLevel / 20 * 100)}%</span>
-                <button className="tb" onClick={() => setZoom(zoomLevel + 1)} disabled={!activeTabId || zoomLevel >= 20} title="Zoom in">
+                <button className="tb" onClick={() => setZoom(zoomLevel + 1)} disabled={!activeTabId || zoomLevel >= 20} {...tip({ label: 'Zoom in' })}>
                   <span className="tb-icon"><ZoomIn size={14} /></span>
                 </button>
               </>
@@ -1790,7 +1830,7 @@ export default function App() {
         <button
           className="tb tb-palette"
           onClick={() => setPaletteOpen(true)}
-          title="Search commands"
+          {...tip({ label: 'Search commands', shortcut: `${mod}K`, desc: 'Find and run any command by name' })}
           aria-haspopup="dialog"
           aria-expanded={paletteOpen}
         >
@@ -1802,10 +1842,9 @@ export default function App() {
           ref={themeBtnRef}
           className="tb toolbar-icon-btn"
           onClick={() => { setThemeOpen(v => !v); setInfoOpen(false) }}
-          title="Theme"
+          {...tip({ label: 'Theme' })}
           aria-haspopup="dialog"
           aria-expanded={themeOpen}
-          aria-label="Theme"
         >
           <SunMoon size={16} />
         </button>
@@ -1813,14 +1852,15 @@ export default function App() {
           ref={infoBtnRef}
           className="tb toolbar-icon-btn"
           onClick={() => { setInfoOpen(v => !v); setThemeOpen(false) }}
-          title="About SeqNexus"
+          {...tip({ label: 'About SeqNexus' })}
           aria-haspopup="dialog"
           aria-expanded={infoOpen}
-          aria-label="About SeqNexus"
         >
           <Info size={16} />
         </button>
       </div>
+
+      <ToolbarTooltip container={toolbarRef} />
 
       {/* Theme popover - rendered outside toolbar to avoid overflow clipping */}
       {themeOpen && (() => {
@@ -1893,10 +1933,14 @@ export default function App() {
               </div>
               <hr />
               <div className="info-row"><span className="info-label">Author</span><span><a href="mailto:contact@seqnexus.app">Christopher Acatay</a></span></div>
-              <div className="info-row"><span className="info-label">License</span><span>MIT: free for any use</span></div>
+              <div className="info-row"><span className="info-label">License</span><span><a href="https://www.gnu.org/licenses/agpl-3.0.html" target="_blank" rel="noopener noreferrer">GNU AGPL v3</a></span></div>
+              {/* The AGPL obliges anyone running a modified copy to offer its
+                  source to the people using it; a link here is how this copy
+                  does that, and one a fork keeps by default. */}
+              <div className="info-row"><span className="info-label">Source</span><span><a href="https://github.com/cacat-ayy/seqnexus" target="_blank" rel="noopener noreferrer">github.com/cacat-ayy/seqnexus</a></span></div>
               <hr />
               <div className="info-notice">
-                <strong>Free to use.</strong> SeqNexus is open-source under the MIT license. All generated figures may be used freely in publications, presentations, theses, and commercial work.
+                <strong>Free to use.</strong> SeqNexus is open-source under the GNU AGPL v3: you may use, modify and share it, and modified versions you distribute or host must publish their source under the same license. All generated figures may be used freely in publications, presentations, theses, and commercial work.
               </div>
               <hr />
               <div className="info-section-title">How to Cite</div>
