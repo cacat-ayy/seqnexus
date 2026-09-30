@@ -6,11 +6,21 @@
   border-radius: var(--radius-popover);
   padding: var(--space-1) 0;
   min-width: 200px;
+  max-width: 320px;
+  /* Never taller than the window: a short laptop screen scrolls the menu
+     instead of cutting its last items off. */
+  max-height: calc(100vh - 16px);
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
   box-shadow: var(--shadow-popover);
   backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px);
-  overflow: hidden;
   animation: ctx-pop-in .12s ease;
+  outline: none;
+}
+.ctx-submenu {
+  min-width: 180px;
 }
 
 @keyframes ctx-pop-in {
@@ -36,33 +46,70 @@
 }
 
 .ctx-menu-item {
-  display: block;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
   width: 100%;
   background: none;
   border: none;
   border-left: 3px solid transparent;
   color: var(--text);
   font-size: var(--text-sm);
-  padding: var(--space-2) var(--space-3-5) var(--space-2) var(--space-3);
+  padding: var(--space-1-5) var(--space-3-5) var(--space-1-5) var(--space-3);
   cursor: pointer;
   text-align: left;
   white-space: nowrap;
   transition: background var(--dur-fast), border-color var(--dur-fast), color var(--dur-fast);
 }
 
-.ctx-menu-item:hover {
+.ctx-menu-item:hover,
+.ctx-menu-item:focus,
+.ctx-menu-trigger.open {
+  outline: none;
   background: color-mix(in srgb, var(--accent) 8%, transparent);
   border-left-color: var(--accent);
+}
+
+.ctx-menu-item:disabled {
+  color: var(--text-muted);
+  cursor: default;
 }
 
 .ctx-menu-item.ctx-menu-danger {
   color: var(--danger);
 }
 
-.ctx-menu-item.ctx-menu-danger:hover {
+.ctx-menu-item.ctx-menu-danger:hover,
+.ctx-menu-item.ctx-menu-danger:focus {
   background: var(--danger-bg);
   border-left-color: var(--danger);
 }
+
+.ctx-menu-icon {
+  display: inline-flex;
+  flex-shrink: 0;
+  width: 14px;
+  justify-content: center;
+  color: var(--text-secondary);
+}
+.ctx-menu-icon:empty { display: none; }
+.ctx-menu-danger .ctx-menu-icon { color: inherit; }
+
+.ctx-menu-label {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.ctx-menu-shortcut,
+.ctx-menu-chevron {
+  flex-shrink: 0;
+  margin-left: var(--space-4);
+  color: var(--text-muted);
+  font-size: var(--text-xs);
+}
+.ctx-menu-chevron { margin-left: var(--space-2); }
 
 .ctx-menu-sep {
   height: 1px;
@@ -70,13 +117,56 @@
   margin: var(--space-1) var(--space-2-5);
 }
 
-/* Tooltip content embedded inside context menu */
-.ctx-menu-tooltip-embed {
+/* Compact summary of what was clicked, at the top of the menu */
+.ctx-menu-head {
+  margin: calc(-1 * var(--space-1)) 0 var(--space-1);
+  padding: var(--space-2) var(--space-3);
   border-bottom: 1px solid var(--border);
-  margin: -4px 0 4px;  /* negate parent padding-top so tooltip sits flush */
-  max-width: 300px;
+  background: color-mix(in srgb, var(--accent) 4%, transparent);
+  max-width: 320px;
 }
-.ctx-menu-tooltip-embed + .ctx-menu-tooltip-embed {
-  margin-top: 0;
+.ctx-menu-head-title {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1-5);
+  font-weight: 700;
+  font-size: var(--text-sm);
+  letter-spacing: .04em;
+  text-transform: uppercase;
+  color: var(--accent);
 }
+.ctx-menu-head-title .hc-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ctx-menu-head-enzyme .ctx-menu-head-title { color: var(--danger); }
+.ctx-menu-head-enzyme .hc-chip {
+  background: var(--danger-bg);
+  color: var(--danger);
+}
+.ctx-menu-head-meta {
+  margin-top: 2px;
+  font-size: var(--text-xs);
+  color: var(--text-secondary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.ctx-menu-head-warn {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  margin-top: 2px;
+  font-size: var(--text-xs);
+  color: var(--warning);
+}
+.ctx-menu-head + .ctx-menu-head { margin-top: 0; }
 
+/* The highlight is the focus indicator; the app-wide button outline on top of
+   it would draw a second box. */
+.ctx-menu .ctx-menu-item:focus-visible {
+  outline: none;
+}

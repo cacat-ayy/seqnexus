@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { primerItems, templatePosOf, summarizeOligo, isPrimerItemId } from './display'
+import { primerItems, templatePosOf, summarizeOligo, isPrimerItemId, flankingPrimers, oligoStructure } from './display'
 import type { BindingSite } from './binding'
 import type { PrimerData } from './oligo'
 
@@ -65,5 +65,46 @@ describe('summarizeOligo', () => {
 
   it('has no annealed Tm when the primer binds nowhere', () => {
     expect(summarizeOligo(primer(), null).tmAnneal).toBeNull()
+  })
+})
+
+describe('flankingPrimers', () => {
+  const oligo = (id: string, role: PrimerData['role'] = 'primer') => primer({ id, name: id, role })
+  const at = (id: string, start: number, end: number, strand: 1 | -1): BindingSite =>
+    site({ primerId: id, start, end, strand, annealFrom: 0, annealTo: end - start, tail5: '' })
+  const build = (seqLen: number, entries: [PrimerData, BindingSite][]) =>
+    primerItems(entries.map(([p]) => p), new Map(entries.map(([p, s]) => [p.id, [s]])), seqLen)
+
+  it('finds the nearest forward primer before a probe and reverse primer after it', () => {
+    const items = build(1000, [
+      [oligo('farF'), at('farF', 10, 30, 1)],
+      [oligo('F'), at('F', 100, 120, 1)],
+      [oligo('probe', 'probe'), at('probe', 140, 165, 1)],
+      [oligo('R'), at('R', 200, 220, -1)],
+      [oligo('farR'), at('farR', 400, 420, -1)],
+    ])
+    const probe = items.find(i => i.primer.id === 'probe')!
+    const pair = flankingPrimers(probe, items, 1000, false)!
+    expect(pair.fwd.primer.id).toBe('F')
+    expect(pair.rev.primer.id).toBe('R')
+  })
+
+  it('wraps the origin only on a circle, and gives up past the span limit', () => {
+    const items = build(1000, [
+      [oligo('F'), at('F', 950, 970, 1)],
+      [oligo('probe', 'probe'), at('probe', 10, 35, 1)],
+      [oligo('R'), at('R', 60, 80, -1)],
+    ])
+    const probe = items.find(i => i.primer.id === 'probe')!
+    expect(flankingPrimers(probe, items, 1000, true)?.fwd.primer.id).toBe('F')
+    expect(flankingPrimers(probe, items, 1000, false)).toBeNull()
+    expect(flankingPrimers(probe, items, 1000, true, 50)).toBeNull()
+  })
+})
+
+describe('oligoStructure', () => {
+  it('returns the same analysis for the same oligo, whatever its case', () => {
+    expect(oligoStructure('ggatccGCGGCCGCGGATCC')).toBe(oligoStructure('GGATCCGCGGCCGCGGATCC'))
+    expect(oligoStructure('GGATCCGCGGCCGCGGATCC').hairpin?.stem).toBe(8)
   })
 })

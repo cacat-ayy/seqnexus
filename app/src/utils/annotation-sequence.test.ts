@@ -7,6 +7,9 @@ import {
   annotationProtein,
   canTranslateAnnotation,
   isCodingAnnotation,
+  annotationLength,
+  headTail,
+  translationIssues,
 } from './annotation-sequence'
 
 const ann = (data: Partial<AnnotationData> = {}): Annotation =>
@@ -153,5 +156,50 @@ describe('canTranslateAnnotation', () => {
         expect(annotationProtein(a, seq).length).toBeGreaterThan(0)
       }
     }
+  })
+})
+
+describe('translationIssues', () => {
+  it('is null for a clean CDS', () => {
+    const seq = new Sequence('ATGAAATTTTAA', 'linear')
+    expect(translationIssues(ann({ start: 0, end: 12 }), seq)).toBeNull()
+  })
+
+  it('counts stops before the last codon, but not the last one', () => {
+    const seq = new Sequence('ATGTAAAAATGATAA', 'linear')
+    expect(translationIssues(ann({ start: 0, end: 15 }), seq)).toEqual({ internalStops: 2, leftover: 0, badStart: null })
+  })
+
+  it('reports leftover bases and a codon that cannot start translation', () => {
+    const seq = new Sequence('ACCATGATTACGC', 'linear')
+    expect(translationIssues(ann({ start: 0, end: 13 }), seq)).toEqual({ internalStops: 0, leftover: 1, badStart: 'ACC' })
+  })
+
+  it('accepts GTG and TTG as starts, and skips the start check for a declared offset', () => {
+    expect(translationIssues(ann({ start: 0, end: 6 }), new Sequence('GTGAAA', 'linear'))).toBeNull()
+    expect(translationIssues(
+      ann({ start: 0, end: 7, qualifiers: { codon_start: ['2'] } }),
+      new Sequence('CACCAAA', 'linear'),
+    )).toBeNull()
+  })
+
+  it('leaves genes and ORFs alone', () => {
+    const seq = new Sequence('ACCTAAAAA', 'linear')
+    expect(translationIssues(ann({ type: 'gene', start: 0, end: 9 }), seq)).toBeNull()
+    expect(translationIssues(ann({ id: '_orf_1', start: 0, end: 9 }), seq)).toBeNull()
+  })
+})
+
+describe('headTail', () => {
+  it('keeps short text whole and long text to its two ends', () => {
+    expect(headTail('ACGT', 10)).toBeNull()
+    expect(headTail('ABCDEFGHIJKL', 7)).toEqual({ head: 'ABC', tail: 'JKL' })
+  })
+})
+
+describe('annotationLength', () => {
+  it('measures a feature that wraps the origin', () => {
+    expect(annotationLength(ann({ start: 8, end: 2 }), 10)).toBe(4)
+    expect(annotationLength(ann({ start: 2, end: 8 }), 10)).toBe(6)
   })
 })

@@ -249,9 +249,13 @@ export default function ChromatogramView({ readId, forceHorizontal, compact, zoo
   useEffect(() => {
     if (!ctxMenu) return
     const dismiss = () => setCtxMenu(null)
+    // Scrolling the menu itself, on a short screen, must not close it.
+    const scroll = (e: Event) => {
+      if (!(e.target instanceof Element && e.target.closest('.ctx-menu'))) dismiss()
+    }
     window.addEventListener('mousedown', dismiss)
-    window.addEventListener('scroll', dismiss, true)
-    return () => { window.removeEventListener('mousedown', dismiss); window.removeEventListener('scroll', dismiss, true) }
+    window.addEventListener('scroll', scroll, true)
+    return () => { window.removeEventListener('mousedown', dismiss); window.removeEventListener('scroll', scroll, true) }
   }, [ctxMenu])
 
   // Trim drag state
@@ -2552,7 +2556,7 @@ export default function ChromatogramView({ readId, forceHorizontal, compact, zoo
 
       {/* Context menu */}
       {ctxMenu && (
-        <ContextMenuPopup x={ctxMenu.x} y={ctxMenu.y}>
+        <ContextMenuPopup x={ctxMenu.x} y={ctxMenu.y} onClose={() => setCtxMenu(null)} label="Read actions">
           <button className="ctx-menu-item" onClick={() => { handleCopy(); setCtxMenu(null) }}>
             Copy{selRange ? ` (${selRange.end - selRange.start} bp)` : ''}
           </button>

@@ -25,12 +25,11 @@ import { getLayout, baseX as zBaseX, type ZoomLayout, RowLayoutMap } from './zoo
 import type { CutSite } from '../enzymes/finder'
 import { methylationEffect } from '../enzymes/db'
 import { orfColor } from '../workers/orf-finder'
-import AnnotationTooltip, { AnnotationTooltipContent } from './AnnotationTooltip'
-import { annotationBases, annotationProtein, canTranslateAnnotation } from '../utils/annotation-sequence'
-import { copyText, readText } from '../utils/clipboard'
+import AnnotationTooltip from './AnnotationTooltip'
+import { copyText } from '../utils/clipboard'
 import { useDelayedHover, type HoverTarget } from '../hooks/useDelayedHover'
-import EnzymeTooltip, { EnzymeGroupTooltipContent } from './EnzymeTooltip'
-import ContextMenuPopup from './ContextMenuPopup'
+import EnzymeTooltip from './EnzymeTooltip'
+import SequenceContextMenu from './SequenceContextMenu'
 import ConfirmDialog from './ConfirmDialog'
 import { calcTm } from '../primers/thermodynamics'
 import MinimapBar from './MinimapBar'
@@ -81,12 +80,10 @@ import {
 } from '../utils/auto-annotations'
 import { orfIdFor, orfName, keyFromOrfId } from '../utils/orf-features'
 import { isWidgetKeyTarget } from '../utils/key-target'
-import { usePrimerSites, useDesignPreview, DESIGN_ROLES, designOligoId } from '../primers/usePrimerSites'
+import { usePrimerSites, useDesignPreview } from '../primers/usePrimerSites'
 import { primerItems, isPrimerItemId, type PrimerItem } from '../primers/display'
 import { drawPrimerItem } from './primer-draw'
-import PrimerTooltip, { PrimerTooltipContent } from './primers/PrimerTooltip'
-import { newPrimerId } from '../primers/oligo'
-import { notify } from '../toast'
+import PrimerTooltip from './primers/PrimerTooltip'
 
 // Module-level layout ref - set during draw(), used by hit-test helpers
 function baseX(i: number, rowStart: number, L: ZoomLayout): number {
@@ -574,7 +571,7 @@ function hitTestSelectionEdge(
 
 import { COMPLEMENT, reverseComplement as reverseComplementStr } from '../models/complement'
 
-import { translateCodon, translate as translateSequenceStr } from '../utils/codon'
+import { translateCodon } from '../utils/codon'
 
 // EnzymeTooltipPopup alias for backward compat within this file
 const EnzymeTooltipPopup = EnzymeTooltip
@@ -638,8 +635,7 @@ function SequenceView({ onFindRequest, onAnnotateRequest, onEditFeature }: Seque
   const enzymeCutSites = showEnzymes ? allEnzymeCutSites : []
   const orfResults = showOrfs ? allOrfResults : []
 
-  // Actions used in JSX event handlers (context menu)
-  const setSelection = useEditorStore(s => s.setSelection)
+  // Used by the delete confirmation
   const removeAnnotation = useEditorStore(s => s.removeAnnotation)
 
   const [hoveredEnzymeGroup, setHoveredEnzymeGroup] = useState<GroupedCutSite | null>(null)
@@ -2347,30 +2343,10 @@ function SequenceView({ onFindRequest, onAnnotateRequest, onEditFeature }: Seque
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  // Close context menu on outside click or scroll
-  // (ContextMenuPopup stops mousedown/mouseup propagation, so any event
-  // reaching the window is outside the menu)
-  useEffect(() => {
-    if (!ctxMenu) return
-    let downOutside = false
-    const handleDown = () => { downOutside = true }
-    const handleUp = () => {
-      if (downOutside) setCtxMenu(null)
-      downOutside = false
-    }
-    const closeScroll = () => setCtxMenu(null)
-    window.addEventListener('mousedown', handleDown)
-    window.addEventListener('mouseup', handleUp)
-    window.addEventListener('scroll', closeScroll, true)
-    return () => {
-      window.removeEventListener('mousedown', handleDown)
-      window.removeEventListener('mouseup', handleUp)
-      window.removeEventListener('scroll', closeScroll, true)
-    }
-  }, [ctxMenu])
+  // The menu closes itself on outside clicks, scrolling and Escape.
+  const closeCtxMenu = useCallback(() => setCtxMenu(null), [])
 
   // --- Keyboard handler ---
-  const readOnly = useEditorStore(s => s.readOnly)
 
   const handleKeyDown = useCallback((e: KeyboardEvent) => {
     // Don't capture keystrokes aimed at text fields or at a widget that runs
@@ -2785,6 +2761,7 @@ function SequenceView({ onFindRequest, onAnnotateRequest, onEditFeature }: Seque
             <PrimerTooltip
               item={primerItem}
               siteCount={siteCountOf(primerItem)}
+              items={allPrimerItems}
               x={annTooltip.x}
               y={annTooltip.y}
             />
@@ -2802,318 +2779,18 @@ function SequenceView({ onFindRequest, onAnnotateRequest, onEditFeature }: Seque
         )
       })()}
 
-      {/* Context menu with embedded tooltip */}
-      {ctxMenu && (() => {
-        const ctxSegs = selectionSegments(selection, doc.sequence.topology, doc.sequence.length)
-        const hasSelection = ctxSegs.length > 0
-        const ctxPrimer = ctxMenu.annId ? primerItemById.get(ctxMenu.annId) ?? null : null
-        const ctxAnn = ctxMenu.annId && !ctxPrimer
-          ? allAnnotations.find(a => a.id === ctxMenu.annId) ?? null
-          : null
-        const isUserAnn = ctxAnn && !ctxAnn.id.startsWith('_orf_')
-          && !isAutoAnnotationId(ctxAnn.id)
-
-        const ctxEnzymeGroup = ctxMenu.enzymeGroup
-
-        const getCtxSelectedBases = () => {
-          let text = ''
-          for (const [s, e] of ctxSegs) text += doc.sequence.basesIn(s, e)
-          return text
-        }
-
-        const handleCopy = () => {
-          if (!hasSelection) return
-          const bases = getCtxSelectedBases()
-          copyText(bases, `Copied ${bases.length} bp`)
-          setCtxMenu(null)
-        }
-        const handleCopyRevComp = () => {
-          if (!hasSelection) return
-          const text = reverseComplementStr(getCtxSelectedBases())
-          copyText(text, `Copied reverse complement (${text.length} bp)`)
-          setCtxMenu(null)
-        }
-        const handlePasteRevComp = () => {
-          readText().then(text => {
-            if (text === null) return // already reported
-            const filtered = text.replace(/[^ATGCUatgcuRYSWKMBVDHNryswkmbvdhn]/g, '').toUpperCase()
-            if (filtered.length === 0) return
-            const rc = reverseComplementStr(filtered)
-            const s = useEditorStore.getState()
-            const currentSel = s.selection
-            const currentRange = selectionRange(currentSel)
-            if (currentRange) {
-              s.replace(currentRange[0], currentRange[1], rc)
-              s.setCaret(currentRange[0] + rc.length)
-            } else {
-              s.insert(currentSel.caret, rc)
-              s.setCaret(currentSel.caret + rc.length)
-            }
-          })
-          setCtxMenu(null)
-        }
-        const handleCopyProtein = () => {
-          if (!hasSelection) return
-          const bases = getCtxSelectedBases()
-          const protein = translateSequenceStr(bases)
-          copyText(protein, `Copied protein (${protein.length} aa)`)
-          setCtxMenu(null)
-        }
-        const handleAddAnnotation = () => {
-          // If no selection, select the clicked position so the modal pre-fills it
-          const selR = selectionRange(selection)
-          if (!selR) {
-            const pos = ctxMenu.seqPos
-            setSelection({ anchor: pos, caret: Math.min(pos + 1, doc.sequence.length) })
-          }
-          setCtxMenu(null)
-          onAnnotateRequest?.()
-        }
-        const handleSelectAnnotation = () => {
-          if (!ctxAnn) return
-          setSelection({ anchor: ctxAnn.start, caret: ctxAnn.end })
-          setCtxMenu(null)
-        }
-        const handleEditAnnotation = () => {
-          if (!ctxAnn) return
-          useEditorStore.getState().setEditAnnotation(ctxAnn.id)
-          onEditFeature?.(ctxAnn.id)
-          setCtxMenu(null)
-        }
-        const handleDeleteAnnotation = () => {
-          if (!ctxAnn) return
-          setDeleteConfirm({ annId: ctxAnn.id, annName: ctxAnn.name })
-          setCtxMenu(null)
-        }
-        const handleCopyAnnotationBases = () => {
-          if (!ctxAnn) return
-          const bases = annotationBases(ctxAnn, doc.sequence)
-          copyText(bases, `Copied ${bases.length} bp from "${ctxAnn!.name}"`)
-          setCtxMenu(null)
-        }
-        const handleCopyAnnotationProtein = () => {
-          if (!ctxAnn) return
-          const protein = annotationProtein(ctxAnn, doc.sequence)
-          copyText(protein, `Copied ${protein.length} aa from "${ctxAnn!.name}"`)
-          setCtxMenu(null)
-        }
-        const handleSelectPrimerSite = () => {
-          if (!ctxPrimer) return
-          setSelection({ anchor: ctxPrimer.site.start, caret: ctxPrimer.site.end })
-          setCtxMenu(null)
-        }
-        const handleCopyOligo = () => {
-          if (!ctxPrimer) return
-          copyText(ctxPrimer.primer.sequence, `Copied ${ctxPrimer.primer.name} (${ctxPrimer.primer.sequence.length} nt)`)
-          setCtxMenu(null)
-        }
-        const handleDeletePrimer = () => {
-          if (!ctxPrimer) return
-          useEditorStore.getState().removePrimers([ctxPrimer.primer.id])
-          notify.success(`Deleted primer "${ctxPrimer.primer.name}"`, {
-            action: { label: 'Undo', onClick: () => useEditorStore.getState().undo() },
-          })
-          setCtxMenu(null)
-        }
-        const handleDiscardPick = () => {
-          if (!ctxPrimer) return
-          const s = useEditorStore.getState()
-          const role = DESIGN_ROLES.find(r => designOligoId(r) === ctxPrimer.primer.id)
-          if (role) s.setDesignPicks({ [role]: null })
-          const batchIndex = /^design-batch-(\d+)$/.exec(ctxPrimer.primer.id)?.[1]
-          if (batchIndex !== undefined) {
-            s.setDesignBatch(s.primerDesign.batch.filter((_, i) => i !== Number(batchIndex)))
-          }
-          setCtxMenu(null)
-        }
-        const handleConvertToPrimer = () => {
-          if (!ctxAnn) return
-          useEditorStore.getState().convertFeaturesToPrimers([ctxAnn.id])
-          setCtxMenu(null)
-        }
-        /** A new primer from the selection, read along the chosen strand. */
-        const handleNewPrimer = (strand: 1 | -1) => {
-          const bases = getCtxSelectedBases().toUpperCase()
-          const oligo = strand === 1 ? bases : reverseComplementStr(bases)
-          const s = useEditorStore.getState()
-          const n = (s.doc.primers?.length ?? 0) + 1
-          const id = newPrimerId()
-          s.addPrimers([{ id, name: `Primer ${n}${strand === 1 ? 'F' : 'R'}`, sequence: oligo, role: 'primer' }])
-          s.setFocusedPrimer(id)
-          setCtxMenu(null)
-        }
-        const selectionLen = ctxSegs.reduce((n, [s, e]) => n + e - s, 0)
-        const canMakePrimer = !readOnly && selectionLen >= 10 && selectionLen <= 200
-
-        const handleCopyRecognition = () => {
-          if (!ctxEnzymeGroup) return
-          const primary = ctxEnzymeGroup.sites[0]
-          copyText(primary.enzyme.recognition, `Copied ${primary.enzyme.recognition}`)
-          setCtxMenu(null)
-        }
-        const handleSelectRecognition = () => {
-          if (!ctxEnzymeGroup) return
-          setSelection({ anchor: ctxEnzymeGroup.recognitionStart, caret: ctxEnzymeGroup.recognitionEnd })
-          setCtxMenu(null)
-        }
-        const handleLookupEnzyme = () => {
-          if (!ctxEnzymeGroup) return
-          const primary = ctxEnzymeGroup.sites[0]
-          window.open(`https://www.google.com/search?q=${encodeURIComponent(primary.enzyme.name + ' restriction enzyme')}`, '_blank')
-          setCtxMenu(null)
-        }
-
-        return (
-          <ContextMenuPopup x={ctxMenu.x} y={ctxMenu.y}>
-            {/* Embedded tooltip content */}
-            {ctxPrimer && (
-              <div className="ctx-menu-tooltip-embed">
-                <PrimerTooltipContent
-                  item={ctxPrimer}
-                  siteCount={siteCountOf(ctxPrimer)}
-                />
-              </div>
-            )}
-            {ctxAnn && (
-              <div className="ctx-menu-tooltip-embed">
-                <AnnotationTooltipContent ann={ctxAnn} sequence={doc.sequence} />
-              </div>
-            )}
-            {ctxEnzymeGroup && (
-              <div className="ctx-menu-tooltip-embed ctx-menu-tooltip-enzyme">
-                <EnzymeGroupTooltipContent group={ctxEnzymeGroup} />
-              </div>
-            )}
-
-            {/* Annotation actions */}
-            {ctxAnn && (
-              <>
-                <button className="ctx-menu-item" onClick={handleSelectAnnotation}>
-                  Select Annotation
-                </button>
-                <button className="ctx-menu-item" onClick={handleCopyAnnotationBases}>
-                  Copy Annotation Bases
-                </button>
-                {/* Shown on exactly the features whose translation the popover
-                    above is already displaying. */}
-                {canTranslateAnnotation(ctxAnn, doc.sequence) && (
-                  <button className="ctx-menu-item" onClick={handleCopyAnnotationProtein}>
-                    Copy Amino Acid Sequence
-                  </button>
-                )}
-                {isUserAnn && !readOnly && (
-                  <button className="ctx-menu-item" onClick={handleEditAnnotation}>
-                    Edit Annotation
-                  </button>
-                )}
-                {isUserAnn && !readOnly && ctxAnn.type === 'primer_bind' && (
-                  <button className="ctx-menu-item" onClick={handleConvertToPrimer}>
-                    Convert to Primer
-                  </button>
-                )}
-                {isUserAnn && !readOnly && (
-                  <button className="ctx-menu-item ctx-menu-danger" onClick={handleDeleteAnnotation}>
-                    Delete Annotation
-                  </button>
-                )}
-                <div className="ctx-menu-sep" />
-              </>
-            )}
-
-            {/* Primer actions */}
-            {ctxPrimer && (
-              <>
-                <button className="ctx-menu-item" onClick={handleSelectPrimerSite}>
-                  Select Binding Site
-                </button>
-                <button className="ctx-menu-item" onClick={handleCopyOligo}>
-                  Copy Oligo Sequence
-                </button>
-                {!readOnly && !ctxPrimer.preview && (
-                  <button className="ctx-menu-item ctx-menu-danger" onClick={handleDeletePrimer}>
-                    Delete Primer
-                  </button>
-                )}
-                {ctxPrimer.preview && (
-                  <button className="ctx-menu-item" onClick={handleDiscardPick}>
-                    Discard Pick
-                  </button>
-                )}
-                <div className="ctx-menu-sep" />
-              </>
-            )}
-
-            {/* Enzyme actions */}
-            {ctxEnzymeGroup && (
-              <>
-                <button className="ctx-menu-item" onClick={handleCopyRecognition}>
-                  Copy Recognition Sequence
-                </button>
-                <button className="ctx-menu-item" onClick={handleSelectRecognition}>
-                  Select Recognition Site
-                </button>
-                <button className="ctx-menu-item" onClick={handleLookupEnzyme}>
-                  Look Up Enzyme…
-                </button>
-                <div className="ctx-menu-sep" />
-              </>
-            )}
-
-            {/* Selection actions */}
-            {hasSelection && (
-              <>
-                <button className="ctx-menu-item" onClick={handleCopy}>
-                  Copy Selection
-                </button>
-                <button className="ctx-menu-item" onClick={handleCopyRevComp}>
-                  Copy Reverse Complement
-                </button>
-                <button className="ctx-menu-item" onClick={handleCopyProtein}>
-                  Copy Protein Translation
-                </button>
-                {canMakePrimer && (
-                  <>
-                    <button className="ctx-menu-item" onClick={() => handleNewPrimer(1)}>
-                      New Forward Primer from Selection
-                    </button>
-                    <button className="ctx-menu-item" onClick={() => handleNewPrimer(-1)}>
-                      New Reverse Primer from Selection
-                    </button>
-                  </>
-                )}
-                <div className="ctx-menu-sep" />
-              </>
-            )}
-            {!readOnly && (
-              <>
-                <button className="ctx-menu-item" onClick={handlePasteRevComp}>
-                  Paste Reverse Complement
-                </button>
-                <button className="ctx-menu-item" onClick={handleAddAnnotation}>
-                  {hasSelection ? 'Add Annotation to Selection' : 'Add Annotation Here'}
-                </button>
-              </>
-            )}
-            {doc.sequence.topology === 'circular' && !hasSelection && (
-              <>
-                <div className="ctx-menu-sep" />
-                <button className="ctx-menu-item" onClick={() => {
-                  useEditorStore.getState().setDisplayOrigin(ctxMenu.seqPos)
-                  setCtxMenu(null)
-                }}>
-                  Set Display Origin Here
-                </button>
-                <button className="ctx-menu-item" onClick={() => {
-                  useEditorStore.getState().rotateOrigin(ctxMenu.seqPos)
-                  setCtxMenu(null)
-                }}>
-                  Set as Position 1
-                </button>
-              </>
-            )}
-          </ContextMenuPopup>
-        )
-      })()}
+      {ctxMenu && (
+        <SequenceContextMenu
+          target={ctxMenu}
+          annotations={allAnnotations}
+          primerItemById={primerItemById}
+          siteCountOf={siteCountOf}
+          onClose={closeCtxMenu}
+          onEditFeature={onEditFeature}
+          onAnnotateRequest={onAnnotateRequest}
+          onDeleteAnnotation={a => setDeleteConfirm({ annId: a.id, annName: a.name })}
+        />
+      )}
 
       <ConfirmDialog
         open={deleteConfirm !== null}

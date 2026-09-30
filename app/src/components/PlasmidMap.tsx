@@ -9,29 +9,24 @@
 
 import { useRef, useEffect, useCallback, useMemo, useState, memo } from 'react'
 import { Download, Maximize2, Image as ImageIcon, FileCode2 } from 'lucide-react'
-import { copyText } from '../utils/clipboard'
-import { translate as translateSequenceStr } from '../utils/codon'
 import { gcPercent } from '../primers/thermodynamics'
 import { downloadBlob } from '../utils/download'
 import { notify } from '../toast'
 import {
-  useEditorStore, selectionRange, isOriginSpanningSelection, selectionLength,
-  selectionSegments,
+  useEditorStore, isOriginSpanningSelection, selectionLength,
 } from '../store'
 import { Annotation, type AnnotationData } from '../models/Annotation'
 
 import { orfColor } from '../workers/orf-finder'
 import {
-  proposalsFrom, proposalAnnotations, isAutoAnnotationId, keyFromAutoId,
+  proposalsFrom, proposalAnnotations, keyFromAutoId,
 } from '../utils/auto-annotations'
 import { orfIdFor, orfName, keyFromOrfId } from '../utils/orf-features'
-import { reverseComplement as reverseComplementStr } from '../models/complement'
-import AnnotationTooltip, { AnnotationTooltipContent } from './AnnotationTooltip'
-import { annotationBases, annotationProtein, canTranslateAnnotation } from '../utils/annotation-sequence'
+import AnnotationTooltip from './AnnotationTooltip'
 import { useDelayedHover, type HoverTarget } from '../hooks/useDelayedHover'
-import EnzymeTooltip, { EnzymeGroupTooltipContent } from './EnzymeTooltip'
+import EnzymeTooltip from './EnzymeTooltip'
 import { groupCutSites, enzymeGroupKey, type GroupedCutSite } from './SequenceView'
-import ContextMenuPopup from './ContextMenuPopup'
+import SequenceContextMenu from './SequenceContextMenu'
 import ConfirmDialog from './ConfirmDialog'
 import PrimerTooltip from './primers/PrimerTooltip'
 import { usePrimerSites, useDesignPreview } from '../primers/usePrimerSites'
@@ -70,6 +65,8 @@ const FIT: Viewport = { scale: 1, tx: 0, ty: 0 }
 interface PlasmidMapProps {
   onFindRequest?: () => void
   onEditFeature?: (annId: string) => void
+  /** Open the add-annotation form for the current selection. */
+  onAnnotateRequest?: () => void
   /** Ask App for a filename before writing a file, as the gel view does. */
   onExportPrompt?: (defaultName: string, onConfirm: (name: string) => void) => void
 }
@@ -85,11 +82,9 @@ function PlasmidMap(_props: PlasmidMapProps) {
   const hoveredAnnotationId = useEditorStore(s => s.hoveredAnnotationId)
   const hiddenAnnotationIds = useEditorStore(s => s.hiddenAnnotationIds)
   const setHoveredAnnotation = useEditorStore(s => s.setHoveredAnnotation)
-  const addAnnotation = useEditorStore(s => s.addAnnotation)
   const removeAnnotation = useEditorStore(s => s.removeAnnotation)
   const renameTab = useEditorStore(s => s.renameTab)
   const activeTabId = useEditorStore(s => s.activeTabId)
-  const readOnly = useEditorStore(s => s.readOnly)
 
   // Inline name editing
   const [editingName, setEditingName] = useState(false)
@@ -133,6 +128,9 @@ function PlasmidMap(_props: PlasmidMapProps) {
   interface ContextMenuState {
     x: number
     y: number
+    /** Position at the pointer's angle; null near the centre, where there is none. */
+    seqPos: number | null
+    /** Feature or primer stand-in under the pointer. */
     annId: string | null
     enzymeGroup: GroupedCutSite | null
   }
@@ -231,6 +229,9 @@ function PlasmidMap(_props: PlasmidMapProps) {
     () => new Map<string, PrimerItem>(allPrimerItems.map(i => [i.annotation.id, i])),
     [allPrimerItems],
   )
+  /** How many sites the primer behind an item has, for the hover card and menu. */
+  const siteCountOf = (item: PrimerItem) =>
+    (item.preview ? designPreview.sites : primerSites).get(item.primer.id)?.length ?? 1
 
   // An unsaved pick is outlined in the accent colour, which is how the map
   // already marks anything picked but not yet in the document.
@@ -544,10 +545,13 @@ function PlasmidMap(_props: PlasmidMapProps) {
     const hit = hitTest(p.x, p.y, p.scene)
     hideAnnTooltip()
     hideEnzymeTooltip()
+    const c = p.scene.size / 2
+    const nearCentre = Math.hypot(p.x - c, p.y - c) < p.scene.baseRadius * 0.3
     setCtxMenu({
       x: e.clientX,
       y: e.clientY,
-      annId: hit?.type === 'feature' ? hit.id : null,
+      seqPos: nearCentre ? null : angleToPos(Math.atan2(p.y - c, p.x - c), doc.sequence.length),
+      annId: hit?.type === 'feature' || hit?.type === 'primer' ? hit.id : null,
       enzymeGroup: hit?.type === 'enzyme' ? enzymeByKey.get(hit.id) ?? null : null,
     })
   }, [doc.sequence.length, toSceneXY, hitTest, enzymeByKey, hideAnnTooltip, hideEnzymeTooltip])
@@ -652,25 +656,8 @@ function PlasmidMap(_props: PlasmidMapProps) {
     }
   }, [])
 
-  // Close context menu on outside click or scroll
-  useEffect(() => {
-    if (!ctxMenu) return
-    let downOutside = false
-    const handleDown = () => { downOutside = true }
-    const handleUp = () => {
-      if (downOutside) setCtxMenu(null)
-      downOutside = false
-    }
-    const closeScroll = () => setCtxMenu(null)
-    window.addEventListener('mousedown', handleDown)
-    window.addEventListener('mouseup', handleUp)
-    window.addEventListener('scroll', closeScroll, true)
-    return () => {
-      window.removeEventListener('mousedown', handleDown)
-      window.removeEventListener('mouseup', handleUp)
-      window.removeEventListener('scroll', closeScroll, true)
-    }
-  }, [ctxMenu])
+  // The menu closes itself on outside clicks, scrolling and Escape.
+  const closeCtxMenu = useCallback(() => setCtxMenu(null), [])
 
   // --- Export ---
   // Always rendered at fit scale: an exported figure should be the whole map,
@@ -798,7 +785,8 @@ function PlasmidMap(_props: PlasmidMapProps) {
           return (
             <PrimerTooltip
               item={primerItem}
-              siteCount={(primerItem.preview ? designPreview.sites : primerSites).get(primerItem.primer.id)?.length ?? 1}
+              siteCount={siteCountOf(primerItem)}
+              items={allPrimerItems}
               x={annTooltip.x}
               y={annTooltip.y}
             />
@@ -824,187 +812,18 @@ function PlasmidMap(_props: PlasmidMapProps) {
         />
       )}
 
-      {/* Context menu with embedded tooltip */}
-      {ctxMenu && (() => {
-        const ctxSegs = selectionSegments(selection, doc.sequence.topology, doc.sequence.length)
-        const hasSelection = ctxSegs.length > 0
-        const ctxAnn = ctxMenu.annId
-          ? allAnnotations.find(a => a.id === ctxMenu.annId) ?? null
-          : null
-        const isUserAnn = ctxAnn && !ctxAnn.id.startsWith('_orf_')
-          && !isAutoAnnotationId(ctxAnn.id)
-        const ctxEnzymeGroup = ctxMenu.enzymeGroup
-        // Use first site for single-enzyme actions (copy recognition, lookup)
-        const ctxEnzymeSite = ctxEnzymeGroup?.sites[0] ?? null
-
-        const getCtxSelectedBases = () => {
-          let text = ''
-          for (const [s, e] of ctxSegs) text += doc.sequence.basesIn(s, e)
-          return text
-        }
-
-        const handleCopy = () => {
-          if (!hasSelection) return
-          const bases = getCtxSelectedBases()
-          copyText(bases, `Copied ${bases.length} bp`)
-          setCtxMenu(null)
-        }
-        const handleCopyRevComp = () => {
-          if (!hasSelection) return
-          const text = reverseComplementStr(getCtxSelectedBases())
-          copyText(text, `Copied reverse complement (${text.length} bp)`)
-          setCtxMenu(null)
-        }
-        const handleCopyProtein = () => {
-          if (!hasSelection) return
-          const bases = getCtxSelectedBases()
-          const protein = translateSequenceStr(bases)
-          copyText(protein, `Copied protein (${protein.length} aa)`)
-          setCtxMenu(null)
-        }
-        const handleSelectAnnotation = () => {
-          if (!ctxAnn) return
-          setSelection({ anchor: ctxAnn.start, caret: ctxAnn.end })
-          setCtxMenu(null)
-        }
-        const handleCopyAnnotationBases = () => {
-          if (!ctxAnn) return
-          const bases = annotationBases(ctxAnn, doc.sequence)
-          copyText(bases, `Copied ${bases.length} bp from "${ctxAnn!.name}"`)
-          setCtxMenu(null)
-        }
-        const handleCopyAnnotationProtein = () => {
-          if (!ctxAnn) return
-          const protein = annotationProtein(ctxAnn, doc.sequence)
-          copyText(protein, `Copied ${protein.length} aa from "${ctxAnn!.name}"`)
-          setCtxMenu(null)
-        }
-        const handleEditAnnotation = () => {
-          if (!ctxAnn) return
-          useEditorStore.getState().setEditAnnotation(ctxAnn.id)
-          _props.onEditFeature?.(ctxAnn.id)
-          setCtxMenu(null)
-        }
-        const handleDeleteAnnotation = () => {
-          if (!ctxAnn) return
-          setDeleteConfirm({ annId: ctxAnn.id, annName: ctxAnn.name })
-          setCtxMenu(null)
-        }
-        const handleAddAnnotation = () => {
-          if (!hasSelection) return
-          const selR = selectionRange(selection)
-          if (!selR) return
-          const id = `ann_${Date.now()}`
-          addAnnotation({
-            id,
-            name: 'New Feature',
-            type: 'misc_feature',
-            start: selR[0],
-            end: selR[1],
-            strand: 1,
-            color: '#4dabf7',
-          })
-          setCtxMenu(null)
-        }
-        const handleCopyRecognition = () => {
-          if (!ctxEnzymeSite) return
-          copyText(ctxEnzymeSite.enzyme.recognition, `Copied ${ctxEnzymeSite!.enzyme.recognition}`)
-          setCtxMenu(null)
-        }
-        const handleSelectRecognition = () => {
-          if (!ctxEnzymeGroup) return
-          setSelection({ anchor: ctxEnzymeGroup.recognitionStart, caret: ctxEnzymeGroup.recognitionEnd })
-          setCtxMenu(null)
-        }
-        const handleLookupEnzyme = () => {
-          if (!ctxEnzymeSite) return
-          window.open(`https://www.google.com/search?q=${encodeURIComponent(ctxEnzymeSite.enzyme.name + ' restriction enzyme')}`, '_blank')
-          setCtxMenu(null)
-        }
-
-        return (
-          <ContextMenuPopup x={ctxMenu.x} y={ctxMenu.y}>
-            {/* Embedded tooltip content */}
-            {ctxAnn && (
-              <div className="ctx-menu-tooltip-embed">
-                <AnnotationTooltipContent ann={ctxAnn} sequence={doc.sequence} />
-              </div>
-            )}
-            {ctxEnzymeGroup && (
-              <div className="ctx-menu-tooltip-embed ctx-menu-tooltip-enzyme">
-                <EnzymeGroupTooltipContent group={ctxEnzymeGroup} />
-              </div>
-            )}
-
-            {/* Annotation actions */}
-            {ctxAnn && (
-              <>
-                <button className="ctx-menu-item" onClick={handleSelectAnnotation}>
-                  Select Annotation
-                </button>
-                <button className="ctx-menu-item" onClick={handleCopyAnnotationBases}>
-                  Copy Annotation Bases
-                </button>
-                {/* Shown on exactly the features whose translation the popover
-                    above is already displaying. */}
-                {canTranslateAnnotation(ctxAnn, doc.sequence) && (
-                  <button className="ctx-menu-item" onClick={handleCopyAnnotationProtein}>
-                    Copy Amino Acid Sequence
-                  </button>
-                )}
-                {isUserAnn && !readOnly && (
-                  <button className="ctx-menu-item" onClick={handleEditAnnotation}>
-                    Edit Annotation
-                  </button>
-                )}
-                {isUserAnn && !readOnly && (
-                  <button className="ctx-menu-item ctx-menu-danger" onClick={handleDeleteAnnotation}>
-                    Delete Annotation
-                  </button>
-                )}
-                <div className="ctx-menu-sep" />
-              </>
-            )}
-
-            {/* Enzyme actions */}
-            {ctxEnzymeGroup && (
-              <>
-                <button className="ctx-menu-item" onClick={handleCopyRecognition}>
-                  Copy Recognition Sequence
-                </button>
-                <button className="ctx-menu-item" onClick={handleSelectRecognition}>
-                  Select Recognition Site
-                </button>
-                <button className="ctx-menu-item" onClick={handleLookupEnzyme}>
-                  Look Up Enzyme…
-                </button>
-                <div className="ctx-menu-sep" />
-              </>
-            )}
-
-            {/* Selection actions */}
-            {hasSelection && (
-              <>
-                <button className="ctx-menu-item" onClick={handleCopy}>
-                  Copy Selection
-                </button>
-                <button className="ctx-menu-item" onClick={handleCopyRevComp}>
-                  Copy Reverse Complement
-                </button>
-                <button className="ctx-menu-item" onClick={handleCopyProtein}>
-                  Copy Protein Translation
-                </button>
-                <div className="ctx-menu-sep" />
-              </>
-            )}
-            {!readOnly && hasSelection && (
-              <button className="ctx-menu-item" onClick={handleAddAnnotation}>
-                Add Annotation to Selection
-              </button>
-            )}
-          </ContextMenuPopup>
-        )
-      })()}
+      {ctxMenu && (
+        <SequenceContextMenu
+          target={ctxMenu}
+          annotations={allAnnotations}
+          primerItemById={primerItemById}
+          siteCountOf={siteCountOf}
+          onClose={closeCtxMenu}
+          onEditFeature={_props.onEditFeature}
+          onAnnotateRequest={_props.onAnnotateRequest}
+          onDeleteAnnotation={a => setDeleteConfirm({ annId: a.id, annName: a.name })}
+        />
+      )}
 
       <ConfirmDialog
         open={deleteConfirm !== null}

@@ -12,14 +12,15 @@ import { Minus, Plus, X } from 'lucide-react'
 import { offTargets } from '../../primers/offtarget'
 import type { BindingSite } from '../../primers/binding'
 import { scorePrimer, type PrimerConstraints } from '../../primers/scoring'
-import { bestDimer, bestHairpin } from '../../primers/structure'
-import { summarizeOligo } from '../../primers/display'
+import { oligoStructure, summarizeOligo } from '../../primers/display'
 import type { PrimerData } from '../../primers/oligo'
 import OligoSequence from './OligoSequence'
 
 const COMP: Record<string, string> = { A: 'T', T: 'A', G: 'C', C: 'G' }
 
 const fmtTm = (t: number | null) => (t === null || !Number.isFinite(t) ? '–' : `${t.toFixed(1)} °C`)
+/** Structure Tms are estimates, and meaningless below freezing. */
+const fmtStructTm = (t: number) => (t < 0 ? '< 0 °C' : `≈ ${t.toFixed(0)} °C`)
 
 interface Props {
   label: string
@@ -50,8 +51,8 @@ export default function OligoInspector({ label, oligo, sites, constraints, templ
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [oligo.sequence, oligo.role, template, topology],
   )
-  const hairpin = bestHairpin(seq)
-  const dimer = bestDimer(seq, seq)
+  // The same folds, and Tms, as the hover card on the sequence.
+  const { hairpin, dimer } = oligoStructure(seq)
   const showDimer = dimer && (dimer.run >= 4 || (dimer.threePrime && dimer.run >= 3))
 
   /** Template base at a position, wrapping on a circle; null off a line or
@@ -146,14 +147,14 @@ export default function OligoInspector({ label, oligo, sites, constraints, templ
 
       {hairpin && (
         <figure className="wb-structure">
-          <figcaption>Hairpin · {hairpin.stem} bp stem, {hairpin.loop}-nt loop</figcaption>
+          <figcaption>Hairpin · {hairpin.stem} bp stem, {hairpin.loop}-nt loop · Tm {fmtStructTm(hairpin.tm)}</figcaption>
           <pre>{seq}{'\n'}{hairpin.dotBracket}</pre>
         </figure>
       )}
       {showDimer && dimer && (
         <figure className="wb-structure">
           <figcaption>
-            Self-dimer · {dimer.run} bp, ΔG {dimer.dG.toFixed(1)} kcal/mol{dimer.threePrime ? ' · at a 3′ end' : ''}
+            Self-dimer · {dimer.run} bp, ΔG {dimer.dG.toFixed(1)} kcal/mol, Tm {fmtStructTm(dimer.tm)}{dimer.threePrime ? ' · at a 3′ end' : ''}
           </figcaption>
           <pre>{dimer.lines.join('\n')}</pre>
         </figure>

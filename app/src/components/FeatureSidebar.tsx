@@ -290,11 +290,14 @@ function FeatureSidebar({ open, onClose }: FeatureSidebarProps) {
     if (!colorManuallySet) setNewColor(defaultColorForType(type))
   }, [colorManuallySet])
 
-  // Watch for external "add annotation" requests (e.g. from context menu)
+  // Watch for external "add annotation" requests (e.g. from context menu).
+  // The form lives on the Features tab, so a request made while the Primers
+  // tab is showing switches back to Features, as an edit request does.
   const requestAddAnnotation = useEditorStore(s => s.requestAddAnnotation)
   const setRequestAddAnnotation = useEditorStore(s => s.setRequestAddAnnotation)
   useEffect(() => {
     if (requestAddAnnotation && open) {
+      switchTab('features')
       const sel = useEditorStore.getState().selection
       const a = Math.min(sel.anchor, sel.caret)
       const b = Math.max(sel.anchor, sel.caret)
@@ -305,7 +308,7 @@ function FeatureSidebar({ open, onClose }: FeatureSidebarProps) {
       setAdding(true)
       setRequestAddAnnotation(false)
     }
-  }, [requestAddAnnotation, open, setRequestAddAnnotation])
+  }, [requestAddAnnotation, open, setRequestAddAnnotation, switchTab])
 
   const handleToggle = useCallback((id: string) => {
     setExpandedId(prev => prev === id ? null : id)

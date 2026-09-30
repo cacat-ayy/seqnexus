@@ -23,6 +23,8 @@ export interface DuplexAlignment {
    * run, `:` any other complementary position in the overlap.
    */
   lines: [string, string, string]
+  /** The stretch scored for `dG`, as two aligned strands: `a` 5'→3' over `b` 3'→5'. */
+  stretch: [string, string]
 }
 
 /**
@@ -70,6 +72,7 @@ export function bestDimer(a: string, b: string): DuplexAlignment | null {
     // a's 3' end is its last column; b's 3' end is rb[0], at column `offset`.
     threePrime: seg.to === A.length || seg.from === offset,
     lines: [top, pad(3) + marks, bottom],
+    stretch: [A.slice(seg.from, seg.to), rb.slice(seg.from - offset, seg.to - offset)],
   }
 }
 

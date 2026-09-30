@@ -79,3 +79,50 @@ export function canTranslateAnnotation(ann: Annotation, sequence: Sequence): boo
   if (!isCodingAnnotation(ann)) return false
   return annotationCodingBases(ann, sequence).length >= 3
 }
+
+const START_CODONS = new Set(['ATG', 'GTG', 'TTG'])
+
+export interface TranslationIssues {
+  /** Stop codons before the last codon. */
+  internalStops: number
+  /** Bases left over after the last whole codon (0 when in frame). */
+  leftover: number
+  /** The first codon, when it is not a start codon (ATG, GTG, TTG). */
+  badStart: string | null
+}
+
+/**
+ * What looks wrong with a CDS read in its declared frame: the signs of a
+ * feature drawn on the wrong bases or in the wrong frame. Null for anything
+ * that is not a CDS (a `gene` may include UTRs; an ORF is right by
+ * construction) and for a CDS with nothing to report. The start codon is
+ * only checked when `/codon_start` is 1, since a feature that starts
+ * mid-codon is partial by declaration.
+ */
+export function translationIssues(ann: Annotation, sequence: Sequence): TranslationIssues | null {
+  if (ann.type !== 'CDS' || ann.id.startsWith('_orf_')) return null
+  const coding = annotationCodingBases(ann, sequence).toUpperCase()
+  if (coding.length < 3) return null
+  const protein = translate(coding)
+  const internalStops = [...protein.slice(0, -1)].filter(aa => aa === '*').length
+  const leftover = coding.length % 3
+  const first = coding.slice(0, 3)
+  const badStart = codonStartOffset(ann) === 0 && !START_CODONS.has(first) ? first : null
+  if (internalStops === 0 && leftover === 0 && !badStart) return null
+  return { internalStops, leftover, badStart }
+}
+
+/**
+ * A long string shortened to its two ends, since the end of a feature
+ * (where a stop codon or a tag sits) matters as much as its start.
+ */
+export function headTail(s: string, max: number): { head: string; tail: string } | null {
+  if (s.length <= max) return null
+  const keep = Math.floor((max - 1) / 2)
+  return { head: s.slice(0, keep), tail: s.slice(s.length - keep) }
+}
+
+/** The span of a feature in bases, allowing for one that wraps the origin. */
+export function annotationLength(ann: Annotation, seqLen: number): number {
+  return ann.start > ann.end ? seqLen - ann.start + ann.end : ann.end - ann.start
+}

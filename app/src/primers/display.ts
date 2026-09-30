@@ -15,6 +15,7 @@ import { calcTm, gcPercent } from './thermodynamics'
 import { DEFAULT_CONSTRAINTS } from './scoring'
 import { siteTm } from './thermo/site'
 import type { Conditions } from './thermo/duplex'
+import { hairpinTm, selfDimerTm, type HairpinTm, type SelfDimerTm } from './secondary'
 
 export const PRIMER_ITEM_PREFIX = '_oligo_'
 
@@ -89,7 +90,7 @@ export function penaltyQuality(penalty: number): PenaltyQuality {
 }
 
 /** The designer's default buffer, so every view quotes one number. */
-const DEFAULT_CONDITIONS: Conditions = {
+export const DEFAULT_CONDITIONS: Conditions = {
   oligoConc: DEFAULT_CONSTRAINTS.primerConc,
   mono: DEFAULT_CONSTRAINTS.naConc,
   mg: DEFAULT_CONSTRAINTS.mgConc,
@@ -137,6 +138,63 @@ export function summarizeOligo(
     tmFull: oligoTm(primer.sequence),
     tmAnneal,
   }
+}
+
+export interface OligoStructure {
+  hairpin: HairpinTm | null
+  dimer: SelfDimerTm | null
+}
+
+/** Hover cards re-render on every pointer move; the scans need not. */
+const structureCache = new Map<string, OligoStructure>()
+
+/**
+ * The oligo's strongest hairpin and self-dimer under the default buffer.
+ * The whole oligo, tails included: a tail folds as readily as the rest.
+ */
+export function oligoStructure(sequence: string): OligoStructure {
+  const key = sequence.toUpperCase()
+  const hit = structureCache.get(key)
+  if (hit) return hit
+  const result = { hairpin: hairpinTm(key, DEFAULT_CONDITIONS), dimer: selfDimerTm(key, DEFAULT_CONDITIONS) }
+  if (structureCache.size >= 200) structureCache.delete(structureCache.keys().next().value!)
+  structureCache.set(key, result)
+  return result
+}
+
+/**
+ * The primer pair a probe sits between: the nearest forward primer ending
+ * before it and the nearest reverse primer starting after it, within
+ * `maxSpan` bp end to end. Null unless both exist.
+ */
+export function flankingPrimers(
+  probe: PrimerItem,
+  items: readonly PrimerItem[],
+  seqLen: number,
+  circular: boolean,
+  maxSpan = 2000,
+): { fwd: PrimerItem; rev: PrimerItem } | null {
+  /** Bases from a to b going forward, or null when a linear sequence would have to wrap. */
+  const gap = (a: number, b: number): number | null => {
+    if (b >= a) return b - a
+    return circular ? b - a + seqLen : null
+  }
+  let fwd: { item: PrimerItem; d: number } | null = null
+  let rev: { item: PrimerItem; d: number } | null = null
+  for (const it of items) {
+    if (it.primer.role === 'probe' || it === probe) continue
+    if (it.site.strand === 1) {
+      const d = gap(it.site.end, probe.site.start)
+      if (d !== null && (!fwd || d < fwd.d)) fwd = { item: it, d }
+    } else {
+      const d = gap(probe.site.end, it.site.start)
+      if (d !== null && (!rev || d < rev.d)) rev = { item: it, d }
+    }
+  }
+  if (!fwd || !rev) return null
+  const probeLen = gap(probe.site.start, probe.site.end) ?? 0
+  const span = fwd.d + probeLen + rev.d
+  return span <= maxSpan ? { fwd: fwd.item, rev: rev.item } : null
 }
 
 /** Template position of an oligo index at a site, for marking mismatches. */

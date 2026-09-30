@@ -80,6 +80,26 @@ describe('useClampedPosition', () => {
     expect(r.current.pos.left).toBe(MARGIN)
   })
 
+  it('with flip, opens above and to the left of the point instead of sliding over it', () => {
+    const { result } = renderHook(() => {
+      const h = useClampedPosition(VW - 30, VH - 20, { flip: true })
+      h.ref(document.createElement('div'))
+      return h
+    })
+    expect(result.current.pos).toEqual({ left: VW - 30 - W, top: VH - 20 - H })
+  })
+
+  it('with flip, still clamps when neither side has room', () => {
+    stubSize(W, VH - 100)
+    const { result } = renderHook(() => {
+      const h = useClampedPosition(100, VH / 2, { flip: true })
+      h.ref(document.createElement('div'))
+      return h
+    })
+    expect(result.current.pos.top + VH - 100).toBeLessThanOrEqual(VH - MARGIN)
+    expect(result.current.pos.top).toBeGreaterThanOrEqual(MARGIN)
+  })
+
   it('falls back to the requested point when there is no element yet', () => {
     const { result } = renderHook(() => useClampedPosition(123, 456))
     expect(result.current.pos).toEqual({ left: 123, top: 456 })

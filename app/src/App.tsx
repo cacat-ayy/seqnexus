@@ -44,6 +44,7 @@ import { proposalsFrom, matchKey } from './utils/auto-annotations'
 import { convertibleOrfs, orfKey } from './utils/orf-features'
 import ConvertActions from './components/ConvertActions'
 import Toaster from './components/Toaster'
+import { PinnedCardHost } from './components/HoverCard'
 import StorageIndicator from './components/StorageIndicator'
 import { getEnzyme, type RestrictionEnzyme } from './enzymes/db'
 import { findEnzymeSitesAsync } from './workers/enzyme-finder'
@@ -2343,7 +2344,7 @@ export default function App() {
                       </div>
                     )}
                     {viewMode === 'linear' && <SequenceView onFindRequest={handleOpenFind} onAnnotateRequest={handleAnnotateRequest} onEditFeature={handleOpenFeaturesPanel} />}
-                    {viewMode === 'circular' && <PlasmidMap onFindRequest={handleOpenFind} onEditFeature={handleOpenFeaturesPanel} onExportPrompt={handleFilenamePrompt} />}
+                    {viewMode === 'circular' && <PlasmidMap onFindRequest={handleOpenFind} onAnnotateRequest={handleAnnotateRequest} onEditFeature={handleOpenFeaturesPanel} onExportPrompt={handleFilenamePrompt} />}
                     {viewMode === 'split' && (
                       <div
                         ref={splitContainerRef}
@@ -2352,7 +2353,7 @@ export default function App() {
                         onPointerUp={handleSplitPointerUp}
                       >
                         <div className="split-pane" style={{ flex: `0 0 ${splitFraction * 100}%` }}>
-                          <PlasmidMap onEditFeature={handleOpenFeaturesPanel} onExportPrompt={handleFilenamePrompt} />
+                          <PlasmidMap onAnnotateRequest={handleAnnotateRequest} onEditFeature={handleOpenFeaturesPanel} onExportPrompt={handleFilenamePrompt} />
                         </div>
                         <div
                           className="split-divider"
@@ -2468,6 +2469,7 @@ export default function App() {
       </div>
 
       <Toaster />
+      <PinnedCardHost />
       {dragOver && <div className={`drop-overlay${dropError ? ' drop-error' : ''}`}>{dropError ?? 'Drop files to open'}</div>}
 
       {/* Mounted only while open: the palette is summoned rarely, and keeping

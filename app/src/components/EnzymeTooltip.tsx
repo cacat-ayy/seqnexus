@@ -7,7 +7,7 @@ import './EnzymeTooltip.css'
 import type { CutSite } from '../enzymes/finder'
 import type { GroupedCutSite } from './SequenceView'
 import { complementBase } from '../models/complement'
-import { useClampedPosition } from '../hooks/useClampedPosition'
+import HoverCard from './HoverCard'
 
 const formatOverhang = (o: string) =>
   o === '5prime' ? "5' overhang" : o === '3prime' ? "3' overhang" : 'Blunt end'
@@ -257,19 +257,9 @@ export function EnzymeGroupTooltipContent({ group }: { group: GroupedCutSite }) 
 }
 
 export default function EnzymeTooltip({ x, y, group }: { x: number; y: number; group: GroupedCutSite }) {
-  const { ref, pos } = useClampedPosition(x, y)
   return (
-    <div
-      ref={ref}
-      className="enzyme-tooltip"
-      style={{
-        position: 'fixed',
-        left: pos.left,
-        top: pos.top,
-        pointerEvents: 'none',
-      }}
-    >
+    <HoverCard x={x} y={y} className="enzyme-tooltip" pinKey={`enzyme:${group.label}@${group.recognitionStart}`}>
       <EnzymeGroupTooltipContent group={group} />
-    </div>
+    </HoverCard>
   )
 }

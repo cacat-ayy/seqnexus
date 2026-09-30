@@ -131,13 +131,17 @@ export function duplexTm(
   }
 
   const tm = (1000 * dH) / (dS + R * Math.log(k))
-  const corr = owczarzy2008(oligo, c)
+  const corr = saltCorrection(oligo, c)
   if (corr === null) return NaN
   return 1 / (1 / tm + corr) - 273.15
 }
 
-/** Owczarzy (2008) correction to 1/Tm; null when there is no salt at all. */
-function owczarzy2008(seq: string, c: Conditions): number | null {
+/**
+ * Owczarzy (2008) correction to 1/Tm (1/K) for a helix whose top strand
+ * reads `seq`; null when there is no salt at all. Hairpin stems use it too:
+ * it was fitted on duplexes, but there is no better model here.
+ */
+export function saltCorrection(seq: string, c: Conditions): number | null {
   const mon = c.mono * 1e-3
   let mg = c.mg * 1e-3
   if (c.dntp > 0 && mg > 0) {

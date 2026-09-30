@@ -252,8 +252,8 @@ All alignment runs in a Web Worker to keep the UI responsive.
 
 ## Melting Temperature (Tm)
 
-Tm appears in two places: the selection tooltip (for selections of 4-200 bp)
-and the primer design tool.
+Tm appears in the selection tooltip (for selections of 4-200 bp), the primer
+hover card and menu, and the primer design tool.
 
 ### Selection tooltip
 
@@ -318,6 +318,98 @@ monovalent cation correction**:
 When Mg²⁺ is provided (primer design only), the **Owczarzy (2008) divalent
 correction** is used instead, with free Mg²⁺ = Mg²⁺ − dNTPs (1:1 chelation).
 
+### Hairpin and self-dimer Tm
+
+The primer hover card and the design workbench show the Tm of each oligo's
+strongest hairpin and self-dimer (`app/src/primers/secondary.ts`). This is a
+**simplified nearest-neighbor model**, not Primer3's full thermodynamic
+alignment, so the numbers are shown as estimates (≈). They are calculated
+for the whole oligo, tails included, under the design tool's default buffer.
+
+What is simplified: only ungapped helices count. A hairpin stem must pair
+perfectly. A dimer may contain single internal mismatches. Neither may
+contain bulges or internal loops. Hairpins get no special triloop or
+tetraloop bonuses.
+
+#### Self-dimer
+
+1. Slide the oligo antiparallel along a second copy of itself. At every
+   offset, find the most stable ungapped paired stretch (ΔG37 from the NN
+   tables, including single internal mismatches). Keep the stretch with the
+   lowest ΔG37 overall (`bestDimer` in `structure.ts`).
+2. Score that stretch as a duplex: ΔH and ΔS from the unified NN parameters,
+   the internal-mismatch parameters (Allawi & SantaLucia 1997–98, Peyret
+   1999) and the initiation terms, as in the duplex Tm above.
+3. Both strands are the same molecule. At the Tm half of all strands are
+   paired, so the equilibrium constant is 1/Ct instead of the 4/Ct used for
+   two different strands:
+
+   ```
+   Tm(1M) = ΔH / (ΔS + R × ln(Ct))
+   ```
+
+4. Apply the Owczarzy (2008) salt correction to the stretch's own GC
+   fraction and length.
+
+Because the dimer is bimolecular, its Tm rises with oligo concentration.
+
+#### Hairpin
+
+1. Try every loop of 3 or more bases. For each one, zip the stem outward
+   from the loop for as long as the bases pair perfectly (at least 3 bp).
+2. Score each fold:
+
+   ```
+   ΔH = Σ ΔH(stem NN pairs) + ΔH(terminal mismatch)
+   ΔS = Σ ΔS(stem NN pairs) + ΔS(terminal mismatch) − ΔG37(loop) / 310.15 K
+   ```
+
+   - **Stem pairs** use the same unified NN table as duplexes. There is no
+     initiation term, because the fold is unimolecular.
+   - **Terminal mismatch:** the first and last loop bases face each other
+     across the closing base pair. They are scored with the terminal-mismatch
+     table, for loops longer than 3 bases.
+   - **Loop penalty** is treated as purely entropic, using the hairpin-loop
+     ΔG37 of SantaLucia & Hicks (2004):
+
+     | Loop (nt) | 3   | 4   | 5   | 6   | 7   | 8   | 9   | 10  | 12  | 14  | 16  | 18  | 20  | 25  | 30  |
+     |-----------|-----|-----|-----|-----|-----|-----|-----|-----|-----|-----|-----|-----|-----|-----|-----|
+     | ΔG37 (kcal/mol) | 3.5 | 3.5 | 3.3 | 4.0 | 4.2 | 4.3 | 4.5 | 4.6 | 5.0 | 5.1 | 5.3 | 5.5 | 5.7 | 6.1 | 6.3 |
+
+     Lengths between entries are interpolated linearly. Beyond 30 nt, the
+     penalty grows as ΔG(30) + 2.44 × R × T × ln(n / 30).
+
+3. A hairpin melts where ΔG = 0, independent of concentration:
+
+   ```
+   Tm(1M) = ΔH / ΔS
+   ```
+
+   It is then salt-corrected with the Owczarzy (2008) formula, using the
+   stem as the helix. That formula was fitted on duplexes, so this step is
+   an approximation.
+
+4. The fold with the highest Tm is reported.
+
+#### Grading
+
+A structure is graded against the Tm at which the primer itself anneals
+(the annealed-part Tm for a tailed primer):
+
+| Grade | Structure Tm |
+|-------|--------------|
+| good (green) | ≤ annealing Tm − 15 °C, or no structure |
+| ok (amber)   | between annealing Tm − 15 °C and − 5 °C |
+| poor (red)   | > annealing Tm − 5 °C |
+
+A structure that pairs the oligo's 3' end is graded one step worse, because
+a polymerase can extend it into primer-dimer or self-primed product.
+
+For probes, the card also checks the TaqMan rules:
+- **5' base:** a G at the 5' end quenches the reporter dye.
+- **Tm margin:** the probe's Tm minus the higher Tm of the nearest flanking
+  primer pair (within 2 kb). ≥ 6 °C is good, 3–6 °C is ok, less is poor.
+
 ---
 
 ## Restriction Enzyme Database
@@ -378,6 +470,15 @@ Tailed primers have two Tms, both shown: the annealed part (first cycles)
 and the whole oligo (once the tail is copied into the product). SnapGene
 files keep the full sequence; GenBank writes one `primer_bind` feature per
 binding site with the oligo in `/primer_sequence`.
+
+Hovering a primer or probe on the sequence or map shows its Tm, GC, length,
+hairpin and self-dimer Tm with a traffic-light grade (see "Hairpin and
+self-dimer Tm" above), the restriction sites in its 5' tail and, for probes,
+the TaqMan checks. Tap Shift while any hover card is open to pin it, so its
+text can be selected; Esc or a click elsewhere unpins it. Right-clicking
+opens a compact menu (summary line, then actions, with Copy, New Primer and
+Origin in submenus). It works with the arrow keys and scrolls on short
+screens.
 
 ### Design workbench
 

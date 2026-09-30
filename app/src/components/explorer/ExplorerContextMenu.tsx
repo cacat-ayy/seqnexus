@@ -57,7 +57,7 @@ export default function ExplorerContextMenu({
 
   return (
     <div ref={ref}>
-      <ContextMenuPopup x={target.x} y={target.y}>
+      <ContextMenuPopup x={target.x} y={target.y} onClose={onClose} label="Item actions">
         {target.type === 'selection' ? (
           <>
             <div className="ctx-menu-header">{target.count} selected</div>
