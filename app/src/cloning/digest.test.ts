@@ -414,3 +414,49 @@ describe('partialDigestFragments', () => {
     expect(results[0][0].name).toContain('uncut')
   })
 })
+
+describe('methylation', () => {
+  const XbaI = getEnzyme('XbaI')!
+  const MboI = getEnzyme('MboI')!
+  const pad = (n: number) => 'ACGT'.repeat(Math.ceil(n / 4)).slice(0, n)
+  const methylated = (bases: string, topology: 'linear' | 'circular' = 'linear'): DocumentState => ({
+    ...makeDoc('m', bases, topology),
+    metadata: { damMethylated: true, dcmMethylated: true },
+  })
+
+  it('blocks a site when the methylated base falls inside it', () => {
+    // TCTAGATC: GATC overlaps the end of the XbaI site.
+    const doc = methylated(pad(40) + 'TCTAGATC' + pad(40))
+    expect(digestFragments(doc, [XbaI]).fragments).toHaveLength(1)
+  })
+
+  it('leaves a site alone when a motif is only nearby', () => {
+    // GATC three bases past the XbaI site: the old ±5 bp check blocked this.
+    const doc = methylated(pad(40) + 'TCTAGAACGGATC' + pad(40))
+    expect(digestFragments(doc, [XbaI]).fragments).toHaveLength(2)
+  })
+
+  it('does not block BamHI, whose GATC core dam leaves cuttable', () => {
+    const doc = methylated(pad(40) + 'GGATCC' + pad(40))
+    expect(digestFragments(doc, [BamHI]).fragments).toHaveLength(2)
+  })
+
+  it('always blocks MboI on dam-methylated DNA', () => {
+    const doc = methylated(pad(40) + 'GATC' + pad(40))
+    const result = digestFragments(doc, [MboI])
+    expect(result.fragments).toHaveLength(1)
+    expect(result.warnings).toContain('1 cut site blocked by methylation')
+  })
+
+  it('does not wrap motifs around the ends of linear DNA', () => {
+    // "TC" at the end + "TAGA..." at the start would only form an overlap if wrapped.
+    const doc = methylated('TCTAGA' + pad(40) + 'GA')
+    expect(digestFragments(doc, [XbaI]).fragments).toHaveLength(2)
+  })
+
+  it('does wrap them around the origin of circular DNA', () => {
+    const doc = methylated('TCTAGA' + pad(40) + 'GA', 'circular')
+    // GA|TCTAGA across the origin is a GATC overlapping the site: no cut.
+    expect(digestFragments(doc, [XbaI]).fragments[0].name).toContain('uncut')
+  })
+})

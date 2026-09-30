@@ -18,7 +18,7 @@ function item(
   }
 }
 
-const empty = { sequence: [], read: [], alignment: [], 'read-alignment': [], contig: [], oligo: [] }
+const empty = { sequence: [], read: [], alignment: [], 'read-alignment': [], contig: [], gel: [], oligo: [] }
 
 /** A folder with the fields a test does not care about filled in. */
 function folder(over: Partial<ExplorerFolder> & { id: string }): ExplorerFolder {

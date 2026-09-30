@@ -146,94 +146,65 @@ interface CutBoundary {
 }
 
 /**
- * Digest a document with one or more enzymes.
- * Returns fragments with overhangs and transferred annotations.
+ * A methylation motif and which of its bases carry the methyl group, counted
+ * on the top strand. Both motifs are palindromic, so each is methylated on
+ * both strands: dam puts N6-methyladenine on the A of GATC (offset 1, and
+ * offset 2 for the bottom strand's A); dcm puts 5-methylcytosine on the inner
+ * C of CCWGG (offset 1, and offset 3 for the bottom strand).
  */
-// Dam motif: GATC. Dcm motif: CCWGG (W = A or T).
-const DAM_RE = /GATC/gi
-const DCM_RE = /CC[AT]GG/gi
+interface MethylMotif {
+  pattern: RegExp
+  length: number
+  methylated: number[]
+}
+
+const DAM: MethylMotif = { pattern: /^GATC$/, length: 4, methylated: [1, 2] }
+const DCM: MethylMotif = { pattern: /^CC[AT]GG$/, length: 5, methylated: [1, 3] }
 
 /**
- * Check if a cut site is blocked by dam or dcm methylation.
- * Looks for methylation motifs overlapping the recognition site region.
+ * Whether a methylated base of `motif` lies inside the recognition site.
+ * Methylation only gets in an enzyme's way where it touches the bases the
+ * enzyme reads; a motif merely nearby changes nothing.
  */
-function isMethylationBlocked(
-  site: CutSite,
+function motifOverlapsSite(
   bases: string,
-  seqLen: number,
-  enzyme: RestrictionEnzyme,
-  dam: boolean,
-  dcm: boolean,
+  topology: 'linear' | 'circular',
+  siteStart: number,
+  siteLength: number,
+  motif: MethylMotif,
 ): boolean {
-  if (!dam && !dcm) return false
-
-  // Extract the region around the recognition site (with flanking to catch overlapping motifs)
-  const flank = 5
-  const start = site.position - flank
-  const end = site.end + flank
-  let region: string
-  if (start < 0 || end > seqLen) {
-    // Handle wrapping for circular sequences
-    let r = ''
-    for (let i = start; i < end; i++) {
-      r += bases[((i % seqLen) + seqLen) % seqLen]
+  const seqLen = bases.length
+  const circular = topology === 'circular'
+  for (let m = siteStart - motif.length + 1; m < siteStart + siteLength; m++) {
+    if (!motif.methylated.some(o => m + o >= siteStart && m + o < siteStart + siteLength)) continue
+    let window = ''
+    for (let i = m; i < m + motif.length; i++) {
+      if (!circular && (i < 0 || i >= seqLen)) { window = ''; break }
+      window += bases[((i % seqLen) + seqLen) % seqLen]
     }
-    region = r.toUpperCase()
-  } else {
-    region = bases.slice(start, end).toUpperCase()
-  }
-
-  if (dam && (enzyme.dam === 'blocked')) {
-    DAM_RE.lastIndex = 0
-    if (DAM_RE.test(region)) return true
-  }
-  if (dcm && (enzyme.dcm === 'blocked')) {
-    DCM_RE.lastIndex = 0
-    if (DCM_RE.test(region)) return true
+    if (window && motif.pattern.test(window.toUpperCase())) return true
   }
   return false
 }
 
-/**
- * Check if a cut site is impaired (but not fully blocked) by methylation.
- * Returns a warning string or null.
- */
-function methylationWarning(
+/** How dam/dcm methylation affects one site: blocked, impaired, or not at all. */
+function siteMethylationEffect(
   site: CutSite,
   bases: string,
-  seqLen: number,
+  topology: 'linear' | 'circular',
   enzyme: RestrictionEnzyme,
   dam: boolean,
   dcm: boolean,
-): string | null {
-  if (!dam && !dcm) return null
-
-  const flank = 5
-  const start = site.position - flank
-  const end = site.end + flank
-  let region: string
-  if (start < 0 || end > seqLen) {
-    let r = ''
-    for (let i = start; i < end; i++) {
-      r += bases[((i % seqLen) + seqLen) % seqLen]
-    }
-    region = r.toUpperCase()
-  } else {
-    region = bases.slice(start, end).toUpperCase()
-  }
-
-  if (dam && enzyme.dam === 'impaired') {
-    DAM_RE.lastIndex = 0
-    if (DAM_RE.test(region)) {
-      return `${enzyme.name} site at position ${site.position + 1} may be impaired by dam methylation`
-    }
-  }
-  if (dcm && enzyme.dcm === 'impaired') {
-    DCM_RE.lastIndex = 0
-    if (DCM_RE.test(region)) {
-      return `${enzyme.name} site at position ${site.position + 1} may be impaired by dcm methylation`
-    }
-  }
+): { effect: 'blocked' | 'impaired'; by: 'dam' | 'dcm' } | null {
+  const len = enzyme.recognition.length
+  const damHit = dam && enzyme.dam !== undefined && enzyme.dam !== 'insensitive' && enzyme.dam !== 'unknown'
+    && motifOverlapsSite(bases, topology, site.position, len, DAM)
+  const dcmHit = dcm && enzyme.dcm !== undefined && enzyme.dcm !== 'insensitive' && enzyme.dcm !== 'unknown'
+    && motifOverlapsSite(bases, topology, site.position, len, DCM)
+  if (damHit && enzyme.dam === 'blocked') return { effect: 'blocked', by: 'dam' }
+  if (dcmHit && enzyme.dcm === 'blocked') return { effect: 'blocked', by: 'dcm' }
+  if (damHit) return { effect: 'impaired', by: 'dam' }
+  if (dcmHit) return { effect: 'impaired', by: 'dcm' }
   return null
 }
 
@@ -242,6 +213,52 @@ export interface DigestResult {
   warnings: string[]
 }
 
+export interface MethylationFilterResult {
+  /** Sites the enzymes can still cut. */
+  sites: CutSite[]
+  /** Sites dropped because dam/dcm methylation blocks them. */
+  blocked: CutSite[]
+  warnings: string[]
+}
+
+/**
+ * Find every cut site of `enzymes`, dropping the ones dam/dcm methylation
+ * blocks. Shared by the cloning digest and the virtual gel so both agree on
+ * which sites cut.
+ */
+export function findUnblockedSites(
+  bases: string,
+  topology: 'linear' | 'circular',
+  enzymes: RestrictionEnzyme[],
+  dam: boolean,
+  dcm: boolean,
+): MethylationFilterResult {
+  const warnings: string[] = []
+  const sites: CutSite[] = []
+  const blocked: CutSite[] = []
+  for (const enzyme of enzymes) {
+    for (const site of findCutSites(bases, enzyme, topology)) {
+      const meth = siteMethylationEffect(site, bases, topology, enzyme, dam, dcm)
+      if (meth?.effect === 'blocked') {
+        blocked.push(site)
+        continue
+      }
+      if (meth) {
+        warnings.push(`${enzyme.name} site at position ${site.position + 1} may be impaired by ${meth.by} methylation`)
+      }
+      sites.push(site)
+    }
+  }
+  if (blocked.length > 0) {
+    warnings.push(`${blocked.length} cut site${blocked.length > 1 ? 's' : ''} blocked by methylation`)
+  }
+  return { sites, blocked, warnings }
+}
+
+/**
+ * Digest a document with one or more enzymes.
+ * Returns fragments with overhangs and transferred annotations.
+ */
 export function digestFragments(
   doc: DocumentState,
   enzymes: RestrictionEnzyme[],
@@ -251,29 +268,11 @@ export function digestFragments(
   const topology = doc.sequence.topology
   const circular = topology === 'circular'
   const annData = doc.annotations.map(a => a.toData())
-  const warnings: string[] = []
 
   // Collect all cut sites from all enzymes, filtering by methylation
   const dam = doc.metadata?.damMethylated ?? false
   const dcm = doc.metadata?.dcmMethylated ?? false
-  const allSites: CutSite[] = []
-  let blockedCount = 0
-  for (const enzyme of enzymes) {
-    const sites = findCutSites(bases, enzyme, topology)
-    for (const site of sites) {
-      if (isMethylationBlocked(site, bases, seqLen, enzyme, dam, dcm)) {
-        blockedCount++
-        continue
-      }
-      // Check for impaired (but not blocked) sites
-      const warn = methylationWarning(site, bases, seqLen, enzyme, dam, dcm)
-      if (warn) warnings.push(warn)
-      allSites.push(site)
-    }
-  }
-  if (blockedCount > 0) {
-    warnings.push(`${blockedCount} cut site${blockedCount > 1 ? 's' : ''} blocked by methylation`)
-  }
+  const { sites: allSites, warnings } = findUnblockedSites(bases, topology, enzymes, dam, dcm)
 
   if (allSites.length === 0) {
     // No cuts - return the whole sequence as a single fragment

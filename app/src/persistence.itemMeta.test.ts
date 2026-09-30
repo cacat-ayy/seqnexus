@@ -80,7 +80,7 @@ describe('item metadata in a session', () => {
       itemMeta: { 'read:gone': { starred: true }, 'nonsense': { starred: true } },
       tagColors: {},
       sequencingReads: [], activeSequencingReadIds: [],
-      alignments: [], readAlignments: [], contigs: [], oligos: [],
+      alignments: [], readAlignments: [], contigs: [], oligos: [], gels: [],
     }
     expect(remapSessionIds(session).itemMeta).toEqual({})
   })

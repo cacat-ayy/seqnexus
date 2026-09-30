@@ -157,8 +157,12 @@ export default function ExplorerTree({
     if (focusIndex < 0) return
     const el = ref.current?.querySelector<HTMLElement>(`[data-index="${focusIndex}"]`)
     // Only steal focus if it is already inside the tree, so arrowing here
-    // never yanks the caret out of the sequence view or the search box.
-    if (el && ref.current?.contains(document.activeElement)) el.focus({ preventScroll: true })
+    // never yanks the caret out of the sequence view or the search box. And
+    // never out of a text field in the tree: an inline rename would lose
+    // focus on the next render, and blurring the field ends the rename.
+    const active = document.activeElement
+    if (active instanceof HTMLInputElement || active instanceof HTMLTextAreaElement) return
+    if (el && ref.current?.contains(active)) el.focus({ preventScroll: true })
   })
 
   const start = nodes.length === 0 ? 0 : Math.max(0, findStart(offsets, scrollTop) - OVERSCAN)

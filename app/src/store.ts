@@ -56,6 +56,7 @@ import type {
   AminoAcidStyleId, TranslationFrameId,
 } from './codon/translation-display'
 import type { CodonUsageTable } from './codon/usage-tables'
+import { defaultWorkspace, type GelWorkspaceState } from './gel/workspace'
 
 const MAX_UNDO = 100
 
@@ -231,6 +232,7 @@ export type DeletedItem =
   | { kind: 'read-alignment'; index: number; folderId: string | null; readAlignment: ReadAlignment; contigs: Contig[] }
   | { kind: 'contig'; index: number; folderId: string | null; contig: Contig }
   | { kind: 'oligo'; index: number; folderId: string | null; oligo: LibraryOligo }
+  | { kind: 'gel'; index: number; folderId: string | null; gel: GelDoc; wasActive: boolean }
 
 /** How many deletes can be taken back. Small on purpose: this is an undo
     buffer, and every entry pins a full sequence or trace in memory. */
@@ -348,6 +350,12 @@ const alignIds = makeIdGenerator('align')
 const readAlignIds = makeIdGenerator('readalign')
 const contigIds = makeIdGenerator('contig')
 const oligoIds = makeIdGenerator('libo')
+const gelIds = makeIdGenerator('gel')
+
+/** Edits to one gel with the same key within this window make one undo step. */
+const GEL_COALESCE_MS = 1000
+const MAX_GEL_UNDO = 100
+let gelCoalesce: { id: string; key: string; at: number } | null = null
 
 const nextTabId = () => tabIds.next()
 const nextSeqReadId = () => seqReadIds.next()
@@ -461,6 +469,18 @@ export interface Contig {
   createdAt: number
   zoomLevel: number
   expandedReadId: string | null // which read's chromatogram is expanded inline
+}
+
+/** A virtual gel: what is on it, how it was run and imaged, and its history. */
+export interface GelDoc {
+  id: string
+  name: string
+  createdAt: number
+  modifiedAt: number
+  state: GelWorkspaceState
+  /** Earlier states, newest last. Not persisted. */
+  undoStack: GelWorkspaceState[]
+  redoStack: GelWorkspaceState[]
 }
 
 export interface SavedAlignment {
@@ -894,6 +914,33 @@ interface EditorStore {
   setActiveContig: (id: string | null) => void
   setContigZoom: (id: string, level: number) => void
   setContigExpandedRead: (id: string, readAlignmentId: string | null) => void
+
+  // Virtual gels
+  gels: GelDoc[]
+  /** The gel in the centre panel. Activating any other item clears it. */
+  activeGelId: string | null
+  /** The sequence to go back to when the gel closes. */
+  gelReturnTabId: string | null
+  /**
+   * Make a gel and, unless told otherwise, open it. Without a state, it
+   * starts from the sequence in view: a ladder, the sequence uncut, and a
+   * digest with enzymes from its map.
+   */
+  createGel: (opts?: { name?: string; state?: GelWorkspaceState; activate?: boolean }) => string
+  setActiveGel: (id: string | null) => void
+  /**
+   * Change a gel, recording an undo step. Calls sharing a `coalesceKey` in
+   * quick succession (a slider drag, typing a label) make one step.
+   */
+  updateGel: (id: string, fn: (s: GelWorkspaceState) => GelWorkspaceState, coalesceKey?: string) => void
+  undoGel: (id: string) => void
+  redoGel: (id: string) => void
+  renameGel: (id: string, name: string) => void
+  duplicateGel: (id: string) => string | null
+  removeGel: (id: string) => void
+  /** Bring in gels from a saved or imported session. */
+  restoreGels: (gels: GelDoc[], activeGelId: string | null) => void
+  mergeGels: (gels: GelDoc[]) => void
 }
 
 const emptyDoc: DocumentState = {
@@ -1726,6 +1773,7 @@ export const useEditorStore = create<EditorStore>((set, get) => {
         ...s.readAlignments.map(ra => toUid('read-alignment', ra.id)),
         ...s.contigs.map(c => toUid('contig', c.id)),
         ...s.oligos.map(o => toUid('oligo', o.id)),
+        ...s.gels.map(g => toUid('gel', g.id)),
       ])
       const next: Record<string, ItemMeta> = {}
       let dropped = false
@@ -1767,7 +1815,7 @@ export const useEditorStore = create<EditorStore>((set, get) => {
 
       // The whole subtree goes, and so does everything filed anywhere in it.
       const doomedFolders = folderSubtree(state.folders, folderId)
-      const doomed = { sequence: new Set<string>(), read: new Set<string>(), alignment: new Set<string>(), 'read-alignment': new Set<string>(), contig: new Set<string>(), oligo: new Set<string>() }
+      const doomed = { sequence: new Set<string>(), read: new Set<string>(), alignment: new Set<string>(), 'read-alignment': new Set<string>(), contig: new Set<string>(), oligo: new Set<string>(), gel: new Set<string>() }
       for (const f of state.folders) {
         if (!doomedFolders.has(f.id)) continue
         for (const uid of f.itemUids) {
@@ -1819,6 +1867,8 @@ export const useEditorStore = create<EditorStore>((set, get) => {
         contigs,
         activeContigId: contigIds.has(state.activeContigId ?? '') ? state.activeContigId : null,
         oligos: state.oligos.filter(o => !doomed.oligo.has(o.id)),
+        gels: state.gels.filter(g => !doomed.gel.has(g.id)),
+        activeGelId: doomed.gel.has(state.activeGelId ?? '') ? null : state.activeGelId,
         folders: state.folders.filter(f => !doomedFolders.has(f.id)),
       })
     },
@@ -1870,6 +1920,7 @@ export const useEditorStore = create<EditorStore>((set, get) => {
       set(state => ({
         tabs: [...state.tabs, tab],
         activeTabId: tab.id,
+        activeGelId: null,
         doc: tab.doc,
         selection: tab.selection,
         search: tab.search,
@@ -1894,6 +1945,7 @@ export const useEditorStore = create<EditorStore>((set, get) => {
       set(s => ({
         tabs: [...s.tabs, tab],
         activeTabId: tab.id,
+        activeGelId: null,
         doc: tab.doc,
         selection: tab.selection,
         search: tab.search,
@@ -2028,6 +2080,15 @@ export const useEditorStore = create<EditorStore>((set, get) => {
           })
           return
         }
+        case 'gel': {
+          set({
+            gels: insertAt(state.gels, last.index, last.gel),
+            folders: withItem(state.folders, toUid('gel', last.gel.id), last.folderId),
+            recentlyDeleted: rest,
+          })
+          get().setActiveGel(last.gel.id)
+          return
+        }
       }
     },
 
@@ -2057,6 +2118,7 @@ export const useEditorStore = create<EditorStore>((set, get) => {
       set({
         tabs,
         activeTabId: tabId,
+        activeGelId: null,
         activeSequencingReadIds: [],
         activeAlignmentId: null,
         activeReadAlignmentId: null,
@@ -2106,6 +2168,7 @@ export const useEditorStore = create<EditorStore>((set, get) => {
       set(state => ({
         tabs: [...state.tabs, newTab],
         activeTabId: newTab.id,
+        activeGelId: null,
         doc: newTab.doc,
         selection: newTab.selection,
         search: newTab.search,
@@ -2657,6 +2720,7 @@ export const useEditorStore = create<EditorStore>((set, get) => {
     setActiveSequencingRead(id) {
       set({
         activeSequencingReadIds: id ? [id] : [],
+        activeGelId: id ? null : get().activeGelId,
         activeTabId: id ? null : get().activeTabId,
         activeAlignmentId: id ? null : get().activeAlignmentId,
         activeReadAlignmentId: id ? null : get().activeReadAlignmentId,
@@ -2816,6 +2880,7 @@ export const useEditorStore = create<EditorStore>((set, get) => {
       set({
         activeAlignmentId: id,
         activeTabId: id ? null : get().activeTabId,
+        activeGelId: id ? null : get().activeGelId,
         activeSequencingReadIds: id ? [] : get().activeSequencingReadIds,
         activeReadAlignmentId: id ? null : get().activeReadAlignmentId,
         activeContigId: id ? null : get().activeContigId,
@@ -2901,6 +2966,7 @@ export const useEditorStore = create<EditorStore>((set, get) => {
       set({
         activeReadAlignmentId: id,
         activeTabId: id ? null : get().activeTabId,
+        activeGelId: id ? null : get().activeGelId,
         activeSequencingReadIds: id ? [] : get().activeSequencingReadIds,
         activeAlignmentId: id ? null : get().activeAlignmentId,
         activeContigId: id ? null : get().activeContigId,
@@ -2947,6 +3013,187 @@ export const useEditorStore = create<EditorStore>((set, get) => {
           r.id === id ? { ...r, resolvedCols: [] } : r
         ),
       }))
+    },
+
+    // ---- Virtual gel ----
+    // ---- Virtual gels ----
+    gels: [],
+    activeGelId: null,
+    gelReturnTabId: null,
+
+    createGel(opts = {}) {
+      const s = get()
+      let state = opts.state
+      const srcId = s.activeTabId ?? s.gelReturnTabId
+      const tab = s.tabs.find(t => t.id === srcId)
+      if (!state) {
+        // The tab record only holds analysis results for tabs in the
+        // background; the open one's live in the store.
+        const live = s.activeTabId === tab?.id
+        const doc = live ? s.doc : tab?.doc
+        state = defaultWorkspace(tab && doc ? {
+          id: tab.id,
+          bases: doc.sequence.bases,
+          topology: doc.sequence.topology,
+          shownEnzymes: live ? s.enzymeNames : tab.enzymeNames,
+        } : null)
+      }
+      const id = gelIds.next()
+      const now = Date.now()
+      const name = opts.name ?? (tab ? `${(s.activeTabId === tab.id ? s.doc : tab.doc).name} gel` : `Gel ${s.gels.length + 1}`)
+      set({ gels: [...s.gels, { id, name, createdAt: now, modifiedAt: now, state, undoStack: [], redoStack: [] }] })
+      if (opts.activate !== false) get().setActiveGel(id)
+      return id
+    },
+
+    setActiveGel(id) {
+      const s = get()
+      if (id) {
+        if (!s.gels.some(g => g.id === id)) return
+        // Keep the outgoing tab's analysis results with it, as switching tabs
+        // does, so coming back to it restores them.
+        const outgoing = s.activeTabId
+        const tabs = outgoing ? s.tabs.map(t => t.id === outgoing ? {
+          ...t,
+          orfResults: s.orfResults,
+          enzymeCutSites: s.enzymeCutSites,
+          enzymeNames: s.enzymeNames,
+          primerDesign: s.primerDesign,
+          autoAnnotations: s.autoAnnotations,
+        } : t) : s.tabs
+        set({
+          tabs,
+          activeGelId: id,
+          gelReturnTabId: outgoing ?? s.gelReturnTabId,
+          activeTabId: null,
+          activeSequencingReadIds: [],
+          activeAlignmentId: null,
+          activeReadAlignmentId: null,
+          activeContigId: null,
+        })
+        return
+      }
+      set({ activeGelId: null })
+      const back = s.gelReturnTabId
+      const nothingElseOpen = !s.activeTabId && !s.activeAlignmentId && !s.activeContigId
+        && !s.activeReadAlignmentId && s.activeSequencingReadIds.length === 0
+      if (nothingElseOpen && back && s.tabs.some(t => t.id === back)) get().setActiveTab(back)
+    },
+
+    updateGel(id, fn, coalesceKey) {
+      set(s => {
+        const idx = s.gels.findIndex(g => g.id === id)
+        if (idx === -1) return {}
+        const gel = s.gels[idx]
+        const next = fn(gel.state)
+        if (next === gel.state) return {}
+        const now = Date.now()
+        const merge = !!coalesceKey && gelCoalesce !== null && gelCoalesce.id === id
+          && gelCoalesce.key === coalesceKey && now - gelCoalesce.at < GEL_COALESCE_MS
+        gelCoalesce = coalesceKey ? { id, key: coalesceKey, at: now } : null
+        const gels = [...s.gels]
+        gels[idx] = {
+          ...gel,
+          state: next,
+          modifiedAt: now,
+          undoStack: merge ? gel.undoStack : [...gel.undoStack, gel.state].slice(-MAX_GEL_UNDO),
+          redoStack: [],
+        }
+        return { gels }
+      })
+    },
+
+    undoGel(id) {
+      gelCoalesce = null
+      set(s => {
+        const idx = s.gels.findIndex(g => g.id === id)
+        const gel = s.gels[idx]
+        if (!gel || gel.undoStack.length === 0) return {}
+        const gels = [...s.gels]
+        gels[idx] = {
+          ...gel,
+          state: gel.undoStack[gel.undoStack.length - 1],
+          undoStack: gel.undoStack.slice(0, -1),
+          redoStack: [...gel.redoStack, gel.state],
+          modifiedAt: Date.now(),
+        }
+        return { gels }
+      })
+    },
+
+    redoGel(id) {
+      gelCoalesce = null
+      set(s => {
+        const idx = s.gels.findIndex(g => g.id === id)
+        const gel = s.gels[idx]
+        if (!gel || gel.redoStack.length === 0) return {}
+        const gels = [...s.gels]
+        gels[idx] = {
+          ...gel,
+          state: gel.redoStack[gel.redoStack.length - 1],
+          redoStack: gel.redoStack.slice(0, -1),
+          undoStack: [...gel.undoStack, gel.state],
+          modifiedAt: Date.now(),
+        }
+        return { gels }
+      })
+    },
+
+    renameGel(id, name) {
+      set(s => ({ gels: s.gels.map(g => (g.id === id ? { ...g, name, modifiedAt: Date.now() } : g)) }))
+    },
+
+    duplicateGel(id) {
+      const s = get()
+      const index = s.gels.findIndex(g => g.id === id)
+      if (index === -1) return null
+      const src = s.gels[index]
+      const copyId = gelIds.next()
+      const now = Date.now()
+      const copy: GelDoc = { ...src, id: copyId, name: `${src.name} copy`, createdAt: now, modifiedAt: now, undoStack: [], redoStack: [] }
+      const folderId = folderOf(s.folders, toUid('gel', id))
+      set({
+        gels: insertAt(s.gels, index + 1, copy),
+        folders: folderId ? withItem(s.folders, toUid('gel', copyId), folderId) : s.folders,
+      })
+      get().setActiveGel(copyId)
+      return copyId
+    },
+
+    removeGel(id) {
+      const s = get()
+      const index = s.gels.findIndex(g => g.id === id)
+      if (index === -1) return
+      const wasActive = s.activeGelId === id
+      set({
+        gels: s.gels.filter(g => g.id !== id),
+        folders: withoutItem(s.folders, toUid('gel', id)),
+        recentlyDeleted: pushDeleted(s.recentlyDeleted, {
+          kind: 'gel', index,
+          folderId: folderOf(s.folders, toUid('gel', id)),
+          gel: s.gels[index],
+          wasActive,
+        }),
+      })
+      if (wasActive) get().setActiveGel(null)
+    },
+
+    restoreGels(gels, activeGelId) {
+      for (const g of gels) {
+        const m = g.id.match(/^gel_(\d+)$/)
+        if (m) gelIds.syncTo(parseInt(m[1], 10))
+      }
+      set({ gels, activeGelId: null })
+      if (activeGelId && gels.some(g => g.id === activeGelId)) get().setActiveGel(activeGelId)
+    },
+
+    mergeGels(gels) {
+      if (gels.length === 0) return
+      for (const g of gels) {
+        const m = g.id.match(/^gel_(\d+)$/)
+        if (m) gelIds.syncTo(parseInt(m[1], 10))
+      }
+      set(s => ({ gels: [...s.gels, ...gels] }))
     },
 
     // ---- Contigs ----
@@ -3047,6 +3294,7 @@ export const useEditorStore = create<EditorStore>((set, get) => {
       set({
         activeContigId: id,
         activeTabId: id ? null : get().activeTabId,
+        activeGelId: id ? null : get().activeGelId,
         activeSequencingReadIds: id ? [] : get().activeSequencingReadIds,
         activeAlignmentId: id ? null : get().activeAlignmentId,
         activeReadAlignmentId: id ? null : get().activeReadAlignmentId,

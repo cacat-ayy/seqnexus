@@ -88,7 +88,7 @@ describe('primer library', () => {
       itemMeta: { 'oligo:libo_1': { starred: true } },
       tagColors: {},
       sequencingReads: [], activeSequencingReadIds: [],
-      alignments: [], readAlignments: [], contigs: [],
+      alignments: [], readAlignments: [], contigs: [], gels: [],
       oligos: [{ id: 'libo_1', name: 'F', sequence: 'ACGTACGTACGTACGTAC', role: 'primer' as const, createdAt: 1 }],
     }
     const remapped = remapSessionIds(session)

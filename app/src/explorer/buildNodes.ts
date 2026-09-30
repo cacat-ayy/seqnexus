@@ -77,7 +77,7 @@ const EMPTY_MESSAGE: Partial<Record<ItemKind, string>> = {
 }
 
 const KIND_RANK: Record<ItemKind, number> = {
-  'sequence': 0, 'read': 1, 'alignment': 2, 'read-alignment': 3, 'contig': 4, 'oligo': 5,
+  'sequence': 0, 'read': 1, 'alignment': 2, 'read-alignment': 3, 'contig': 4, 'gel': 5, 'oligo': 6,
 }
 
 /** Compare two items by the active sort. Name is the tiebreak throughout. */

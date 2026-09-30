@@ -6,13 +6,14 @@ import './EnzymePanel.css'
  */
 
 import { useState, useMemo, useEffect, useCallback, useRef } from 'react'
-import { X } from 'lucide-react'
+import { X, GalleryVertical } from 'lucide-react'
 import { useEditorStore } from '../store'
 import { ENZYME_DB, ENZYME_GROUPS, type RestrictionEnzyme, methylationEffect } from '../enzymes/db'
 import type { CutSite } from '../enzymes/finder'
 import { findEnzymeSitesAsync } from '../workers/enzyme-finder'
 import { useExitAnimation } from '../hooks/useExitAnimation'
 import { useFocusTrap } from '../hooks/useFocusTrap'
+import { digestWorkspace } from '../gel/workspace'
 
 type SubsetKey = 'all' | 'common6' | 'rare8' | 'freq4' | 'goldengate' | 'all6' | 'all4' | 'all8plus' | 'blunt' | 'overhang5' | 'overhang3' | 'typeIIS'
 
@@ -218,6 +219,14 @@ export default function EnzymePanel({ open, onClose }: Props) {
     if (e.key === 'Escape') onClose()
   }, [onClose])
 
+  /** A new gel: ladder, the sequence uncut, and cut with this enzyme. */
+  const runOnGel = useCallback((enzyme: string) => {
+    const s = useEditorStore.getState()
+    if (!s.activeTabId) return
+    s.createGel({ name: `${s.doc.name} ${enzyme}`, state: digestWorkspace(s.activeTabId, [enzyme]) })
+    onClose()
+  }, [onClose])
+
   const { visible, closing, onAnimationEnd } = useExitAnimation(open)
   if (!visible) return null
 
@@ -339,6 +348,14 @@ export default function EnzymePanel({ open, onClose }: Props) {
                       </span>
                       <span className="re-enzyme-overhang">{ovLabel}</span>
                       {methEffect && <span className={`re-methyl-tag re-methyl-tag-${methEffect}`}>{methEffect === 'blocked' ? 'blocked' : 'impaired'}</span>}
+                      <button
+                        className="re-gel-btn"
+                        title={`Run a ${name} digest on a virtual gel`}
+                        aria-label={`Run ${name} on a gel`}
+                        onClick={() => runOnGel(name)}
+                      >
+                        <GalleryVertical size={12} />
+                      </button>
                     </div>
                     <div className="re-site-badges">
                       {sites.map((site, i) => (

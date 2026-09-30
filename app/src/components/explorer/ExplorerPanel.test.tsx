@@ -2,7 +2,7 @@
  * Panel wiring: that items of every kind reach the tree, that the three row
  * states stay distinct, and that starring round-trips through the store.
  */
-import { render, act, cleanup } from '@testing-library/react'
+import { render, act, cleanup, fireEvent } from '@testing-library/react'
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import ExplorerPanel from './ExplorerPanel'
 import { useEditorStore } from '../../store'
@@ -168,5 +168,39 @@ describe('ExplorerPanel', () => {
     renderPanel()
     expect(document.querySelector('.ex-blank')).toBeTruthy()
     expect(document.querySelectorAll('.ex-blank-btn')).toHaveLength(3)
+  })
+})
+
+describe('inline rename', () => {
+  beforeEach(() => {
+    act(() => {
+      useEditorStore.setState({
+        tabs: [], activeTabId: null, sequencingReads: [], alignments: [], readAlignments: [],
+        contigs: [], oligos: [], gels: [], activeGelId: null, folders: [], itemMeta: {},
+      })
+    })
+  })
+  afterEach(cleanup)
+
+  it('keeps focus in the rename field when the tree re-renders', () => {
+    act(() => { store().openDocument('pX', 'ACGT'.repeat(100), 'circular') })
+    let gelId = ''
+    act(() => { gelId = store().createGel({ activate: false, name: 'Old name' }) })
+    const { container } = renderPanel()
+    const tree = container.querySelector<HTMLElement>('[role="tree"]')!
+    // Keyboard rename, so the tree has a focused row to pull focus back to:
+    // the gel is the last row.
+    act(() => { tree.focus() })
+    act(() => { fireEvent.keyDown(tree, { key: 'End' }) })
+    expect(document.activeElement).toBe(container.querySelector(`[data-uid="${toUid('gel', gelId)}"]`))
+    act(() => { fireEvent.keyDown(document.activeElement!, { key: 'F2' }) })
+    const input = container.querySelector<HTMLInputElement>('.ex-rename-input')!
+    expect(document.activeElement).toBe(input)
+    // Any store change re-renders the tree mid-rename.
+    act(() => { store().toggleItemStar(toUid('sequence', 'nothing')) })
+    expect(document.activeElement).toBe(container.querySelector('.ex-rename-input'))
+    fireEvent.change(container.querySelector('.ex-rename-input')!, { target: { value: 'New name' } })
+    fireEvent.keyDown(container.querySelector('.ex-rename-input')!, { key: 'Enter' })
+    expect(store().gels[0].name).toBe('New name')
   })
 })

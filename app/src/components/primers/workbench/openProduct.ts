@@ -12,9 +12,9 @@ import type { PrimerData } from '../../../primers/oligo'
 import type { Region } from '../../../primers/design/types'
 import { notify } from '../../../toast'
 
-/** Run the PCR on the active document; opens the product or reports why not. */
-export function openPcrProduct(fwd: PrimerData, rev: PrimerData): boolean {
-  const doc = useEditorStore.getState().doc
+/** Run the PCR on a document (the active one by default); opens the product or reports why not. */
+export function openPcrProduct(fwd: PrimerData, rev: PrimerData, template?: DocumentState): boolean {
+  const doc = template ?? useEditorStore.getState().doc
   const product = simulatePcr({
     name: doc.name,
     bases: doc.sequence.bases,

@@ -30,6 +30,7 @@ export type DocumentOrigin =
   | 'snapgene'   // read from a .dna file
   | 'cloning'    // product of a cloning simulation
   | 'pcr'        // product of an in-silico PCR
+  | 'gel'        // a band cut out of a virtual gel
   | 'optimized'  // output of the codon optimizer
   | 'consensus'  // called from a chromatogram or contig
   | 'paste'      // pasted sequence text

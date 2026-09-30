@@ -258,3 +258,20 @@
   text-align: center;
 }
 
+
+/* Run this enzyme on a virtual gel */
+.re-gel-btn {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 20px;
+  padding: 0;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  color: var(--text-muted);
+  cursor: pointer;
+}
+.re-gel-btn:hover { color: var(--accent); border-color: var(--accent); }

@@ -62,26 +62,26 @@ export function recognitionToRegex(recognition: string): string {
  */
 export const ENZYME_DB: RestrictionEnzyme[] = [
   // --- 6-cutters (common cloning enzymes) ---
-  { name: 'BamHI',    recognition: 'GGATCC', fwd_cut: 1, rev_cut: 5, overhang: '5prime', suppliers: ['NEB', 'Thermo'], dam: 'blocked', dcm: 'insensitive', cpg: 'insensitive', temperature: 37, heatInactivation: 65 },
-  { name: 'BglII',    recognition: 'AGATCT', fwd_cut: 1, rev_cut: 5, overhang: '5prime', suppliers: ['NEB', 'Thermo'], dam: 'blocked', dcm: 'insensitive', cpg: 'insensitive', temperature: 37, heatInactivation: 65 },
+  { name: 'BamHI',    recognition: 'GGATCC', fwd_cut: 1, rev_cut: 5, overhang: '5prime', suppliers: ['NEB', 'Thermo'], dam: 'insensitive', dcm: 'insensitive', cpg: 'insensitive', temperature: 37, heatInactivation: 65 },
+  { name: 'BglII',    recognition: 'AGATCT', fwd_cut: 1, rev_cut: 5, overhang: '5prime', suppliers: ['NEB', 'Thermo'], dam: 'insensitive', dcm: 'insensitive', cpg: 'insensitive', temperature: 37, heatInactivation: 65 },
   { name: 'ClaI',     recognition: 'ATCGAT', fwd_cut: 2, rev_cut: 4, overhang: '5prime', suppliers: ['NEB', 'Thermo'], dam: 'blocked', dcm: 'insensitive', cpg: 'blocked', temperature: 37, heatInactivation: 65 },
   { name: 'EcoRI',    recognition: 'GAATTC', fwd_cut: 1, rev_cut: 5, overhang: '5prime', suppliers: ['NEB', 'Thermo'], dam: 'insensitive', dcm: 'insensitive', cpg: 'insensitive', temperature: 37, heatInactivation: 65 },
-  { name: 'EcoRV',    recognition: 'GATATC', fwd_cut: 3, rev_cut: 3, overhang: 'blunt',  suppliers: ['NEB', 'Thermo'], dam: 'impaired', dcm: 'insensitive', cpg: 'insensitive', temperature: 37, heatInactivation: 80 },
+  { name: 'EcoRV',    recognition: 'GATATC', fwd_cut: 3, rev_cut: 3, overhang: 'blunt',  suppliers: ['NEB', 'Thermo'], dam: 'insensitive', dcm: 'insensitive', cpg: 'insensitive', temperature: 37, heatInactivation: 80 },
   { name: 'HindIII',  recognition: 'AAGCTT', fwd_cut: 1, rev_cut: 5, overhang: '5prime', suppliers: ['NEB', 'Thermo'], dam: 'insensitive', dcm: 'insensitive', cpg: 'insensitive', temperature: 37, heatInactivation: 80 },
   { name: 'KpnI',     recognition: 'GGTACC', fwd_cut: 5, rev_cut: 1, overhang: '3prime', suppliers: ['NEB', 'Thermo'], dam: 'insensitive', dcm: 'insensitive', cpg: 'insensitive', temperature: 37, heatInactivation: 65 },
-  { name: 'NcoI',     recognition: 'CCATGG', fwd_cut: 1, rev_cut: 5, overhang: '5prime', suppliers: ['NEB', 'Thermo'], dam: 'insensitive', dcm: 'blocked', cpg: 'insensitive', temperature: 37, heatInactivation: 65 },
+  { name: 'NcoI',     recognition: 'CCATGG', fwd_cut: 1, rev_cut: 5, overhang: '5prime', suppliers: ['NEB', 'Thermo'], dam: 'insensitive', dcm: 'insensitive', cpg: 'insensitive', temperature: 37, heatInactivation: 65 },
   { name: 'NdeI',     recognition: 'CATATG', fwd_cut: 2, rev_cut: 4, overhang: '5prime', suppliers: ['NEB', 'Thermo'], dam: 'insensitive', dcm: 'insensitive', cpg: 'insensitive', temperature: 37, heatInactivation: 65 },
   { name: 'NheI',     recognition: 'GCTAGC', fwd_cut: 1, rev_cut: 5, overhang: '5prime', suppliers: ['NEB', 'Thermo'], dam: 'insensitive', dcm: 'insensitive', cpg: 'insensitive', temperature: 37, heatInactivation: 65 },
   { name: 'NotI',     recognition: 'GCGGCCGC', fwd_cut: 2, rev_cut: 6, overhang: '5prime', suppliers: ['NEB', 'Thermo'], dam: 'insensitive', dcm: 'insensitive', cpg: 'blocked', temperature: 37, heatInactivation: 65 },
   { name: 'PstI',     recognition: 'CTGCAG', fwd_cut: 5, rev_cut: 1, overhang: '3prime', suppliers: ['NEB', 'Thermo'], dam: 'insensitive', dcm: 'insensitive', cpg: 'insensitive', temperature: 37, heatInactivation: 80 },
   { name: 'SacI',     recognition: 'GAGCTC', fwd_cut: 5, rev_cut: 1, overhang: '3prime', suppliers: ['NEB', 'Thermo'], dam: 'insensitive', dcm: 'insensitive', cpg: 'insensitive', temperature: 37, heatInactivation: 65 },
   { name: 'SalI',     recognition: 'GTCGAC', fwd_cut: 1, rev_cut: 5, overhang: '5prime', suppliers: ['NEB', 'Thermo'], dam: 'insensitive', dcm: 'insensitive', cpg: 'insensitive', temperature: 37, heatInactivation: 65 },
-  { name: 'SmaI',     recognition: 'CCCGGG', fwd_cut: 3, rev_cut: 3, overhang: 'blunt',  suppliers: ['NEB', 'Thermo'], dam: 'insensitive', dcm: 'blocked', cpg: 'blocked', temperature: 25, heatInactivation: 65 },
+  { name: 'SmaI',     recognition: 'CCCGGG', fwd_cut: 3, rev_cut: 3, overhang: 'blunt',  suppliers: ['NEB', 'Thermo'], dam: 'insensitive', dcm: 'insensitive', cpg: 'blocked', temperature: 25, heatInactivation: 65 },
   { name: 'SpeI',     recognition: 'ACTAGT', fwd_cut: 1, rev_cut: 5, overhang: '5prime', suppliers: ['NEB', 'Thermo'], dam: 'insensitive', dcm: 'insensitive', cpg: 'insensitive', temperature: 37, heatInactivation: 80 },
   { name: 'SphI',     recognition: 'GCATGC', fwd_cut: 5, rev_cut: 1, overhang: '3prime', suppliers: ['NEB', 'Thermo'], dam: 'insensitive', dcm: 'insensitive', cpg: 'insensitive', temperature: 37, heatInactivation: 65 },
   { name: 'XbaI',     recognition: 'TCTAGA', fwd_cut: 1, rev_cut: 5, overhang: '5prime', suppliers: ['NEB', 'Thermo'], dam: 'blocked', dcm: 'insensitive', cpg: 'insensitive', temperature: 37, heatInactivation: 65 },
   { name: 'XhoI',     recognition: 'CTCGAG', fwd_cut: 1, rev_cut: 5, overhang: '5prime', suppliers: ['NEB', 'Thermo'], dam: 'insensitive', dcm: 'insensitive', cpg: 'insensitive', temperature: 37, heatInactivation: 65 },
-  { name: 'XmaI',     recognition: 'CCCGGG', fwd_cut: 1, rev_cut: 5, overhang: '5prime', suppliers: ['NEB'], isoschizomers: ['SmaI'], dam: 'insensitive', dcm: 'blocked', cpg: 'blocked', temperature: 37, heatInactivation: 65 },
+  { name: 'XmaI',     recognition: 'CCCGGG', fwd_cut: 1, rev_cut: 5, overhang: '5prime', suppliers: ['NEB'], isoschizomers: ['SmaI'], dam: 'insensitive', dcm: 'insensitive', cpg: 'blocked', temperature: 37, heatInactivation: 65 },
 
   // --- 8-cutters (rare cutters) ---
   { name: 'AscI',     recognition: 'GGCGCGCC', fwd_cut: 2, rev_cut: 6, overhang: '5prime', suppliers: ['NEB'], dam: 'insensitive', dcm: 'insensitive', cpg: 'blocked', temperature: 37, heatInactivation: 65 },

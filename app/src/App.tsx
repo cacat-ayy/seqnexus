@@ -21,7 +21,7 @@ import SequencePropertiesModal from './components/SequencePropertiesModal'
 import SequenceStatsPopover from './components/SequenceStatsPopover'
 const CloningModal = lazy(() => import('./components/CloningModal'))
 const CodonOptimizeModal = lazy(() => import('./components/CodonOptimizeModal'))
-const GelView = lazy(() => import('./components/GelView'))
+const GelWorkspace = lazy(() => import('./components/gel/GelWorkspace'))
 import { useEditorStore, isOriginSpanningSelection, selectionSegments, applyEdits, type SequencingRead } from './store'
 import { displayPosition, internalPosition } from './models/Document'
 import { parseGenBankMulti, writeGenBank } from './io/genbank'
@@ -35,6 +35,7 @@ import { parseScf } from './io/scf'
 import { parseFastq, meanQuality } from './io/fastq'
 import { libraryMatches } from './primers/library'
 import { notify } from './toast'
+import { loadStoredWorkspace, clearStoredWorkspace } from './gel/workspace'
 import { useSessionPersistence } from './hooks/useSessionPersistence'
 import { usePopoverDismiss } from './hooks/usePopoverDismiss'
 import { useToolbarDensity } from './hooks/useToolbarDensity'
@@ -439,7 +440,42 @@ export default function App() {
     }
   }, [getReadBases])
 
-  const [gelModalOpen, setGelModalOpen] = useState(false)
+  const activeGel = useEditorStore(s => s.gels.find(g => g.id === s.activeGelId) ?? null)
+  const gelOpen = activeGel !== null
+  const setActiveGel = useEditorStore(s => s.setActiveGel)
+  const undoGel = useEditorStore(s => s.undoGel)
+  const redoGel = useEditorStore(s => s.redoGel)
+
+  /**
+   * Open the most recently edited gel, or start one from the sequence in
+   * view. The very first gel adopts the one kept in local storage before
+   * gels were session items.
+   */
+  const openGel = useCallback(() => {
+    const s = useEditorStore.getState()
+    if (s.gels.length > 0) {
+      const latest = s.gels.reduce((a, b) => (b.modifiedAt > a.modifiedAt ? b : a))
+      s.setActiveGel(latest.id)
+      return
+    }
+    const stored = loadStoredWorkspace()
+    s.createGel(stored ? { state: stored, name: 'Gel 1' } : undefined)
+    if (stored) clearStoredWorkspace()
+  }, [])
+
+  // Opening any other item closes the gel. The setActive* actions do this
+  // themselves; this catches the actions that assign an active id directly,
+  // such as opening a new document or finishing an alignment.
+  useEffect(() => useEditorStore.subscribe((s, prev) => {
+    if (!s.activeGelId) return
+    if (
+      (s.activeTabId !== prev.activeTabId && s.activeTabId !== null) ||
+      (s.activeAlignmentId !== prev.activeAlignmentId && s.activeAlignmentId !== null) ||
+      (s.activeReadAlignmentId !== prev.activeReadAlignmentId && s.activeReadAlignmentId !== null) ||
+      (s.activeContigId !== prev.activeContigId && s.activeContigId !== null) ||
+      (s.activeSequencingReadIds !== prev.activeSequencingReadIds && s.activeSequencingReadIds.length > 0)
+    ) s.setActiveGel(null)
+  }), [])
   const [fetchModalOpen, setFetchModalOpen] = useState(false)
   const [sessionExportOpen, setSessionExportOpen] = useState(false)
   const [sessionImportOpen, setSessionImportOpen] = useState(false)
@@ -1077,6 +1113,7 @@ export default function App() {
       session.tagColors,
       session.oligos,
     )
+    useEditorStore.getState().restoreGels(session.gels, session.activeGelId ?? null)
     setSessionImportOpen(false)
     setSessionImportData(null)
     sessionImportParsedRef.current = null
@@ -1094,6 +1131,7 @@ export default function App() {
       session.readAlignments, session.contigs, session.itemMeta, session.tagColors,
       session.oligos,
     )
+    useEditorStore.getState().mergeGels(session.gels)
     setSessionImportOpen(false)
     setSessionImportData(null)
     sessionImportParsedRef.current = null
@@ -1424,8 +1462,8 @@ export default function App() {
     { id: 'session-import', label: 'Import Session', group: 'File', run: () => sessionImportInputRef.current?.click() },
 
     // --- Edit ---
-    { id: 'undo', label: 'Undo', group: 'Edit', icon: Undo2, shortcut: `${mod}Z`, disabled: noDoc || readOnly, run: undo },
-    { id: 'redo', label: 'Redo', group: 'Edit', icon: Redo2, shortcut: `${mod}Y`, disabled: noDoc || readOnly, run: redo },
+    { id: 'undo', label: 'Undo', group: 'Edit', icon: Undo2, shortcut: `${mod}Z`, disabled: activeGel ? activeGel.undoStack.length === 0 : noDoc || readOnly, run: () => (activeGel ? undoGel(activeGel.id) : undo()) },
+    { id: 'redo', label: 'Redo', group: 'Edit', icon: Redo2, shortcut: `${mod}Y`, disabled: activeGel ? activeGel.redoStack.length === 0 : noDoc || readOnly, run: () => (activeGel ? redoGel(activeGel.id) : redo()) },
     { id: 'find', label: 'Find & Replace', group: 'Edit', icon: Search, shortcut: `${mod}F`, run: handleOpenFind },
     { id: 'goto', label: 'Go to Position', group: 'Edit', shortcut: `${mod}G`, disabled: noDoc, run: () => { setGotoValue(''); setGotoActive(true); requestAnimationFrame(() => gotoInputRef.current?.focus()) } },
 
@@ -1436,7 +1474,8 @@ export default function App() {
     { id: 'primers', label: 'Design Primers', group: 'Analyse', icon: FlaskConical, keywords: 'pcr tm oligo', disabled: noDoc, run: openPrimerDesign },
     { id: 'blast', label: 'BLAST Search', group: 'Analyse', icon: Globe, keywords: 'ncbi homology', disabled: noDoc, run: () => setBlastModalOpen(true) },
     { id: 'align', label: 'Align Sequences', group: 'Analyse', icon: AlignLeft, keywords: 'msa pairwise clustal', run: () => setAlignModalOpen(true) },
-    { id: 'gel', label: 'Virtual Gel', group: 'Analyse', icon: GalleryVertical, keywords: 'electrophoresis', disabled: noDoc, run: () => setGelModalOpen(true) },
+    { id: 'gel', label: 'Virtual Gel', group: 'Analyse', icon: GalleryVertical, keywords: 'electrophoresis digest agarose', run: openGel },
+    { id: 'new-gel', label: 'New Gel', group: 'Analyse', icon: GalleryVertical, keywords: 'electrophoresis digest agarose', run: () => useEditorStore.getState().createGel() },
     { id: 'codon-optimize', label: 'Codon Optimization', group: 'Analyse', icon: Wand2, keywords: 'codon usage rare harmonize express host', disabled: noDoc, run: () => setCodonModalOpen(true) },
     { id: 'properties', label: 'Sequence Properties', group: 'Analyse', icon: BarChart3, disabled: noDoc, run: () => setPropertiesModalOpen(true) },
 
@@ -1464,7 +1503,7 @@ export default function App() {
     { id: 'theme', label: 'Change Theme', group: 'View', icon: SunMoon, keywords: 'dark light appearance', run: () => setThemeOpen(true) },
     { id: 'about', label: 'About SeqNexus', group: 'View', icon: Info, keywords: 'help version', run: () => setInfoOpen(true) },
   ], [
-    mod, noDoc, readOnly, undo, redo, handleOpenFind, handleNewSequence, handleNewFolder,
+    mod, noDoc, readOnly, undo, redo, handleOpenFind, handleNewSequence, handleNewFolder, openGel, activeGel, undoGel, redoGel,
     handleImportClipboard, toggleOrfs, toggleEnzymes, openSidebar, openPrimerDesign, toggleAutoAnnotations,
   ])
 
@@ -1589,10 +1628,10 @@ export default function App() {
         </div>
 
         <div className="toolbar-group">
-          <button className="tb" onClick={undo} disabled={!activeTabId || readOnly} title="Undo (Ctrl+Z)">
+          <button className="tb" onClick={() => (activeGel ? undoGel(activeGel.id) : undo())} disabled={activeGel ? activeGel.undoStack.length === 0 : !activeTabId || readOnly} title="Undo (Ctrl+Z)">
             <Undo2 size={14} />
           </button>
-          <button className="tb" onClick={redo} disabled={!activeTabId || readOnly} title="Redo (Ctrl+Y)">
+          <button className="tb" onClick={() => (activeGel ? redoGel(activeGel.id) : redo())} disabled={activeGel ? activeGel.redoStack.length === 0 : !activeTabId || readOnly} title="Redo (Ctrl+Y)">
             <Redo2 size={14} />
           </button>
         </div>
@@ -1661,7 +1700,7 @@ export default function App() {
           <button className="tb" onClick={() => setAlignModalOpen(true)} title="Sequence alignment">
             <span className="tb-icon"><AlignLeft size={14} /></span><span className="tb-text">Align</span>
           </button>
-          <button className="tb" onClick={() => setGelModalOpen(true)} disabled={!activeTabId} title="Virtual gel electrophoresis">
+          <button className={`tb ${gelOpen ? 'active' : ''}`} onClick={() => (gelOpen ? setActiveGel(null) : openGel())} aria-pressed={gelOpen} title="Virtual gel electrophoresis">
             <span className="tb-icon"><GalleryVertical size={14} /></span><span className="tb-text">Gel</span>
           </button>
           <button className="tb" onClick={() => setCodonModalOpen(true)} disabled={!activeTabId} title="Codon optimization">
@@ -1931,7 +1970,19 @@ export default function App() {
 
         {/* Center Panel */}
         <div className="center-panel">
-          {activeContigId && contigs.find(c => c.id === activeContigId) ? (
+          {activeGel ? (
+            <>
+              <Suspense fallback={null}>
+                <GelWorkspace key={activeGel.id} gel={activeGel} onClose={() => setActiveGel(null)} onExportPrompt={handleFilenamePrompt} />
+              </Suspense>
+              <div className="status-bar">
+                <span style={{ flex: 1 }} />
+                <span className="status-bar-right">
+                  <StorageIndicator refreshKey={storageRefreshKey} />
+                </span>
+              </div>
+            </>
+          ) : activeContigId && contigs.find(c => c.id === activeContigId) ? (
             (() => {
               const activeContig = contigs.find(c => c.id === activeContigId)!
               return (
@@ -2524,11 +2575,6 @@ export default function App() {
         onClose={() => { setSessionImportOpen(false); setSessionImportData(null); sessionImportParsedRef.current = null }}
         onReplace={handleSessionReplace}
         onMerge={handleSessionMerge}
-      />
-      <GelView
-        open={gelModalOpen}
-        onClose={() => setGelModalOpen(false)}
-        onExportPrompt={handleFilenamePrompt}
       />
       <CodonOptimizeModal
         open={codonModalOpen}

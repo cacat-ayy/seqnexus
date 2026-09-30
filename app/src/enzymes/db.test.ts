@@ -62,3 +62,43 @@ describe('Enzyme database', () => {
     }
   })
 })
+
+describe('methylation data', () => {
+  // A flag only means something if the motif can put a methylated base inside
+  // the recognition site. Offsets are the methylated bases on the top strand.
+  const MOTIFS = { dam: { motif: 'GATC', methylated: [1, 2] }, dcm: { motif: 'CCWGG', methylated: [1, 3] } }
+  const IUPAC_SETS: Record<string, string> = {
+    A: 'A', C: 'C', G: 'G', T: 'T', R: 'AG', Y: 'CT', S: 'GC', W: 'AT',
+    K: 'GT', M: 'AC', B: 'CGT', D: 'AGT', H: 'ACT', V: 'ACG', N: 'ACGT',
+  }
+  const compatible = (a: string, b: string) => [...IUPAC_SETS[a]].some(x => IUPAC_SETS[b].includes(x))
+
+  function motifCanReachSite(site: string, motif: string, methylated: number[]): boolean {
+    for (let m = -motif.length + 1; m < site.length; m++) {
+      if (!methylated.some(o => m + o >= 0 && m + o < site.length)) continue
+      let ok = true
+      for (let i = 0; i < motif.length && ok; i++) {
+        const p = m + i
+        if (p >= 0 && p < site.length) ok = compatible(motif[i], site[p].toUpperCase())
+      }
+      if (ok) return true
+    }
+    return false
+  }
+
+  it('only flags enzymes whose site a methylation motif can overlap', () => {
+    for (const e of ENZYME_DB) {
+      for (const kind of ['dam', 'dcm'] as const) {
+        const flag = e[kind]
+        if (flag !== 'blocked' && flag !== 'impaired') continue
+        const { motif, methylated } = MOTIFS[kind]
+        expect(motifCanReachSite(e.recognition, motif, methylated), `${e.name} ${kind}: ${flag}`).toBe(true)
+      }
+    }
+  })
+
+  it('does not mark BamHI or BglII as dam-sensitive', () => {
+    expect(getEnzyme('BamHI')!.dam).toBe('insensitive')
+    expect(getEnzyme('BglII')!.dam).toBe('insensitive')
+  })
+})

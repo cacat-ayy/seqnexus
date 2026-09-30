@@ -6,11 +6,11 @@
  * works on `ExplorerItem` and never branches on kind again.
  */
 
-import { Lock, TriangleAlert, Globe, FlaskConical, Wand2, Activity, TestTube, Link2 } from 'lucide-react'
+import { Lock, TriangleAlert, Globe, FlaskConical, Wand2, Activity, TestTube, Link2, Scissors } from 'lucide-react'
 import type { LibraryOligo } from '../primers/oligo'
 import { oligoTm } from '../primers/display'
 import type {
-  DocumentTab, SequencingRead, SavedAlignment, ReadAlignment, Contig,
+  DocumentTab, SequencingRead, SavedAlignment, ReadAlignment, Contig, GelDoc,
 } from '../store'
 import type { DocumentOrigin } from '../models/Document'
 import type { ExplorerItem, ItemBadge, ItemKind } from './types'
@@ -64,6 +64,7 @@ const ORIGIN_BADGE: Partial<Record<NonNullable<DocumentOrigin>, ItemBadge>> = {
   ncbi: { key: 'origin', label: 'Fetched from NCBI', icon: Globe, tone: 'neutral' },
   cloning: { key: 'origin', label: 'Cloning product', icon: FlaskConical, tone: 'neutral' },
   pcr: { key: 'origin', label: 'PCR product', icon: TestTube, tone: 'neutral' },
+  gel: { key: 'origin', label: 'Extracted from a gel', icon: Scissors, tone: 'neutral' },
   optimized: { key: 'origin', label: 'Codon optimized', icon: Wand2, tone: 'neutral' },
   consensus: { key: 'origin', label: 'Called from a trace', icon: Activity, tone: 'neutral' },
 }
@@ -257,5 +258,29 @@ export function contigToItem(contig: Contig, ctx: AdapterContext): ExplorerItem 
       toUid('sequence', contig.tabId),
       ...contig.readAlignmentIds.map(id => toUid('read-alignment', id)),
     ],
+  }
+}
+
+export function gelToItem(gel: GelDoc, ctx: AdapterContext): ExplorerItem {
+  const { conditions, lanes } = gel.state
+  const loaded = lanes.filter(l => l.sample.kind !== 'empty').length
+  return {
+    uid: toUid('gel', gel.id),
+    kind: 'gel',
+    id: gel.id,
+    name: gel.name,
+    createdAt: gel.createdAt,
+    modifiedAt: gel.modifiedAt,
+    size: loaded,
+    isOpen: isOpen(ctx, 'gel', gel.id),
+    isIncluded: false,
+    isDirty: false,
+    isReadOnly: false,
+    isCircular: false,
+    canDuplicate: true,
+    stats: [formatCount(loaded, 'lane'), `${conditions.agarosePct}% ${conditions.buffer}`],
+    badges: [],
+    // A gel draws on any number of sequences, so it is not nested under one.
+    derivedFrom: [],
   }
 }

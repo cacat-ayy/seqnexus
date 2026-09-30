@@ -10,7 +10,7 @@ import { useMemo } from 'react'
 import { useEditorStore } from '../store'
 import type { ExplorerItem, ItemKind } from './types'
 import {
-  sequenceToItem, readToItem, alignmentToItem, readAlignmentToItem, contigToItem, oligoToItem,
+  sequenceToItem, readToItem, alignmentToItem, readAlignmentToItem, contigToItem, oligoToItem, gelToItem,
   type AdapterContext, type OpenTarget,
 } from './adapters'
 import { findBindingSites } from '../primers/binding'
@@ -28,17 +28,21 @@ export interface ExplorerItems {
 // happen inside each group and the groups do not exist yet at this point.
 
 /**
- * Mirror of App's centre-panel precedence: contig, then read alignment, then
+ * Mirror of App's centre-panel precedence: gel, then contig, then read alignment, then
  * sequencing reads, then alignment, then the open document. Keep in step with
  * the chain in App.tsx if that order ever changes.
  */
 function resolveOpen(s: {
+  gels: { id: string }[]; activeGelId: string | null
   contigs: { id: string }[]; activeContigId: string | null
   readAlignments: { id: string }[]; activeReadAlignmentId: string | null
   activeSequencingReadIds: string[]
   alignments: { id: string }[]; activeAlignmentId: string | null
   activeTabId: string | null
 }): OpenTarget {
+  if (s.activeGelId && s.gels.some(g => g.id === s.activeGelId)) {
+    return { kind: 'gel', id: s.activeGelId }
+  }
   if (s.activeContigId && s.contigs.some(c => c.id === s.activeContigId)) {
     return { kind: 'contig', id: s.activeContigId }
   }
@@ -66,6 +70,8 @@ export function useExplorerItems(): ExplorerItems {
   const contigs = useEditorStore(s => s.contigs)
   const activeContigId = useEditorStore(s => s.activeContigId)
   const oligos = useEditorStore(s => s.oligos)
+  const gels = useEditorStore(s => s.gels)
+  const activeGelId = useEditorStore(s => s.activeGelId)
 
   // Which library oligos bind the open sequence. Its own memo, keyed on the
   // bases, so a rename or a star does not re-run the binding search.
@@ -80,6 +86,7 @@ export function useExplorerItems(): ExplorerItems {
 
   return useMemo(() => {
     const open = resolveOpen({
+      gels, activeGelId,
       contigs, activeContigId,
       readAlignments, activeReadAlignmentId,
       activeSequencingReadIds,
@@ -109,18 +116,19 @@ export function useExplorerItems(): ExplorerItems {
         .filter(ra => !contigOwned.has(ra.id))
         .map(ra => readAlignmentToItem(ra, ctx)),
       'contig': contigs.map(c => contigToItem(c, ctx)),
+      'gel': gels.map(g => gelToItem(g, ctx)),
       'oligo': oligos.map(o => oligoToItem(o, ctx)),
     }
 
     const items = [
       ...byKind['sequence'], ...byKind['read'], ...byKind['alignment'],
-      ...byKind['read-alignment'], ...byKind['contig'], ...byKind['oligo'],
+      ...byKind['read-alignment'], ...byKind['contig'], ...byKind['gel'], ...byKind['oligo'],
     ]
 
     return { items, byKind, byUid: new Map(items.map(i => [i.uid, i])), open }
   }, [
     tabs, activeTabId, sequencingReads, activeSequencingReadIds,
     alignments, activeAlignmentId, readAlignments, activeReadAlignmentId,
-    contigs, activeContigId, oligos, oligosBindingOpen,
+    contigs, activeContigId, gels, activeGelId, oligos, oligosBindingOpen,
   ])
 }

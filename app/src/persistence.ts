@@ -6,7 +6,8 @@
  * search parameters) is stored in localStorage.
  */
 
-import { useEditorStore, type ExplorerFolder, type ViewMode, type BaseEdit, type SavedAlignment, type ReadAlignment, type Contig } from './store'
+import { useEditorStore, type ExplorerFolder, type ViewMode, type BaseEdit, type SavedAlignment, type ReadAlignment, type Contig, type GelDoc } from './store'
+import { sanitizeWorkspace, type GelWorkspaceState } from './gel/workspace'
 import type { Ab1Data } from './io/ab1'
 import type { AlignmentResult } from './alignment/types'
 import { toUid, parseUid, type ItemMeta } from './explorer/types'
@@ -117,6 +118,42 @@ interface SerializedContig {
   expandedReadId: string | null
 }
 
+/** A gel is plain data; its undo history is not kept. */
+interface SerializedGel {
+  id: string
+  name: string
+  createdAt: number
+  modifiedAt: number
+  state: GelWorkspaceState
+}
+
+function serializeGels(gels: GelDoc[]): SerializedGel[] | undefined {
+  if (gels.length === 0) return undefined
+  return gels.map(g => ({ id: g.id, name: g.name, createdAt: g.createdAt, modifiedAt: g.modifiedAt, state: g.state }))
+}
+
+/** Stored gels, repaired; ones too damaged to read are dropped with a warning. */
+function deserializeGels(raw: SerializedGel[] | undefined): GelDoc[] {
+  const out: GelDoc[] = []
+  for (const g of raw ?? []) {
+    const state = g && typeof g.id === 'string' ? sanitizeWorkspace(g.state) : null
+    if (!state) {
+      loadWarnings.push('A saved gel could not be read and was skipped')
+      continue
+    }
+    out.push({
+      id: g.id,
+      name: typeof g.name === 'string' && g.name ? g.name : 'Gel',
+      createdAt: typeof g.createdAt === 'number' ? g.createdAt : 0,
+      modifiedAt: typeof g.modifiedAt === 'number' ? g.modifiedAt : 0,
+      state,
+      undoStack: [],
+      redoStack: [],
+    })
+  }
+  return out
+}
+
 interface SerializedSessionV2 {
   version: 2
   tabs: SerializedTabV2[]
@@ -135,6 +172,9 @@ interface SerializedSessionV2 {
   contigs?: SerializedContig[]
   /** The primer library. Plain data; optional so older sessions still load. */
   oligos?: LibraryOligo[]
+  /** Virtual gels. Optional so older sessions still load. */
+  gels?: SerializedGel[]
+  activeGelId?: string | null
   activeAlignmentId?: string | null
   activeContigId?: string | null
   activeReadAlignmentId?: string | null
@@ -201,6 +241,7 @@ function liveItemMeta(state: ReturnType<typeof useEditorStore.getState>): Record
     ...state.readAlignments.map(ra => toUid('read-alignment', ra.id)),
     ...state.contigs.map(c => toUid('contig', c.id)),
     ...state.oligos.map(o => toUid('oligo', o.id)),
+    ...state.gels.map(g => toUid('gel', g.id)),
   ])
   const out: Record<string, ItemMeta> = {}
   let any = false
@@ -320,6 +361,8 @@ function buildSessionData(theme: string): {
       readAlignments: serializedReadAlignments,
       contigs: serializedContigs.length > 0 ? serializedContigs : undefined,
       oligos: state.oligos.length > 0 ? state.oligos : undefined,
+      gels: serializeGels(state.gels),
+      activeGelId: state.activeGelId,
       orfParams: {
         minCodons: state.orfMinCodons,
         startCodons: state.orfStartCodons,
@@ -436,6 +479,8 @@ export interface RestoredSession {
   readAlignments: ReadAlignment[]
   contigs: Contig[]
   oligos: LibraryOligo[]
+  gels: GelDoc[]
+  activeGelId?: string | null
   activeAlignmentId?: string | null
   activeContigId?: string | null
   activeReadAlignmentId?: string | null
@@ -702,6 +747,8 @@ async function loadV2(data: SerializedSessionV2): Promise<RestoredSession | null
     readAlignments,
     contigs: validContigs,
     oligos: data.oligos ?? [],
+    gels: deserializeGels(data.gels),
+    activeGelId: data.activeGelId ?? null,
     activeAlignmentId: data.activeAlignmentId ?? null,
     activeContigId: data.activeContigId ?? null,
     activeReadAlignmentId: data.activeReadAlignmentId ?? null,
@@ -791,6 +838,8 @@ export function estimateExportSize(opts: SessionExportOptions): number {
     // Contig metadata is small
     size += state.contigs.length * 200
   }
+  // Gels are small and always included
+  size += JSON.stringify(serializeGels(state.gels) ?? []).length
   return size
 }
 
@@ -831,6 +880,7 @@ export function exportSessionToJson(theme: string, opts: SessionExportOptions): 
       ...[...raIds].map(id => toUid('read-alignment', id)),
       ...(meta.contigs ?? []).map(c => toUid('contig', c.id)),
       ...(meta.oligos ?? []).map(o => toUid('oligo', o.id)),
+      ...(meta.gels ?? []).map(g => toUid('gel', g.id)),
     ])
     const filtered = Object.fromEntries(
       Object.entries(meta.itemMeta).filter(([uid]) => kept.has(uid)),
@@ -991,6 +1041,8 @@ export function importSessionFromJson(json: string): RestoredSession {
     readAlignments,
     contigs,
     oligos: data.oligos ?? [],
+    gels: deserializeGels(data.gels),
+    activeGelId: data.activeGelId ?? null,
     activeAlignmentId: data.activeAlignmentId ?? null,
     activeContigId: data.activeContigId ?? null,
     activeReadAlignmentId: data.activeReadAlignmentId ?? null,
@@ -1034,6 +1086,8 @@ export function remapSessionIds(session: RestoredSession): RestoredSession {
   for (const c of session.contigs) {
     contigIdMap.set(c.id, newId())
   }
+  const gelIdMap = new Map<string, string>()
+  for (const g of session.gels) gelIdMap.set(g.id, newId())
   for (const f of session.folders) {
     folderIdMap.set(f.id, newId())
   }
@@ -1047,7 +1101,22 @@ export function remapSessionIds(session: RestoredSession): RestoredSession {
     'alignment': alignIdMap,
     'read-alignment': raIdMap,
     'contig': contigIdMap,
+    'gel': gelIdMap,
     'oligo': oligoIdMap,
+  }
+
+  /** A gel lane's references follow the sequences and primers they name. */
+  const remapSample = (s: GelWorkspaceState['lanes'][number]['sample']): typeof s => {
+    switch (s.kind) {
+      case 'sequence': return { ...s, sourceId: tabIdMap.get(s.sourceId) ?? s.sourceId }
+      case 'pcr': return {
+        ...s,
+        templateId: tabIdMap.get(s.templateId) ?? s.templateId,
+        forwardId: oligoIdMap.get(s.forwardId) ?? s.forwardId,
+        reverseId: oligoIdMap.get(s.reverseId) ?? s.reverseId,
+      }
+      default: return s
+    }
   }
   /** Rewrite one uid through its kind's map, or null if its item is not here. */
   const remapUid = (uid: string): string | null => {
@@ -1101,6 +1170,12 @@ export function remapSessionIds(session: RestoredSession): RestoredSession {
       tabId: tabIdMap.get(c.tabId) || c.tabId,
       readAlignmentIds: c.readAlignmentIds.map(id => raIdMap.get(id) || id),
     })),
+    gels: session.gels.map(g => ({
+      ...g,
+      id: gelIdMap.get(g.id) || g.id,
+      state: { ...g.state, lanes: g.state.lanes.map(l => ({ ...l, sample: remapSample(l.sample) })) },
+    })),
+    activeGelId: session.activeGelId ? (gelIdMap.get(session.activeGelId) ?? null) : null,
     activeAlignmentId: session.activeAlignmentId ? (alignIdMap.get(session.activeAlignmentId) ?? session.activeAlignmentId) : null,
     activeContigId: session.activeContigId ? (contigIdMap.get(session.activeContigId) ?? session.activeContigId) : null,
     activeReadAlignmentId: session.activeReadAlignmentId ? (raIdMap.get(session.activeReadAlignmentId) ?? session.activeReadAlignmentId) : null,

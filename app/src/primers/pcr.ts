@@ -35,6 +35,8 @@ export interface PcrProduct {
 
 /** Longest product considered at all; beyond this PCR does not happen. */
 const MAX_PRODUCT = 20_000
+/** Other products listed; callers show a handful. */
+const MAX_ALTERNATIVES = 1000
 
 export function simulatePcr(
   template: PcrTemplate,
@@ -49,8 +51,11 @@ export function simulatePcr(
   if ((sites.get(b.id) ?? []).length === 0) return { error: `"${b.name}" does not bind this sequence.` }
 
   // Every facing pair: a site reading rightwards, then one reading leftwards
-  // downstream of it. Either primer may be the forward one.
-  const products: { fwd: BindingSite; rev: BindingSite; size: number; span: number }[] = []
+  // downstream of it. Either primer may be the forward one. Only the smallest
+  // product is built; the rest are kept as distinct sizes, because a primer in
+  // a repeat can pair up millions of ways.
+  let best: { fwd: BindingSite; rev: BindingSite; size: number; span: number } | null = null
+  const sizes = new Map<number, number>()
   for (const fwd of all) {
     if (fwd.strand !== 1) continue
     for (const rev of all) {
@@ -59,14 +64,22 @@ export function simulatePcr(
       if (circular) span = ((span % n) + n) % n || n
       if (span <= 0) continue
       const size = span + fwd.tail5.length + rev.tail5.length
-      if (size <= MAX_PRODUCT) products.push({ fwd, rev, size, span })
+      if (size > MAX_PRODUCT) continue
+      sizes.set(size, (sizes.get(size) ?? 0) + 1)
+      if (!best || size < best.size) best = { fwd, rev, size, span }
     }
   }
-  if (products.length === 0) {
+  if (!best) {
     return { error: 'The primers do not face each other on this sequence, so nothing is amplified.' }
   }
-  products.sort((x, y) => x.size - y.size)
-  const { fwd, rev, span } = products[0]
+  const { fwd, rev, span } = best
+  // Every other pairing, by size; a size reached by several pairings counts
+  // once per pairing, as before.
+  const alternatives: number[] = []
+  for (const size of [...sizes.keys()].sort((x, y) => x - y)) {
+    const count = sizes.get(size)! - (size === best.size ? 1 : 0)
+    for (let i = 0; i < count && alternatives.length < MAX_ALTERNATIVES; i++) alternatives.push(size)
+  }
   const fwdPrimer = fwd.primerId === a.id ? a : b
   const revPrimer = rev.primerId === a.id ? a : b
 
@@ -87,7 +100,7 @@ export function simulatePcr(
       { ...revPrimer, id: `${revPrimer.id}_pcr` },
     ].filter((p, i, arr) => arr.findIndex(q => q.sequence === p.sequence) === i),
     description: `PCR product of ${template.name} with ${fwdPrimer.name} and ${revPrimer.name}, ${bases.length} bp`,
-    alternatives: products.slice(1).map(p => p.size),
+    alternatives,
   }
 }
 
