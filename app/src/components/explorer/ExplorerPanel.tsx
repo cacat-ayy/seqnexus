@@ -13,6 +13,7 @@ import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Upload, SlidersHorizontal } from 'lucide-react'
 import { useEditorStore, folderSubtree } from '../../store'
 import { notify } from '../../toast'
+import { concatenate } from '../../msa/edit'
 import { useListMultiSelect } from '../../hooks/useListMultiSelect'
 import ConfirmDialog, { type ConfirmButton } from '../ConfirmDialog'
 import ExplorerToolbar from './ExplorerToolbar'
@@ -44,6 +45,7 @@ import {
   loadExplorerSettings, saveExplorerSettings, clampWidth, SIDEBAR_MIN,
 } from '../../utils/explorer-settings'
 import type { ExportItemKind } from '../ExportModal'
+import { ALN_EXTENSIONS } from '../../msa/formats'
 
 interface Props {
   open: boolean
@@ -58,7 +60,7 @@ interface Props {
   onExportItems?: (items: Partial<Record<ExportItemKind, string[]>>) => void
 }
 
-const IMPORT_ACCEPT = '.gb,.gbk,.genbank,.fasta,.fa,.fna,.fastq,.fq,.txt,.dna,.geneious,.ab1,.abi,.abif,.scf'
+const IMPORT_ACCEPT = ['.gb', '.gbk', '.genbank', '.fasta', '.fa', '.fna', '.fastq', '.fq', '.txt', '.dna', '.geneious', '.ab1', '.abi', '.abif', '.scf', ...ALN_EXTENSIONS].join(',')
 
 /** Stable empty array, so an untagged row's props keep their identity. */
 const EMPTY_TAGS: string[] = []
@@ -361,6 +363,24 @@ function ExplorerPanel({
     onAlignToRef?.(groupSelection(selectedIds).read ?? [])
   }, [selectedIds, onAlignToRef])
 
+  /** Join the selected alignments end to end, in list order, matching rows by name. */
+  const runJoinAlignments = useCallback(() => {
+    setCtxMenu(null)
+    const ids = new Set(groupSelection(selectedIds).alignment ?? [])
+    const store = useEditorStore.getState()
+    const alns = store.alignments.filter(a => ids.has(a.id))
+    if (alns.length < 2) return
+    try {
+      const doc = alns.slice(1).reduce((acc, a) => concatenate(acc, a.doc, 'name'), alns[0].doc)
+      const joined = { ...doc, origin: { method: 'manual' as const, detail: 'Joined alignments', at: Date.now() } }
+      store.addAlignment(joined, { name: alns.map(a => a.name).join(' + ') })
+      setSelectedIds(new Set())
+      notify.success(`Joined ${alns.length} alignments: ${joined.rows.length} rows, ${(joined.rows[0]?.seq.length ?? 0).toLocaleString()} columns`)
+    } catch (err) {
+      notify.error('Could not join the alignments', { detail: err instanceof Error ? err.message : String(err) })
+    }
+  }, [selectedIds, setSelectedIds])
+
   const runCreateContig = useCallback(() => {
     setCtxMenu(null)
     const ras = groupSelection(selectedIds)['read-alignment'] ?? []
@@ -383,6 +403,7 @@ function ExplorerPanel({
     const seqs = grouped.sequence ?? []
     const reads = grouped.read ?? []
     const ras = grouped['read-alignment'] ?? []
+    const alns = (grouped.alignment ?? []).map(id => useEditorStore.getState().alignments.find(a => a.id === id)).filter(Boolean)
     // A contig needs two or more read alignments against one reference.
     const refs = new Set(
       ras.map(id => useEditorStore.getState().readAlignments.find(ra => ra.id === id)?.tabId)
@@ -392,6 +413,7 @@ function ExplorerPanel({
       canAlign: seqs.length + reads.length >= 2,
       canAlignToRef: reads.length > 0,
       canMakeContig: ras.length >= 2 && refs.size === 1,
+      canJoinAlignments: alns.length >= 2 && new Set(alns.map(a => a!.doc.kind)).size === 1,
       canExport: selectedIds.size > 0,
     }
   }, [selectedIds])
@@ -665,6 +687,7 @@ function ExplorerPanel({
           onAlignSelected={runAlignSelected}
           onAlignToRef={runAlignSelectedToRef}
           onCreateContig={runCreateContig}
+          onJoinAlignments={runJoinAlignments}
           onFile={() => setFilePickerOpen(true)}
           onExport={() => exportItems(selectedIds)}
           onDelete={deleteSelection}
@@ -740,6 +763,7 @@ function ExplorerPanel({
           }}
           onAlignSelected={runAlignSelected}
           onCreateContig={runCreateContig}
+          onJoinAlignments={runJoinAlignments}
         />
       )}
 

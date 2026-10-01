@@ -7,7 +7,7 @@
 
 import { useRef } from 'react'
 import {
-  Pencil, Copy, Trash2, Download, AlignLeft, Layers, Dna, Star, StickyNote, Tag,
+  Pencil, Copy, Trash2, Download, AlignLeft, Layers, Dna, Star, StickyNote, Tag, Combine,
 } from 'lucide-react'
 import ContextMenuPopup from '../ContextMenuPopup'
 import { usePopoverDismiss } from '../../hooks/usePopoverDismiss'
@@ -25,6 +25,8 @@ export interface SelectionCapabilities {
   canAlignToRef: boolean
   /** Two or more read alignments sharing one reference: they can form a contig. */
   canMakeContig: boolean
+  /** Two or more alignments of one kind: they can be joined end to end. */
+  canJoinAlignments: boolean
   canExport: boolean
 }
 
@@ -43,6 +45,7 @@ interface Props {
   onAlignToRef: () => void
   onAlignSelected: () => void
   onCreateContig: () => void
+  onJoinAlignments: () => void
   selection: SelectionCapabilities
   /** Whether the host wired up each optional action. */
   has: { properties: boolean; exportItems: boolean; alignToRef: boolean; quickAlign: boolean }
@@ -50,7 +53,7 @@ interface Props {
 
 export default function ExplorerContextMenu({
   target, starred, onClose, onRename, onDuplicate, onProperties, onExport, onDelete,
-  onToggleStar, onEditNote, onEditTags, onAlignToRef, onAlignSelected, onCreateContig, selection, has,
+  onToggleStar, onEditNote, onEditTags, onAlignToRef, onAlignSelected, onCreateContig, onJoinAlignments, selection, has,
 }: Props) {
   const ref = useRef<HTMLDivElement>(null)
   usePopoverDismiss(true, onClose, ref)
@@ -74,6 +77,11 @@ export default function ExplorerContextMenu({
             {selection.canMakeContig && (
               <button className="ctx-menu-item" onClick={onCreateContig}>
                 <Layers size={13} /> Create Contig
+              </button>
+            )}
+            {selection.canJoinAlignments && (
+              <button className="ctx-menu-item" onClick={onJoinAlignments} title="Concatenate the alignments, matching rows by name">
+                <Combine size={13} /> Join Alignments End to End
               </button>
             )}
             {has.exportItems && selection.canExport && (

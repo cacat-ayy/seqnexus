@@ -1,61 +1,24 @@
 /**
- * Main-thread API for the alignment Web Worker.
- * Tries a module worker first; falls back to running alignment
- * directly on the main thread (via setTimeout to allow UI updates).
+ * Main-thread API for the built-in alignment Web Worker (Needleman–Wunsch,
+ * Smith–Waterman and the simple progressive aligner). Falls back to running
+ * on the main thread when a worker cannot start.
  *
- * For MAFFT (WASM), runs async on the main thread — the WASM execution
- * is non-blocking so no worker is needed.
+ * Multiple alignment with MAFFT, MUSCLE or Kalign goes through
+ * msa/engines/runner instead.
  */
 
 import type { AlignmentRequest, AlignmentResult } from '../alignment/types'
 import { executeAlignment } from '../alignment/run'
-import { runMafft } from '../wasm/mafft'
 
 export type { AlignmentRequest, AlignmentResult }
 
 export interface AlignmentHandle {
   promise: Promise<AlignmentResult>
   cancel: () => void
-  /** Which MSA engine is actually being used (resolved from 'auto'). */
-  engineUsed?: 'mafft' | 'builtin'
 }
 
-/**
- * Check if MAFFT should be used for this request.
- * Returns true for MSA (3+ seqs) when engine is 'auto' or 'mafft'.
- */
-function shouldUseMafft(request: AlignmentRequest): boolean {
-  const engine = request.engine ?? 'auto'
-  if (engine === 'builtin') return false
-  if (request.sequences.length < 3) return false
-  return engine === 'mafft' || engine === 'auto'
-}
-
-/**
- * Run sequence alignment.
- *
- * For MSA with MAFFT engine: runs async on main thread via WASM.
- * For built-in algorithms: tries Web Worker, falls back to main thread.
- *
- * @param onMafftProgress Optional callback for MAFFT download progress (first use only)
- */
-export function runAlignment(
-  request: AlignmentRequest,
-  onMafftProgress?: (fraction: number) => void,
-): AlignmentHandle {
+export function runAlignment(request: AlignmentRequest): AlignmentHandle {
   let cancelled = false
-
-  // MAFFT path: async on main thread
-  if (shouldUseMafft(request)) {
-    const promise = runMafftAlignment(request, cancelled, onMafftProgress)
-    return {
-      promise,
-      cancel: () => { cancelled = true },
-      engineUsed: 'mafft',
-    }
-  }
-
-  // Built-in path: Web Worker with main-thread fallback
   let worker: Worker | null = null
 
   const promise = new Promise<AlignmentResult>((resolve, reject) => {
@@ -78,12 +41,12 @@ export function runAlignment(
       worker.onerror = () => {
         worker?.terminate()
         worker = null
-        runOnMainThread(request, cancelled, resolve, reject)
+        runOnMainThread(request, () => cancelled, resolve, reject)
       }
 
       worker.postMessage(request)
     } catch {
-      runOnMainThread(request, cancelled, resolve, reject)
+      runOnMainThread(request, () => cancelled, resolve, reject)
     }
   })
 
@@ -92,57 +55,22 @@ export function runAlignment(
     worker?.terminate()
   }
 
-  return { promise, cancel, engineUsed: 'builtin' }
-}
-
-/**
- * Resolve which MSA engine to use.
- * 'auto' always prefers MAFFT — it will be downloaded from CDN on first use.
- */
-export async function resolveEngine(
-  engine: 'auto' | 'mafft' | 'builtin',
-  seqCount: number,
-): Promise<'mafft' | 'builtin'> {
-  if (engine === 'builtin' || seqCount < 3) return 'builtin'
-  return 'mafft'
-}
-
-async function runMafftAlignment(
-  request: AlignmentRequest,
-  cancelled: boolean,
-  onProgress?: (fraction: number) => void,
-): Promise<AlignmentResult> {
-  try {
-    const result = await runMafft(request.sequences, request.seqType, onProgress)
-    if (cancelled) throw new Error('Cancelled')
-    return result
-  } catch (err) {
-    if (cancelled) throw new Error('Cancelled')
-    // If MAFFT fails and engine is 'auto', fall back to built-in
-    if ((request.engine ?? 'auto') === 'auto') {
-      console.warn('MAFFT failed, falling back to built-in MSA:', err)
-      const errMsg = err instanceof Error ? err.message : String(err)
-      const result = executeAlignment({ ...request, engine: 'builtin' })
-      result.warning = `MAFFT failed (${errMsg}), used built-in alignment instead.`
-      return result
-    }
-    throw err
-  }
+  return { promise, cancel }
 }
 
 function runOnMainThread(
   request: AlignmentRequest,
-  cancelled: boolean,
+  isCancelled: () => boolean,
   resolve: (r: AlignmentResult) => void,
   reject: (e: Error) => void,
 ) {
   setTimeout(() => {
-    if (cancelled) return
+    if (isCancelled()) return
     try {
       const result = executeAlignment(request)
-      if (!cancelled) resolve(result)
+      if (!isCancelled()) resolve(result)
     } catch (err) {
-      if (!cancelled) reject(err instanceof Error ? err : new Error(String(err)))
+      if (!isCancelled()) reject(err instanceof Error ? err : new Error(String(err)))
     }
   }, 50)
 }

@@ -94,6 +94,7 @@ export function useItemActions(): ItemActions {
     if (!item.canDuplicate) return
     const s = useEditorStore.getState()
     if (item.kind === 'gel') s.duplicateGel(item.id)
+    else if (item.kind === 'alignment') s.duplicateAlignment(item.id)
     else s.duplicateTab(item.id)
   }, [])
 

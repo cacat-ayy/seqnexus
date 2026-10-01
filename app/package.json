@@ -14,7 +14,6 @@
     "build:enzymes": "npx tsx scripts/build-enzyme-db.ts"
   },
   "dependencies": {
-    "@biowasm/aioli": "^3.2.1",
     "fflate": "^0.8.2",
     "idb": "^8.0.3",
     "lucide-react": "^1.7.0",

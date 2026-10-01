@@ -14,6 +14,7 @@ import type { ExplorerItem } from '../../explorer/types'
 import { PlasmidThumbnail, QualitySparkline } from './ExplorerPreview'
 import OligoSequence from '../primers/OligoSequence'
 import { findBindingSites, type BindingSite } from '../../primers/binding'
+import { summarize } from '../../msa/stats'
 
 interface Props {
   item: ExplorerItem
@@ -32,8 +33,10 @@ function previewBases(item: ExplorerItem): string | null {
       return s.tabs.find(t => t.id === item.id)?.doc.sequence.bases.slice(0, 60) ?? null
     case 'read':
       return s.sequencingReads.find(r => r.id === item.id)?.data.bases.slice(0, 60) ?? null
-    case 'alignment':
-      return s.alignments.find(a => a.id === item.id)?.result.consensus.slice(0, 60) ?? null
+    case 'alignment': {
+      const aln = s.alignments.find(a => a.id === item.id)
+      return aln ? summarize(aln.doc).consensusHead.slice(0, 60) : null
+    }
     case 'read-alignment':
       return s.readAlignments.find(r => r.id === item.id)?.result.consensus.slice(0, 60) ?? null
     default:

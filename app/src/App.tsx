@@ -11,7 +11,6 @@ import FeatureSidebar from './components/FeatureSidebar'
 import EmptyState from './components/EmptyState'
 import DisplayPopover from './components/DisplayPopover'
 import { downloadBlob } from './utils/download'
-import { copyText } from './utils/clipboard'
 import FindModal from './components/FindModal'
 const AnnotateModal = lazy(() => import('./components/AnnotateModal'))
 import NewSequenceModal, { type NewSequenceResult } from './components/NewSequenceModal'
@@ -68,13 +67,13 @@ import FilenamePrompt from './components/ExportDialog'
 import FetchModal from './components/FetchModal'
 import ChromatogramView, { type ChromZoomHandle } from './components/ChromatogramView'
 const AlignmentModal = lazy(() => import('./components/AlignmentModal'))
-const AlignmentPanel = lazy(() => import('./components/AlignmentPanel'))
+const AlignmentWorkspace = lazy(() => import('./components/alignment/AlignmentWorkspace'))
 
 const ReadAlignmentView = lazy(() => import('./components/ReadAlignmentView'))
 const ContigView = lazy(() => import('./components/ContigView'))
 
-import { toAlignedFasta, toClustal, toPhylip, toNexus, generateDiffAnnotations } from './alignment/export'
-import type { AlignmentResult } from './alignment/types'
+import { docFromResult, type AlnDoc } from './msa/model'
+import { ALIGNMENT_ONLY_EXTENSIONS, ALN_EXTENSIONS, detectFormat, fastaLooksAligned, readAlignment, writeAlignment, type AlnFormatId } from './msa/formats'
 
 
 
@@ -190,7 +189,30 @@ function MultiChromScrollbar({ scrollX, zoom, setScrollX, readIds }: { scrollX: 
  */
 const SUPPORTED_FORMATS_HINT =
   'Supported: GenBank (.gb), SnapGene (.dna), Geneious (.geneious), FASTA (.fasta, .fa), '
-  + 'FASTQ (.fastq, .fq), AB1 (.ab1), SCF (.scf) and plain text (.txt).'
+  + 'FASTQ (.fastq, .fq), AB1 (.ab1), SCF (.scf), plain text (.txt), and alignments in '
+  + 'Clustal (.aln), PHYLIP (.phy), NEXUS (.nex), MEGA (.meg), Stockholm (.sto), PIR (.pir) and MSF (.msf).'
+
+/** Everything the Open dialog offers: sequences, reads and alignments. */
+const OPEN_ACCEPT = ['.gb', '.gbk', '.genbank', '.fasta', '.fa', '.fna', '.faa', '.fastq', '.fq', '.seq', '.txt', '.dna', '.geneious', '.ab1', '.abi', '.abif', '.scf', ...ALN_EXTENSIONS].join(',')
+
+/**
+ * Whether a text file is an alignment rather than sequences: an alignment-only
+ * extension, a format only alignments use (Clustal, NEXUS, ...), or a FASTA
+ * whose records are gapped and the same length.
+ */
+function looksLikeAlignmentFile(text: string, fileName: string): boolean {
+  const ext = (/\.[^.]+$/.exec(fileName)?.[0] ?? '').toLowerCase()
+  if (ALIGNMENT_ONLY_EXTENSIONS.includes(ext) || ext === '.afa' || ext === '.a2m') return true
+  const fmt = detectFormat(text, fileName)
+  if (fmt && fmt !== 'fasta') return true
+  return fmt === 'fasta' && fastaLooksAligned(text)
+}
+
+/** Export dialog format ids to alignment writers. */
+const ALN_EXPORT_FORMAT: Partial<Record<string, AlnFormatId>> = {
+  'aligned-fasta': 'fasta', clustal: 'clustal', phylip: 'phylip', nexus: 'nexus',
+  mega: 'mega', stockholm: 'stockholm', pir: 'pir', msf: 'msf',
+}
 
 /** Parser and reader failures, reduced to something fit for a detail line. */
 const errorDetail = (err: unknown): string | undefined =>
@@ -228,7 +250,7 @@ export default function App() {
   const activeSequencingReadIds = useEditorStore(s => s.activeSequencingReadIds)
   const alignments = useEditorStore(s => s.alignments)
   const activeAlignmentId = useEditorStore(s => s.activeAlignmentId)
-  const setAlignmentZoom = useEditorStore(s => s.setAlignmentZoom)
+  const setAlignmentView = useEditorStore(s => s.setAlignmentView)
 
   const doc = useEditorStore(s => s.doc)
   const selection = useEditorStore(s => s.selection)
@@ -254,7 +276,6 @@ export default function App() {
     return () => clearTimeout(t)
   }, [readOnlyBlockCount])
   const renameTab = useEditorStore(s => s.renameTab)
-  const addAnnotation = useEditorStore(s => s.addAnnotation)
   const showOrfs = useEditorStore(s => s.showOrfs)
   const showEnzymes = useEditorStore(s => s.showEnzymes)
   const showAutoAnnotations = useEditorStore(s => s.showAutoAnnotations)
@@ -452,6 +473,9 @@ export default function App() {
   }, [getReadBases])
 
   const activeGel = useEditorStore(s => s.gels.find(g => g.id === s.activeGelId) ?? null)
+  const activeAln = useEditorStore(s => (s.activeAlignmentId ? s.alignments.find(a => a.id === s.activeAlignmentId) ?? null : null))
+  const undoAlignment = useEditorStore(s => s.undoAlignment)
+  const redoAlignment = useEditorStore(s => s.redoAlignment)
   const gelOpen = activeGel !== null
   const setActiveGel = useEditorStore(s => s.setActiveGel)
   const undoGel = useEditorStore(s => s.undoGel)
@@ -783,7 +807,18 @@ export default function App() {
   }, [sessionLoadWarnings])
 
   // --- File handling ---
-  const SUPPORTED_EXTENSIONS = /\.(gb|gbk|genbank|dna|geneious|fasta|fa|fna|faa|fastq|fq|seq|txt|ab1|abi|abif|scf|json)$/i
+  const SUPPORTED_EXTENSIONS = /\.(gb|gbk|genbank|dna|geneious|fasta|fa|fas|fna|faa|fastq|fq|seq|txt|ab1|abi|abif|scf|json|aln|clustal|clw|phy|phylip|ph|nex|nexus|nxs|meg|mega|sto|stk|stockholm|pir|nbrf|ali|msf|afa|a2m|mfa)$/i
+
+  /** Open an alignment file as an alignment item. */
+  const openAlignmentFile = useCallback((text: string, fileName: string) => {
+    try {
+      const { doc, warnings } = readAlignment(text, fileName)
+      addAlignment(doc, { name: fileName.replace(/\.[^.]+$/, '') })
+      for (const w of warnings) notify.warning(w)
+    } catch (err) {
+      notify.error(`Could not read "${fileName}"`, { detail: errorDetail(err) })
+    }
+  }, [addAlignment])
   const DNA_CHARS = /^[ATGCNRYSWKMBDHVatgcnryswkmbdhv\s\n\r>;\-]+$/
 
   const [parseProgress, setParseProgress] = useState<{ bytesRead: number; totalBytes: number } | null>(null)
@@ -933,10 +968,14 @@ export default function App() {
       reader.onerror = () => notify.error(`Could not read "${file.name}"`)
       reader.readAsText(file)
     } else {
-      // FASTA or plain text
+      // FASTA, plain text, or an alignment
       const reader = new FileReader()
       reader.onload = () => {
         const text = reader.result as string
+        if (looksLikeAlignmentFile(text, file.name)) {
+          openAlignmentFile(text, file.name)
+          return
+        }
         // Validate content looks like sequence data (skip for FASTA/GenBank)
         if (text.length > 0 && !DNA_CHARS.test(text) && !text.startsWith('LOCUS') && !text.startsWith('>')) {
           notify.error(`"${file.name}" does not look like sequence data`, { detail: 'Expected DNA or RNA bases, FASTA, or GenBank.' })
@@ -985,7 +1024,7 @@ export default function App() {
       reader.onerror = () => notify.error(`Could not read "${file.name}"`)
       reader.readAsText(file)
     }
-  }, [openDocument, openDocumentState, addSequencingRead, setSequencingTrim])
+  }, [openDocument, openDocumentState, addSequencingRead, setSequencingTrim, openAlignmentFile])
 
   // --- File menu actions ---
   // Stable identities: the explorer is memo'd, so an inline arrow here would
@@ -1197,17 +1236,13 @@ export default function App() {
       return `>${name}\n${seq}\n`
     }
 
-    const exportAlignmentText = (result: AlignmentResult, seqType: 'dna' | 'protein', fmt: ExportFormat): string => {
-      if (fmt === 'aligned-fasta') return toAlignedFasta(result)
-      if (fmt === 'clustal') return toClustal(result)
-      if (fmt === 'phylip') return toPhylip(result)
-      if (fmt === 'nexus') return toNexus(result, seqType)
-      return toAlignedFasta(result)
-    }
+    const exportAlignmentText = (doc: AlnDoc, fmt: ExportFormat): string =>
+      writeAlignment(doc, ALN_EXPORT_FORMAT[fmt] ?? 'fasta')
 
     const EXT_MAP: Record<string, string> = {
       gb: '.gb', fasta: '.fasta', dna: '.dna', gff3: '.gff', csv: '.csv',
       fastq: '.fastq', 'aligned-fasta': '.fasta', clustal: '.aln', phylip: '.phy', nexus: '.nex',
+      mega: '.meg', stockholm: '.sto', pir: '.pir', msf: '.msf',
     }
 
     const downloadItem = (text: string, name: string, ext: string, mime = 'text/plain') => {
@@ -1245,11 +1280,11 @@ export default function App() {
           } else if (kind === 'alignment') {
             const align = state.alignments.find(a => a.id === id)
             if (!align) continue
-            downloadItem(exportAlignmentText(align.result, align.seqType, defFmt), align.name.replace(/\s+/g, '_'), ext)
+            downloadItem(exportAlignmentText(align.doc, defFmt), align.name.replace(/\s+/g, '_'), ext)
           } else if (kind === 'read-alignment') {
             const ra = state.readAlignments.find(r => r.id === id)
             if (!ra) continue
-            downloadItem(exportAlignmentText(ra.result, 'dna', defFmt), ra.name.replace(/\s+/g, '_'), ext)
+            downloadItem(exportAlignmentText(docFromResult(ra.result, 'dna'), defFmt), ra.name.replace(/\s+/g, '_'), ext)
           } else if (kind === 'contig') {
             const contig = state.contigs.find(c => c.id === id)
             if (!contig) continue
@@ -1257,7 +1292,7 @@ export default function App() {
               .map(raId => state.readAlignments.find(r => r.id === raId))
               .filter(Boolean) as typeof state.readAlignments
             if (raResults.length > 0) {
-              downloadItem(exportAlignmentText(raResults[0].result, 'dna', defFmt), contig.name.replace(/\s+/g, '_'), ext)
+              downloadItem(exportAlignmentText(docFromResult(raResults[0].result, 'dna'), defFmt), contig.name.replace(/\s+/g, '_'), ext)
             }
           }
           fileCount++
@@ -1287,14 +1322,14 @@ export default function App() {
       } else if (activeKind === 'alignment') {
         const align = state.alignments.find(a => a.id === state.activeAlignmentId)
         if (align) {
-          const text = exportAlignmentText(align.result, align.seqType, format)
+          const text = exportAlignmentText(align.doc, format)
           downloadBlob(new Blob([text], { type: 'text/plain' }), filename)
           written = 1
         }
       } else if (activeKind === 'read-alignment') {
         const ra = state.readAlignments.find(r => r.id === state.activeReadAlignmentId)
         if (ra) {
-          const text = exportAlignmentText(ra.result, 'dna', format)
+          const text = exportAlignmentText(docFromResult(ra.result, 'dna'), format)
           downloadBlob(new Blob([text], { type: 'text/plain' }), filename)
           written = 1
         }
@@ -1305,7 +1340,7 @@ export default function App() {
             .map(raId => state.readAlignments.find(r => r.id === raId))
             .filter(Boolean) as typeof state.readAlignments
           if (raResults.length > 0) {
-            const text = exportAlignmentText(raResults[0].result, 'dna', format)
+            const text = exportAlignmentText(docFromResult(raResults[0].result, 'dna'), format)
             downloadBlob(new Blob([text], { type: 'text/plain' }), filename)
             written = 1
           }
@@ -1341,12 +1376,12 @@ export default function App() {
           } else if (kind === 'alignment') {
             const align = state.alignments.find(a => a.id === id)
             if (!align) continue
-            downloadItem(exportAlignmentText(align.result, align.seqType, format), align.name.replace(/\s+/g, '_'), ext)
+            downloadItem(exportAlignmentText(align.doc, format), align.name.replace(/\s+/g, '_'), ext)
             written++
           } else if (kind === 'read-alignment') {
             const ra = state.readAlignments.find(r => r.id === id)
             if (!ra) continue
-            downloadItem(exportAlignmentText(ra.result, 'dna', format), ra.name.replace(/\s+/g, '_'), ext)
+            downloadItem(exportAlignmentText(docFromResult(ra.result, 'dna'), format), ra.name.replace(/\s+/g, '_'), ext)
             written++
           } else if (kind === 'contig') {
             const contig = state.contigs.find(c => c.id === id)
@@ -1355,7 +1390,7 @@ export default function App() {
               .map(raId => state.readAlignments.find(r => r.id === raId))
               .filter(Boolean) as typeof state.readAlignments
             if (raResults.length > 0) {
-              downloadItem(exportAlignmentText(raResults[0].result, 'dna', format), contig.name.replace(/\s+/g, '_'), ext)
+              downloadItem(exportAlignmentText(docFromResult(raResults[0].result, 'dna'), format), contig.name.replace(/\s+/g, '_'), ext)
               written++
             }
           }
@@ -1374,17 +1409,17 @@ export default function App() {
             if (read) parts.push(exportReadText(read, format))
           } else if (kind === 'alignment') {
             const align = state.alignments.find(a => a.id === id)
-            if (align) parts.push(exportAlignmentText(align.result, align.seqType, format))
+            if (align) parts.push(exportAlignmentText(align.doc, format))
           } else if (kind === 'read-alignment') {
             const ra = state.readAlignments.find(r => r.id === id)
-            if (ra) parts.push(exportAlignmentText(ra.result, 'dna', format))
+            if (ra) parts.push(exportAlignmentText(docFromResult(ra.result, 'dna'), format))
           } else if (kind === 'contig') {
             const contig = state.contigs.find(c => c.id === id)
             if (contig) {
               const raResults = contig.readAlignmentIds
                 .map(raId => state.readAlignments.find(r => r.id === raId))
                 .filter(Boolean) as typeof state.readAlignments
-              if (raResults.length > 0) parts.push(exportAlignmentText(raResults[0].result, 'dna', format))
+              if (raResults.length > 0) parts.push(exportAlignmentText(docFromResult(raResults[0].result, 'dna'), format))
             }
           }
         }
@@ -1464,11 +1499,27 @@ export default function App() {
 
   // Shared by the Undo/Redo buttons and their palette entries, so the two
   // cannot disagree about whether there is anything to step to.
-  const undoDisabled = activeGel ? activeGel.undoStack.length === 0 : noDoc || readOnly || undoTop === null
-  const redoDisabled = activeGel ? activeGel.redoStack.length === 0 : noDoc || readOnly || redoTop === null
+  // A gel or an alignment on screen keeps its own history.
+  const ownHistory = activeGel ?? activeAln
+  const undoDisabled = ownHistory ? ownHistory.undoStack.length === 0 : noDoc || readOnly || undoTop === null
+  const redoDisabled = ownHistory ? ownHistory.redoStack.length === 0 : noDoc || readOnly || redoTop === null
+  const undoDesc = activeGel ? undefined : activeAln ? activeAln.undoStack[activeAln.undoStack.length - 1]?.label : undoTop || undefined
+  const redoDesc = activeGel ? undefined : activeAln ? activeAln.redoStack[activeAln.redoStack.length - 1]?.label : redoTop || undefined
+  const activeGelId = activeGel?.id
+  const activeAlnId = activeAln?.id
+  const runUndo = useCallback(() => {
+    if (activeGelId) undoGel(activeGelId)
+    else if (activeAlnId) undoAlignment(activeAlnId)
+    else undo()
+  }, [activeGelId, activeAlnId, undoGel, undoAlignment, undo])
+  const runRedo = useCallback(() => {
+    if (activeGelId) redoGel(activeGelId)
+    else if (activeAlnId) redoAlignment(activeAlnId)
+    else redo()
+  }, [activeGelId, activeAlnId, redoGel, redoAlignment, redo])
   const stepWhy = (verb: 'undo' | 'redo') =>
-    !activeGel && noDoc ? `Open a sequence to ${verb} its edits`
-      : !activeGel && readOnly ? 'This sequence is read-only. Unlock it to edit'
+    !ownHistory && noDoc ? `Open a sequence to ${verb} its edits`
+      : !ownHistory && readOnly ? 'This sequence is read-only. Unlock it to edit'
       : `Nothing to ${verb}`
 
   // Why most of the analysis tools are greyed out: they act on a sequence,
@@ -1488,8 +1539,8 @@ export default function App() {
     { id: 'session-import', label: 'Import Session', group: 'File', run: () => sessionImportInputRef.current?.click() },
 
     // --- Edit ---
-    { id: 'undo', label: 'Undo', group: 'Edit', icon: Undo2, shortcut: `${mod}Z`, disabled: undoDisabled, run: () => (activeGel ? undoGel(activeGel.id) : undo()) },
-    { id: 'redo', label: 'Redo', group: 'Edit', icon: Redo2, shortcut: redoKey, disabled: redoDisabled, run: () => (activeGel ? redoGel(activeGel.id) : redo()) },
+    { id: 'undo', label: 'Undo', group: 'Edit', icon: Undo2, shortcut: `${mod}Z`, disabled: undoDisabled, run: runUndo },
+    { id: 'redo', label: 'Redo', group: 'Edit', icon: Redo2, shortcut: redoKey, disabled: redoDisabled, run: runRedo },
     { id: 'find', label: 'Find & Replace', group: 'Edit', icon: TextSearch, shortcut: `${mod}F`, run: handleOpenFind },
     { id: 'goto', label: 'Go to Position', group: 'Edit', shortcut: `${mod}G`, disabled: noDoc, run: () => { setGotoValue(''); setGotoActive(true); requestAnimationFrame(() => gotoInputRef.current?.focus()) } },
 
@@ -1529,7 +1580,7 @@ export default function App() {
     { id: 'theme', label: 'Change Theme', group: 'View', icon: SunMoon, keywords: 'dark light appearance', run: () => setThemeOpen(true) },
     { id: 'about', label: 'About SeqNexus', group: 'View', icon: Info, keywords: 'help version', run: () => setInfoOpen(true) },
   ], [
-    mod, redoKey, noDoc, undoDisabled, redoDisabled, undo, redo, handleOpenFind, handleNewSequence, handleNewFolder, openGel, activeGel, undoGel, redoGel,
+    mod, redoKey, noDoc, undoDisabled, redoDisabled, handleOpenFind, handleNewSequence, handleNewFolder, openGel, runUndo, runRedo,
     handleImportClipboard, toggleOrfs, toggleEnzymes, openSidebar, openPrimerDesign, toggleAutoAnnotations,
   ])
 
@@ -1630,7 +1681,7 @@ export default function App() {
           <input
             ref={fileInputRef}
             type="file"
-            accept=".gb,.gbk,.genbank,.fasta,.fa,.fna,.faa,.fastq,.fq,.seq,.txt,.dna,.geneious,.ab1,.abi,.abif,.scf"
+            accept={OPEN_ACCEPT}
             multiple
             style={{ display: 'none' }}
             onChange={e => { handleMenuImportFiles(e.target.files); e.target.value = '' }}
@@ -1656,17 +1707,17 @@ export default function App() {
         <div className="toolbar-group">
           <button
             className="tb"
-            onClick={() => (activeGel ? undoGel(activeGel.id) : undo())}
+            onClick={runUndo}
             disabled={undoDisabled}
-            {...tip({ label: 'Undo', shortcut: `${mod}Z`, desc: activeGel ? undefined : undoTop || undefined, why: stepWhy('undo') })}
+            {...tip({ label: 'Undo', shortcut: `${mod}Z`, desc: undoDesc, why: stepWhy('undo') })}
           >
             <Undo2 size={14} />
           </button>
           <button
             className="tb"
-            onClick={() => (activeGel ? redoGel(activeGel.id) : redo())}
+            onClick={runRedo}
             disabled={redoDisabled}
-            {...tip({ label: 'Redo', shortcut: redoKey, desc: activeGel ? undefined : redoTop || undefined, why: stepWhy('redo') })}
+            {...tip({ label: 'Redo', shortcut: redoKey, desc: redoDesc, why: stepWhy('redo') })}
           >
             <Redo2 size={14} />
           </button>
@@ -1783,14 +1834,14 @@ export default function App() {
             }
             const activeAlign = activeAlignmentId ? alignments.find(a => a.id === activeAlignmentId) : null
             if (activeAlign) {
-              const az = activeAlign.zoomLevel
+              const az = activeAlign.view.zoom
               return (
                 <>
-                  <button className="tb" onClick={() => setAlignmentZoom(activeAlign.id, az - 1)} disabled={az <= 0} {...tip({ label: 'Zoom out' })}>
+                  <button className="tb" onClick={() => setAlignmentView(activeAlign.id, { zoom: az - 1 })} disabled={az <= 0} {...tip({ label: 'Zoom out' })}>
                     <span className="tb-icon"><ZoomOut size={14} /></span>
                   </button>
                   <span className="tb zoom-label" title={`Zoom level ${az}`}>{Math.round(az / 9 * 100)}%</span>
-                  <button className="tb" onClick={() => setAlignmentZoom(activeAlign.id, az + 1)} disabled={az >= 9} {...tip({ label: 'Zoom in' })}>
+                  <button className="tb" onClick={() => setAlignmentView(activeAlign.id, { zoom: az + 1 })} disabled={az >= 9} {...tip({ label: 'Zoom in' })}>
                     <span className="tb-icon"><ZoomIn size={14} /></span>
                   </button>
                 </>
@@ -2139,42 +2190,14 @@ export default function App() {
               const activeAlign = alignments.find(a => a.id === activeAlignmentId)!
               return (
                 <Suspense fallback={null}>
-                  <AlignmentPanel
-                    result={activeAlign.result}
-                    seqType={activeAlign.seqType}
-                    algorithm={activeAlign.algorithm}
-                    zoomLevel={activeAlign.zoomLevel}
-                    alignmentId={activeAlign.id}
-                    onZoomChange={(level) => setAlignmentZoom(activeAlign.id, level)}
-                    onCopy={(format) => {
-                      const text = format === 'fasta'
-                        ? toAlignedFasta(activeAlign.result)
-                        : toClustal(activeAlign.result)
-                      copyText(text, `Copied alignment as ${format === 'fasta' ? 'FASTA' : 'Clustal'}`)
-                    }}
-                    onAnnotateDiffs={() => {
-                      const anns = generateDiffAnnotations(activeAlign.result)
-                      for (const ann of anns) addAnnotation(ann)
-                    }}
-                    onJumpToSource={(seqName, ungappedPos) => {
-                      const store = useEditorStore.getState()
-                      const tab = store.tabs.find(t => t.doc.name === seqName || seqName.startsWith(t.doc.name))
-                      if (tab) {
-                        store.setActiveTab(tab.id)
-                        const pos = Math.max(0, ungappedPos - 1)
-                        store.smoothScrollRequested = true
-                        store.setSelection({ anchor: pos, caret: pos })
-                      }
-                    }}
-                    externalSearchOpen={alignSearchOpen}
-                    onSearchClose={() => setAlignSearchOpen(false)}
+                  <AlignmentWorkspace
+                    key={activeAlign.id}
+                    aln={activeAlign}
+                    onClose={() => useEditorStore.getState().setActiveAlignment(null)}
+                    onExportPrompt={handleFilenamePrompt}
+                    findRequested={alignSearchOpen}
+                    onFindClosed={() => setAlignSearchOpen(false)}
                   />
-                  <div className="status-bar">
-                    <span style={{ flex: 1 }} />
-                    <span className="status-bar-right">
-                      <StorageIndicator refreshKey={storageRefreshKey} />
-                    </span>
-                  </div>
                 </Suspense>
               )
             })()
@@ -2575,9 +2598,8 @@ export default function App() {
         open={alignModalOpen}
         onClose={() => { setAlignModalOpen(false); setAlignInitialEntries(undefined) }}
         initialEntries={alignInitialEntries}
-        onResult={(result, seqType) => {
-          addAlignment(result, seqType, result.algorithm)
-          if (result.warning) notify.warning(result.warning)
+        onResult={(doc, name) => {
+          addAlignment(doc, { name })
           setAlignModalOpen(false)
           setAlignInitialEntries(undefined)
         }}

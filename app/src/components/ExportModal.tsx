@@ -16,6 +16,7 @@ export type ExportFormat =
   | 'gb' | 'fasta' | 'dna' | 'gff3' | 'csv'           // sequences
   | 'fastq'                                             // sequencing reads
   | 'aligned-fasta' | 'clustal' | 'phylip' | 'nexus'   // alignments
+  | 'mega' | 'stockholm' | 'pir' | 'msf'
 
 /** What kind of item is being exported. */
 export type ExportItemKind = 'sequence' | 'read' | 'alignment' | 'read-alignment' | 'contig'
@@ -46,8 +47,12 @@ const READ_FORMATS: FormatOption[] = [
 const ALIGNMENT_FORMATS: FormatOption[] = [
   { id: 'aligned-fasta', label: 'Aligned FASTA', ext: '.fasta', description: 'Aligned sequences with gap characters', icon: FileText },
   { id: 'clustal', label: 'Clustal', ext: '.aln', description: 'Clustal ALN format with conservation', icon: AlignLeft },
-  { id: 'phylip', label: 'PHYLIP', ext: '.phy', description: 'Relaxed PHYLIP interleaved format', icon: FileText },
-  { id: 'nexus', label: 'NEXUS', ext: '.nex', description: 'NEXUS format for phylogenetic tools', icon: FileText },
+  { id: 'phylip', label: 'PHYLIP', ext: '.phy', description: 'For RAxML, IQ-TREE, PhyML and PHYLIP', icon: FileText },
+  { id: 'nexus', label: 'NEXUS', ext: '.nex', description: 'For MrBayes, PAUP*, BEAST and SplitsTree', icon: FileText },
+  { id: 'mega', label: 'MEGA', ext: '.meg', description: 'For MEGA phylogenetics', icon: FileText },
+  { id: 'stockholm', label: 'Stockholm', ext: '.sto', description: 'For HMMER, Pfam and Rfam', icon: FileText },
+  { id: 'pir', label: 'PIR / NBRF', ext: '.pir', description: 'For MODELLER and older protein tools', icon: FileText },
+  { id: 'msf', label: 'GCG MSF', ext: '.msf', description: 'For GCG, Jalview and older tools', icon: FileText },
 ]
 
 export function formatsForKind(kind: ExportItemKind): FormatOption[] {

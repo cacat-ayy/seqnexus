@@ -7,7 +7,7 @@
  */
 
 import { memo } from 'react'
-import { AlignLeft, Layers, Download, Trash2, X, FolderInput } from 'lucide-react'
+import { AlignLeft, Layers, Download, Trash2, X, FolderInput, Combine } from 'lucide-react'
 import type { SelectionCapabilities } from './ExplorerContextMenu'
 
 interface Props {
@@ -19,6 +19,7 @@ interface Props {
   onAlignSelected: () => void
   onAlignToRef: () => void
   onCreateContig: () => void
+  onJoinAlignments: () => void
   onFile: () => void
   onExport: () => void
   onDelete: () => void
@@ -27,7 +28,7 @@ interface Props {
 
 function ExplorerBulkBar({
   count, selection, has, hasFolders,
-  onAlignSelected, onAlignToRef, onCreateContig, onFile, onExport, onDelete, onClear,
+  onAlignSelected, onAlignToRef, onCreateContig, onJoinAlignments, onFile, onExport, onDelete, onClear,
 }: Props) {
   return (
     <div className="ex-bulk" role="toolbar" aria-label={`${count} items selected`}>
@@ -47,6 +48,11 @@ function ExplorerBulkBar({
       {selection.canMakeContig && (
         <button className="ex-bulk-btn" title="Create contig" onClick={onCreateContig}>
           <Layers size={13} />
+        </button>
+      )}
+      {selection.canJoinAlignments && (
+        <button className="ex-bulk-btn" title="Join alignments end to end" onClick={onJoinAlignments}>
+          <Combine size={13} />
         </button>
       )}
       {hasFolders && (

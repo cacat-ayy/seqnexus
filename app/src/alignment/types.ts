@@ -11,8 +11,6 @@ export interface AlignmentRequest {
     gapOpen: number
     gapExtend: number
   }
-  /** MSA engine preference. Default 'auto' tries MAFFT first, falls back to built-in. */
-  engine?: 'auto' | 'mafft' | 'builtin'
 }
 
 export interface AlignedSequence {

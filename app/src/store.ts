@@ -35,6 +35,8 @@ import type { CutSite } from './enzymes/finder'
 import type { ORFResult } from './workers/orf-finder'
 import type { DesignResult } from './primers/design/types'
 import type { AlignmentResult } from './alignment/types'
+import type { AlnDoc } from './msa/model'
+import { DEFAULT_VIEW, type AlnView } from './msa/view'
 import { toUid, parseUid, type ItemMeta } from './explorer/types'
 import { PRESET_COLORS } from './utils/annotation-constants'
 import type { AnnotationMatch } from './workers/annotate-list'
@@ -357,6 +359,36 @@ const GEL_COALESCE_MS = 1000
 const MAX_GEL_UNDO = 100
 let gelCoalesce: { id: string; key: string; at: number } | null = null
 
+/** Same idea for alignment edits: typing a run of residues is one step. */
+const ALN_COALESCE_MS = 1000
+const MAX_ALN_UNDO = 200
+/**
+ * Undo snapshots share every row an edit left alone, so most steps cost a
+ * row or two. Column edits copy every row, though, so history is also capped
+ * by the characters it holds on its own (about 128 MB of strings).
+ */
+const ALN_UNDO_BUDGET = 64_000_000
+let alnCoalesce: { id: string; key: string; at: number } | null = null
+
+/** Characters held by `prev` that `next` does not share. */
+function alnStepCost(prev: AlnDoc, next: AlnDoc): number {
+  const kept = new Set(next.rows)
+  let n = 0
+  for (const r of prev.rows) if (!kept.has(r)) n += r.seq.length
+  return n
+}
+
+function trimAlnHistory(stack: AlnHistoryEntry[]): AlnHistoryEntry[] {
+  let total = 0
+  let from = stack.length
+  while (from > 0 && stack.length - from < MAX_ALN_UNDO) {
+    total += stack[from - 1].cost
+    if (total > ALN_UNDO_BUDGET && from < stack.length) break
+    from--
+  }
+  return from === 0 ? stack : stack.slice(from)
+}
+
 const nextTabId = () => tabIds.next()
 const nextSeqReadId = () => seqReadIds.next()
 const nextFolderId = () => folderIds.next()
@@ -483,14 +515,26 @@ export interface GelDoc {
   redoStack: GelWorkspaceState[]
 }
 
+/** One alignment undo step: the document before the edit, and what the edit was. */
+export interface AlnHistoryEntry {
+  doc: AlnDoc
+  label: string
+  /** Characters this snapshot holds that the next one does not share. */
+  cost: number
+}
+
+/** A multiple or pairwise alignment the user owns and edits. */
 export interface SavedAlignment {
   id: string
   name: string
-  result: AlignmentResult
-  seqType: 'dna' | 'protein'
-  algorithm: 'nw' | 'sw' | 'msa' | 'mafft'
+  doc: AlnDoc
   createdAt: number
-  zoomLevel: number
+  modifiedAt: number
+  /** How it is shown; not part of its undo history. */
+  view: AlnView
+  /** Earlier documents, newest last. Not persisted. */
+  undoStack: AlnHistoryEntry[]
+  redoStack: AlnHistoryEntry[]
 }
 
 interface EditorStore {
@@ -886,11 +930,23 @@ interface EditorStore {
   // Alignments
   alignments: SavedAlignment[]
   activeAlignmentId: string | null
-  addAlignment: (result: AlignmentResult, seqType: 'dna' | 'protein', algorithm: 'nw' | 'sw' | 'msa' | 'mafft') => string
+  /** Keep a new alignment and, unless told otherwise, open it. */
+  addAlignment: (doc: AlnDoc, opts?: { name?: string; activate?: boolean }) => string
+  /**
+   * Edit an alignment, recording an undo step named `label`. Calls sharing a
+   * `coalesceKey` in quick succession (typing, a drag) make one step. An edit
+   * that returns the same document records nothing.
+   */
+  updateAlignment: (id: string, fn: (doc: AlnDoc) => AlnDoc, label: string, coalesceKey?: string) => void
+  /** Step back or forward; returns the label of the step, or null if there was none. */
+  undoAlignment: (id: string) => string | null
+  redoAlignment: (id: string) => string | null
+  duplicateAlignment: (id: string) => string | null
   removeAlignment: (id: string) => void
   renameAlignment: (id: string, name: string) => void
   setActiveAlignment: (id: string | null) => void
-  setAlignmentZoom: (id: string, level: number) => void
+  /** Change how an alignment is shown. Not an undo step. */
+  setAlignmentView: (id: string, patch: Partial<AlnView>) => void
 
   // Read Alignments
   readAlignments: ReadAlignment[]
@@ -2850,29 +2906,103 @@ export const useEditorStore = create<EditorStore>((set, get) => {
     alignments: [],
     activeAlignmentId: null,
 
-    addAlignment(result, seqType, algorithm) {
+    addAlignment(doc, opts = {}) {
       const id = nextAlignId()
-      const names = result.sequences.map(s => s.name)
-      const name = names.length === 2
+      const names = doc.rows.map(r => r.name)
+      const name = opts.name ?? (names.length === 2
         ? `${names[0]} vs ${names[1]}`
-        : `MSA (${names.length} sequences)`
+        : `Alignment (${names.length} sequences)`)
+      const now = Date.now()
       const saved: SavedAlignment = {
-        id,
-        name,
-        result,
-        seqType,
-        algorithm,
-        createdAt: Date.now(),
-        zoomLevel: 7, // default zoom (10px cells)
+        id, name, doc,
+        createdAt: now,
+        modifiedAt: now,
+        view: DEFAULT_VIEW,
+        undoStack: [],
+        redoStack: [],
       }
-      set({
-        alignments: [...get().alignments, saved],
-        activeAlignmentId: id,
-        activeTabId: null,
-        activeSequencingReadIds: [],
-        activeReadAlignmentId: null,
-      })
+      set({ alignments: [...get().alignments, saved] })
+      if (opts.activate !== false) get().setActiveAlignment(id)
       return id
+    },
+
+    updateAlignment(id, fn, label, coalesceKey) {
+      set(s => {
+        const idx = s.alignments.findIndex(a => a.id === id)
+        if (idx === -1) return {}
+        const aln = s.alignments[idx]
+        const next = fn(aln.doc)
+        if (next === aln.doc) return {}
+        const now = Date.now()
+        const merge = !!coalesceKey && alnCoalesce !== null && alnCoalesce.id === id
+          && alnCoalesce.key === coalesceKey && now - alnCoalesce.at < ALN_COALESCE_MS
+          && aln.undoStack.length > 0
+        alnCoalesce = coalesceKey ? { id, key: coalesceKey, at: now } : null
+        let undoStack = aln.undoStack
+        if (merge) {
+          // The step keeps its starting point; only its cost grows.
+          const top = undoStack[undoStack.length - 1]
+          undoStack = [...undoStack.slice(0, -1), { ...top, cost: alnStepCost(top.doc, next) }]
+        } else {
+          undoStack = trimAlnHistory([...undoStack, { doc: aln.doc, label, cost: alnStepCost(aln.doc, next) }])
+        }
+        const alignments = [...s.alignments]
+        alignments[idx] = { ...aln, doc: next, modifiedAt: now, undoStack, redoStack: [] }
+        return { alignments }
+      })
+    },
+
+    undoAlignment(id) {
+      alnCoalesce = null
+      const aln = get().alignments.find(a => a.id === id)
+      const step = aln?.undoStack[aln.undoStack.length - 1]
+      if (!aln || !step) return null
+      set(s => ({
+        alignments: s.alignments.map(a => a.id !== id ? a : {
+          ...a,
+          doc: step.doc,
+          undoStack: a.undoStack.slice(0, -1),
+          redoStack: [...a.redoStack, { doc: a.doc, label: step.label, cost: alnStepCost(a.doc, step.doc) }],
+          modifiedAt: Date.now(),
+        }),
+      }))
+      return step.label
+    },
+
+    redoAlignment(id) {
+      alnCoalesce = null
+      const aln = get().alignments.find(a => a.id === id)
+      const step = aln?.redoStack[aln.redoStack.length - 1]
+      if (!aln || !step) return null
+      set(s => ({
+        alignments: s.alignments.map(a => a.id !== id ? a : {
+          ...a,
+          doc: step.doc,
+          redoStack: a.redoStack.slice(0, -1),
+          undoStack: [...a.undoStack, { doc: a.doc, label: step.label, cost: alnStepCost(a.doc, step.doc) }],
+          modifiedAt: Date.now(),
+        }),
+      }))
+      return step.label
+    },
+
+    duplicateAlignment(id) {
+      const s = get()
+      const index = s.alignments.findIndex(a => a.id === id)
+      if (index === -1) return null
+      const src = s.alignments[index]
+      const copyId = nextAlignId()
+      const now = Date.now()
+      const copy: SavedAlignment = {
+        ...src, id: copyId, name: `${src.name} copy`, createdAt: now, modifiedAt: now, undoStack: [], redoStack: [],
+      }
+      const folderId = folderOf(s.folders, toUid('alignment', id))
+      set({
+        alignments: insertAt(s.alignments, index + 1, copy),
+        folders: folderId ? withItem(s.folders, toUid('alignment', copyId), folderId) : s.folders,
+      })
+      get().setActiveAlignment(copyId)
+      return copyId
     },
 
     removeAlignment(id) {
@@ -2895,7 +3025,7 @@ export const useEditorStore = create<EditorStore>((set, get) => {
     renameAlignment(id, name) {
       set(s => ({
         alignments: s.alignments.map(a =>
-          a.id === id ? { ...a, name } : a
+          a.id === id ? { ...a, name, modifiedAt: Date.now() } : a
         ),
       }))
     },
@@ -2911,10 +3041,10 @@ export const useEditorStore = create<EditorStore>((set, get) => {
       })
     },
 
-    setAlignmentZoom(id, level) {
+    setAlignmentView(id, patch) {
       set(s => ({
         alignments: s.alignments.map(a =>
-          a.id === id ? { ...a, zoomLevel: level } : a
+          a.id === id ? { ...a, view: { ...a.view, ...patch } } : a
         ),
       }))
     },

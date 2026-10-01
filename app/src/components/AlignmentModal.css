@@ -489,3 +489,44 @@
 .align-cancel-btn:hover {
   background: var(--bg-hover);
 }
+
+/* Engine plan next to the aligner picker */
+.align-plan {
+  margin-left: var(--space-2);
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+}
+
+/* Time-based progress while an aligner runs */
+.align-progress {
+  width: 260px;
+  height: 4px;
+  border-radius: 2px;
+  background: var(--border);
+  overflow: hidden;
+}
+.align-progress span {
+  display: block;
+  height: 100%;
+  background: var(--accent);
+  transition: width 250ms linear;
+}
+.align-running-sub {
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Name for a new multiple alignment, in place of the pairwise mode toggle */
+.align-name-input {
+  flex: 1;
+  max-width: 260px;
+  font: inherit;
+  font-size: var(--text-sm);
+  padding: var(--space-1) var(--space-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-input);
+  background: var(--bg);
+  color: var(--text);
+}
+.align-name-input:focus { outline: none; border-color: var(--accent); }

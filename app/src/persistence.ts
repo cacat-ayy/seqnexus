@@ -10,6 +10,8 @@ import { useEditorStore, type ExplorerFolder, type ViewMode, type BaseEdit, type
 import { sanitizeWorkspace, type GelWorkspaceState } from './gel/workspace'
 import type { Ab1Data } from './io/ab1'
 import type { AlignmentResult } from './alignment/types'
+import { sanitizeDoc, type AlnDoc } from './msa/model'
+import { sanitizeView } from './msa/view'
 import { toUid, parseUid, type ItemMeta } from './explorer/types'
 import type { LibraryOligo } from './primers/oligo'
 import { type DocumentSnapshot, type DocumentState, type UndoSnapshot, snapshot, restore } from './models/Document'
@@ -90,10 +92,36 @@ interface SerializedSeqRead {
 interface SerializedAlignment {
   id: string
   name: string
-  seqType: 'dna' | 'protein'
-  algorithm: 'nw' | 'sw' | 'msa' | 'mafft'
   createdAt: number
-  zoomLevel: number
+  modifiedAt?: number
+  view?: unknown
+  /** Written before the alignment rebuild, which kept only a zoom level. */
+  zoomLevel?: number
+  /** Written before the alignment rebuild, when IndexedDB held engine results. */
+  seqType?: 'dna' | 'protein'
+  algorithm?: string
+}
+
+/**
+ * An alignment from its metadata and stored data: a document, or (saved
+ * before the rebuild) an engine result, which sanitizeDoc converts.
+ */
+function restoreAlignment(sa: SerializedAlignment, raw: unknown): SavedAlignment | null {
+  const doc = sanitizeDoc(raw, { seqType: sa.seqType, at: sa.createdAt })
+  if (!doc) {
+    loadWarnings.push(`The alignment "${sa.name}" could not be read and was skipped`)
+    return null
+  }
+  return {
+    id: sa.id,
+    name: sa.name,
+    doc,
+    createdAt: sa.createdAt,
+    modifiedAt: sa.modifiedAt ?? sa.createdAt,
+    view: sanitizeView(sa.view, sa.zoomLevel),
+    undoStack: [],
+    redoStack: [],
+  }
 }
 
 /** Read alignment metadata (result data stored in IndexedDB). */
@@ -258,7 +286,7 @@ function buildSessionData(theme: string): {
   meta: SerializedSessionV2
   sequences: { tabId: string; bases: string }[]
   traces: { readId: string; data: Ab1Data }[]
-  alignmentData: { alignId: string; data: AlignmentResult }[]
+  alignmentData: { alignId: string; data: AlnDoc | AlignmentResult }[]
   undoEntries: { tabId: string; data: SerializedUndoHistory }[]
 } {
   const state = useEditorStore.getState()
@@ -313,12 +341,11 @@ function buildSessionData(theme: string): {
   const serializedAlignments: SerializedAlignment[] = state.alignments.map(a => ({
     id: a.id,
     name: a.name,
-    seqType: a.seqType,
-    algorithm: a.algorithm,
     createdAt: a.createdAt,
-    zoomLevel: a.zoomLevel,
+    modifiedAt: a.modifiedAt,
+    view: a.view,
   }))
-  const alignmentData = state.alignments.map(a => ({ alignId: a.id, data: a.result }))
+  const alignmentData = state.alignments.map(a => ({ alignId: a.id, data: a.doc }))
 
   // Read alignments: metadata in localStorage, result data in IndexedDB (shared store with alignments)
   const serializedReadAlignments: SerializedReadAlignment[] = state.readAlignments.map(ra => ({
@@ -664,17 +691,10 @@ async function loadV2(data: SerializedSessionV2): Promise<RestoredSession | null
       const alignIds = serializedAligns.map(a => a.id)
       const alignMap = await loadAlignments(alignIds)
       for (const sa of serializedAligns) {
-        const result = alignMap.get(sa.id) as AlignmentResult | undefined
-        if (!result) continue // result data lost - skip
-        alignments.push({
-          id: sa.id,
-          name: sa.name,
-          result,
-          seqType: sa.seqType,
-          algorithm: sa.algorithm,
-          createdAt: sa.createdAt,
-          zoomLevel: sa.zoomLevel,
-        })
+        const raw = alignMap.get(sa.id)
+        if (!raw) continue // data lost - skip
+        const aln = restoreAlignment(sa, raw)
+        if (aln) alignments.push(aln)
       }
     } catch {
       // alignment load failed - alignments won't be restored
@@ -800,7 +820,7 @@ interface SessionExportEnvelope {
   session: SerializedSessionV2
   sequences: { tabId: string; bases: string }[]
   traces?: { readId: string; data: Ab1Data }[]
-  alignmentData?: { alignId: string; data: AlignmentResult }[]
+  alignmentData?: { alignId: string; data: AlnDoc | AlignmentResult }[]
 }
 
 /**
@@ -828,7 +848,7 @@ export function estimateExportSize(opts: SessionExportOptions): number {
   }
   if (opts.includeAlignments) {
     for (const a of state.alignments) {
-      size += JSON.stringify(a.result).length
+      size += JSON.stringify(a.doc).length
     }
   }
   if (opts.includeReadAlignments) {
@@ -955,7 +975,7 @@ export function importSessionFromJson(json: string): RestoredSession {
   }
 
   // Build alignment data map
-  const alignMap = new Map<string, AlignmentResult>()
+  const alignMap = new Map<string, unknown>()
   if (envelope.alignmentData) {
     for (const ad of envelope.alignmentData) {
       alignMap.set(ad.alignId, ad.data)
@@ -996,19 +1016,16 @@ export function importSessionFromJson(json: string): RestoredSession {
   // Reconstruct alignments
   const alignments: SavedAlignment[] = []
   for (const sa of data.alignments ?? []) {
-    const result = alignMap.get(sa.id)
-    if (!result) continue
-    alignments.push({
-      id: sa.id, name: sa.name, result,
-      seqType: sa.seqType, algorithm: sa.algorithm,
-      createdAt: sa.createdAt, zoomLevel: sa.zoomLevel,
-    })
+    const raw = alignMap.get(sa.id)
+    if (!raw) continue
+    const aln = restoreAlignment(sa, raw)
+    if (aln) alignments.push(aln)
   }
 
   // Reconstruct read alignments
   const readAlignments: ReadAlignment[] = []
   for (const sra of data.readAlignments ?? []) {
-    const result = alignMap.get(sra.id)
+    const result = alignMap.get(sra.id) as AlignmentResult | undefined
     if (!result) continue
     readAlignments.push({
       id: sra.id, name: sra.name, readId: sra.readId, tabId: sra.tabId,

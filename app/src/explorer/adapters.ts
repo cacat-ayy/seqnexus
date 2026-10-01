@@ -17,6 +17,8 @@ import type { ExplorerItem, ItemBadge, ItemKind } from './types'
 import { toUid } from './types'
 import { formatBases, formatPercent, formatCount, meanQuality } from './format'
 import { LOW_QUALITY_THRESHOLD } from './kinds'
+import { originLabel } from '../msa/model'
+import { summarize } from '../msa/stats'
 
 /**
  * What the centre panel is actually showing.
@@ -40,13 +42,6 @@ export interface AdapterContext {
   /** Library oligos that bind the open sequence, and its name. */
   oligosBindingOpen?: ReadonlySet<string>
   openSequenceName?: string
-}
-
-const ALGORITHM_LABEL: Record<SavedAlignment['algorithm'], string> = {
-  nw: 'Needleman-Wunsch',
-  sw: 'Smith-Waterman',
-  msa: 'MSA',
-  mafft: 'MAFFT',
 }
 
 const READ_ONLY_BADGE: ItemBadge = {
@@ -186,24 +181,24 @@ export function readToItem(read: SequencingRead, ctx: AdapterContext): ExplorerI
 }
 
 export function alignmentToItem(align: SavedAlignment, ctx: AdapterContext): ExplorerItem {
+  const summary = summarize(align.doc)
+  const stats = [formatCount(summary.rows, 'sequence')]
+  if (summary.identity !== null) stats.push(`${formatPercent(summary.identity)} identity`)
+  stats.push(originLabel(align.doc.origin))
   return {
     uid: toUid('alignment', align.id),
     kind: 'alignment',
     id: align.id,
     name: align.name,
     createdAt: align.createdAt,
-    size: align.result.alignmentLength,
+    size: summary.width,
     isOpen: isOpen(ctx, 'alignment', align.id),
     isIncluded: false,
     isDirty: false,
     isReadOnly: false,
     isCircular: false,
-    canDuplicate: false,
-    stats: [
-      formatCount(align.result.sequences.length, 'sequence'),
-      `${formatPercent(align.result.identity)} identity`,
-      ALGORITHM_LABEL[align.algorithm] ?? align.algorithm,
-    ],
+    canDuplicate: true,
+    stats,
     badges: [],
     derivedFrom: [],
   }

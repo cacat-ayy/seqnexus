@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach } from 'vitest'
 import { useEditorStore, MAX_RECENTLY_CLOSED } from './store'
 import type { AlignmentResult } from './alignment/types'
+import { docFromResult } from './msa/model'
 import type { Ab1Data } from './io/ab1'
 
 const store = () => useEditorStore.getState()
@@ -52,7 +53,7 @@ describe('undoing a delete', () => {
   })
 
   it('restores an alignment and opens it', () => {
-    const id = store().addAlignment(result(), 'dna', 'nw')
+    const id = store().addAlignment(docFromResult(result(), 'dna'))
     store().removeAlignment(id)
     expect(store().alignments).toHaveLength(0)
 

@@ -1,0 +1,7 @@
+(function(){"use strict";const l=new Map;function m(e){let n=l.get(e);return n||(n=new Function(`var module = { exports: {} }; var exports = module.exports; var define = undefined;
+       var process = undefined; var require = undefined;
+       var importScripts = function () {};
+       ${e}
+       return Module;`)(),l.set(e,n)),n}function y(e){return e&&typeof e=="object"&&"status"in e&&typeof e.status=="number"?e.status:e instanceof Error&&/exit\(|ExitStatus|Program terminated/i.test(e.message)?0:null}async function h(e,n,o,p){const r=[],i=[];let s=0;const a=n instanceof Uint8Array?n.slice():new Uint8Array(n.slice(0)),c=await m(e)({wasmBinary:a,noInitialRun:!0,print:t=>{r.push(t)},printErr:t=>{i.push(t)},quit:t=>{s=t},stdin:()=>null,locateFile:t=>t});for(const[t,u]of Object.entries(o.files))c.FS.writeFile(t,u);try{const t=c.callMain(o.args);typeof t=="number"&&(s=t)}catch(t){const u=y(t);u===null?(s=1,i.push(t instanceof Error?t.message:String(t))):s=u}const f={};for(const t of o.outputs)try{f[t]=c.FS.readFile(t,{encoding:"utf8"})}catch{f[t]=null}return{exitCode:s,stdout:r.join(`
+`),stderr:i.join(`
+`),files:f}}async function d(e){const n=await fetch(e);if(!n.ok)throw new Error(`Could not load ${e.split("/").pop()} (${n.status})`);return n}self.onmessage=async e=>{const{glueUrl:n,wasmUrl:o,run:p}=e.data;try{const[r,i]=await Promise.all([d(n).then(a=>a.text()),d(o).then(a=>a.arrayBuffer())]),s=await h(r,i,p);self.postMessage({ok:!0,result:s})}catch(r){self.postMessage({ok:!1,error:r instanceof Error?r.message:String(r)})}}})();

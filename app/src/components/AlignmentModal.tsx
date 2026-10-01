@@ -10,10 +10,15 @@ import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
 import { X, Plus, Trash2, ChevronDown, ChevronRight, Loader2, FileText, AudioWaveform, ClipboardPaste, AlertTriangle, GripVertical, Scissors, Search, FolderOpen, Check } from 'lucide-react'
 import { reverseComplement } from '../models/complement'
 import { useEditorStore, applyEdits } from '../store'
-import { parseUid } from '../explorer/types'
-import { runAlignment, resolveEngine, type AlignmentHandle } from '../workers/alignment'
-import type { AlignmentRequest, AlignmentResult } from '../alignment/types'
-import type { MsaEngine } from '../wasm/types'
+import { parseUid, toUid } from '../explorer/types'
+import { runAlignment } from '../workers/alignment'
+import type { AlignmentResult } from '../alignment/types'
+import { makeDoc, type AlnDoc } from '../msa/model'
+import {
+  DEFAULT_ENGINE_SETTINGS, ENGINE_CHOICES, engineChoice, engineLabel, estimateSeconds, formatDuration, resolveEngine,
+  methodOf, settingsFromChoice, shapeOf, type ConcreteEngine, type EngineSettings,
+} from '../msa/engines/catalog'
+import { AlignCancelled, startAlignment } from '../msa/engines/runner'
 import { useExitAnimation } from '../hooks/useExitAnimation'
 import { useFocusTrap } from '../hooks/useFocusTrap'
 
@@ -43,7 +48,8 @@ export interface AlignmentInitialEntry {
 interface Props {
   open: boolean
   onClose: () => void
-  onResult: (result: AlignmentResult, seqType: 'dna' | 'protein') => void
+  /** A finished alignment, ready to keep. */
+  onResult: (doc: AlnDoc, name?: string) => void
   /** Called for each read→reference alignment result. Auto-detected when entries contain 1 tab + N reads. */
   onReadAlignResult?: (readId: string, refTabId: string, result: AlignmentResult, batchIndex: number, batchTotal: number) => void
   initialEntries?: AlignmentInitialEntry[]
@@ -63,17 +69,15 @@ export default function AlignmentModal({ open, onClose, onResult, onReadAlignRes
   const [seqType, setSeqType] = useState<'dna' | 'protein'>('dna')
   const [entries, setEntries] = useState<SeqEntry[]>([])
 
-  // MSA engine
-  const [engine, setEngine] = useState<MsaEngine>('auto')
-  const [resolvedEngine, setResolvedEngine] = useState<'mafft' | 'builtin'>('builtin')
-  const [mafftProgress, setMafftProgress] = useState<number | null>(null)
-
-  // Resolve which engine will actually be used
+  // Engine
+  const [engineSettings, setEngineSettings] = useState<EngineSettings>(DEFAULT_ENGINE_SETTINGS)
+  const [runInfo, setRunInfo] = useState<{ label: string; estimate: number; started: number } | null>(null)
+  const [elapsed, setElapsed] = useState(0)
   useEffect(() => {
-    if (entries.length >= 3) {
-      resolveEngine(engine, entries.length).then(setResolvedEngine)
-    }
-  }, [engine, entries.length])
+    if (!runInfo) return
+    const t = setInterval(() => setElapsed((performance.now() - runInfo.started) / 1000), 250)
+    return () => clearInterval(t)
+  }, [runInfo])
 
   // Scoring
   const [match, setMatch] = useState('1')
@@ -102,7 +106,7 @@ export default function AlignmentModal({ open, onClose, onResult, onReadAlignRes
   const readBtnRef = useRef<HTMLButtonElement>(null)
 
   // Worker handle
-  const handleRef = useRef<AlignmentHandle | null>(null)
+  const handleRef = useRef<{ cancel: () => void } | null>(null)
   const backdropRef = useRef<HTMLDivElement>(null)
   useFocusTrap(backdropRef, open)
 
@@ -155,15 +159,14 @@ export default function AlignmentModal({ open, onClose, onResult, onReadAlignRes
     if (entries.length >= 3) setMode('global')
   }, [entries.length])
 
-  // Derived algorithm label
-  const algorithmInfo = useMemo(() => {
-    if (entries.length >= 3) {
-      if (resolvedEngine === 'mafft') return { short: 'MAFFT', full: 'MAFFT FFT-NS-2 multiple sequence alignment' }
-      return { short: 'Built-in MSA', full: 'Progressive multiple sequence alignment (built-in)' }
-    }
-    if (mode === 'local') return { short: 'Smith-Waterman', full: 'Local pairwise alignment (Smith-Waterman)' }
-    return { short: 'Needleman-Wunsch', full: 'Global pairwise alignment (Needleman-Wunsch)' }
-  }, [entries.length, mode, resolvedEngine])
+  // What will run, and roughly how long it will take.
+  const settings = useMemo((): EngineSettings => ({ ...engineSettings, pairwiseMode: mode }), [engineSettings, mode])
+  const plan = useMemo(() => {
+    if (entries.length < 2) return null
+    const shape = shapeOf(entries.map(e => e.bases))
+    const engine = resolveEngine(settings, shape, seqType)
+    return { engine, label: engineLabel(engine, settings), estimate: estimateSeconds(engine, shape, seqType) }
+  }, [entries, settings, seqType])
 
   // Warnings
   const totalBases = useMemo(() => entries.reduce((s, e) => s + e.bases.length, 0), [entries])
@@ -306,6 +309,10 @@ export default function AlignmentModal({ open, onClose, onResult, onReadAlignRes
     return null
   }, [entries])
 
+  // The built-in pairwise aligner is the only one that takes a mode and scoring.
+  const isPairwise = !readAlignPattern && plan?.engine === 'pairwise'
+  const [alnName, setAlnName] = useState('')
+
   // ── Run alignment ──
   const handleAlign = useCallback(() => {
     if (entries.length < 2) return
@@ -370,37 +377,53 @@ export default function AlignmentModal({ open, onClose, onResult, onReadAlignRes
       return
     }
 
-    // Normal alignment (pairwise or MSA)
-    const request: AlignmentRequest = {
-      sequences: entries.map(e => ({
+    // Normal alignment. Two sequences with the pairwise engine use the
+    // scoring set here; everything else goes to the chosen aligner.
+    const finish = (rows: string[], engine: ConcreteEngine, label: string) => {
+      const doc = makeDoc(entries.map((e, i) => ({
         name: e.name,
-        bases: e.bases,
-      })),
-      mode: entries.length >= 3 ? 'global' : mode,
-      seqType,
-      scoring,
-      engine: entries.length >= 3 ? engine : undefined,
+        seq: rows[i],
+        source: {
+          name: e.name,
+          ...(e.sourceId ? { uid: toUid(e.source === 'read' ? 'read' : 'sequence', e.sourceId) } : {}),
+        },
+      })), { method: methodOf(engine, settings), detail: label, at: Date.now() }, seqType)
+      onResult(doc, alnName.trim() || undefined)
+      onClose()
+    }
+    const failed = (err: unknown) => {
+      setRunInfo(null)
+      if (err instanceof AlignCancelled) { setPhase('input'); return }
+      setError(err instanceof Error && err.message ? err.message : 'Alignment failed.')
+      setPhase('input')
     }
 
-    setMafftProgress(null)
-    const handle = runAlignment(request, (frac) => setMafftProgress(frac))
-    handleRef.current = handle
+    if (plan?.engine === 'pairwise' && entries.length === 2) {
+      const handle = runAlignment({
+        sequences: entries.map(e => ({ name: e.name, bases: e.bases })),
+        mode,
+        seqType,
+        scoring,
+      })
+      handleRef.current = handle
+      setRunInfo({ label: plan.label, estimate: plan.estimate, started: performance.now() })
+      handle.promise
+        .then(result => finish(result.sequences.map(s => s.alignedBases), 'pairwise', plan.label))
+        .catch(failed)
+      return
+    }
 
-    handle.promise
-      .then(result => {
-        onResult(result, seqType)
-        onClose()
-      })
-      .catch((err) => {
-        setError(err instanceof Error && err.message ? err.message : 'Alignment failed or was cancelled.')
-        setPhase('input')
-      })
-  }, [entries, mode, seqType, match, mismatch, gapOpen, gapExtend, onResult, onReadAlignResult, onClose, readAlignPattern])
+    const job = startAlignment(entries.map(e => e.bases), seqType, settings)
+    handleRef.current = { cancel: job.cancel }
+    setRunInfo({ label: job.label, estimate: job.estimate, started: performance.now() })
+    job.promise.then(out => finish(out.rows, out.engine, out.label)).catch(failed)
+  }, [entries, mode, seqType, match, mismatch, gapOpen, gapExtend, onResult, onReadAlignResult, onClose, readAlignPattern, plan, settings, alnName])
 
   // ── Cancel ──
   const handleCancel = useCallback(() => {
     handleRef.current?.cancel()
     handleRef.current = null
+    setRunInfo(null)
     setPhase('input')
   }, [])
 
@@ -484,23 +507,37 @@ export default function AlignmentModal({ open, onClose, onResult, onReadAlignRes
           <div className="modal-body align-body">
             {/* Mode selector */}
             <div className="align-mode-row">
-              <label>Mode</label>
-              <div className="toggle-group">
-                <button
-                  className={`toggle-btn ${mode === 'global' ? 'active' : ''}`}
-                  onClick={() => setMode('global')}
-                >
-                  Global
-                </button>
-                <button
-                  className={`toggle-btn ${mode === 'local' ? 'active' : ''}`}
-                  onClick={() => setMode('local')}
-                  disabled={entries.length >= 3}
-                  title={entries.length >= 3 ? 'Local mode only available for pairwise alignment' : undefined}
-                >
-                  Local
-                </button>
-              </div>
+              {/* Global / local only matters to the built-in pairwise aligner. */}
+              {isPairwise && (
+                <>
+                  <label>Mode</label>
+                  <div className="toggle-group">
+                    <button
+                      className={`toggle-btn ${mode === 'global' ? 'active' : ''}`}
+                      onClick={() => setMode('global')}
+                      title="Needleman–Wunsch: align the sequences end to end"
+                    >
+                      Global
+                    </button>
+                    <button
+                      className={`toggle-btn ${mode === 'local' ? 'active' : ''}`}
+                      onClick={() => setMode('local')}
+                      title="Smith–Waterman: find the best matching stretch"
+                    >
+                      Local
+                    </button>
+                  </div>
+                </>
+              )}
+              {!isPairwise && !readAlignPattern && (
+                <input
+                  className="align-name-input"
+                  value={alnName}
+                  onChange={e => setAlnName(e.target.value)}
+                  placeholder={entries.length >= 2 ? `Alignment (${entries.length} sequences)` : 'Name (optional)'}
+                  aria-label="Alignment name"
+                />
+              )}
 
               <label style={{ marginLeft: 'auto' }}>Type</label>
               <div className="toggle-group">
@@ -521,25 +558,40 @@ export default function AlignmentModal({ open, onClose, onResult, onReadAlignRes
 
             {/* Algorithm info */}
             {entries.length >= 2 && (
-              <div className="align-algo-label" title={readAlignPattern ? 'Each read aligned pairwise against the reference' : algorithmInfo.full}>
+              <>
+              <div className="align-algo-label" title={readAlignPattern ? 'Each read aligned pairwise against the reference' : undefined}>
                 {readAlignPattern
                   ? <>Mode: <strong>Read → Reference</strong> ({readAlignPattern.readEntries.length} read{readAlignPattern.readEntries.length > 1 ? 's' : ''} → {readAlignPattern.refEntry.name})</>
-                  : <>Algorithm: <strong>{algorithmInfo.short}</strong>
-                    {entries.length >= 3 && (
-                      <select
-                        className="align-engine-select"
-                        value={engine}
-                        onChange={e => setEngine(e.target.value as MsaEngine)}
-                        title="MSA engine"
-                      >
-                        <option value="auto">Auto</option>
-                        <option value="mafft">MAFFT</option>
-                        <option value="builtin">Built-in</option>
-                      </select>
+                  : <>Aligner
+                    <select
+                      className="align-engine-select"
+                      value={engineChoice(engineSettings)}
+                      onChange={e => setEngineSettings(s => settingsFromChoice(e.target.value, s))}
+                      aria-label="Aligner"
+                    >
+                      {ENGINE_CHOICES.map(c => (
+                        <option key={c.value} value={c.value} title={c.title} disabled={c.pairwiseOnly && entries.length !== 2}>{c.label}</option>
+                      ))}
+                    </select>
+                    {plan && (
+                      <span className="align-plan">
+                        {engineSettings.engine === 'auto' && <><strong>{plan.label}</strong> · </>}
+                        {formatDuration(plan.estimate)}
+                      </span>
                     )}
                   </>
                 }
               </div>
+              {!readAlignPattern && plan && plan.estimate > 60 && (
+                <div className="align-warning">
+                  <AlertTriangle size={13} />
+                  <span>
+                    {plan.label} may take {formatDuration(plan.estimate)} for these sequences.
+                    {plan.engine !== 'kalign' && ' Kalign 3 would take seconds.'}
+                  </span>
+                </div>
+              )}
+              </>
             )}
 
             {/* Sequence list */}
@@ -826,19 +878,21 @@ export default function AlignmentModal({ open, onClose, onResult, onReadAlignRes
             </div>
 
             {/* Warning */}
-            {showWarning && (
+            {showWarning && readAlignPattern && (
               <div className="align-warning">
                 <AlertTriangle size={14} />
                 Large alignment ({entries.length} sequences, {(totalBases / 1000).toFixed(1)} kb): may take a while.
               </div>
             )}
 
-            {/* Advanced scoring */}
+            {/* Scoring: only the built-in pairwise aligner takes it; the others use their own tuned defaults. */}
+            {(isPairwise || readAlignPattern) && (
             <button className="align-advanced-toggle" onClick={() => setAdvancedOpen(v => !v)}>
               {advancedOpen ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
-              Scoring parameters
+              Pairwise scoring
             </button>
-            {advancedOpen && (
+            )}
+            {(isPairwise || readAlignPattern) && advancedOpen && (
               <div className="align-advanced-body">
                 {seqType === 'dna' && (
                   <div className="align-param" style={{ gridColumn: 'span 2' }}>
@@ -928,11 +982,18 @@ export default function AlignmentModal({ open, onClose, onResult, onReadAlignRes
               <span className="align-running-text">
                 {readAlignPattern
                   ? `Aligning ${readAlignPattern.readEntries.length} read${readAlignPattern.readEntries.length > 1 ? 's' : ''} to reference…`
-                  : mafftProgress !== null && mafftProgress < 1
-                    ? `Downloading MAFFT (${Math.round(mafftProgress * 100)}%)…`
-                    : `Aligning ${entries.length} sequences${resolvedEngine === 'mafft' ? ' (MAFFT)' : ''}…`
+                  : `Aligning ${entries.length} sequences with ${runInfo?.label ?? 'the aligner'}…`
                 }
               </span>
+              {runInfo && !readAlignPattern && (
+                <>
+                  <div className="align-progress" aria-hidden>
+                    {/* Time-based: approaches the end as the estimate runs out, never reaches it. */}
+                    <span style={{ width: `${Math.round(100 * (1 - Math.exp(-elapsed / Math.max(0.5, runInfo.estimate))))}%` }} />
+                  </div>
+                  <span className="align-running-sub">{Math.floor(elapsed)} s · expected {formatDuration(runInfo.estimate)}</span>
+                </>
+              )}
               <button className="align-cancel-btn" onClick={handleCancel}>Cancel</button>
             </div>
           </div>

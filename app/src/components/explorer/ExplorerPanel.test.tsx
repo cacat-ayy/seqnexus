@@ -8,6 +8,7 @@ import ExplorerPanel from './ExplorerPanel'
 import { useEditorStore } from '../../store'
 import { toUid } from '../../explorer/types'
 import type { AlignmentResult } from '../../alignment/types'
+import { docFromResult } from '../../msa/model'
 import type { Ab1Data } from '../../io/ab1'
 
 const store = () => useEditorStore.getState()
@@ -64,7 +65,7 @@ describe('ExplorerPanel', () => {
   it('adds a group per kind as items of that kind appear', () => {
     const tabId = store().openDocument('ref', 'ATGC')
     const readId = store().addSequencingRead(trace('M13F'))
-    store().addAlignment(result(), 'dna', 'nw')
+    store().addAlignment(docFromResult(result(), 'dna'))
     const raId = store().addReadAlignment(readId, tabId, result())
     store().addContig(tabId, [raId])
 

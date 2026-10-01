@@ -1,6 +1,8 @@
 import { describe, it, expect, beforeEach } from 'vitest'
 import { useEditorStore, type SequencingRead, type SavedAlignment, type ReadAlignment, type Contig } from '../store'
 import type { AlignmentResult } from '../alignment/types'
+import { makeDoc } from '../msa/model'
+import { DEFAULT_VIEW } from '../msa/view'
 import type { Ab1Data } from '../io/ab1'
 import {
   sequenceToItem, readToItem, alignmentToItem, readAlignmentToItem, contigToItem,
@@ -144,8 +146,9 @@ describe('read adapter', () => {
 describe('alignment adapter', () => {
   it('reports sequence count, identity and algorithm', () => {
     const align: SavedAlignment = {
-      id: 'align_1', name: 'MSA 1', result: makeResult(),
-      seqType: 'dna', algorithm: 'mafft', createdAt: 5, zoomLevel: 0,
+      id: 'align_1', name: 'MSA 1',
+      doc: makeDoc([{ name: 'a', seq: 'ATGC' }, { name: 'b', seq: 'ATGG' }], { method: 'mafft', at: 5 }),
+      createdAt: 5, modifiedAt: 5, view: DEFAULT_VIEW, undoStack: [], redoStack: [],
     }
     const item = alignmentToItem(align, ctx())
     expect(item.uid).toBe('alignment:align_1')
