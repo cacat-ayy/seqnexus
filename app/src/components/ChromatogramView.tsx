@@ -28,17 +28,12 @@ const BASE_LABEL_HEIGHT = 20
 const TRACE_TOP_MARGIN = 8
 const TRIM_HANDLE_WIDTH = 8
 
-/** Quality → color for quality bars only. */
-function qualityColor(q: number): string {
-  if (q >= 30) return '#22c55e'
-  if (q >= 20) return '#eab308'
-  if (q >= 10) return '#f97316'
-  return '#ef4444'
-}
-
 /** Nucleotide → color matching SequenceView. */
 import { baseColor } from '../utils/color'
 import { copyText } from '../utils/clipboard'
+import Minimap from './minimap/Minimap'
+import { createViewportSource } from './minimap/viewport'
+import { chromatogramTracks } from './minimap/chromatogramTracks'
 
 // ---------------------------------------------------------------------------
 // Component
@@ -102,7 +97,7 @@ export default function ChromatogramView({ readId, forceHorizontal, compact, zoo
 
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const containerRef = useRef<HTMLDivElement>(null)
-  const minimapRef = useRef<HTMLCanvasElement>(null)
+  const [minimapViewport] = useState(() => createViewportSource())
 
   // Tracks canvas layout changes so visible-range calculations recompute after initial sizing
   const [layoutGeneration, setLayoutGeneration] = useState(0)
@@ -265,8 +260,6 @@ export default function ChromatogramView({ readId, forceHorizontal, compact, zoo
   const scrollDragRef = useRef<{ startX: number; startScroll: number } | null>(null)
   const [scrollDragging, setScrollDragging] = useState(false)
 
-  // Minimap drag state
-  const minimapDragRef = useRef<{ dragging: boolean; offsetFrac: number }>({ dragging: false, offsetFrac: 0 })
 
   const data = read?.data
   const trimStart = read?.trimStart ?? 0
@@ -1415,66 +1408,38 @@ export default function ChromatogramView({ readId, forceHorizontal, compact, zoo
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [data, getVisibleRange, effectiveLayout, wrappedScrollTop, zoom, avgBaseSpacing, sampleToGrid, layoutGeneration])
 
-  // Draw quality minimap
+  // --- Minimap ---
   useEffect(() => {
-    const el = minimapRef.current
-    if (!el || !data) return
-    const dpr = window.devicePixelRatio || 1
-    const w = el.clientWidth * dpr
-    const h = 20 * dpr // fixed height, matches CSS
-    if (w === 0) return
-    if (el.width !== w || el.height !== h) { el.width = w; el.height = h }
-    const mctx = el.getContext('2d')
-    if (!mctx) return
-    mctx.clearRect(0, 0, w, h)
-    const n = data.qualityScores.length
-    if (n === 0) return
-    const barW = Math.max(1, w / n)
-    for (let i = 0; i < n; i++) {
-      const q = data.qualityScores[i] ?? 0
-      const barH = (q / 60) * h
-      mctx.fillStyle = qualityColor(q)
-      mctx.globalAlpha = 0.7
-      mctx.fillRect(i * barW, h - barH, Math.ceil(barW), barH)
+    if (data) minimapViewport.set({ start: firstVisBase, end: lastVisBase + 1 })
+  }, [data, firstVisBase, lastVisBase, minimapViewport])
+
+  // Scroll so the viewport starts at `start` (a fractional base).
+  const navigateMinimap = useCallback((start: number) => {
+    if (!data) return
+    if (effectiveLayout === 'wrapped') {
+      const container = containerRef.current
+      if (container) container.scrollTop = (start / BASES_PER_ROW) * ROW_HEIGHT
+      return
     }
-    mctx.globalAlpha = 1
-    // N-call markers on minimap
-    for (let i = 0; i < n; i++) {
-      if (data.bases[i]?.toUpperCase() === 'N') {
-        mctx.fillStyle = '#ef4444'
-        mctx.globalAlpha = 0.8
-        mctx.fillRect(i * barW, 0, Math.ceil(barW), h)
-      }
-    }
-    mctx.globalAlpha = 1
-    // Mixed base markers on minimap
-    for (const idx of mixedBases) {
-      mctx.fillStyle = '#f59e0b'
-      mctx.globalAlpha = 0.6
-      mctx.fillRect(idx * barW, 0, Math.ceil(barW), 3)
-    }
-    mctx.globalAlpha = 1
-    // Viewport indicator
-    const vStart = firstVisBase / n
-    const vEnd = (lastVisBase + 1) / n
-    mctx.fillStyle = 'rgba(99, 102, 241, 0.15)'
-    mctx.fillRect(vStart * w, 0, (vEnd - vStart) * w, h)
-    mctx.strokeStyle = 'rgba(99, 102, 241, 0.5)'
-    mctx.lineWidth = 1
-    mctx.strokeRect(vStart * w, 0, (vEnd - vStart) * w, h)
-    // Threshold line
-    const threshFrac = Math.min(qualThreshold / 60, 1)
-    const threshY = h - threshFrac * h
-    mctx.strokeStyle = '#ef4444'
-    mctx.globalAlpha = 0.5
-    mctx.setLineDash([2, 2])
-    mctx.beginPath()
-    mctx.moveTo(0, threshY)
-    mctx.lineTo(w, threshY)
-    mctx.stroke()
-    mctx.setLineDash([])
-    mctx.globalAlpha = 1
-  }, [data, effectiveLayout, firstVisBase, lastVisBase, qualThreshold, mixedBases])
+    const span = lastVisBase - firstVisBase + 1
+    scrollToBaseNoSelect(Math.min(data.bases.length - 1, Math.round(start + span / 2)))
+  },[data, effectiveLayout, firstVisBase, lastVisBase, scrollToBaseNoSelect])
+
+  const minimapTracks = useMemo(() => data ? chromatogramTracks({
+    bases: data.bases,
+    quality: data.qualityScores,
+    trimStart,
+    trimEnd,
+    threshold: qualThreshold,
+    mixedBases,
+    searchHits,
+    searchLength: searchQuery.trim().length,
+  }) : [], [data, trimStart, trimEnd, qualThreshold, mixedBases, searchHits, searchQuery])
+
+  const minimapSelection = useMemo(
+    () => (selRange ? [[selRange.start, selRange.end] as const] : []),
+    [selRange],
+  )
 
   // Resize observer
   useEffect(() => {
@@ -2323,48 +2288,18 @@ export default function ChromatogramView({ readId, forceHorizontal, compact, zoo
         )}
       </div>}
 
-      {/* Quality minimap */}
-      {!compact && (
-        <div
-          className="chrom-minimap"
-          style={{ cursor: 'crosshair', touchAction: 'none' }}
-          onPointerDown={e => {
-            if (!data) return
-            const rect = (e.currentTarget as HTMLElement).getBoundingClientRect()
-            const frac = (e.clientX - rect.left) / rect.width
-            const n = data.bases.length
-            // Check if click is inside the viewport indicator
-            const vStart = firstVisBase / n
-            const vEnd = (lastVisBase + 1) / n
-            if (frac >= vStart && frac <= vEnd) {
-              // Start dragging the viewport
-              minimapDragRef.current = { dragging: true, offsetFrac: frac - vStart }
-            } else {
-              // Click outside viewport - jump to position, then start drag
-              const vpWidth = vEnd - vStart
-              const centerFrac = Math.max(0, Math.min(1, frac))
-              const baseIdx = Math.round(centerFrac * (n - 1))
-              scrollToBaseNoSelect(baseIdx)
-              minimapDragRef.current = { dragging: true, offsetFrac: vpWidth / 2 }
-            }
-            ;(e.currentTarget as HTMLElement).setPointerCapture(e.pointerId)
-          }}
-          onPointerMove={e => {
-            if (!minimapDragRef.current.dragging || !data) return
-            const rect = (e.currentTarget as HTMLElement).getBoundingClientRect()
-            const frac = (e.clientX - rect.left) / rect.width
-            const n = data.bases.length
-            const vWidth = (lastVisBase - firstVisBase + 1) / n
-            const targetStart = frac - minimapDragRef.current.offsetFrac
-            const centerFrac = targetStart + vWidth / 2
-            const baseIdx = Math.round(Math.max(0, Math.min(1, centerFrac)) * (n - 1))
-            scrollToBaseNoSelect(baseIdx)
-          }}
-          onPointerUp={() => { minimapDragRef.current.dragging = false }}
-          onPointerCancel={() => { minimapDragRef.current.dragging = false }}
-        >
-          <canvas ref={minimapRef} />
-        </div>
+      {/* Overview: quality, N calls, mixed bases and hits across the read */}
+      {!compact && data && (
+        <Minimap
+          kind="chromatogram"
+          length={data.bases.length}
+          tracks={minimapTracks}
+          viewport={minimapViewport}
+          onNavigate={navigateMinimap}
+          selection={minimapSelection}
+          positionLabel="Base"
+          ariaLabel="Read overview"
+        />
       )}
 
       {/* Canvas */}

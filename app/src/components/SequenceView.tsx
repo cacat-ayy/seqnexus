@@ -22,8 +22,7 @@ import { Annotation, type AnnotationData } from '../models/Annotation'
 import { displayPosition } from '../models/Document'
 import { IntervalTree } from '../models/IntervalTree'
 import { getLayout, baseX as zBaseX, type ZoomLayout, RowLayoutMap } from './zoom-layout'
-import type { CutSite } from '../enzymes/finder'
-import { methylationEffect } from '../enzymes/db'
+import { groupCutSites, enzymeGroupKey, type GroupedCutSite } from '../enzymes/grouping'
 import { orfColor } from '../workers/orf-finder'
 import AnnotationTooltip from './AnnotationTooltip'
 import { copyText } from '../utils/clipboard'
@@ -32,7 +31,8 @@ import EnzymeTooltip from './EnzymeTooltip'
 import SequenceContextMenu from './SequenceContextMenu'
 import ConfirmDialog from './ConfirmDialog'
 import { calcTm } from '../primers/thermodynamics'
-import MinimapBar from './MinimapBar'
+import SequenceMinimap from './minimap/SequenceMinimap'
+import { createViewportSource } from './minimap/viewport'
 
 const MINIMAP_SEQ_THRESHOLD = 1_000 // show minimap for sequences >= 1 kb
 
@@ -250,90 +250,7 @@ function hitTestAnnotationEdge(
   return null
 }
 
-// --- Grouped enzyme sites (isoschizomer merging) ---
-
-export interface GroupedCutSite {
-  /** All individual cut sites in this group */
-  sites: CutSite[]
-  /** Start of the union recognition region */
-  recognitionStart: number
-  /** End of the union recognition region (exclusive) */
-  recognitionEnd: number
-  /** Display label */
-  label: string
-  /** Primary cut position (fwdCut of first site) */
-  fwdCut: number
-  /** Methylation effect on this group: 'blocked', 'impaired', or null */
-  methEffect: 'blocked' | 'impaired' | null
-}
-
-/**
- * Stable identity for a grouped cut site, for hover tracking.
- *
- * Grouped sites are rebuilt on each scan, so object identity is useless here —
- * the delayed-hover hook needs a key that survives that and still distinguishes
- * two different enzymes cutting at nearby positions.
- */
-export function enzymeGroupKey(group: GroupedCutSite): string {
-  return `${group.label}@${group.recognitionStart}`
-}
-
-/** Group cut sites at the same position into combined entries. */
-let _groupedCache: { input: CutSite[]; dam: boolean; dcm: boolean; result: GroupedCutSite[] } | null = null
-export function groupCutSites(sites: CutSite[], damMethylated = false, dcmMethylated = false): GroupedCutSite[] {
-  if (_groupedCache && _groupedCache.input === sites && _groupedCache.dam === damMethylated && _groupedCache.dcm === dcmMethylated) return _groupedCache.result
-  const result = _groupCutSitesImpl(sites, damMethylated, dcmMethylated)
-  _groupedCache = { input: sites, dam: damMethylated, dcm: dcmMethylated, result }
-  return result
-}
-
-function _groupCutSitesImpl(sites: CutSite[], damMethylated: boolean, dcmMethylated: boolean): GroupedCutSite[] {
-  if (sites.length === 0) return []
-  const groups: GroupedCutSite[] = []
-  let i = 0
-  while (i < sites.length) {
-    const current = sites[i]
-    const bucket: CutSite[] = [current]
-    let recStart = current.position
-    let recEnd = current.position + current.enzyme.recognition.length
-    // Collect sites at the same position
-    let j = i + 1
-    while (j < sites.length && sites[j].position === current.position) {
-      bucket.push(sites[j])
-      const end = sites[j].position + sites[j].enzyme.recognition.length
-      if (end > recEnd) recEnd = end
-      j++
-    }
-    // Build label
-    let label: string
-    if (bucket.length === 1) {
-      label = bucket[0].enzyme.name
-    } else if (bucket.length === 2) {
-      label = bucket[0].enzyme.name + ' / ' + bucket[1].enzyme.name
-    } else {
-      label = bucket[0].enzyme.name + ' +' + (bucket.length - 1)
-    }
-    // Worst methylation effect across all enzymes in the group
-    let methEffect: 'blocked' | 'impaired' | null = null
-    if (damMethylated || dcmMethylated) {
-      for (const site of bucket) {
-        const eff = methylationEffect(site.enzyme, damMethylated, dcmMethylated)
-        if (eff === 'blocked') { methEffect = 'blocked'; break }
-        if (eff === 'impaired') methEffect = 'impaired'
-      }
-    }
-    groups.push({
-      sites: bucket,
-      recognitionStart: recStart,
-      recognitionEnd: recEnd,
-      label,
-      fwdCut: current.fwdCut,
-      methEffect,
-    })
-    i = j
-  }
-  return groups
-}
+// Grouped enzyme sites (isoschizomer merging) live in ../enzymes/grouping.
 
 /** Compare two grouped sites by position (reference-independent). */
 function sameGroup(a: GroupedCutSite | null, b: GroupedCutSite | null): boolean {
@@ -662,10 +579,17 @@ function SequenceView({ onFindRequest, onAnnotateRequest, onEditFeature }: Seque
   const caretBlinkRef = useRef<number>(0)
   const drawRef = useRef<(() => void) | null>(null)
 
-  // Minimap state
-  const [minimapCollapsed, setMinimapCollapsed] = useState(false)
-  const [minimapScroll, setMinimapScroll] = useState({ scrollFrac: 0, viewFrac: 1 })
-  const minimapScrollRef = useRef({ scrollFrac: 0, viewFrac: 1 })
+  // The visible base range, published to the minimap from draw() without
+  // re-rendering anything.
+  const [minimapViewport] = useState(() => createViewportSource())
+  // Cut sites grouped exactly as draw() groups them, so the minimap's hover
+  // keys match the main view's.
+  const damMethylated = doc.metadata?.damMethylated || false
+  const dcmMethylated = doc.metadata?.dcmMethylated || false
+  const minimapEnzymeGroups = useMemo(
+    () => (showEnzymes ? groupCutSites(allEnzymeCutSites, damMethylated, dcmMethylated) : null),
+    [showEnzymes, allEnzymeCutSites, damMethylated, dcmMethylated],
+  )
 
   // Convert ORF results to Annotation objects for unified rendering.
   // The id carries the ORF's identity rather than its index in the list, so a
@@ -926,15 +850,13 @@ function SequenceView({ onFindRequest, onAnnotateRequest, onEditFeature }: Seque
     canvas.style.top = `${canvasTop}px`
     canvasTopRef.current = canvasTop
 
-    // Update minimap scroll fractions
+    // Publish the visible bases, not the scroll fraction: rows vary in
+    // height with their annotation lanes, so the two disagree.
     if (seqLen >= MINIMAP_SEQ_THRESHOLD) {
-      const sf = Math.max(0, Math.min(1, scrollTop / Math.max(1, totalHeight)))
-      const vf = Math.max(0, Math.min(1, viewHeight / Math.max(1, totalHeight)))
-      const prev = minimapScrollRef.current
-      if (Math.abs(prev.scrollFrac - sf) > 0.0001 || Math.abs(prev.viewFrac - vf) > 0.0001) {
-        minimapScrollRef.current = { scrollFrac: sf, viewFrac: vf }
-        setMinimapScroll({ scrollFrac: sf, viewFrac: vf })
-      }
+      minimapViewport.set({
+        start: rl.baseAtY(scrollTop, L.basesPerRow, seqLen),
+        end: rl.baseAtY(scrollTop + viewHeight, L.basesPerRow, seqLen),
+      })
     }
 
     const ctx = canvas.getContext('2d')
@@ -2623,15 +2545,11 @@ function SequenceView({ onFindRequest, onAnnotateRequest, onEditFeature }: Seque
     return () => clearInterval(caretBlinkRef.current)
   }, [caretPos, dragEnded])
 
-  // Minimap: scroll to a base position
-  const handleMinimapScrollToBase = useCallback((base: number) => {
+  // Minimap: scroll so the viewport starts at a (fractional) base
+  const handleMinimapNavigate = useCallback((base: number) => {
     const container = containerRef.current
     if (!container) return
-    const rl = rowLayoutRef.current
-    const L = layoutRef.current
-    const row = Math.floor(base / L.basesPerRow)
-    const targetY = rl.rowY(row)
-    container.scrollTop = targetY
+    container.scrollTop = rowLayoutRef.current.yAtBase(base, layoutRef.current.basesPerRow)
   }, [])
 
   // Ctrl+wheel zoom
@@ -2723,13 +2641,13 @@ function SequenceView({ onFindRequest, onAnnotateRequest, onEditFeature }: Seque
   return (
     <div style={{ width: '100%', height: '100%', display: 'flex', flexDirection: 'column' }}>
       {showMinimap && (
-        <MinimapBar
-          onScrollToBase={handleMinimapScrollToBase}
-          scrollFraction={minimapScroll.scrollFrac}
-          viewportFraction={minimapScroll.viewFrac}
+        <SequenceMinimap
           annTree={annTree}
-          collapsed={minimapCollapsed}
-          onToggleCollapse={() => setMinimapCollapsed(c => !c)}
+          enzymeGroups={minimapEnzymeGroups}
+          hoveredEnzymeGroup={hoveredEnzymeGroup}
+          onHoverEnzymeGroup={setHoveredEnzymeGroup}
+          viewport={minimapViewport}
+          onNavigate={handleMinimapNavigate}
         />
       )}
     <div

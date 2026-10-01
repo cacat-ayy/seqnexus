@@ -163,6 +163,19 @@
 
   /* Shared easing. Decelerating — motion arrives rather than stops dead. */
   --ease-out: cubic-bezier(.2, .8, .3, 1);
+
+  /* Minimap (components/minimap). Built on the canvas tokens, so every theme
+     inherits a legible overview without restating it; the quality ramp is the
+     traffic-light scale the chromatogram and alignment already used. */
+  --minimap-bg: var(--canvas-bg);
+  --minimap-ink: var(--canvas-backbone);
+  --minimap-muted: var(--canvas-ruler);
+  --minimap-grid: var(--canvas-ruler-tick);
+  --minimap-gc: var(--success);
+  --minimap-good: #22c55e;
+  --minimap-fair: #eab308;
+  --minimap-poor: #f97316;
+  --minimap-bad: #ef4444;
 }
 
 /* Respect reduced-motion preference */

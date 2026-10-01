@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { enzymeGroupKey, type GroupedCutSite } from './SequenceView'
+import { enzymeGroupKey, type GroupedCutSite } from '../enzymes/grouping'
 
 const group = (label: string, recognitionStart: number): GroupedCutSite => ({
   sites: [],

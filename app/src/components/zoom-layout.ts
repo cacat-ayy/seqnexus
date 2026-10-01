@@ -219,6 +219,29 @@ export class RowLayoutMap {
     return this._offsets![rowIndex + 1] - this._offsets![rowIndex]
   }
 
+  /**
+   * The (fractional) base at pixel Y, interpolating within the row.
+   *
+   * Rows differ in height with their annotation lanes, so scroll fraction
+   * and base fraction disagree wherever features are dense; anything that
+   * maps between the two (the minimap) must go through these.
+   */
+  baseAtY(y: number, basesPerRow: number, seqLen: number): number {
+    if (this.totalRows === 0 || y >= this.totalHeight) return seqLen
+    const row = this.rowAtY(y)
+    const h = this.rowH(row)
+    const frac = h > 0 ? Math.max(0, Math.min(1, (y - this.rowY(row)) / h)) : 0
+    return Math.min(seqLen, (row + frac) * basesPerRow)
+  }
+
+  /** Pixel Y of a (fractional) base; the inverse of baseAtY. */
+  yAtBase(base: number, basesPerRow: number): number {
+    if (this.totalRows === 0 || basesPerRow <= 0) return 0
+    const row = Math.min(this.totalRows - 1, Math.max(0, Math.floor(base / basesPerRow)))
+    const frac = Math.max(0, Math.min(1, base / basesPerRow - row))
+    return this.rowY(row) + frac * this.rowH(row)
+  }
+
   /** Find which row contains pixel Y. O(1) for uniform, O(log n) for non-uniform. */
   rowAtY(y: number): number {
     if (y <= 0) return 0

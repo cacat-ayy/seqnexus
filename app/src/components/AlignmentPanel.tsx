@@ -14,6 +14,9 @@ import './AlignmentPanel.css'
 import { useState, useCallback, useRef, useMemo, useEffect } from 'react'
 import { WrapText, Copy, Diff, ChevronDown, ChevronUp, Palette, ChevronLeft, ChevronRight, SlidersHorizontal, X, ArrowRightLeft, ExternalLink } from 'lucide-react'
 import type { AlignmentResult } from '../alignment/types'
+import Minimap from './minimap/Minimap'
+import { createViewportSource } from './minimap/viewport'
+import { alignmentTracks } from './minimap/alignmentTracks'
 
 /** Heatmap color for pairwise identity (0–1). Red → yellow → green. */
 function identityColor(val: number): string {
@@ -112,6 +115,15 @@ function conservationColor(value: number): string {
 const GUTTER_WIDTH = 150 // approximate gutter width in px
 const MIN_COLS = 20
 
+/**
+ * Height of one wrapped block: ruler + consensus + sequences + conservation +
+ * gaps/margins. Blocks are placed at multiples of this, so the minimap maps
+ * scroll positions to columns through it too.
+ */
+function wrappedBlockHeight(rowCount: number, cellH: number): number {
+  return (rowCount + 3) * Math.max(cellH + 2, 18) + 12
+}
+
 /** Virtualized block renderer for wrapped mode – only renders blocks near the viewport. */
 function VirtualizedBlocks({
   blocks,
@@ -128,8 +140,7 @@ function VirtualizedBlocks({
   rowCount: number
   cellH: number
 }) {
-  // Estimate block height: ruler + consensus + sequences + conservation + gaps/margins
-  const blockH = (rowCount + 3) * Math.max(cellH + 2, 18) + 12
+  const blockH = wrappedBlockHeight(rowCount, cellH)
 
   const [visibleRange, setVisibleRange] = useState<[number, number]>([0, 5])
 
@@ -169,7 +180,7 @@ export default function AlignmentPanel({ result, seqType, algorithm, zoomLevel =
   const [dynamicCols, setDynamicCols] = useState(80)
   const viewerRef = useRef<HTMLDivElement>(null)
   const panelRef = useRef<HTMLDivElement>(null)
-  const minimapRef = useRef<HTMLCanvasElement>(null)
+  const [minimapViewport] = useState(() => createViewportSource())
 
   // Column range selection
   const [selStart, setSelStart] = useState<number | null>(null)
@@ -276,47 +287,8 @@ export default function AlignmentPanel({ result, seqType, algorithm, zoomLevel =
     return () => observer.disconnect()
   }, [cellW])
 
-  // Track scroll position for minimap viewport indicator
+  // Bumped on scroll; wrapped mode re-picks its visible blocks from it
   const [scrollTick, setScrollTick] = useState(0)
-
-  // Draw minimap
-  useEffect(() => {
-    const el = minimapRef.current
-    if (!el) return
-    const w = el.clientWidth
-    const h = el.clientHeight
-    if (w === 0 || h === 0) return
-    if (el.width !== w || el.height !== h) { el.width = w; el.height = h }
-    const ctx = el.getContext('2d')
-    if (!ctx) return
-    ctx.clearRect(0, 0, w, h)
-    for (let px = 0; px < w; px++) {
-      const col = Math.floor((px / w) * result.alignmentLength)
-      const val = result.conservation[col] ?? 0
-      ctx.fillStyle = conservationColor(val)
-      ctx.fillRect(px, h * (1 - val), 1, h * val)
-    }
-    // Selection overlay
-    if (selRange) {
-      const x0 = (selRange[0] / result.alignmentLength) * w
-      const x1 = ((selRange[1] + 1) / result.alignmentLength) * w
-      ctx.fillStyle = 'rgba(59, 130, 246, 0.3)'
-      ctx.fillRect(x0, 0, x1 - x0, h)
-    }
-    // Viewport indicator
-    if (viewerRef.current) {
-      const scrollLeft = viewerRef.current.scrollLeft
-      const clientW = viewerRef.current.clientWidth
-      const totalW = result.alignmentLength * cellW
-      if (totalW > clientW) {
-        const vx = (scrollLeft / totalW) * w
-        const vw = Math.max(2, (clientW / totalW) * w)
-        ctx.strokeStyle = '#3b82f6'
-        ctx.lineWidth = 1.5
-        ctx.strokeRect(vx, 0.5, vw, h - 1)
-      }
-    }
-  }, [result, selRange, cellW, scrollTick, wrapped])
 
   const { sequences, consensus, conservation, identity, similarity, gaps, alignmentLength, score, pairwiseIdentityMatrix } = result
   const alnLen = alignmentLength
@@ -669,6 +641,53 @@ export default function AlignmentPanel({ result, seqType, algorithm, zoomLevel =
     return result
   }, [wrapped, alnLen, colsPerBlock])
 
+  // --- Minimap ---
+  // Columns on screen. Linear mode scrolls sideways past a sticky name
+  // gutter; wrapped mode scrolls down through fixed-height blocks.
+  const publishViewport = useCallback(() => {
+    const el = viewerRef.current
+    if (!el || alnLen === 0) return
+    if (wrapped) {
+      const blockH = wrappedBlockHeight(sequences.length, cellW)
+      minimapViewport.set({
+        start: Math.min(alnLen, (el.scrollTop / blockH) * colsPerBlock),
+        end: Math.min(alnLen, ((el.scrollTop + el.clientHeight) / blockH) * colsPerBlock),
+      })
+    } else {
+      const gutter = (el.querySelector('.align-gutter') as HTMLElement | null)?.offsetWidth ?? 0
+      minimapViewport.set({
+        start: Math.min(alnLen, el.scrollLeft / cellW),
+        end: Math.min(alnLen, (el.scrollLeft + el.clientWidth - gutter) / cellW),
+      })
+    }
+  }, [wrapped, alnLen, cellW, colsPerBlock, sequences.length, minimapViewport])
+
+  useEffect(() => {
+    publishViewport()
+    const el = viewerRef.current
+    if (!el) return
+    const ro = new ResizeObserver(publishViewport)
+    ro.observe(el)
+    el.addEventListener('scroll', publishViewport, { passive: true })
+    return () => {
+      ro.disconnect()
+      el.removeEventListener('scroll', publishViewport)
+    }
+  }, [publishViewport])
+
+  const navigateMinimap = useCallback((start: number) => {
+    const el = viewerRef.current
+    if (!el) return
+    if (wrapped) el.scrollTop = (start / colsPerBlock) * wrappedBlockHeight(sequences.length, cellW)
+    else el.scrollLeft = start * cellW
+  }, [wrapped, colsPerBlock, sequences.length, cellW])
+
+  const minimapTracks = useMemo(() => alignmentTracks(result, searchHits), [result, searchHits])
+  const minimapSelection = useMemo(
+    () => (selRange ? [[selRange[0], selRange[1] + 1] as const] : []),
+    [selRange],
+  )
+
   return (
     <div className={`align-panel ${showLetters ? '' : 'block-mode'}`} ref={panelRef} style={zoomStyle}>
       {/* Header */}
@@ -876,19 +895,17 @@ export default function AlignmentPanel({ result, seqType, algorithm, zoomLevel =
         </div>
       )}
 
-      {/* Minimap – overview bar showing conservation across the full alignment */}
-      {!wrapped && (
-        <div className="align-minimap" onClick={e => {
-          const rect = e.currentTarget.getBoundingClientRect()
-          const frac = (e.clientX - rect.left) / rect.width
-          const col = Math.floor(frac * alnLen)
-          if (viewerRef.current) {
-            viewerRef.current.scrollLeft = Math.max(0, col * cellW - viewerRef.current.clientWidth / 2)
-          }
-        }}>
-          <canvas ref={minimapRef} className="align-minimap-canvas" />
-        </div>
-      )}
+      {/* Overview: conservation and markers across the whole alignment */}
+      <Minimap
+        kind="alignment"
+        length={alnLen}
+        tracks={minimapTracks}
+        viewport={minimapViewport}
+        onNavigate={navigateMinimap}
+        selection={minimapSelection}
+        positionLabel="Column"
+        ariaLabel="Alignment overview"
+      />
 
       {/* Alignment viewer */}
       <div

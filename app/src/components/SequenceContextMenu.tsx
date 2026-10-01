@@ -31,7 +31,7 @@ import { DESIGN_ROLES, designOligoId } from '../primers/usePrimerSites'
 import { newPrimerId } from '../primers/oligo'
 import { notify } from '../toast'
 import ContextMenuPopup, { MenuItem, MenuSeparator, Submenu } from './ContextMenuPopup'
-import type { GroupedCutSite } from './SequenceView'
+import type { GroupedCutSite } from '../enzymes/grouping'
 
 export interface SequenceMenuTarget {
   x: number

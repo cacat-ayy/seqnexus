@@ -8,8 +8,9 @@ import { useEditorStore, defaultSearchOptions } from './store'
 
 const store = () => useEditorStore.getState()
 const tab = () => store().tabs.find(t => t.id === store().activeTabId)!
-const undoTop = () => tab().undoStack.at(-1)?.label
-const redoTop = () => tab().redoStack.at(-1)?.label
+const last = <T,>(xs: T[]): T | undefined => xs[xs.length - 1]
+const undoTop = () => last(tab().undoStack)?.label
+const redoTop = () => last(tab().redoStack)?.label
 
 beforeEach(() => {
   for (const t of store().tabs) store().closeTab(t.id)

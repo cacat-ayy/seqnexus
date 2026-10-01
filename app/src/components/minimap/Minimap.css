@@ -1,0 +1,107 @@
+/* Overview bar shared by the sequence, alignment and chromatogram views. */
+
+.minimap {
+  position: relative;
+  flex-shrink: 0;
+  width: 100%;
+  background: var(--minimap-bg);
+  border-bottom: 1px solid var(--border);
+  user-select: none;
+}
+
+.minimap-stage {
+  position: relative;
+  overflow: hidden;
+  transition: height var(--dur-fast) var(--ease-out);
+}
+
+.minimap-canvas {
+  position: absolute;
+  top: 0;
+  left: 0;
+  display: block;
+}
+
+.minimap-overlay {
+  touch-action: none;
+}
+
+.minimap-toggle {
+  position: absolute;
+  top: 1px;
+  right: 2px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 14px;
+  height: 12px;
+  padding: 0;
+  border: none;
+  border-radius: var(--radius-xs);
+  background: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  line-height: 0;
+}
+
+.minimap.collapsed .minimap-toggle {
+  top: -1px;
+}
+
+.minimap-toggle:hover {
+  color: var(--text);
+  background: var(--bg-hover);
+}
+
+.minimap-toggle:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+/* Hover readout: hangs just below the bar, over the main view. */
+.minimap-readout {
+  position: absolute;
+  top: calc(100% + 4px);
+  z-index: var(--z-popover);
+  display: flex;
+  align-items: center;
+  gap: var(--space-1-5);
+  max-width: min(420px, 90%);
+  padding: var(--space-0-5) var(--space-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg-alt);
+  box-shadow: var(--shadow-popover);
+  color: var(--text);
+  font-size: var(--text-xs);
+  line-height: 18px;
+  white-space: nowrap;
+  pointer-events: none;
+}
+
+.minimap-readout[data-align="end"] {
+  transform: translateX(-100%);
+}
+
+.minimap-readout-pos {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  color: var(--text-secondary);
+}
+
+.minimap-readout-swatch {
+  flex-shrink: 0;
+  width: 8px;
+  height: 8px;
+  border-radius: 2px;
+}
+
+.minimap-readout-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-weight: 600;
+}
+
+.minimap-readout-detail {
+  color: var(--text-muted);
+}

@@ -66,7 +66,7 @@ describe('ToolbarTooltip', () => {
     act(() => { vi.advanceTimersByTime(500) })
     fireEvent(btn, new MouseEvent('pointerdown', { bubbles: true }))
     expect(screen.queryByRole('tooltip')).toBeNull()
-    hover(btn.firstChild ?? btn)
+    hover(btn.firstElementChild ?? btn)
     act(() => { vi.advanceTimersByTime(500) })
     expect(screen.queryByRole('tooltip')).toBeNull()
   })

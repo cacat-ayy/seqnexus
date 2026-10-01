@@ -5,7 +5,7 @@ import './EnzymeTooltip.css'
  */
 
 import type { CutSite } from '../enzymes/finder'
-import type { GroupedCutSite } from './SequenceView'
+import type { GroupedCutSite } from '../enzymes/grouping'
 import { complementBase } from '../models/complement'
 import HoverCard from './HoverCard'
 
