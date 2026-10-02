@@ -30,32 +30,65 @@ import { useDelayedHover, type HoverTarget } from '../hooks/useDelayedHover'
 import EnzymeTooltip from './EnzymeTooltip'
 import SequenceContextMenu from './SequenceContextMenu'
 import ConfirmDialog from './ConfirmDialog'
-import { calcTm } from '../primers/thermodynamics'
+import { selectionTm, SELECTION_TM_MAX } from '../utils/selection-tm'
 import SequenceMinimap from './minimap/SequenceMinimap'
 import { createViewportSource } from './minimap/viewport'
 
+import { publishBasesPerRow, registerSequenceViewFit } from './sequence-view-controls'
+
 const MINIMAP_SEQ_THRESHOLD = 1_000 // show minimap for sequences >= 1 kb
+const MAX_ZOOM = 20
+/** Summed ctrl+wheel delta per zoom level: one mouse notch, or a short pinch. */
+const WHEEL_ZOOM_STEP = 50
+/** Bases jumped by Ctrl+←/→: one ruler group. */
+const WORD_JUMP = 10
+/** Narrowest base, in px, that still gets a dot of its own when zoomed out. */
+const DOT_MIN_BP_WIDTH = 5
 
 /** Read canvas colors from CSS custom properties for theme support. */
 type CanvasColors = ReturnType<typeof readCanvasColors>
 function readCanvasColors(container: HTMLElement) {
   const s = getComputedStyle(container)
   const v = (name: string, fallback: string) => s.getPropertyValue(name).trim() || fallback
+  // The canvas draws text in the app's own faces, not the browser's generic
+  // ones, so the bases match every other monospaced readout in the UI.
+  setCanvasFonts(v('--font-mono', 'monospace'), s.fontFamily || 'sans-serif')
+  const ruler = v('--canvas-ruler', '#999999')
   return {
     bg: v('--canvas-bg', '#ffffff'),
     text: v('--canvas-text', '#213547'),
     complement: v('--canvas-complement', '#888888'),
-    ruler: v('--canvas-ruler', '#999999'),
+    ruler,
     rulerTick: v('--canvas-ruler-tick', '#cccccc'),
     rowSeparator: v('--canvas-row-sep', '#f0f0f0'),
+    backbone: v('--canvas-backbone', ruler),
     selectionBg: v('--selection-bg', 'rgba(59, 130, 246, 0.25)'),
     caret: v('--accent', '#3b82f6'),
     border: v('--border', '#e0e0e0'),
     enzyme: v('--canvas-enzyme', '#e53e3e'),
     enzymeBg: v('--canvas-enzyme-bg', 'rgba(229,62,62,.08)'),
     enzymeBgHover: v('--canvas-enzyme-bg-hover', 'rgba(229,62,62,.22)'),
+    search: v('--canvas-search', 'rgba(250,204,21,.32)'),
+    searchCurrent: v('--canvas-search-current', 'rgba(249,115,22,.42)'),
+    searchEdge: v('--canvas-search-edge', '#ea580c'),
+    dam: v('--canvas-dam', '#3b82f6'),
+    dcm: v('--canvas-dcm', '#f59e0b'),
+    codon: v('--canvas-codon', 'rgba(100,116,139,.14)'),
   }
 }
+
+// --- Canvas fonts ---
+
+let MONO_FAMILY = 'monospace'
+let SANS_FAMILY = 'sans-serif'
+function setCanvasFonts(mono: string, sans: string) {
+  if (mono === MONO_FAMILY && sans === SANS_FAMILY) return
+  MONO_FAMILY = mono
+  SANS_FAMILY = sans
+  _measureCache.clear()
+}
+const monoFont = (spec: string) => `${spec} ${MONO_FAMILY}`
+const sansFont = (spec: string) => `${spec} ${SANS_FAMILY}`
 
 /** Cached color reader – re-reads CSS only when the theme attribute changes. */
 let _cachedColors: CanvasColors | null = null
@@ -161,11 +194,82 @@ function stackAnnotations(
   return { rows, overflow }
 }
 
+type RowStack = { rows: Annotation[][]; overflow: number }
+/** A row's annotation stack, from the draw cache when it has one. */
+type RowStacks = (rowIndex: number, rowStart: number, rowEnd: number) => RowStack
+
+/**
+ * Per-row lane and translation counts for one layout.
+ *
+ * A difference array over the rows each annotation spans gives the overlap
+ * count per row in O(annotations + rows), without stacking anything. When
+ * feature translations are on, rows reserve one translation row per coding
+ * feature they cross, so a row without a CDS carries no blank band.
+ */
+function buildRowLayout(
+  L: ZoomLayout,
+  annTree: IntervalTree,
+  seqLen: number,
+  perRowTranslations: boolean,
+): RowLayoutMap {
+  const bpr = L.basesPerRow
+  const totalRows = Math.max(1, Math.ceil(seqLen / bpr))
+  const rl = new RowLayoutMap(totalRows)
+  const diff = new Int32Array(totalRows + 1)
+  // Feature translations are drawn only for features placed in a lane, so with
+  // the tracks closed there are none to reserve room for.
+  const cdsDiff = perRowTranslations && L.maxAnnotationRows > 0 ? new Int32Array(totalRows + 1) : null
+  const mark = (d: Int32Array, ann: Annotation) => {
+    if (ann.spansOrigin()) {
+      // [start, seqLen) ∪ [0, end); the tail runs to the end of the array.
+      d[Math.floor(ann.start / bpr)]++
+      d[0]++
+      d[Math.min(Math.ceil(ann.end / bpr), totalRows)]--
+    } else {
+      d[Math.floor(ann.start / bpr)]++
+      d[Math.min(Math.ceil(ann.end / bpr), totalRows)]--
+    }
+  }
+  for (const ann of annTree.all()) {
+    mark(diff, ann)
+    if (cdsDiff && ann.type === 'CDS' && ann.strand !== 0) mark(cdsDiff, ann)
+  }
+  let count = 0
+  let cds = 0
+  for (let r = 0; r < totalRows; r++) {
+    count += diff[r]
+    rl.lanes[r] = Math.min(count, L.maxAnnotationRows)
+    if (cdsDiff) {
+      cds += cdsDiff[r]
+      rl.translations[r] = Math.min(cds, 6)
+    }
+  }
+  rl.perRowTranslations = perRowTranslations
+  rl.build(L)
+  return rl
+}
+
+/** Paint one codon's backing block: inset so neighbouring codons read apart. */
+function paintCodonBlock(
+  ctx: CanvasRenderingContext2D, x1: number, x2: number, y: number, h: number,
+  color: string, strong: boolean,
+) {
+  const w = x2 - x1 - 2
+  if (w <= 0) return
+  ctx.fillStyle = color
+  ctx.globalAlpha = strong ? 1 : 0.5
+  ctx.beginPath()
+  if (typeof ctx.roundRect === 'function') ctx.roundRect(x1 + 1, y, w, h, 3)
+  else ctx.rect(x1 + 1, y, w, h)
+  ctx.fill()
+  ctx.globalAlpha = 1
+}
+
 function hitTestAnnotation(
   px: number,
   py: number,
   seqLen: number,
-  annTree: IntervalTree,
+  stacksAt: RowStacks,
   L: ZoomLayout,
   rl: RowLayoutMap,
 ): Annotation | null {
@@ -182,8 +286,7 @@ function hitTestAnnotation(
   if (py > annEndY) return null
   const annRowIdx = Math.floor((py - annStartY) / (L.annotationRowH + L.annotationGap))
   if (annRowIdx >= rl.lanes[rowIndex]) return null
-  const rowAnnotations = annTree.queryRange(rowStart, rowEnd)
-  const { rows: stacked } = stackAnnotations(rowAnnotations, rowStart, rowEnd, L)
+  const { rows: stacked } = stacksAt(rowIndex, rowStart, rowEnd)
   if (annRowIdx >= stacked.length) return null
   for (const ann of stacked[annRowIdx]) {
     const visRange = annVisibleRange(ann, rowStart, rowEnd)
@@ -205,7 +308,7 @@ function hitTestAnnotationEdge(
   px: number,
   py: number,
   seqLen: number,
-  annTree: IntervalTree,
+  stacksAt: RowStacks,
   L: ZoomLayout,
   rl: RowLayoutMap,
 ): { annotation: Annotation; edge: 'start' | 'end' } | null {
@@ -224,8 +327,7 @@ function hitTestAnnotationEdge(
   const annRowIdx = Math.floor((py - annStartY) / (L.annotationRowH + L.annotationGap))
   if (annRowIdx >= rl.lanes[rowIndex]) return null
 
-  const rowAnnotations = annTree.queryRange(rowStart, rowEnd)
-  const { rows: stacked } = stackAnnotations(rowAnnotations, rowStart, rowEnd, L)
+  const { rows: stacked } = stacksAt(rowIndex, rowStart, rowEnd)
   if (annRowIdx >= stacked.length) return null
 
   for (const ann of stacked[annRowIdx]) {
@@ -283,18 +385,31 @@ interface TieredLabel {
   tier: number
 }
 
-const ENZYME_LABEL_FONT = '10px sans-serif'
+const enzymeLabelFont = (hovered = false) => sansFont(hovered ? '600 10px' : '10px')
 const ENZYME_LABEL_PAD = 6 // horizontal padding between labels
 
-/** Measure text width using a shared offscreen canvas. */
+/**
+ * Text width in a font, measured once. Labels are drawn every frame and
+ * hit-tested on every mouse move, but the set of distinct names is small.
+ */
 let _measureCtx: CanvasRenderingContext2D | null = null
-function measureLabelWidth(text: string): number {
+const _measureCache = new Map<string, number>()
+function measureText(font: string, text: string): number {
+  const key = `${font}\u0000${text}`
+  const hit = _measureCache.get(key)
+  if (hit !== undefined) return hit
   if (!_measureCtx) {
     const c = document.createElement('canvas')
     _measureCtx = c.getContext('2d')!
   }
-  _measureCtx.font = ENZYME_LABEL_FONT
-  return _measureCtx.measureText(text).width
+  _measureCtx.font = font
+  const w = _measureCtx.measureText(text).width
+  if (_measureCache.size > 5000) _measureCache.clear()
+  _measureCache.set(key, w)
+  return w
+}
+function measureLabelWidth(text: string): number {
+  return measureText(enzymeLabelFont(), text)
 }
 
 /**
@@ -450,6 +565,9 @@ function hitTest(
   return bestIdx
 }
 
+/** How far past the bases a selection handle's knob reaches. */
+const KNOB_SLOP = 7
+
 /**
  * Detect if a pixel position is near the start or end edge of a selection.
  * Returns 'start', 'end', or null. Uses a tolerance in pixels.
@@ -472,7 +590,7 @@ function hitTestSelectionEdge(
   const startRowStart = startRow * L.basesPerRow
   const startX = baseX(selStart, startRowStart, L)
   const startY = rl.rowY(startRow) - scrollTop + L.enzymeLabelAreaH + L.rulerHeight
-  if (Math.abs(px - startX) <= TOLERANCE && py >= startY && py <= startY + L.seqLineHeight) {
+  if (Math.abs(px - startX) <= TOLERANCE && py >= startY - KNOB_SLOP && py <= startY + L.seqLineHeight) {
     return 'start'
   }
 
@@ -481,7 +599,7 @@ function hitTestSelectionEdge(
   const endRowStart = endRow * L.basesPerRow
   const endX = baseX(selEnd - 1, endRowStart, L) + L.bpWidth
   const endY = rl.rowY(endRow) - scrollTop + L.enzymeLabelAreaH + L.rulerHeight
-  if (Math.abs(px - endX) <= TOLERANCE && py >= endY && py <= endY + L.seqLineHeight) {
+  if (Math.abs(px - endX) <= TOLERANCE && py >= endY && py <= endY + L.seqLineHeight + KNOB_SLOP) {
     return 'end'
   }
 
@@ -577,9 +695,33 @@ function SequenceView({ onFindRequest, onAnnotateRequest, onEditFeature }: Seque
   const [deleteConfirm, setDeleteConfirm] = useState<{ annId: string; annName: string } | null>(null)
   const [largeDeleteConfirm, setLargeDeleteConfirm] = useState<{ action: () => void; count: number } | null>(null)
 
-  const [caretVisible, setCaretVisible] = useState(true)
-  const caretBlinkRef = useRef<number>(0)
   const drawRef = useRef<(() => void) | null>(null)
+  // The caret overlay and the base it last sat at (to restart its blink).
+  const caretRef = useRef<HTMLDivElement>(null)
+  const lastCaretRef = useRef(-1)
+  // Range readout that follows the pointer while a selection is dragged.
+  const dragPillRef = useRef<HTMLDivElement>(null)
+  // Cut sites exactly as the last draw grouped them, for hit-testing.
+  const groupedSitesRef = useRef<GroupedCutSite[]>([])
+  // Where a Ctrl+wheel zoom should hold still: this base stays at this
+  // offset from the top of the view. Null zooms around the top of the view.
+  const zoomAnchorRef = useRef<{ base: number; offsetY: number } | null>(null)
+  const wheelAccumRef = useRef(0)
+  // Set by keyboard navigation so the auto-scroll follows the caret, which
+  // is the end that moves, rather than the start of the selection.
+  const followCaretRef = useRef(false)
+
+  /** A row's lane stack, shared by draw and every hit test. */
+  const stacksAt = useCallback<RowStacks>((rowIndex, rowStart, rowEnd) => {
+    const cache = stackCacheRef.current
+    const fresh = cache && cache.tree === annTreeRef.current ? cache : null
+    let stack = fresh?.stacks.get(rowIndex)
+    if (!stack) {
+      stack = stackAnnotations(annTreeRef.current.queryRange(rowStart, rowEnd), rowStart, rowEnd, layoutRef.current)
+      fresh?.stacks.set(rowIndex, stack)
+    }
+    return stack
+  }, [])
 
   // The visible base range, published to the minimap from draw() without
   // re-rendering anything.
@@ -692,7 +834,6 @@ function SequenceView({ onFindRequest, onAnnotateRequest, onEditFeature }: Seque
   const docRef = useRef(doc)
   const selectionRef = useRef(selection)
   const searchRef = useRef(search)
-  const caretVisibleRef = useRef(caretVisible)
   const annTreeRef = useRef(annTree)
   const zoomLevelRef = useRef(zoomLevel)
   const hoveredAnnotationIdRef = useRef(hoveredAnnotationId)
@@ -718,7 +859,6 @@ function SequenceView({ onFindRequest, onAnnotateRequest, onEditFeature }: Seque
   docRef.current = doc
   selectionRef.current = selection
   searchRef.current = search
-  caretVisibleRef.current = caretVisible
   annTreeRef.current = annTree
   zoomLevelRef.current = zoomLevel
   hoveredAnnotationIdRef.current = hoveredAnnotationId
@@ -754,33 +894,35 @@ function SequenceView({ onFindRequest, onAnnotateRequest, onEditFeature }: Seque
       translationRows: translationRowsRef.current,
     })
     layoutRef.current = L
+    publishBasesPerRow(L.basesPerRow)
 
     // Read current state from refs (not closure) so draw stays stable
     const doc = docRef.current
     const selection = selectionRef.current
     const search = searchRef.current
-    const caretVisible = caretVisibleRef.current
     const annTree = annTreeRef.current
     const hoveredAnnotationId = hoveredAnnotationIdRef.current
     const enzymeCutSites = enzymeCutSitesRef.current
     const hoveredEnzymeGroup = hoveredEnzymeGroupRef.current
 
-    // Group cut sites for rendering (isoschizomer merging)
+    // Group cut sites for rendering (isoschizomer merging). Kept for the
+    // mouse handlers, so hit-testing uses exactly what was drawn.
     const damMeth = doc.metadata?.damMethylated || false
     const dcmMeth = doc.metadata?.dcmMethylated || false
     const groupedSites = groupCutSites(enzymeCutSites, damMeth, dcmMeth)
+    groupedSitesRef.current = groupedSites
 
     const seq = doc.sequence
     const seqLen = seq.length
     const topology = seq.topology
     const totalRows = Math.max(1, Math.ceil(seqLen / L.basesPerRow))
 
-    // Build per-row annotation lane counts for adaptive row heights.
-    // Uses an O(annotations) sweep instead of O(totalRows) stacking scan:
-    // for each annotation, increment a counter on the rows it spans.
-    // The counter is clamped to maxAnnotationRows for the lane estimate.
-    const rlCacheKey = `${L.basesPerRow}_${seqLen}`
-    const rlLayoutKey = `${rlCacheKey}_${L.annotationRowH}_${L.annotationGap}_${L.maxAnnotationRows}_${L.rulerHeight}_${L.seqLineHeight}_${L.enzymeLabelAreaH}_${L.translationRowH}_${L.translationGap}_${L.maxTranslationRows}_${L.rowPaddingBottom}`
+    // Per-row lane and translation counts, rebuilt only when what they are
+    // counted from changes. Lane stacks depend on the lane cap too, so it is
+    // part of the key: a stale stack would draw bars into rows sized for none.
+    const perRowTranslations = translationFramesRef.current.length === 0
+    const rlCacheKey = `${L.basesPerRow}_${seqLen}_${L.maxAnnotationRows}_${perRowTranslations ? 1 : 0}`
+    const rlLayoutKey = `${rlCacheKey}_${L.annotationRowH}_${L.annotationGap}_${L.rulerHeight}_${L.seqLineHeight}_${L.enzymeLabelAreaH}_${L.translationRowH}_${L.translationGap}_${L.maxTranslationRows}_${L.rowPaddingBottom}`
     let rl: RowLayoutMap
     if (rowLayoutCacheRef.current
         && rowLayoutCacheRef.current.key === rlCacheKey
@@ -792,37 +934,7 @@ function SequenceView({ onFindRequest, onAnnotateRequest, onEditFeature }: Seque
         rowLayoutCacheRef.current.layoutKey = rlLayoutKey
       }
     } else {
-      rl = new RowLayoutMap(totalRows)
-      // Sweep: count overlapping annotations per row using a difference array.
-      // For each annotation, mark +1 at its first row and -1 after its last row.
-      // A prefix sum then gives the overlap count per row. O(annotations + totalRows).
-      const bpr = L.basesPerRow
-      const diff = new Int16Array(totalRows + 1)
-      const allAnns = annTree.all()
-      for (const ann of allAnns) {
-        if (ann.spansOrigin()) {
-          // [start, seqLen) ∪ [0, end)
-          const r1a = Math.floor(ann.start / bpr)
-          diff[r1a]++
-          // no -1 needed at seqLen since it's the end of the array
-          const r2b = Math.min(Math.ceil(ann.end / bpr), totalRows)
-          diff[0]++
-          diff[r2b]--
-        } else {
-          const r1 = Math.floor(ann.start / bpr)
-          const r2 = Math.min(Math.ceil(ann.end / bpr), totalRows)
-          diff[r1]++
-          diff[r2]--
-        }
-      }
-      // Prefix sum → overlap count per row → clamped lane count
-      let count = 0
-      const maxLanes = L.maxAnnotationRows
-      for (let r = 0; r < totalRows; r++) {
-        count += diff[r]
-        rl.lanes[r] = Math.min(count, maxLanes) as number
-      }
-      rl.build(L)
+      rl = buildRowLayout(L, annTree, seqLen, perRowTranslations)
       rowLayoutCacheRef.current = { key: rlCacheKey, tree: annTree, map: rl, layoutKey: rlLayoutKey }
       // Clear stacking cache — will be computed lazily for visible rows
       stackCacheRef.current = { key: rlCacheKey, tree: annTree, stacks: new Map() }
@@ -845,8 +957,12 @@ function SequenceView({ onFindRequest, onAnnotateRequest, onEditFeature }: Seque
     const canvasTop = Math.max(0, scrollTop - bufferH / 2)
     const canvasH = Math.min(totalHeight - canvasTop, viewHeight + bufferH)
 
-    canvas.width = width * dpr
-    canvas.height = canvasH * dpr
+    // Assigning width or height reallocates and clears the backing store, so
+    // only do it when the size actually changes; scrolling keeps it constant.
+    const pxW = Math.round(width * dpr)
+    const pxH = Math.max(1, Math.round(canvasH * dpr))
+    if (canvas.width !== pxW) canvas.width = pxW
+    if (canvas.height !== pxH) canvas.height = pxH
     canvas.style.width = `${width}px`
     canvas.style.height = `${canvasH}px`
     canvas.style.top = `${canvasTop}px`
@@ -863,7 +979,10 @@ function SequenceView({ onFindRequest, onAnnotateRequest, onEditFeature }: Seque
 
     const ctx = canvas.getContext('2d')
     if (!ctx) return
-    ctx.scale(dpr, dpr)
+    // The context persists across draws now, so set the transform absolutely.
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
+    ctx.globalAlpha = 1
+    ctx.setLineDash([])
 
     const COLORS = getCanvasColors(container)
     // Resolved once per draw rather than per base: a full screen of letters is
@@ -876,6 +995,32 @@ function SequenceView({ onFindRequest, onAnnotateRequest, onEditFeature }: Seque
 
     ctx.fillStyle = COLORS.bg
     ctx.fillRect(0, 0, width, canvasH)
+
+    // The caret is a DOM element in the scrolled content, blinking in CSS, so
+    // the blink never redraws the canvas. Moving it restarts the blink, so it
+    // is solid while the user is typing or stepping through bases.
+    const caretEl = caretRef.current
+    if (caretEl) {
+      if (seqLen === 0) {
+        caretEl.style.display = 'none'
+      } else {
+        const c = Math.min(selection.caret, seqLen)
+        const row = Math.min(Math.floor(c / L.basesPerRow), totalRows - 1)
+        const rs = row * L.basesPerRow
+        const re = Math.min(rs + L.basesPerRow, seqLen)
+        const x = c < re ? baseX(c, rs, L) : baseX(re - 1, rs, L) + L.bpWidth
+        const y = rl.rowY(row) + L.enzymeLabelAreaH + L.rulerHeight
+        caretEl.style.display = ''
+        caretEl.style.height = `${L.seqLineHeight}px`
+        caretEl.style.transform = `translate(${x - 1}px, ${y}px)`
+        if (lastCaretRef.current !== c) {
+          lastCaretRef.current = c
+          caretEl.style.animation = 'none'
+          void caretEl.offsetWidth
+          caretEl.style.animation = ''
+        }
+      }
+    }
 
     if (seqLen === 0) return
 
@@ -910,7 +1055,7 @@ function SequenceView({ onFindRequest, onAnnotateRequest, onEditFeature }: Seque
           const tierY = labelAreaBottom - (lbl.tier + 1) * L.enzymeLabelTierH
 
           // Draw label text
-          ctx.font = isHovered ? 'bold 10px sans-serif' : ENZYME_LABEL_FONT
+          ctx.font = enzymeLabelFont(isHovered)
           ctx.fillStyle = COLORS.enzyme
           ctx.textBaseline = 'top'
           ctx.textAlign = 'left'
@@ -942,7 +1087,7 @@ function SequenceView({ onFindRequest, onAnnotateRequest, onEditFeature }: Seque
 
       // --- Ruler ---
       ctx.fillStyle = COLORS.ruler
-      ctx.font = '11px monospace'
+      ctx.font = monoFont('10.5px')
       ctx.textBaseline = 'top'
       ctx.textAlign = 'left'
       // Adaptive tick interval based on zoom
@@ -952,11 +1097,11 @@ function SequenceView({ onFindRequest, onAnnotateRequest, onEditFeature }: Seque
         : L.basesPerRow <= 5000 ? 500
         : 1000
       const dispOrigin = (topology === 'circular' ? doc.metadata?.displayOrigin : 0) || 0
-      for (let i = rowStart; i < rowEnd; i += tickInterval) {
-        const x = baseX(i, rowStart, L)
-        // Only draw label if there's enough space
-        if (L.bpWidth * tickInterval > 30 || i === rowStart) {
-          ctx.fillText(displayPosition(i, dispOrigin, seqLen).toLocaleString(), x, cy)
+      // The row's first position is already in the margin beside the bases,
+      // so the ruler starts labelling at the next tick.
+      if (L.bpWidth * tickInterval > 30) {
+        for (let i = rowStart + tickInterval; i < rowEnd; i += tickInterval) {
+          ctx.fillText(displayPosition(i, dispOrigin, seqLen).toLocaleString(), baseX(i, rowStart, L), cy)
         }
       }
       ctx.strokeStyle = COLORS.rulerTick
@@ -986,7 +1131,7 @@ function SequenceView({ onFindRequest, onAnnotateRequest, onEditFeature }: Seque
         ctx.globalAlpha = 0.4
         if (damMeth) {
           // Dam: GATC - methylates adenine at position 1
-          ctx.fillStyle = '#3b82f6' // blue
+          ctx.fillStyle = COLORS.dam
           for (let mi = 0; mi <= methBases.length - 4; mi++) {
             if (methBases[mi] === 'G' && methBases[mi+1] === 'A' && methBases[mi+2] === 'T' && methBases[mi+3] === 'C') {
               const siteStart = mi + methOffset
@@ -1003,7 +1148,7 @@ function SequenceView({ onFindRequest, onAnnotateRequest, onEditFeature }: Seque
         }
         if (dcmMeth) {
           // Dcm: CCWGG (W = A or T) - methylates second cytosine
-          ctx.fillStyle = '#f59e0b' // amber
+          ctx.fillStyle = COLORS.dcm
           for (let mi = 0; mi <= methBases.length - 5; mi++) {
             if (methBases[mi] === 'C' && methBases[mi+1] === 'C' &&
                 (methBases[mi+2] === 'A' || methBases[mi+2] === 'T') &&
@@ -1075,30 +1220,37 @@ function SequenceView({ onFindRequest, onAnnotateRequest, onEditFeature }: Seque
             ctx.fillStyle = COLORS.selectionBg
             ctx.fillRect(x1, forwardY, x2 - x1, L.seqLineHeight)
 
-            if (onTop) {
-              ctx.strokeStyle = COLORS.caret
-              ctx.lineWidth = 1.5
-              ctx.beginPath()
-              ctx.moveTo(x1, forwardY + 0.75)
-              ctx.lineTo(x2, forwardY + 0.75)
-              ctx.moveTo(x1, forwardY + L.seqLineHeight - 0.75)
-              ctx.lineTo(x2, forwardY + L.seqLineHeight - 0.75)
-              ctx.stroke()
-            }
+            // A hairline edge in the accent colour: the tint alone all but
+            // disappears on dark canvases, and under opaque base blocks
+            // (onTop) the edge is the only thing that reads as a boundary.
+            ctx.strokeStyle = COLORS.caret
+            ctx.lineWidth = onTop ? 1.5 : 1
+            ctx.globalAlpha = onTop ? 1 : 0.55
+            ctx.beginPath()
+            const inset = ctx.lineWidth / 2
+            ctx.moveTo(x1, forwardY + inset)
+            ctx.lineTo(x2, forwardY + inset)
+            ctx.moveTo(x1, forwardY + L.seqLineHeight - inset)
+            ctx.lineTo(x2, forwardY + L.seqLineHeight - inset)
+            ctx.stroke()
+            ctx.globalAlpha = 1
 
-            // Draw drag handles at selection edges
-            const handleW = Math.max(2, Math.min(3, L.bpWidth / 3))
+            // Drag handles: a bar along the edge with a knob on the outside
+            // end, start knob on top and end knob below, as text editors do.
+            const knobR = L.mode === 'letters' ? 3.5 : 2.5
             ctx.fillStyle = COLORS.caret
-            ctx.globalAlpha = onTop ? 1 : 0.7
+            const handle = (hx: number, knobY: number) => {
+              ctx.fillRect(hx - 1, forwardY, 2, L.seqLineHeight)
+              ctx.beginPath()
+              ctx.arc(hx, knobY, knobR, 0, Math.PI * 2)
+              ctx.fill()
+            }
             if (selStart >= rowStart && selStart < rowEnd) {
-              const hx = baseX(selStart, rowStart, L)
-              ctx.fillRect(hx - handleW / 2, forwardY, handleW, L.seqLineHeight)
+              handle(baseX(selStart, rowStart, L), forwardY - knobR + 1)
             }
             if (selEnd > rowStart && selEnd <= rowEnd) {
-              const hx = baseX(selEnd - 1, rowStart, L) + L.bpWidth
-              ctx.fillRect(hx - handleW / 2, forwardY, handleW, L.seqLineHeight)
+              handle(baseX(selEnd - 1, rowStart, L) + L.bpWidth, forwardY + L.seqLineHeight + knobR - 1)
             }
-            ctx.globalAlpha = 1
           }
         }
       }
@@ -1127,12 +1279,10 @@ function SequenceView({ onFindRequest, onAnnotateRequest, onEditFeature }: Seque
             const x1 = baseX(hlStart, rowStart, L)
             const x2 = baseX(hlEnd - 1, rowStart, L) + L.bpWidth
             const isCurrent = mi === search.currentMatch
-            ctx.fillStyle = isCurrent
-              ? 'rgba(255, 165, 0, 0.45)'
-              : 'rgba(255, 220, 50, 0.3)'
+            ctx.fillStyle = isCurrent ? COLORS.searchCurrent : COLORS.search
             ctx.fillRect(x1, forwardY, x2 - x1, L.seqLineHeight)
             if (onTop && isCurrent) {
-              ctx.strokeStyle = '#e8820c'
+              ctx.strokeStyle = COLORS.searchEdge
               ctx.lineWidth = 1.5
               ctx.strokeRect(x1 + 0.75, forwardY + 0.75, x2 - x1 - 1.5, L.seqLineHeight - 1.5)
             }
@@ -1150,16 +1300,24 @@ function SequenceView({ onFindRequest, onAnnotateRequest, onEditFeature }: Seque
       }
 
       // --- Row position label ---
+      // Centred on the forward strand, and in display coordinates like the
+      // ruler: on a circular sequence with a moved origin, row 1 is not base 1.
       ctx.fillStyle = COLORS.ruler
-      ctx.font = '12px monospace'
+      ctx.font = monoFont('11px')
       ctx.textAlign = 'right'
-      ctx.fillText((rowStart + 1).toLocaleString(), L.leftMargin - 8, cy)
+      ctx.textBaseline = 'middle'
+      ctx.fillText(
+        displayPosition(rowStart, dispOrigin, seqLen).toLocaleString(),
+        L.leftMargin - 8,
+        cy + (L.mode === 'letters' ? 8 : L.seqLineHeight / 2),
+      )
       ctx.textAlign = 'left'
+      ctx.textBaseline = 'top'
 
       // --- Sequence rendering (mode-dependent) ---
       if (L.mode === 'letters') {
         const letterH = 16
-        ctx.font = '14px monospace'
+        ctx.font = monoFont('14px')
         ctx.textBaseline = 'middle'
         ctx.textAlign = 'center'
         const bpW = L.bpWidth
@@ -1242,45 +1400,45 @@ function SequenceView({ onFindRequest, onAnnotateRequest, onEditFeature }: Seque
           }
         }
         cy += letterH
-      } else if (L.mode === 'dots') {
-        // Colored dots/dashes per base — batched by color
-        const dotY = cy + L.seqLineHeight / 2
-        // Draw backbone line
-        ctx.strokeStyle = '#333'
-        ctx.lineWidth = 1
-        ctx.beginPath()
-        ctx.moveTo(L.leftMargin, dotY)
-        ctx.lineTo(baseX(rowEnd - 1, rowStart, L) + L.bpWidth, dotY)
-        ctx.stroke()
-        // Batch dots by color: collect x positions per color, then draw
-        const dotR = Math.max(1, Math.min(3, L.bpWidth * 0.4))
-        const dotsByColor = new Map<string, number[]>()
-        for (let i = rowStart; i < rowEnd; i++) {
-          const base = visibleBases[i - visibleStart]
-          const color = basePalette[base] ?? COLORS.text
-          let arr = dotsByColor.get(color)
-          if (!arr) { arr = []; dotsByColor.set(color, arr) }
-          arr.push(baseX(i, rowStart, L) + L.bpWidth / 2)
-        }
-        for (const [color, xs] of dotsByColor) {
-          ctx.fillStyle = color
-          ctx.beginPath()
-          for (const x of xs) {
-            ctx.moveTo(x + dotR, dotY)
-            ctx.arc(x, dotY, dotR, 0, Math.PI * 2)
-          }
-          ctx.fill()
-        }
-        cy += L.seqLineHeight
       } else {
-        // Line mode - thin black backbone
+        // Zoomed out: a backbone, with a dot per base only once a base is
+        // wide enough to be a mark of its own. Narrower than that the dots
+        // merge into a speckled stripe that says nothing about the sequence;
+        // features and cut sites carry the meaning at this scale.
         const lineY = cy + L.seqLineHeight / 2
-        ctx.strokeStyle = '#333'
-        ctx.lineWidth = 2
+        const lineEnd = baseX(rowEnd - 1, rowStart, L) + L.bpWidth
+        const showDots = L.mode === 'dots' && L.bpWidth >= DOT_MIN_BP_WIDTH
+        ctx.strokeStyle = COLORS.backbone
+        ctx.lineWidth = showDots ? 1 : 2
+        ctx.lineCap = 'round'
+        ctx.globalAlpha = showDots ? 0.6 : 0.85
         ctx.beginPath()
         ctx.moveTo(L.leftMargin, lineY)
-        ctx.lineTo(baseX(rowEnd - 1, rowStart, L) + L.bpWidth, lineY)
+        ctx.lineTo(lineEnd, lineY)
         ctx.stroke()
+        ctx.globalAlpha = 1
+        ctx.lineCap = 'butt'
+        if (showDots) {
+          // Batch dots by color: collect x positions per color, then draw
+          const dotR = Math.max(1, Math.min(3, L.bpWidth * 0.3))
+          const dotsByColor = new Map<string, number[]>()
+          for (let i = rowStart; i < rowEnd; i++) {
+            const base = visibleBases[i - visibleStart]
+            const color = basePalette[base] ?? COLORS.text
+            let arr = dotsByColor.get(color)
+            if (!arr) { arr = []; dotsByColor.set(color, arr) }
+            arr.push(baseX(i, rowStart, L) + L.bpWidth / 2)
+          }
+          for (const [color, xs] of dotsByColor) {
+            ctx.fillStyle = color
+            ctx.beginPath()
+            for (const x of xs) {
+              ctx.moveTo(x + dotR, lineY)
+              ctx.arc(x, lineY, dotR, 0, Math.PI * 2)
+            }
+            ctx.fill()
+          }
+        }
         cy += L.seqLineHeight
       }
 
@@ -1290,26 +1448,11 @@ function SequenceView({ onFindRequest, onAnnotateRequest, onEditFeature }: Seque
         paintSearchBands(true)
       }
 
-      // --- Caret ---
-      if (caretVisible && selection.caret >= rowStart && selection.caret <= rowEnd) {
-        const caretX = selection.caret < rowEnd
-          ? baseX(selection.caret, rowStart, L)
-          : baseX(rowEnd - 1, rowStart, L) + L.bpWidth
-        ctx.strokeStyle = COLORS.caret
-        ctx.lineWidth = 2
-        ctx.beginPath()
-        ctx.moveTo(caretX, forwardY)
-        ctx.lineTo(caretX, forwardY + L.seqLineHeight)
-        ctx.stroke()
-      }
+      // The caret is a DOM element over the canvas (see placeCaret), so its
+      // blink costs nothing here.
 
       // --- Annotation bars (lazy stacking: compute on first visit, cache for reuse) ---
-      let cached = stackCacheRef.current?.stacks.get(rowIdx)
-      if (!cached) {
-        const result = stackAnnotations(annTree.queryRange(rowStart, rowEnd), rowStart, rowEnd, L)
-        cached = result
-        stackCacheRef.current?.stacks.set(rowIdx, result)
-      }
+      const cached = stacksAt(rowIdx, rowStart, rowEnd)
       const annRows = cached.rows
       // With the tracks hidden there are zero lanes, so everything lands in
       // overflow. Reporting "+N more" for a band the user deliberately closed
@@ -1502,7 +1645,8 @@ function SequenceView({ onFindRequest, onAnnotateRequest, onEditFeature }: Seque
 
       // Labels — only for bars wide enough
       ctx.fillStyle = COLORS.text
-      ctx.font = '11px sans-serif'
+      const featureLabelFont = sansFont('500 11px')
+      ctx.font = featureLabelFont
       ctx.textBaseline = 'middle'
       ctx.textAlign = 'center'
       for (const a of annBatch) {
@@ -1523,7 +1667,7 @@ function SequenceView({ onFindRequest, onAnnotateRequest, onEditFeature }: Seque
           if (!a.isEnd) clipRight -= cw
         }
         const availW = clipRight - clipLeft
-        const textW = ctx.measureText(a.ann.name).width
+        const textW = measureText(featureLabelFont, a.ann.name)
         if (textW <= availW) {
           // Text fits — no clipping needed (fast path)
           ctx.fillText(a.ann.name, (clipLeft + clipRight) / 2, a.cy + h / 2)
@@ -1571,7 +1715,7 @@ function SequenceView({ onFindRequest, onAnnotateRequest, onEditFeature }: Seque
       // --- Overflow indicator for clipped annotations ---
       if (annOverflow > 0) {
         const label = `+${annOverflow} more`
-        ctx.font = '500 9px sans-serif'
+        ctx.font = sansFont('500 9px')
         const px = L.leftMargin + 4
         const py = cy - L.annotationGap - 2
         ctx.globalAlpha = 0.6
@@ -1593,7 +1737,7 @@ function SequenceView({ onFindRequest, onAnnotateRequest, onEditFeature }: Seque
         const threeLetter = threeLetterRef.current
         const seqLen = doc.sequence.length
 
-        ctx.font = threeLetter ? '9px monospace' : '10px monospace'
+        ctx.font = monoFont(threeLetter ? '9px' : '10px')
         ctx.textBaseline = 'middle'
         ctx.textAlign = 'center'
 
@@ -1610,19 +1754,17 @@ function SequenceView({ onFindRequest, onAnnotateRequest, onEditFeature }: Seque
             const aa = code.table[codon] ?? '?'
             const codonIdx = Math.floor((pos - anchor) / 3)
 
-            // Alternating block behind every other codon, the same cue the
-            // feature translations use to show where codons begin and end.
-            if (codonIdx % 2 === 0) {
-              const bgFirst = Math.max(pos, rowStart)
-              const bgLast = Math.min(pos + 2, rowEnd - 1)
-              if (bgFirst <= bgLast) {
-                ctx.fillStyle = COLORS.selectionBg
-                ctx.fillRect(
-                  baseX(bgFirst, rowStart, L), cy,
-                  baseX(bgLast, rowStart, L) + L.bpWidth - baseX(bgFirst, rowStart, L),
-                  L.translationRowH,
-                )
-              }
+            // A block behind each codon, alternating in strength, the same cue
+            // the feature translations use to show where codons begin and end.
+            // Its own tone, not the selection's: a translated row is not a
+            // selected one.
+            const bgFirst = Math.max(pos, rowStart)
+            const bgLast = Math.min(pos + 2, rowEnd - 1)
+            if (bgFirst <= bgLast) {
+              paintCodonBlock(
+                ctx, baseX(bgFirst, rowStart, L), baseX(bgLast, rowStart, L) + L.bpWidth,
+                cy, L.translationRowH, COLORS.codon, codonIdx % 2 === 0,
+              )
             }
 
             const middle = pos + 1
@@ -1697,7 +1839,7 @@ function SequenceView({ onFindRequest, onAnnotateRequest, onEditFeature }: Seque
 
         let translationCount = 0
         for (const ann of uniqueCds) {
-          if (translationCount >= L.maxTranslationRows) break
+          if (translationCount >= rl.translationRowsAt(rowIdx, L)) break
           const data = cdsVisData.get(ann)!
           const { aStart, aEnd, seqForTranslation } = data
 
@@ -1708,16 +1850,15 @@ function SequenceView({ onFindRequest, onAnnotateRequest, onEditFeature }: Seque
             const lOffset = localOffset(ann, pos, data)
             if (lOffset < 0 || lOffset + 3 > seqForTranslation.length) continue
             const codonIdx = Math.floor(fOffset / 3)
-            if (codonIdx % 2 !== 0) continue
             const firstBase = ann.strand === 1 ? pos : pos - 2
             const lastBase = ann.strand === 1 ? pos + 2 : pos
             const clampedFirst = Math.max(firstBase, rowStart)
             const clampedLast = Math.min(lastBase, rowEnd - 1)
             if (clampedFirst > clampedLast) continue
-            const x1 = baseX(clampedFirst, rowStart, L)
-            const x2 = baseX(clampedLast, rowStart, L) + L.bpWidth
-            ctx.fillStyle = COLORS.selectionBg
-            ctx.fillRect(x1, cy, x2 - x1, L.translationRowH)
+            paintCodonBlock(
+              ctx, baseX(clampedFirst, rowStart, L), baseX(clampedLast, rowStart, L) + L.bpWidth,
+              cy, L.translationRowH, COLORS.codon, codonIdx % 2 === 0,
+            )
           }
 
           // Draw AA letters
@@ -1727,7 +1868,7 @@ function SequenceView({ onFindRequest, onAnnotateRequest, onEditFeature }: Seque
           // "By annotation" colouring means the feature's own colour, which is
           // the one thing the residue palettes cannot supply.
           const plainColor = aaStyle === 'annotation' ? ann.color : COLORS.text
-          ctx.font = threeLetter ? '9px monospace' : '10px monospace'
+          ctx.font = monoFont(threeLetter ? '9px' : '10px')
           ctx.textBaseline = 'middle'
           ctx.textAlign = 'center'
           const aaHalfBp = L.bpWidth / 2
@@ -1833,128 +1974,6 @@ function SequenceView({ onFindRequest, onAnnotateRequest, onEditFeature }: Seque
       ctx.stroke()
     }
 
-    // --- Selection tooltip (length, position, Tm) ---
-    // Shows whenever any part of the selection is visible on screen.
-    // Positions at the caret row if visible, otherwise at the nearest visible edge.
-    {
-      const selSegs = selectionSegments(selection, topology, seqLen)
-      const selLen = selectionLength(selection, topology, seqLen)
-      const isOriginSel = isOriginSpanningSelection(selection, topology)
-    if (selLen > 0) {
-      // Determine the row range covered by the selection
-      const selStart = isOriginSel ? 0 : Math.min(selection.anchor, selection.caret)
-      const selEnd = isOriginSel ? seqLen : Math.max(selection.anchor, selection.caret)
-      const selFirstRow = Math.floor(selStart / L.basesPerRow)
-      const selLastRow = Math.min(Math.floor((selEnd - 1) / L.basesPerRow), totalRows - 1)
-
-      // Check if any part of the selection is visible in the actual viewport
-      const vpFirstRow = Math.max(0, rl.rowAtY(scrollTop))
-      const vpLastRow = Math.min(totalRows - 1, rl.rowAtY(scrollTop + viewHeight))
-      const selVisible = selLastRow >= vpFirstRow && selFirstRow <= vpLastRow
-
-      if (selVisible) {
-        // Pick the anchor row for the tooltip:
-        // prefer caret row, fall back to nearest visible selection edge
-        const caretRow = Math.floor(selection.caret / L.basesPerRow)
-        let tipRow: number
-        if (caretRow >= vpFirstRow && caretRow <= vpLastRow) {
-          tipRow = caretRow
-        } else if (caretRow < vpFirstRow) {
-          tipRow = Math.max(selFirstRow, vpFirstRow)
-        } else {
-          tipRow = Math.min(selLastRow, vpLastRow)
-        }
-
-        const tipRowStart = tipRow * L.basesPerRow
-        const tipRowEnd = Math.min(tipRowStart + L.basesPerRow, seqLen)
-        let tipX: number
-        if (tipRow === caretRow) {
-          const caretInRow = Math.min(Math.max(selection.caret, tipRowStart), tipRowEnd)
-          tipX = caretInRow < tipRowEnd
-            ? baseX(caretInRow, tipRowStart, L)
-            : baseX(tipRowEnd - 1, tipRowStart, L) + L.bpWidth
-        } else {
-          // Anchor at the center of the row
-          tipX = L.leftMargin + (tipRowEnd - tipRowStart) * L.bpWidth / 2
-        }
-
-        // Build tooltip lines
-        const lines: string[] = []
-        const dispO = (topology === 'circular' ? doc.metadata?.displayOrigin : 0) || 0
-        const dpSel = (p: number) => displayPosition(p, dispO, seqLen)
-        if (isOriginSel) {
-          lines.push(`${dpSel(selection.anchor)}..${dpSel(selection.caret - 1)}  (${selLen} bp)`)
-        } else {
-          const s = Math.min(selection.anchor, selection.caret)
-          const e = Math.max(selection.anchor, selection.caret)
-          lines.push(`${dpSel(s)}..${dpSel(e - 1)}  (${selLen} bp)`)
-        }
-        if (selLen >= 4 && selLen <= 200) {
-          let selBases = ''
-          for (const [ss, se] of selSegs) selBases += seq.basesIn(ss, se)
-          selBases = selBases.toUpperCase()
-          let tm: number
-          if (selLen <= 14) {
-            let at = 0, gc = 0
-            for (let i = 0; i < selBases.length; i++) {
-              const ch = selBases[i]
-              if (ch === 'A' || ch === 'T') at++
-              else if (ch === 'G' || ch === 'C') gc++
-            }
-            tm = 2 * at + 4 * gc
-          } else {
-            tm = calcTm(selBases)
-          }
-          if (!isNaN(tm)) {
-            lines.push(`Tm ≈ ${tm.toFixed(1)} °C`)
-          }
-        }
-
-        ctx.font = 'bold 11px sans-serif'
-        const lineHeight = 14
-        const padX = 6
-        const padY = 4
-        const textWidths = lines.map(l => ctx.measureText(l).width)
-        const boxW = Math.max(...textWidths) + padX * 2
-        const boxH = lines.length * lineHeight + padY * 2
-        // Clamp tooltip Y to the actual viewport (not the canvas buffer)
-        const vpTop = scrollTop
-        const vpBottom = scrollTop + viewHeight
-        const tipYAbove = rl.rowY(tipRow) + L.rulerHeight - 2
-        const boxYAbove = tipYAbove - boxH - 2
-        let boxY: number
-        if (boxYAbove >= vpTop) {
-          boxY = boxYAbove
-        } else {
-          // Try below the row
-          const below = rl.rowY(tipRow) + rl.rowH(tipRow) + 4
-          if (below + boxH <= vpBottom) {
-            boxY = below
-          } else {
-            // Pin to top of viewport
-            boxY = vpTop + 4
-          }
-        }
-        const boxX = Math.max(2, Math.min(tipX - boxW / 2, width - boxW - 2))
-
-        ctx.fillStyle = '#1a1a1a'
-        ctx.globalAlpha = 0.85
-        ctx.beginPath()
-        ctx.roundRect(boxX, boxY, boxW, boxH, 4)
-        ctx.fill()
-        ctx.globalAlpha = 1
-        ctx.fillStyle = '#ffffff'
-        ctx.textBaseline = 'middle'
-        ctx.textAlign = 'center'
-        const cx = boxX + boxW / 2
-        for (let i = 0; i < lines.length; i++) {
-          ctx.fillText(lines[i], cx, boxY + padY + i * lineHeight + lineHeight / 2)
-        }
-        ctx.textAlign = 'left'
-      }
-    }
-    }
-
     ctx.restore() // end virtual scroll translate
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
@@ -1994,7 +2013,7 @@ function SequenceView({ onFindRequest, onAnnotateRequest, onEditFeature }: Seque
     }
 
     // Check enzyme label click (above ruler only) - select recognition site
-    const groupedSitesNow = groupCutSites(enzymeCutSitesRef.current)
+    const groupedSitesNow = groupedSitesRef.current
     const hitLabel = hitTestEnzymeLabel(px, py + canvasTopRef.current, seqLen, groupedSitesNow, layoutRef.current, rowLayoutRef.current)
     if (hitLabel) {
       useEditorStore.getState().setSelection({ anchor: hitLabel.recognitionStart, caret: hitLabel.recognitionEnd })
@@ -2003,7 +2022,7 @@ function SequenceView({ onFindRequest, onAnnotateRequest, onEditFeature }: Seque
 
     // Check annotation edge drag (resize) - only when the annotation is selected
     if (!useEditorStore.getState().readOnly) {
-      const annEdge = hitTestAnnotationEdge(px, py + canvasTopRef.current, seqLen, annTreeRef.current, layoutRef.current, rowLayoutRef.current)
+      const annEdge = hitTestAnnotationEdge(px, py + canvasTopRef.current, seqLen, stacksAt, layoutRef.current, rowLayoutRef.current)
       if (annEdge) {
         const sel = useEditorStore.getState().selection
         const selStart = Math.min(sel.anchor, sel.caret)
@@ -2026,7 +2045,7 @@ function SequenceView({ onFindRequest, onAnnotateRequest, onEditFeature }: Seque
       }
     }
 
-    const hitAnn = hitTestAnnotation(px, py + canvasTopRef.current, seqLen, annTreeRef.current, layoutRef.current, rowLayoutRef.current)
+    const hitAnn = hitTestAnnotation(px, py + canvasTopRef.current, seqLen, stacksAt, layoutRef.current, rowLayoutRef.current)
     if (hitAnn) {
       // Ctrl/Cmd-click on a suggestion or an ORF picks it for conversion.
       // Only those respond to the modifier — on a real feature, which is
@@ -2046,6 +2065,20 @@ function SequenceView({ onFindRequest, onAnnotateRequest, onEditFeature }: Seque
       // A primer selects the bases it anneals to, not its tail's footprint:
       // the tail is not on the template.
       const site = primerItemByIdRef.current.get(hitAnn.id)?.site
+      // Shift-click grows the selection to take in the feature, as Shift-click
+      // on bases grows it to the click. Ranges across the origin keep the
+      // plain behaviour: their union is not a single forward span.
+      const topo = docRef.current.sequence.topology
+      if (e.shiftKey && !hitAnn.spansOrigin() && !isOriginSpanningSelection(sel, topo)) {
+        const fs = site ? site.start : hitAnn.start
+        const fe = site ? site.end : hitAnn.end
+        if (fs < fe) {
+          const lo = Math.min(sel.anchor, sel.caret, fs)
+          const hi = Math.max(sel.anchor, sel.caret, fe)
+          useEditorStore.getState().setSelection({ anchor: lo, caret: hi })
+          return
+        }
+      }
       if (site) {
         useEditorStore.getState().setSelection({ anchor: site.start, caret: site.end })
         return
@@ -2065,6 +2098,39 @@ function SequenceView({ onFindRequest, onAnnotateRequest, onEditFeature }: Seque
       useEditorStore.getState().setCaret(seqPos)
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  /**
+   * The range being dragged, beside the pointer. Shown only while dragging,
+   * so it never sits over bases the user is trying to read; the status bar
+   * keeps the same readout once the button is up. Written straight to the
+   * DOM: it changes on every mouse move and nothing else depends on it.
+   */
+  const showDragPill = useCallback((e: MouseEvent, start: number, end: number) => {
+    const pill = dragPillRef.current
+    const container = containerRef.current
+    if (!pill || !container) return
+    const len = end - start
+    if (len <= 0) { pill.style.display = 'none'; return }
+    const d = docRef.current
+    const seqLen = d.sequence.length
+    const origin = (d.sequence.topology === 'circular' ? d.metadata?.displayOrigin : 0) || 0
+    const dp = (p: number) => displayPosition(p, origin, seqLen).toLocaleString()
+    const tm = len <= SELECTION_TM_MAX ? selectionTm(d.sequence.basesIn(start, end)) : null
+    pill.textContent = [
+      `${dp(start)}..${dp(end - 1)}`,
+      `${len.toLocaleString()} bp`,
+      ...(tm !== null ? [`Tm ${tm.toFixed(1)} °C`] : []),
+    ].join('  ·  ')
+    pill.style.display = 'block'
+    const rect = container.getBoundingClientRect()
+    const x = Math.min(e.clientX - rect.left + 14, container.clientWidth - pill.offsetWidth - 8)
+    const y = e.clientY - rect.top + 20
+    pill.style.transform = `translate(${Math.max(4, x) + container.scrollLeft}px, ${y + container.scrollTop}px)`
+  }, [])
+
+  const hideDragPill = useCallback(() => {
+    if (dragPillRef.current) dragPillRef.current.style.display = 'none'
   }, [])
 
   // Drag handler - attached to window so dragging outside the canvas still works
@@ -2090,6 +2156,9 @@ function SequenceView({ onFindRequest, onAnnotateRequest, onEditFeature }: Seque
         const minEnd = drag.originalStart + 1
         drag.currentPos = Math.max(seqPos, minEnd)
       }
+      showDragPill(e,
+        drag.edge === 'start' ? drag.currentPos : drag.originalStart,
+        drag.edge === 'end' ? drag.currentPos : drag.originalEnd)
       // Trigger redraw to show preview
       drawRef.current?.()
       return
@@ -2102,6 +2171,7 @@ function SequenceView({ onFindRequest, onAnnotateRequest, onEditFeature }: Seque
     const lo = Math.min(anchor, seqPos)
     const hi = Math.max(anchor, seqPos)
     useEditorStore.getState().setSelection({ anchor: lo, caret: hi })
+    showDragPill(e, lo, hi)
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
@@ -2131,7 +2201,7 @@ function SequenceView({ onFindRequest, onAnnotateRequest, onEditFeature }: Seque
     }
 
     // Check enzyme label/highlight hover (labels above ruler, highlights on sequence)
-    const groupedSitesNow = groupCutSites(enzymeCutSitesRef.current)
+    const groupedSitesNow = groupedSitesRef.current
     const hitLabel = hitTestEnzymeLabel(px, py + canvasTopRef.current, seqLen, groupedSitesNow, layoutRef.current, rowLayoutRef.current)
     const hitHighlight = !hitLabel ? hitTestEnzymeHighlight(px, py + canvasTopRef.current, seqLen, groupedSitesNow, layoutRef.current, rowLayoutRef.current) : null
     const hitEnzyme = hitLabel || hitHighlight
@@ -2155,7 +2225,7 @@ function SequenceView({ onFindRequest, onAnnotateRequest, onEditFeature }: Seque
 
     // Check annotation edge hover for resize cursor (only when annotation is selected)
     if (!useEditorStore.getState().readOnly) {
-      const annEdge = hitTestAnnotationEdge(px, py + canvasTopRef.current, seqLen, annTreeRef.current, layoutRef.current, rowLayoutRef.current)
+      const annEdge = hitTestAnnotationEdge(px, py + canvasTopRef.current, seqLen, stacksAt, layoutRef.current, rowLayoutRef.current)
       if (annEdge) {
         const sel = useEditorStore.getState().selection
         const selStart = Math.min(sel.anchor, sel.caret)
@@ -2169,7 +2239,7 @@ function SequenceView({ onFindRequest, onAnnotateRequest, onEditFeature }: Seque
       }
     }
 
-    const hitAnn = hitTestAnnotation(px, py + canvasTopRef.current, seqLen, annTreeRef.current, layoutRef.current, rowLayoutRef.current)
+    const hitAnn = hitTestAnnotation(px, py + canvasTopRef.current, seqLen, stacksAt, layoutRef.current, rowLayoutRef.current)
     const currentHover = useEditorStore.getState().hoveredAnnotationId
     const newId = hitAnn?.id ?? null
     if (newId !== currentHover) {
@@ -2201,8 +2271,8 @@ function SequenceView({ onFindRequest, onAnnotateRequest, onEditFeature }: Seque
     }
     isDragging.current = false
     edgeDrag.current = null
-    setDragEnded(v => v + 1)
-  }, [])
+    hideDragPill()
+  }, [hideDragPill])
 
   const handleMouseLeave = useCallback(() => {
     if (useEditorStore.getState().hoveredAnnotationId) {
@@ -2221,7 +2291,7 @@ function SequenceView({ onFindRequest, onAnnotateRequest, onEditFeature }: Seque
     const px = e.clientX - rect.left
     const py = e.clientY - rect.top
     const seqLen = docRef.current.sequence.length
-    const hitAnn = hitTestAnnotation(px, py + canvasTopRef.current, seqLen, annTreeRef.current, layoutRef.current, rowLayoutRef.current)
+    const hitAnn = hitTestAnnotation(px, py + canvasTopRef.current, seqLen, stacksAt, layoutRef.current, rowLayoutRef.current)
     // Primers are not features; they are edited from the Primers panel, and
     // an unsaved pick from the workbench that picked it.
     if (hitAnn && isPrimerItemId(hitAnn.id)) {
@@ -2248,8 +2318,8 @@ function SequenceView({ onFindRequest, onAnnotateRequest, onEditFeature }: Seque
     const seqLen = docRef.current.sequence.length
     const seqPos = hitTest(px, py, seqLen, canvasTopRef.current, layoutRef.current, rowLayoutRef.current)
     if (seqPos === null) return
-    const hitAnn = hitTestAnnotation(px, py + canvasTopRef.current, seqLen, annTreeRef.current, layoutRef.current, rowLayoutRef.current)
-    const groupedSitesNow = groupCutSites(enzymeCutSitesRef.current)
+    const hitAnn = hitTestAnnotation(px, py + canvasTopRef.current, seqLen, stacksAt, layoutRef.current, rowLayoutRef.current)
+    const groupedSitesNow = groupedSitesRef.current
     const hitLabel = hitTestEnzymeLabel(px, py + canvasTopRef.current, seqLen, groupedSitesNow, layoutRef.current, rowLayoutRef.current)
     const hitHighlight = !hitLabel ? hitTestEnzymeHighlight(px, py + canvasTopRef.current, seqLen, groupedSitesNow, layoutRef.current, rowLayoutRef.current) : null
     const hitEnzymeGroup = hitLabel || hitHighlight
@@ -2349,6 +2419,49 @@ function SequenceView({ onFindRequest, onAnnotateRequest, onEditFeature }: Seque
       if (ro) { roBlock(); return }
       e.preventDefault()
       store.redo()
+      return
+    }
+    // Navigation moves the caret, so the view should follow it.
+    if (e.key.startsWith('Arrow') || e.key === 'PageUp' || e.key === 'PageDown'
+        || e.key === 'Home' || e.key === 'End') {
+      followCaretRef.current = true
+    }
+    // Ctrl/Cmd+←/→ jumps a 10 bp block, to the boundaries the ruler ticks
+    // mark, the way word jumps work in text. Without Shift it starts from the
+    // side of the selection it is heading towards, as plain arrows do.
+    if (ctrlOrMeta && (e.key === 'ArrowLeft' || e.key === 'ArrowRight')) {
+      e.preventDefault()
+      const from = e.shiftKey || !range ? sel.caret : (e.key === 'ArrowLeft' ? range[0] : range[1])
+      const target = e.key === 'ArrowLeft'
+        ? Math.max(0, Math.ceil(from / WORD_JUMP) * WORD_JUMP - WORD_JUMP)
+        : Math.min(seqLen, Math.floor(from / WORD_JUMP) * WORD_JUMP + WORD_JUMP)
+      if (e.shiftKey) { store.setSelection({ anchor: sel.anchor, caret: target }) }
+      else { store.setCaret(target) }
+      return
+    }
+    // PageUp/PageDown move the caret a screenful, keeping its column, and
+    // scroll by the same distance so it stays where it was on screen.
+    if ((e.key === 'PageUp' || e.key === 'PageDown') && !ctrlOrMeta) {
+      e.preventDefault()
+      const container = containerRef.current
+      const rl = rowLayoutRef.current
+      const bpr = layoutRef.current.basesPerRow
+      if (!container || seqLen === 0 || rl.totalRows === 0) return
+      const down = e.key === 'PageDown'
+      const row = Math.min(Math.floor(sel.caret / bpr), rl.totalRows - 1)
+      const col = sel.caret - row * bpr
+      // A page is the view less one row, so a row of context carries over.
+      const page = Math.max(rl.rowH(row), container.clientHeight - rl.rowH(row))
+      const targetRow = rl.rowAtY(rl.rowY(row) + (down ? page : -page))
+      const newRow = targetRow === row
+        ? (down ? rl.totalRows - 1 : 0)
+        : targetRow
+      const newPos = newRow === row
+        ? (down ? seqLen : 0)
+        : Math.min(newRow * bpr + col, seqLen)
+      container.scrollTop += rl.rowY(newRow) - rl.rowY(row)
+      if (e.shiftKey) { store.setSelection({ anchor: sel.anchor, caret: newPos }) }
+      else { store.setCaret(newPos) }
       return
     }
     if (e.key === 'ArrowLeft') {
@@ -2467,7 +2580,6 @@ function SequenceView({ onFindRequest, onAnnotateRequest, onEditFeature }: Seque
         replaceSelection(e.key.toUpperCase())
       }
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   const handlePaste = useCallback((e: ClipboardEvent) => {
@@ -2512,9 +2624,13 @@ function SequenceView({ onFindRequest, onAnnotateRequest, onEditFeature }: Seque
     if (isDragging.current) return
     const container = containerRef.current
     if (!container) return
-    const selStart = Math.min(selection.anchor, selection.caret)
-    const row = Math.floor(selStart / layoutRef.current.basesPerRow)
+    // Keyboard moves follow the caret, the end that moved; anything else
+    // (a feature picked in a list, a search hit) brings its start into view.
+    const followCaret = followCaretRef.current
+    followCaretRef.current = false
     const rl = rowLayoutRef.current
+    const focusPos = followCaret ? selection.caret : Math.min(selection.anchor, selection.caret)
+    const row = Math.min(Math.floor(focusPos / layoutRef.current.basesPerRow), Math.max(0, rl.totalRows - 1))
     const rowTop = rl.rowY(row)
     const rowBottom = rowTop + rl.rowH(row)
     const viewTop = container.scrollTop
@@ -2538,18 +2654,6 @@ function SequenceView({ onFindRequest, onAnnotateRequest, onEditFeature }: Seque
     }
   }, [selection])
 
-  // Caret blink timer – reset when caret position changes or drag ends
-  const caretPos = selection.caret
-  const [dragEnded, setDragEnded] = useState(0)
-  useEffect(() => {
-    setCaretVisible(true)
-    clearInterval(caretBlinkRef.current)
-    caretBlinkRef.current = window.setInterval(() => {
-      setCaretVisible(v => !v)
-    }, 530)
-    return () => clearInterval(caretBlinkRef.current)
-  }, [caretPos, dragEnded])
-
   // Minimap: scroll so the viewport starts at a (fractional) base
   const handleMinimapNavigate = useCallback((base: number) => {
     const container = containerRef.current
@@ -2557,15 +2661,76 @@ function SequenceView({ onFindRequest, onAnnotateRequest, onEditFeature }: Seque
     container.scrollTop = rowLayoutRef.current.yAtBase(base, layoutRef.current.basesPerRow)
   }, [])
 
-  // Ctrl+wheel zoom
+  /**
+   * Ctrl+wheel zoom, around the pointer.
+   *
+   * Deltas are summed until they make a step, so a trackpad pinch, which
+   * sends a stream of tiny ctrl+wheel events, zooms at the speed of the
+   * gesture instead of a level per event. The base under the pointer is
+   * remembered so the zoom effect can put it back under the pointer.
+   */
   const handleWheel = useCallback((e: WheelEvent) => {
-    if (e.ctrlKey || e.metaKey) {
-      e.preventDefault()
-      const delta = e.deltaY > 0 ? -1 : 1
-      useEditorStore.getState().setZoom(useEditorStore.getState().zoomLevel + delta)
+    if (!(e.ctrlKey || e.metaKey)) return
+    e.preventDefault()
+    const dy = e.deltaY * (e.deltaMode === 1 ? 40 : e.deltaMode === 2 ? 800 : 1)
+    if (dy === 0) return
+    if (Math.sign(dy) !== Math.sign(wheelAccumRef.current)) wheelAccumRef.current = 0
+    wheelAccumRef.current += dy
+    if (Math.abs(wheelAccumRef.current) < WHEEL_ZOOM_STEP) return
+    const step = wheelAccumRef.current > 0 ? -1 : 1
+    wheelAccumRef.current = 0
+    const store = useEditorStore.getState()
+    const next = Math.max(0, Math.min(MAX_ZOOM, store.zoomLevel + step))
+    if (next === store.zoomLevel) return
+    const container = containerRef.current
+    if (container) {
+      const rect = container.getBoundingClientRect()
+      const offsetY = Math.max(0, Math.min(container.clientHeight, e.clientY - rect.top))
+      zoomAnchorRef.current = {
+        base: rowLayoutRef.current.baseAtY(
+          container.scrollTop + offsetY, layoutRef.current.basesPerRow, docRef.current.sequence.length),
+        offsetY,
+      }
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    store.setZoom(next)
   }, [])
+
+  /**
+   * Zoom to the closest level at which the whole sequence fits the view.
+   *
+   * Row heights depend on each row's features, so each level is laid out for
+   * real rather than estimated. Heights only grow with zoom, so the search
+   * stops at the first level that overflows.
+   */
+  const fitToView = useCallback(() => {
+    const container = containerRef.current
+    const seqLen = docRef.current.sequence.length
+    if (!container || seqLen === 0) return
+    const width = container.clientWidth
+    const viewH = container.clientHeight
+    const showEnzymesNow = showEnzymesRef.current && enzymeCutSitesRef.current.length > 0
+    const perRowTranslations = translationFramesRef.current.length === 0
+    let best = 0
+    for (let z = 0; z <= MAX_ZOOM; z++) {
+      const L = getLayout(z, width, showEnzymesNow, seqLen, {
+        showComplement: showComplementRef.current,
+        showAnnotations: showAnnotationTracksRef.current,
+        translationRows: translationRowsRef.current,
+      })
+      const rl = buildRowLayout(L, annTreeRef.current, seqLen, perRowTranslations)
+      if (rl.totalHeight + 4 > viewH) break
+      best = z
+    }
+    const store = useEditorStore.getState()
+    if (best === store.zoomLevel) {
+      container.scrollTop = 0
+      return
+    }
+    zoomAnchorRef.current = { base: 0, offsetY: 0 }
+    store.setZoom(best)
+  }, [])
+
+  useEffect(() => registerSequenceViewFit(fitToView), [fitToView])
 
   // Attach event listeners once (all callbacks are stable via refs)
   useEffect(() => {
@@ -2620,26 +2785,30 @@ function SequenceView({ onFindRequest, onAnnotateRequest, onEditFeature }: Seque
       prevZoomRef.current = zoomLevel
       return
     }
+    // Hold one base still across the zoom: the one under the pointer for a
+    // wheel zoom, otherwise the one at the top of the view.
     const oldRl = rowLayoutRef.current
-    const oldScrollTop = container.scrollTop
-    // Which base was at the top of the viewport?
-    const topRow = oldRl.totalRows > 0 ? oldRl.rowAtY(oldScrollTop) : 0
-    const topBase = topRow * layoutRef.current.basesPerRow
+    const anchor = zoomAnchorRef.current ?? {
+      base: oldRl.totalRows > 0
+        ? oldRl.baseAtY(container.scrollTop, layoutRef.current.basesPerRow, docRef.current.sequence.length)
+        : 0,
+      offsetY: 0,
+    }
+    zoomAnchorRef.current = null
 
     prevZoomRef.current = zoomLevel
     // Set scroll after draw updates the spacer height and RowLayoutMap
     requestAnimationFrame(() => {
       const newRl = rowLayoutRef.current
       const newL = layoutRef.current
-      const newRow = Math.floor(topBase / newL.basesPerRow)
-      container.scrollTop = newRl.rowY(newRow)
+      container.scrollTop = Math.max(0, newRl.yAtBase(anchor.base, newL.basesPerRow) - anchor.offsetY)
     })
   }, [zoomLevel, showEnzymes, enzymeCutSites])
 
   // Redraw when any render-affecting state changes
   useEffect(() => {
     draw()
-  }, [doc, selection, search, caretVisible, annTree, zoomLevel, hoveredAnnotationId, enzymeCutSites, hoveredEnzymeGroup, showEnzymes, autoAnnotationPicks, orfPicks, translationFrames, translationRows, translationCode, aminoAcidStyle, threeLetterAminoAcids, draw])
+  }, [doc, selection, search, annTree, zoomLevel, hoveredAnnotationId, enzymeCutSites, hoveredEnzymeGroup, showEnzymes, autoAnnotationPicks, orfPicks, translationFrames, translationRows, translationCode, aminoAcidStyle, threeLetterAminoAcids, draw])
 
   const showMinimap = doc.sequence.length >= MINIMAP_SEQ_THRESHOLD
 
@@ -2671,6 +2840,8 @@ function SequenceView({ onFindRequest, onAnnotateRequest, onEditFeature }: Seque
         ref={canvasRef}
         style={{ display: 'block', cursor: 'text', position: 'absolute', top: 0, left: 0, willChange: 'transform' }}
       />
+      <div ref={caretRef} className="seq-caret" aria-hidden="true" />
+      <div ref={dragPillRef} className="seq-drag-pill" aria-hidden="true" />
       {/* Hover tooltips - hidden when context menu is open */}
       {!ctxMenu && enzymeTooltip && (
         <EnzymeTooltipPopup

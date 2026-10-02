@@ -42,3 +42,38 @@ describe('RowLayoutMap base <-> y', () => {
     expect(rl.yAtBase(-5, bpr)).toBe(0)
   })
 })
+
+describe('RowLayoutMap translation rows', () => {
+  // Letters zoom, where translations are drawn, with two rows reserved.
+  const L = getLayout(14, 1000, false, 10_000, { translationRows: 2 })
+  const transH = L.translationRowH + L.translationGap
+
+  it('reserves the full translation band on every row by default', () => {
+    const rl = new RowLayoutMap(3)
+    rl.build(L)
+    expect(rl.rowH(0)).toBe(rowHeightForLanes(L, 0))
+    expect(rl.rowH(0)).toBe(rowHeightForLanes(L, 0, 0) + 2 * transH)
+  })
+
+  it('sizes each row to its own coding features when set per row', () => {
+    const rl = new RowLayoutMap(3)
+    rl.perRowTranslations = true
+    rl.translations[1] = 1
+    rl.translations[2] = 5 // more than the layout allows: clamped
+    rl.build(L)
+    expect(rl.rowH(0)).toBe(rowHeightForLanes(L, 0, 0))
+    expect(rl.rowH(1)).toBe(rowHeightForLanes(L, 0, 0) + transH)
+    expect(rl.rowH(2)).toBe(rowHeightForLanes(L, 0, 0) + 2 * transH)
+    expect(rl.translationRowsAt(2, L)).toBe(2)
+    expect(rl.totalHeight).toBe(rl.rowY(2) + rl.rowH(2))
+  })
+
+  it('keeps the uniform path when every row has the same counts', () => {
+    const rl = new RowLayoutMap(4)
+    rl.perRowTranslations = true
+    rl.translations.fill(1)
+    rl.build(L)
+    expect(rl.totalHeight).toBe(4 * (rowHeightForLanes(L, 0, 0) + transH))
+    expect(rl.rowAtY(rl.rowY(3) + 1)).toBe(3)
+  })
+})

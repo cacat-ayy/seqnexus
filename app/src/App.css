@@ -37,6 +37,12 @@
   --canvas-enzyme: #e53e3e;
   --canvas-enzyme-bg: rgba(229,62,62,.08);
   --canvas-enzyme-bg-hover: rgba(229,62,62,.22);
+  --canvas-search: rgba(250,204,21,.32);
+  --canvas-search-current: rgba(249,115,22,.42);
+  --canvas-search-edge: #ea580c;
+  --canvas-dam: #3b82f6;
+  --canvas-dcm: #f59e0b;
+  --canvas-codon: rgba(100,116,139,.13);
   --props-bg: #f8fafc;
   --input-bg: #f8fafc;
   --input-border: #e2e8f0;
@@ -243,7 +249,7 @@
   --selection-bg: rgba(129,140,248,.25);
   --canvas-bg: #0f172a; --canvas-text: #f1f5f9; --canvas-complement: #64748b;
   --canvas-ruler: #94a3b8; --canvas-ruler-tick: #334155; --canvas-row-sep: #2d3a4e;
-  --canvas-backbone: #94a3b8;
+  --canvas-backbone: #94a3b8; --canvas-codon: rgba(148,163,184,.16);
   --canvas-enzyme: #f87171; --canvas-enzyme-bg: rgba(248,113,113,.18); --canvas-enzyme-bg-hover: rgba(248,113,113,.35);
   --props-bg: #162032; --input-bg: #162032; --input-border: #334155;
   --status-bg: #1e293b; --find-bg: #1e293b;
@@ -268,7 +274,7 @@
   --selection-bg: rgba(56,189,248,.2);
   --canvas-bg: #020617; --canvas-text: #f0f9ff; --canvas-complement: #38bdf8;
   --canvas-ruler: #7dd3fc; --canvas-ruler-tick: #1e293b; --canvas-row-sep: #131d33;
-  --canvas-backbone: #7dd3fc;
+  --canvas-backbone: #7dd3fc; --canvas-codon: rgba(148,163,184,.16);
   --canvas-enzyme: #fb7185; --canvas-enzyme-bg: rgba(251,113,133,.2); --canvas-enzyme-bg-hover: rgba(251,113,133,.38);
   --props-bg: #0a0f1e; --input-bg: #0a0f1e; --input-border: #1e293b;
   --status-bg: #0c1222; --find-bg: #0c1222;
@@ -376,7 +382,7 @@
   --selection-bg: rgba(189,147,249,.2);
   --canvas-bg: #1e1f29; --canvas-text: #f8f8f2; --canvas-complement: #6272a4;
   --canvas-ruler: #bfbfbf; --canvas-ruler-tick: #44475a; --canvas-row-sep: #343746;
-  --canvas-backbone: #bfbfbf;
+  --canvas-backbone: #bfbfbf; --canvas-codon: rgba(148,163,184,.16);
   --canvas-enzyme: #ff5555; --canvas-enzyme-bg: rgba(255,85,85,.18); --canvas-enzyme-bg-hover: rgba(255,85,85,.35);
   --props-bg: #21222c; --input-bg: #21222c; --input-border: #44475a;
   --status-bg: #282a36; --find-bg: #21222c;
@@ -400,7 +406,7 @@
   --selection-bg: rgba(136,192,208,.2);
   --canvas-bg: #242933; --canvas-text: #eceff4; --canvas-complement: #7b88a1;
   --canvas-ruler: #d8dee9; --canvas-ruler-tick: #3b4252; --canvas-row-sep: #3b4252;
-  --canvas-backbone: #d8dee9;
+  --canvas-backbone: #d8dee9; --canvas-codon: rgba(148,163,184,.16);
   --canvas-enzyme: #bf616a; --canvas-enzyme-bg: rgba(191,97,106,.18); --canvas-enzyme-bg-hover: rgba(191,97,106,.35);
   --props-bg: #272c36; --input-bg: #272c36; --input-border: #3b4252;
   --status-bg: #2e3440; --find-bg: #272c36;
@@ -424,7 +430,7 @@
   --selection-bg: rgba(203,166,247,.2);
   --canvas-bg: #11111b; --canvas-text: #cdd6f4; --canvas-complement: #6c7086;
   --canvas-ruler: #a6adc8; --canvas-ruler-tick: #313244; --canvas-row-sep: #2a2b3d;
-  --canvas-backbone: #a6adc8;
+  --canvas-backbone: #a6adc8; --canvas-codon: rgba(148,163,184,.16);
   --canvas-enzyme: #f38ba8; --canvas-enzyme-bg: rgba(243,139,168,.18); --canvas-enzyme-bg-hover: rgba(243,139,168,.35);
   --props-bg: #181825; --input-bg: #181825; --input-border: #313244;
   --status-bg: #1e1e2e; --find-bg: #181825;
@@ -1117,7 +1123,8 @@
 
 .zoom-label {
   font-size: var(--text-xs);
-  font-family: monospace;
+  font-family: var(--font-mono);
+  white-space: nowrap;
   min-width: 32px;
   text-align: center;
   cursor: default;
@@ -1980,4 +1987,40 @@
 .sequence-view-container {
   flex: 1;
   overflow: auto;
+}
+
+/* The caret sits over the canvas and blinks in CSS, so blinking never
+   redraws the sequence. SequenceView positions it and restarts the animation
+   whenever it moves. */
+.seq-caret {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 2px;
+  border-radius: 1px;
+  background: var(--accent);
+  pointer-events: none;
+  will-change: transform;
+  animation: seq-caret-blink 1.06s step-end infinite;
+}
+@keyframes seq-caret-blink {
+  50% { opacity: 0; }
+}
+
+/* Range readout beside the pointer while a selection is dragged. */
+.seq-drag-pill {
+  display: none;
+  position: absolute;
+  top: 0;
+  left: 0;
+  z-index: 5;
+  padding: 3px 8px;
+  border-radius: var(--radius-pill);
+  background: var(--bg-alt);
+  color: var(--text);
+  border: 1px solid var(--border);
+  box-shadow: var(--shadow-popover);
+  font: 500 11px/16px var(--font-mono);
+  white-space: nowrap;
+  pointer-events: none;
 }

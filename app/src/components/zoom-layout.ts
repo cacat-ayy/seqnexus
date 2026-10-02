@@ -124,7 +124,9 @@ export function getLayout(
   // places nothing, and rowHeightForLanes reserves no space for it.
   const maxAnnotationRows = wantAnnotations ? 4 : 0
 
-  const rowPaddingBottom = 6
+  // Letter rows get a little more air: rows without features now end right
+  // under the complement, and the selection handle reaches below it.
+  const rowPaddingBottom = mode === 'letters' ? 10 : 6
   const rowHeight = enzymeLabelAreaH + rulerHeight + seqLineHeight
     + (maxAnnotationRows > 0 ? annotationGap + maxAnnotationRows * (annotationRowH + annotationGap) : 0)
     + maxTranslationRows * (12 + 1) + rowPaddingBottom
@@ -139,14 +141,21 @@ export function getLayout(
   }
 }
 
-/** Height of a row with a specific number of annotation lanes. */
-export function rowHeightForLanes(L: ZoomLayout, annLanes: number): number {
+/**
+ * Height of a row with a specific number of annotation lanes and
+ * translation rows. The translation count defaults to the layout's maximum,
+ * which is what every row needs when whole reading frames are shown.
+ */
+export function rowHeightForLanes(
+  L: ZoomLayout, annLanes: number, translationRows = L.maxTranslationRows,
+): number {
   const clampedLanes = Math.min(annLanes, L.maxAnnotationRows)
   const annArea = clampedLanes > 0
     ? L.annotationGap + clampedLanes * (L.annotationRowH + L.annotationGap)
     : 0
+  const clampedTranslations = Math.max(0, Math.min(translationRows, L.maxTranslationRows))
   return L.enzymeLabelAreaH + L.rulerHeight + L.seqLineHeight + annArea
-    + L.maxTranslationRows * (L.translationRowH + L.translationGap) + L.rowPaddingBottom
+    + clampedTranslations * (L.translationRowH + L.translationGap) + L.rowPaddingBottom
 }
 
 /**
@@ -158,6 +167,13 @@ export function rowHeightForLanes(L: ZoomLayout, annLanes: number): number {
 export class RowLayoutMap {
   /** Number of annotation lanes actually used per row. */
   readonly lanes: Uint8Array
+  /**
+   * Translation rows each row reserves, read only when perRowTranslations is
+   * set. Feature translations exist only where a CDS does, so a row without
+   * one should not carry their blank space.
+   */
+  readonly translations: Uint8Array
+  perRowTranslations = false
   readonly totalRows: number
   totalHeight: number
   /** When all rows have the same height, use O(1) arithmetic. */
@@ -168,35 +184,45 @@ export class RowLayoutMap {
   constructor(totalRows: number) {
     this.totalRows = totalRows
     this.lanes = new Uint8Array(totalRows)
+    this.translations = new Uint8Array(totalRows)
     this.totalHeight = 0
     this._uniformH = 0
     this._offsets = null
   }
 
-  /** Build layout from lanes array. Uses O(1) uniform path when all lanes are equal. */
+  /** Translation rows reserved by one row under layout L. */
+  translationRowsAt(rowIndex: number, L: ZoomLayout): number {
+    if (!this.perRowTranslations) return L.maxTranslationRows
+    return Math.min(this.translations[rowIndex] ?? 0, L.maxTranslationRows)
+  }
+
+  /** Build layout from the lane counts. Uses the O(1) uniform path when every row is the same height. */
   build(L: ZoomLayout): void {
-    // Check if all lanes are the same value
-    const first = this.totalRows > 0 ? this.lanes[0] : 0
+    const maxLanes = L.maxAnnotationRows
+    const maxTrans = L.maxTranslationRows
+    // Row height depends only on (lanes, translations); key them into one index.
+    const keyAt = (i: number) =>
+      Math.min(this.lanes[i], maxLanes) * (maxTrans + 1) + this.translationRowsAt(i, L)
+    const first = this.totalRows > 0 ? keyAt(0) : 0
     let uniform = true
     for (let i = 1; i < this.totalRows; i++) {
-      if (this.lanes[i] !== first) { uniform = false; break }
+      if (keyAt(i) !== first) { uniform = false; break }
     }
+    const heightOfKey = (key: number) =>
+      rowHeightForLanes(L, Math.floor(key / (maxTrans + 1)), key % (maxTrans + 1))
     if (uniform) {
-      this._uniformH = rowHeightForLanes(L, first)
+      this._uniformH = heightOfKey(first)
       this.totalHeight = this.totalRows * this._uniformH
       this._offsets = null
     } else {
       this._uniformH = 0
-      // Precompute distinct heights (lanes 0..maxAnnotationRows)
-      const heightByLane: number[] = []
-      for (let l = 0; l <= L.maxAnnotationRows; l++) {
-        heightByLane[l] = rowHeightForLanes(L, l)
-      }
+      const heightByKey: number[] = []
+      for (let k = 0; k < (maxLanes + 1) * (maxTrans + 1); k++) heightByKey[k] = heightOfKey(k)
       const offsets = new Float64Array(this.totalRows + 1)
       let y = 0
       for (let i = 0; i < this.totalRows; i++) {
         offsets[i] = y
-        y += heightByLane[this.lanes[i]] ?? heightByLane[L.maxAnnotationRows]
+        y += heightByKey[keyAt(i)]
       }
       offsets[this.totalRows] = y
       this.totalHeight = y

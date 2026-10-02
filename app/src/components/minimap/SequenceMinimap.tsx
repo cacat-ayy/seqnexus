@@ -19,6 +19,7 @@ import { buildGcIndex } from './geometry'
 import { featureTrack } from './tracks/features'
 import { gcTrack } from './tracks/gc'
 import { cutSiteTrack, toCutMarks, ENZYME_ITEM_PREFIX } from './tracks/cutSites'
+import { markerTrack } from './tracks/markers'
 
 interface Props {
   /** Everything the main view lays out: features, ORFs, primers, proposals. */
@@ -58,13 +59,29 @@ export default function SequenceMinimap({
   )
   const cutMarks = useMemo(() => enzymeGroups && toCutMarks(enzymeGroups, seqLen), [enzymeGroups, seqLen])
 
+  // Find hits as ticks, so the whole sequence shows where the matches are
+  // and the user can jump between clusters of them.
+  const searchMatches = useEditorStore(s => s.search.matches)
+  const searchTrack = useMemo(() => {
+    if (searchMatches.length === 0) return null
+    const [s0, e0] = searchMatches[0]
+    return markerTrack('search-hits', [{
+      label: 'Find hit',
+      positions: searchMatches.map(m => m[0]),
+      width: Math.max(1, e0 - s0),
+      color: t => t.warning,
+    }])
+  }, [searchMatches])
+
   const gcIndex = useMemo(() => buildGcIndex(sequence.bases), [sequence.bases])
   const tracks = useMemo(() => {
     const out: MinimapTrack[] = []
     if (cutMarks) out.push(cutSiteTrack(cutMarks, formatPosition))
-    out.push(featureTrack({ features: annTree.all(), formatRange }), gcTrack(gcIndex))
+    out.push(featureTrack({ features: annTree.all(), formatRange }))
+    if (searchTrack) out.push(searchTrack)
+    out.push(gcTrack(gcIndex))
     return out
-  }, [cutMarks, annTree, formatPosition, formatRange, gcIndex])
+  }, [cutMarks, annTree, formatPosition, formatRange, gcIndex, searchTrack])
 
   const segments = useMemo(
     () => selectionSegments(selection, sequence.topology, seqLen),

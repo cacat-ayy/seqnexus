@@ -53,12 +53,14 @@ import ConvertActions from './components/ConvertActions'
 import Toaster from './components/Toaster'
 import { PinnedCardHost } from './components/HoverCard'
 import StorageIndicator from './components/StorageIndicator'
+import { useBasesPerRow, formatBasesPerRow, fitSequenceView } from './components/sequence-view-controls'
+import { selectionTm } from './utils/selection-tm'
 import { getEnzyme, type RestrictionEnzyme } from './enzymes/db'
 import { findEnzymeSitesAsync } from './workers/enzyme-finder'
 import {
   File, Dna, FolderPlus, FileUp, FolderUp, ClipboardPaste, Save,
   Undo2, Redo2, Search, TextSearch, Scissors, FlaskConical, TestTube,
-  BarChart3, ZoomOut, ZoomIn, PanelLeftOpen,
+  BarChart3, ZoomOut, ZoomIn, Scan, PanelLeftOpen,
   X, ChevronDown as ChevronDownSmall,
   SunMoon, Info, List, Lock, LockOpen, Tag, Globe, GalleryVertical, AlignLeft, ArrowLeft, Wand2,
   SlidersHorizontal,
@@ -186,6 +188,20 @@ function reportExport(count: number, filename: string): void {
 function topLabel(stack: readonly { label?: string }[] | undefined): string | null {
   if (!stack || stack.length === 0) return null
   return stack[stack.length - 1].label ?? ''
+}
+
+/**
+ * The sequence zoom as bases per row, which says what the user will see,
+ * unlike a percentage of an arbitrary scale. Its own component so the value,
+ * which the view publishes as it draws, re-renders only this label.
+ */
+function SequenceZoomLabel({ zoomLevel }: { zoomLevel: number }) {
+  const bpr = useBasesPerRow()
+  return (
+    <span className="tb zoom-label" title={`Bases per row (zoom level ${zoomLevel} of 20)`}>
+      {bpr > 0 ? `${formatBasesPerRow(bpr)}/row` : `${Math.round(zoomLevel / 20 * 100)}%`}
+    </span>
+  )
 }
 
 export default function App() {
@@ -1432,6 +1448,7 @@ export default function App() {
     { id: 'toggle-enzymes', label: 'Toggle Enzyme Display', group: 'View', icon: Scissors, disabled: noDoc, run: () => toggleEnzymes() },
     { id: 'toggle-primers', label: 'Show Saved Primers', group: 'View', icon: FlaskConical, disabled: noDoc, run: () => openSidebar('primers', 'list') },
     { id: 'toggle-auto-annotations', label: 'Toggle Auto-Annotation Suggestions', group: 'View', icon: Tag, disabled: noDoc, keywords: 'annotate suggest features', run: () => toggleAutoAnnotations() },
+    { id: 'zoom-fit', label: 'Fit Whole Sequence', group: 'View', icon: Scan, keywords: 'zoom overview entire', disabled: noDoc || viewMode === 'circular', run: () => { fitSequenceView() } },
     { id: 'toggle-features', label: 'Toggle Feature Sidebar', group: 'View', icon: List, disabled: noDoc, run: () => setFeaturesPanelOpen(v => !v) },
     { id: 'toggle-sidebar', label: 'Toggle File Explorer', group: 'View', icon: PanelLeftOpen, run: () => setSidebarOpen(v => !v) },
     { id: 'theme', label: 'Change Theme', group: 'View', icon: SunMoon, keywords: 'dark light appearance', run: () => setThemeOpen(true) },
@@ -1439,6 +1456,7 @@ export default function App() {
   ], [
     mod, redoKey, noDoc, undoDisabled, redoDisabled, handleOpenFind, handleNewSequence, handleNewFolder, openGel, runUndo, runRedo,
     handleImportClipboard, toggleOrfs, toggleEnzymes, openSidebar, openPrimerDesign, toggleAutoAnnotations,
+    viewMode,
   ])
 
   return (
@@ -1707,9 +1725,12 @@ export default function App() {
                 <button className="tb" onClick={() => setZoom(zoomLevel - 1)} disabled={!activeTabId || zoomLevel <= 0} {...tip({ label: 'Zoom out' })}>
                   <span className="tb-icon"><ZoomOut size={14} /></span>
                 </button>
-                <span className="tb zoom-label" title={`Zoom level ${zoomLevel}`}>{Math.round(zoomLevel / 20 * 100)}%</span>
+                <SequenceZoomLabel zoomLevel={zoomLevel} />
                 <button className="tb" onClick={() => setZoom(zoomLevel + 1)} disabled={!activeTabId || zoomLevel >= 20} {...tip({ label: 'Zoom in' })}>
                   <span className="tb-icon"><ZoomIn size={14} /></span>
+                </button>
+                <button className="tb" onClick={() => fitSequenceView()} disabled={!activeTabId || viewMode === 'circular'} {...tip({ label: 'Fit whole sequence', desc: 'Zoom so the whole sequence fits the view' })}>
+                  <span className="tb-icon"><Scan size={14} /></span>
                 </button>
               </>
             )
@@ -2284,7 +2305,10 @@ export default function App() {
                               const range = isOriginSpanningSelection(selection, doc.sequence.topology)
                                 ? `${dp(selection.anchor)}..${dp(selection.caret - 1)}`
                                 : `${dp(Math.min(selection.anchor, selection.caret))}..${dp(Math.max(selection.anchor, selection.caret) - 1)}`
-                              return `${range} (${formatBp(selBases.length)}, ${gc}% GC)`
+                              // Oligo-length selections get a Tm: the sequence view
+                              // no longer paints one over the bases.
+                              const tm = selectionTm(selBases)
+                              return `${range} (${formatBp(selBases.length)}, ${gc}% GC${tm !== null ? `, Tm ${tm.toFixed(1)} °C` : ''})`
                             })()
                           : `Pos ${dp(selection.caret)}`}
                       </button>
