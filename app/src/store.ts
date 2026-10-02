@@ -20,7 +20,7 @@ import {
   replaceBasesInPlace,
   substituteBasesInPlace,
   assertSubstitutions,
-  rotateOrigin as rotateOriginDoc,
+  rotateOriginInPlace,
   addPrimers,
   updatePrimer,
   removePrimers,
@@ -2448,7 +2448,9 @@ export const useEditorStore = create<EditorStore>((set, get) => {
       if (props.name !== undefined) doc.name = props.name
       if (props.description !== undefined) doc.description = props.description
       if (props.topology !== undefined && props.topology !== doc.sequence.topology) {
-        doc.sequence = doc.sequence.withTopology(props.topology)
+        // Wrap the same PieceTable: a fresh one (withTopology) would leave
+        // every undo snapshot pointing into buffers the tab no longer has.
+        doc.sequence = Sequence.fromPieceTable(doc.sequence.pieceTable, props.topology)
       }
       const meta = { ...(doc.metadata || {}) }
       if (props.strandedness !== undefined) meta.strandedness = props.strandedness
@@ -2490,7 +2492,7 @@ export const useEditorStore = create<EditorStore>((set, get) => {
       if (tab.doc.sequence.topology !== 'circular') return
       if (newOrigin === 0) return
       pushUndo('Move origin')
-      const doc = rotateOriginDoc(tab.doc, newOrigin)
+      const doc = rotateOriginInPlace(tab.doc, newOrigin)
       updateActiveTab({ doc })
     },
 

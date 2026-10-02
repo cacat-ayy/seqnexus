@@ -14,12 +14,38 @@ export interface CutSite {
   position: number
   /** End of the recognition site (exclusive). */
   end: number
-  /** Absolute cut position on the sense strand. */
+  /**
+   * Cut position on the sense strand. On a circular sequence always in
+   * [0, length): a Type IIS site near the end cuts past the origin.
+   */
   fwdCut: number
-  /** Absolute cut position on the antisense strand. */
+  /** Cut position on the antisense strand, in sense-strand coordinates; wrapped like fwdCut. */
   revCut: number
   /** Which strand the recognition site was found on: 1 = sense, -1 = antisense. */
   strand: 1 | -1
+  /**
+   * Set on a linear sequence when the enzyme would cut beyond an end (a Type
+   * IIS site near the end). The site is there, but nothing is cut: anything
+   * that digests, counts cuts or simulates a gel must skip it.
+   */
+  offEnd?: true
+}
+
+/** Sites that actually cut the molecule. */
+export function cuttingSites<T extends Pick<CutSite, 'offEnd'>>(sites: readonly T[]): T[] {
+  return sites.filter(s => !s.offEnd)
+}
+
+/**
+ * Cut positions as stored: wrapped into the sequence when circular; when
+ * linear, as they fall, with `offEnd` set if either is outside it.
+ */
+function placeCuts(fwd: number, rev: number, seqLen: number, circular: boolean): Pick<CutSite, 'fwdCut' | 'revCut' | 'offEnd'> {
+  if (circular) {
+    return { fwdCut: ((fwd % seqLen) + seqLen) % seqLen, revCut: ((rev % seqLen) + seqLen) % seqLen }
+  }
+  const outside = fwd < 0 || fwd > seqLen || rev < 0 || rev > seqLen
+  return outside ? { fwdCut: fwd, revCut: rev, offEnd: true } : { fwdCut: fwd, revCut: rev }
 }
 
 /**
@@ -45,7 +71,8 @@ export function findCutSites(
   const isPalindrome = enzyme.recognition.toUpperCase() === rc
 
   // For circular topology, search across the origin by appending a prefix
-  const searchSeq = topology === 'circular'
+  const circular = topology === 'circular'
+  const searchSeq = circular
     ? upper + upper.slice(0, recLen - 1)
     : upper
 
@@ -59,8 +86,7 @@ export function findCutSites(
       enzyme,
       position: pos,
       end: (pos + recLen) % (topology === 'circular' ? seqLen : seqLen + recLen),
-      fwdCut: pos + enzyme.fwd_cut,
-      revCut: pos + enzyme.rev_cut,
+      ...placeCuts(pos + enzyme.fwd_cut, pos + enzyme.rev_cut, seqLen, circular),
       strand: 1,
     })
     // Prevent overlapping matches from consuming characters
@@ -81,8 +107,7 @@ export function findCutSites(
         enzyme,
         position: pos,
         end: (pos + recLen) % (topology === 'circular' ? seqLen : seqLen + recLen),
-        fwdCut: pos + (recLen - enzyme.rev_cut),
-        revCut: pos + (recLen - enzyme.fwd_cut),
+        ...placeCuts(pos + (recLen - enzyme.rev_cut), pos + (recLen - enzyme.fwd_cut), seqLen, circular),
         strand: -1,
       })
       revPattern.lastIndex = m.index + 1
@@ -113,7 +138,8 @@ export function computeFragments(
 ): number[] {
   if (sites.length === 0) return [seqLen]
 
-  const cutPositions = [...new Set(sites.map(s => s.fwdCut))].sort((a, b) => a - b)
+  const cutPositions = [...new Set(cuttingSites(sites).map(s => s.fwdCut))].sort((a, b) => a - b)
+  if (cutPositions.length === 0) return [seqLen]
 
   const fragments: number[] = []
   if (topology === 'circular') {
@@ -135,7 +161,6 @@ export function computeFragments(
   return fragments.filter(f => f > 0).sort((a, b) => b - a)
 }
 
-/**
 /**
  * Find all sites for multiple enzymes, returning a flat list sorted by position.
  */

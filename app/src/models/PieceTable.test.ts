@@ -160,4 +160,51 @@ describe('PieceTable', () => {
     expect(pt.length).toBe(100000)
     expect(pt.toString()).toBe(bases)
   })
+
+  // --- regression: deleting a whole piece that forces a subtree merge ---
+  it('deletes the right bases across several earlier inserts', () => {
+    const inserts: [number, string][] = [
+      [1, 'a'], [0, 'b'], [2, 'c'], [0, 'd'], [3, 'e'], [1, 'f'], [5, 'g'], [0, 'h'],
+    ]
+    let ref = 'ABC'
+    for (const [pos, ch] of inserts) ref = ref.slice(0, pos) + ch + ref.slice(pos)
+    for (let pos = 0; pos < ref.length; pos++) {
+      for (let count = 1; pos + count <= ref.length; count++) {
+        const pt = new PieceTable('ABC')
+        for (const [p, ch] of inserts) pt.insert(p, ch)
+        pt.delete(pos, count)
+        expect(pt.toString()).toBe(ref.slice(0, pos) + ref.slice(pos + count))
+      }
+    }
+  })
+
+  // --- fuzz: random edits must always match a plain string ---
+  it('matches a plain string through random inserts and deletes', () => {
+    // Deterministic PRNG so a failure is reproducible
+    let seed = 12345
+    const rand = (n: number) => {
+      seed = (seed * 1103515245 + 12345) & 0x7fffffff
+      return seed % n
+    }
+    for (let round = 0; round < 300; round++) {
+      let ref = 'ACGT'.repeat(1 + rand(4))
+      const pt = new PieceTable(ref)
+      for (let step = 0; step < 40; step++) {
+        if (ref.length === 0 || rand(3) > 0) {
+          const pos = rand(ref.length + 1)
+          let text = ''
+          for (let i = 1 + rand(3); i > 0; i--) text += 'ACGTN'[rand(5)]
+          pt.insert(pos, text)
+          ref = ref.slice(0, pos) + text + ref.slice(pos)
+        } else {
+          const pos = rand(ref.length)
+          const count = 1 + rand(ref.length - pos)
+          pt.delete(pos, count)
+          ref = ref.slice(0, pos) + ref.slice(pos + count)
+        }
+        expect(pt.length).toBe(ref.length)
+        expect(pt.toString()).toBe(ref)
+      }
+    }
+  })
 })

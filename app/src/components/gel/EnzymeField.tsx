@@ -12,7 +12,7 @@ import { useCallback, useId, useMemo, useRef, useState } from 'react'
 import { X } from 'lucide-react'
 import { ENZYME_DB, ENZYME_GROUPS, type RestrictionEnzyme } from '../../enzymes/db'
 import { parseEnzymeList } from '../../gel/parse'
-import { findCutSites } from '../../enzymes/finder'
+import { findCutSites, cuttingSites } from '../../enzymes/finder'
 import { findUnblockedSites } from '../../cloning/digest'
 import type { SequenceSource } from '../../gel/simulate'
 
@@ -56,7 +56,7 @@ export default function EnzymeField({ value, onChange, source }: Props) {
   const cutCounts = useMemo(() => {
     const map = new Map<string, number>()
     if (!source) return map
-    for (const e of ENZYME_DB) map.set(e.name, findCutSites(source.bases, e, source.topology).length)
+    for (const e of ENZYME_DB) map.set(e.name, cuttingSites(findCutSites(source.bases, e, source.topology)).length)
     return map
   }, [source])
 

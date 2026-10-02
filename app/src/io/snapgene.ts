@@ -14,6 +14,7 @@ import { Annotation, type AnnotationData, type Strand } from '../models/Annotati
 import type { DocumentState, SequenceMetadata } from '../models/Document'
 import { cleanOligo, newPrimerId, primerOligoFromFeature, type PrimerData } from '../primers/oligo'
 import { findBindingSites } from '../primers/binding'
+import { resolveForward } from './location'
 
 // Packet type constants
 const PACKET_DNA       = 0x00
@@ -82,7 +83,7 @@ export function parseSnapGene(buffer: ArrayBuffer): DocumentState {
   let sequence = ''
   let topology: Topology = 'linear'
   let name = 'Untitled'
-  const annotations: AnnotationData[] = []
+  const rawFeatures: RawFeature[] = []
   const rawPrimers: RawPrimer[] = []
   const metadata: SequenceMetadata = {
     strandedness: 'double',
@@ -107,13 +108,15 @@ export function parseSnapGene(buffer: ArrayBuffer): DocumentState {
         metadata.damMethylated = !!(flags & 0x04)
         metadata.dcmMethylated = !!(flags & 0x08)
         metadata.ecoKIMethylated = !!(flags & 0x10)
-        sequence = String.fromCharCode(...bytes.slice(dataStart + 1, dataEnd))
+        // Not String.fromCharCode(...bytes): one argument per base overflows
+        // the call stack above about 120 kb.
+        sequence = new TextDecoder('latin1').decode(bytes.subarray(dataStart + 1, dataEnd))
         break
       }
 
       case PACKET_FEATURES: {
         const xml = new TextDecoder().decode(bytes.slice(dataStart, dataEnd))
-        parseFeatureXml(xml, annotations)
+        parseFeatureXml(xml, rawFeatures)
         break
       }
 
@@ -141,6 +144,7 @@ export function parseSnapGene(buffer: ArrayBuffer): DocumentState {
   }
 
   const seq = new Sequence(sequence.toUpperCase(), topology)
+  const annotations = resolveFeatures(rawFeatures, seq.length, topology === 'circular')
   const primers = resolvePrimers(rawPrimers, seq)
   return {
     name,
@@ -155,7 +159,29 @@ export function parseSnapGene(buffer: ArrayBuffer): DocumentState {
 // XML parsers (using DOMParser)
 // ---------------------------------------------------------------------------
 
-function parseFeatureXml(xml: string, annotations: AnnotationData[]): void {
+/** A feature as read, before its segments are turned into a span (that needs the sequence length). */
+interface RawFeature {
+  data: Omit<AnnotationData, 'start' | 'end'>
+  /** 0-based half-open, in the order SnapGene lists them (along the top strand). */
+  pieces: [number, number][]
+}
+
+function resolveFeatures(raw: RawFeature[], seqLen: number, circular: boolean): AnnotationData[] {
+  const out: AnnotationData[] = []
+  for (const f of raw) {
+    const loc = resolveForward(f.pieces, f.data.strand, seqLen, circular)
+    if (!loc) continue
+    out.push({
+      ...f.data,
+      start: loc.start,
+      end: loc.end,
+      ...(loc.segments ? { segments: loc.segments } : {}),
+    })
+  }
+  return out
+}
+
+function parseFeatureXml(xml: string, rawFeatures: RawFeature[]): void {
   const doc = new DOMParser().parseFromString(xml, 'text/xml')
   const features = doc.querySelectorAll('Feature')
 
@@ -168,31 +194,18 @@ function parseFeatureXml(xml: string, annotations: AnnotationData[]): void {
     if (directionality === 1) strand = 1
     else if (directionality === 2) strand = -1
 
-    // Collect all segments
-    const segments = feat.querySelectorAll('Segment')
-    let minStart = Infinity
-    let maxEnd = -Infinity
+    // Collect all segments. SnapGene uses 1-based inclusive ranges; a range
+    // written high-low runs across the origin.
+    const pieces: [number, number][] = []
     let color: string | undefined
-
-    for (const seg of segments) {
-      const range = seg.getAttribute('range') || ''
+    for (const seg of feat.querySelectorAll('Segment')) {
+      if (seg.getAttribute('type') === 'gap') continue
       const segColor = seg.getAttribute('color')
       if (segColor && !color) color = segColor
-
-      const match = range.match(/(\d+)-(\d+)/)
-      if (match) {
-        const s = parseInt(match[1], 10)
-        const e = parseInt(match[2], 10)
-        if (s < minStart) minStart = s
-        if (e > maxEnd) maxEnd = e
-      }
+      const match = (seg.getAttribute('range') || '').match(/(\d+)-(\d+)/)
+      if (match) pieces.push([parseInt(match[1], 10) - 1, parseInt(match[2], 10)])
     }
-
-    if (minStart === Infinity || maxEnd === -Infinity) continue
-
-    // SnapGene uses 1-based inclusive ranges → convert to 0-based half-open
-    const start = minStart - 1
-    const end = maxEnd
+    if (pieces.length === 0) continue
 
     // Extract qualifiers
     const qualifiers: Record<string, string[]> = {}
@@ -212,15 +225,9 @@ function parseFeatureXml(xml: string, annotations: AnnotationData[]): void {
     // Use label qualifier as name if available
     const label = qualifiers['label']?.[0] || qualifiers['gene']?.[0] || qualifiers['product']?.[0]
 
-    annotations.push({
-      id: nextId(),
-      name: label || featName,
-      type,
-      start,
-      end,
-      strand,
-      color,
-      qualifiers,
+    rawFeatures.push({
+      data: { id: nextId(), name: label || featName, type, strand, color, qualifiers },
+      pieces,
     })
   }
 }
@@ -348,7 +355,11 @@ function buildFeaturesPacket(annotations: Annotation[], seqLen: number): Uint8Ar
     parts.push(`<Feature type="${escXml(ann.type)}" name="${escXml(ann.name)}" directionality="${dir}">`)
     // Segment: 0-based half-open → 1-based inclusive
     const colorAttr = ann.color ? ` color="${escXml(ann.color)}"` : ''
-    if (ann.start > ann.end && ann.end > 0) {
+    if (ann.segments) {
+      for (const [s, e] of ann.segments) {
+        parts.push(`<Segment range="${s + 1}-${e}"${colorAttr} />`)
+      }
+    } else if (ann.start > ann.end && ann.end > 0) {
       // Origin-spanning: two segments
       parts.push(`<Segment range="${ann.start + 1}-${seqLen}"${colorAttr} />`)
       parts.push(`<Segment range="1-${ann.end}"${colorAttr} />`)

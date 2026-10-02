@@ -19,6 +19,31 @@ export interface AnnotationData {
   qualifiers?: Record<string, string[]>
   /** Set when the annotation was truncated at a cloning junction. */
   truncated?: boolean
+  /**
+   * The parts of a feature with gaps in it (exons of a spliced CDS), as
+   * 0-based half-open ranges in top-strand order from `start` to `end`. Each
+   * part lies on one side of the origin; a wrapped feature's list crosses it
+   * once. Absent for a feature that is one piece.
+   *
+   * Only file import and export and edits read this so far; drawing and
+   * translation still use the overall span. Kept only while it agrees with
+   * start and end: anything that moves those without moving the segments
+   * drops them, so they can be lost but never wrong.
+   */
+  segments?: [number, number][]
+}
+
+/** `segments` if they describe the span start..end; otherwise undefined. */
+function checkSegments(segments: AnnotationData['segments'], start: number, end: number): [number, number][] | undefined {
+  if (!segments || segments.length < 2) return undefined
+  if (segments[0][0] !== start || segments[segments.length - 1][1] !== end) return undefined
+  let descents = 0
+  for (let k = 0; k < segments.length; k++) {
+    const [s, e] = segments[k]
+    if (!(s < e)) return undefined
+    if (k > 0 && s < segments[k - 1][1]) descents++
+  }
+  return descents <= (start > end ? 1 : 0) ? segments.map(([s, e]) => [s, e]) : undefined
 }
 
 /** Strip HTML tags from a string. Handles SnapGene rich-text names. */
@@ -78,6 +103,9 @@ export class Annotation implements AnnotationData {
   readonly strand: Strand
   readonly color: string
   readonly qualifiers: Record<string, string[]>
+  readonly segments?: [number, number][]
+  /** Cut short at a cloning junction: the feature in the product is partial. */
+  readonly truncated?: boolean
 
   constructor(data: AnnotationData) {
     this.id = data.id
@@ -88,6 +116,9 @@ export class Annotation implements AnnotationData {
     this.strand = data.strand
     this.color = data.color ?? defaultColorForType(data.type)
     this.qualifiers = data.qualifiers ?? {}
+    const segments = checkSegments(data.segments, data.start, data.end)
+    if (segments) this.segments = segments
+    if (data.truncated) this.truncated = true
   }
 
   /** Span length, accounting for origin-spanning features. */
@@ -119,6 +150,8 @@ export class Annotation implements AnnotationData {
       strand: this.strand,
       color: this.color,
       qualifiers: this.qualifiers,
+      ...(this.segments ? { segments: this.segments } : {}),
+      ...(this.truncated ? { truncated: true } : {}),
     }
   }
 }
@@ -141,6 +174,29 @@ export function adjustAnnotation(
   seqLength: number,
   circular: boolean = false,
 ): Annotation | null {
+  const out = adjustAnnotationCoords(ann, editPos, editDelta, seqLength, circular)
+  // Unmoved features stay the same object, so an edit that misses every
+  // feature leaves the list (and the undo history's copy of it) shared.
+  if (out && out !== ann && out.start === ann.start && out.end === ann.end &&
+      sameSegments(out.segments, ann.segments)) return ann
+  return out
+}
+
+function sameSegments(a: readonly [number, number][] | undefined, b: readonly [number, number][] | undefined): boolean {
+  if (a === b) return true
+  if (!a || !b || a.length !== b.length) return false
+  return a.every(([s, e], i) => s === b[i][0] && e === b[i][1])
+}
+
+function adjustAnnotationCoords(
+  ann: Annotation,
+  editPos: number,
+  editDelta: number,
+  seqLength: number,
+  circular: boolean,
+): Annotation | null {
+  if (ann.segments) return adjustSegmented(ann, ann.segments, editPos, editDelta)
+
   // Origin-spanning annotations on circular sequences need special handling
   if (circular && ann.spansOrigin()) {
     return adjustOriginSpanning(ann, editPos, editDelta, seqLength)
@@ -167,6 +223,41 @@ export function adjustAnnotation(
   }
 
   return ann.with({ start, end })
+}
+
+/**
+ * Adjust a feature made of separate parts. Each part is a plain range on one
+ * side of the origin, so each moves like a simple feature; the span is then
+ * read off the parts that survive. Gone entirely when every part was deleted.
+ */
+function adjustSegmented(
+  ann: Annotation,
+  segments: readonly [number, number][],
+  editPos: number,
+  editDelta: number,
+): Annotation | null {
+  const moved: [number, number][] = []
+  for (const [s0, e0] of segments) {
+    let s = s0
+    let e = e0
+    if (editDelta > 0) {
+      if (s >= editPos) s += editDelta
+      if (e > editPos) e += editDelta
+    } else {
+      const delEnd = editPos - editDelta
+      s = adjustCoordForDeletion(s, editPos, delEnd)
+      e = adjustCoordForDeletion(e, editPos, delEnd)
+    }
+    if (e <= s) continue
+    const last = moved[moved.length - 1]
+    // A deleted intron leaves its neighbours touching: one part again.
+    if (last && last[1] === s) last[1] = e
+    else moved.push([s, e])
+  }
+  if (moved.length === 0) return null
+  const start = moved[0][0]
+  const end = moved[moved.length - 1][1]
+  return ann.with({ start, end, segments: moved.length > 1 ? moved : undefined })
 }
 
 /**

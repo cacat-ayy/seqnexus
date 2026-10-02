@@ -108,7 +108,13 @@ export function restore(snap: DocumentSnapshot): DocumentState {
 export interface UndoSnapshot {
   ptSnapshot: PieceTableSnapshot
   topology: Topology
-  annotations: AnnotationData[]
+  /**
+   * The document's annotation array itself, not a copy. Annotations are
+   * immutable and edits build new arrays, so consecutive entries share it
+   * when an edit left the features alone (typing in a 5,000-feature genome
+   * used to copy all 5,000 per keystroke). Plain data after a reload.
+   */
+  annotations: readonly AnnotationData[]
   primers?: PrimerData[]
   name: string
   description?: string
@@ -126,7 +132,7 @@ export function undoSnapshot(state: DocumentState): UndoSnapshot {
   return {
     ptSnapshot: state.sequence.pieceTable.snapshot(),
     topology: state.sequence.topology,
-    annotations: state.annotations.map(a => a.toData()),
+    annotations: state.annotations,
     // PrimerData objects are never mutated, only replaced, so sharing them
     // with the snapshot is safe.
     ...primersField(state.primers),
@@ -140,17 +146,33 @@ export function undoSnapshot(state: DocumentState): UndoSnapshot {
  * Restore a DocumentState from a lightweight undo snapshot.
  * Restores the PieceTable tree in-place on the current document's Sequence,
  * preserving the original and add buffers.
+ *
+ * The snapshot's tree points into those buffers, so it is only valid against
+ * the PieceTable it was taken from. Anything that changes a document must keep
+ * its PieceTable (edit it in place, or wrap it with Sequence.fromPieceTable)
+ * rather than swap in a new one, or older entries restore the wrong bases.
  */
 export function restoreUndo(snap: UndoSnapshot, currentSequence: Sequence): DocumentState {
-  currentSequence.pieceTable.restoreSnapshot(snap.ptSnapshot)
+  const pt = currentSequence.pieceTable
+  pt.restoreSnapshot(snap.ptSnapshot)
+  const topology = snap.topology ?? currentSequence.topology
   return {
     name: snap.name,
     description: snap.description,
-    sequence: currentSequence,
-    annotations: snap.annotations.map(d => new Annotation(d)),
+    sequence: topology === currentSequence.topology
+      ? currentSequence
+      : Sequence.fromPieceTable(pt, topology),
+    annotations: snap.annotations.every(a => a instanceof Annotation)
+      ? snap.annotations as Annotation[]
+      : snap.annotations.map(d => d instanceof Annotation ? d : new Annotation(d)),
     ...primersField(snap.primers),
     metadata: snap.metadata,
   }
+}
+
+/** The new list, or the old one itself when no annotation changed. */
+function keepIfSame(before: Annotation[], after: Annotation[]): Annotation[] {
+  return after.length === before.length && after.every((a, i) => a === before[i]) ? before : after
 }
 
 /**
@@ -169,7 +191,7 @@ export function insertBasesInPlace(
   const annotations = state.annotations
     .map(a => adjustAnnotation(a, pos, fragment.length, seqLen, circular))
     .filter((a): a is Annotation => a !== null)
-  return { ...state, annotations }
+  return { ...state, annotations: keepIfSame(state.annotations, annotations) }
 }
 
 /**
@@ -187,7 +209,7 @@ export function deleteBasesInPlace(
   const annotations = state.annotations
     .map(a => adjustAnnotation(a, start, delta, seqLen, circular))
     .filter((a): a is Annotation => a !== null)
-  return { ...state, annotations }
+  return { ...state, annotations: keepIfSame(state.annotations, annotations) }
 }
 
 /**
@@ -429,20 +451,42 @@ export function internalPosition(
   return (displayPos - 1 + displayOrigin) % seqLen
 }
 
+/** A feature's parts after moving the origin to `newOrigin`; a part the new origin cuts becomes two. */
+function rotateSegments(
+  segments: readonly [number, number][] | undefined,
+  newOrigin: number,
+  seqLen: number,
+): [number, number][] | undefined {
+  if (!segments) return undefined
+  const out: [number, number][] = []
+  for (const [s, e] of segments) {
+    const ns = (s - newOrigin + seqLen) % seqLen
+    const ne = ns + (e - s)
+    if (ne > seqLen) out.push([ns, seqLen], [0, ne - seqLen])
+    else out.push([ns, ne])
+  }
+  return out
+}
+
 /**
  * Physically rotate a circular sequence so that `newOrigin` becomes position 0.
  * Adjusts all annotation coordinates. Resets displayOrigin to 0.
+ *
+ * In place, like the other *InPlace edits: the bases before the new origin
+ * move to the end of the same PieceTable, so undo snapshots taken earlier
+ * still point at valid buffers.
  */
-export function rotateOrigin(
+export function rotateOriginInPlace(
   state: DocumentState,
   newOrigin: number,
 ): DocumentState {
   const seqLen = state.sequence.length
-  if (seqLen === 0 || newOrigin === 0) return state
+  if (seqLen === 0 || newOrigin <= 0 || newOrigin >= seqLen) return state
 
-  const bases = state.sequence.bases
-  const rotated = bases.slice(newOrigin) + bases.slice(0, newOrigin)
-  const sequence = new Sequence(rotated, state.sequence.topology)
+  const head = state.sequence.basesIn(0, newOrigin)
+  state.sequence.deleteInPlace(0, newOrigin)
+  state.sequence.insertInPlace(seqLen - newOrigin, head)
+  const sequence = state.sequence
 
   const annotations = state.annotations.map(a => {
     const newStart = (a.start - newOrigin + seqLen) % seqLen
@@ -450,7 +494,7 @@ export function rotateOrigin(
     // end===0 after modulo means the annotation ended exactly at the new origin;
     // it should wrap to seqLen (the full sequence end), not become zero-length.
     if (newEnd === 0 && a.end !== a.start) newEnd = seqLen
-    return a.with({ start: newStart, end: newEnd })
+    return a.with({ start: newStart, end: newEnd, segments: rotateSegments(a.segments, newOrigin, seqLen) })
   })
 
   return {

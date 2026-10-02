@@ -6,7 +6,7 @@
  * gel that cannot be saved still works for the session.
  */
 
-import { findCutSites } from '../enzymes/finder'
+import { findCutSites, cuttingSites } from '../enzymes/finder'
 import { getEnzyme } from '../enzymes/db'
 import { DEFAULT_LADDER_ID, getLadder } from './ladders'
 import { AGAROSE_MAX, AGAROSE_MIN, GEL_FORMATS } from './migration'
@@ -109,7 +109,7 @@ export function suggestDigest(seq: ActiveSequence): string[] {
   for (const name of seq.shownEnzymes) {
     const e = getEnzyme(name)
     if (!e) continue
-    const sites = findCutSites(seq.bases, e, seq.topology)
+    const sites = cuttingSites(findCutSites(seq.bases, e, seq.topology))
     if (sites.length === 1) single.push({ name: e.name, cut: sites[0].fwdCut })
   }
   if (single.length === 0) return []

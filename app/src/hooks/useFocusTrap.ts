@@ -26,6 +26,16 @@ const FOCUSABLE_SELECTOR = [
  */
 const trapStack: HTMLElement[] = []
 
+/**
+ * Whether a modal dialog is open. App-wide key handlers (the sequence editor,
+ * the workspaces) must stand down while one is: the page behind a modal is
+ * meant to be inert, and focus can sit on a dialog's button or backdrop where
+ * the text-field checks don't see it.
+ */
+export function isFocusTrapActive(): boolean {
+  return trapStack.length > 0
+}
+
 function isVisible(el: HTMLElement): boolean {
   if (el.hidden || el.closest('[hidden]')) return false
   const style = getComputedStyle(el)

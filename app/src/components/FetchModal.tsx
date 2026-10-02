@@ -1,19 +1,20 @@
 import './FetchModal.css'
 /**
- * Modal for fetching sequences from NCBI, Addgene, or SnapGene by accession/ID.
+ * Modal for fetching sequences from NCBI by accession.
+ *
+ * Addgene and SnapGene were offered too, but neither site lets another
+ * website download its files (no CORS), so those buttons failed every time.
+ * The dialog now says how to get their files in instead.
  */
 
 import { useState, useRef, useEffect, useCallback } from 'react'
 import { X } from 'lucide-react'
-import { fetchNCBI } from '../fetch/ncbi'
-import { fetchAddgene } from '../fetch/addgene'
-import { fetchSnapGene } from '../fetch/snapgene'
-import { parseGenBank } from '../io/genbank'
+import { fetchNCBI, ncbiRecordSummary } from '../fetch/ncbi'
+import { parseGenbankFile } from '../workers/genbank-parser'
+import { notify } from '../toast'
 import type { DocumentState } from '../models/Document'
 import { useExitAnimation } from '../hooks/useExitAnimation'
 import { useFocusTrap } from '../hooks/useFocusTrap'
-
-export type FetchSource = 'ncbi' | 'addgene' | 'snapgene'
 
 interface Props {
   open: boolean
@@ -21,37 +22,21 @@ interface Props {
   onFetched: (doc: DocumentState) => void
 }
 
-/** Auto-detect the source from user input. */
-function detectSource(input: string): FetchSource {
-  const trimmed = input.trim()
-  if (!trimmed) return 'ncbi'
+/** Records longer than this are confirmed before downloading. */
+const LARGE_RECORD_BP = 10_000_000
 
-  // Addgene: starts with # or is purely numeric with 4+ digits
-  if (/^#\d+$/.test(trimmed) || /^\d{4,}$/.test(trimmed)) {
-    return 'addgene'
-  }
-
-  // SnapGene: contains "snapgene" or is a URL to snapgene.com
-  if (/snapgene/i.test(trimmed)) {
-    return 'snapgene'
-  }
-
-  // Default: NCBI nucleotide
-  return 'ncbi'
-}
-
-const SOURCE_LABELS: Record<FetchSource, string> = {
-  ncbi: 'NCBI',
-  addgene: 'Addgene',
-  snapgene: 'SnapGene',
+function formatBp(bp: number): string {
+  if (bp >= 1_000_000) return `${(bp / 1_000_000).toFixed(1)} Mb`
+  if (bp >= 1000) return `${(bp / 1000).toFixed(1)} kb`
+  return `${bp} bp`
 }
 
 export default function FetchModal({ open, onClose, onFetched }: Props) {
   const [query, setQuery] = useState('')
-  const [source, setSource] = useState<FetchSource>('ncbi')
-  const [autoDetected, setAutoDetected] = useState(true)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  /** A record over LARGE_RECORD_BP, waiting for the user to confirm. */
+  const [large, setLarge] = useState<{ accession: string; length: number; title: string } | null>(null)
   const inputRef = useRef<HTMLInputElement>(null)
   const backdropRef = useRef<HTMLDivElement>(null)
   useFocusTrap(backdropRef, open)
@@ -60,30 +45,20 @@ export default function FetchModal({ open, onClose, onFetched }: Props) {
   useEffect(() => {
     if (open) {
       setQuery('')
-      setSource('ncbi')
-      setAutoDetected(true)
       setLoading(false)
       setError(null)
+      setLarge(null)
       requestAnimationFrame(() => inputRef.current?.focus())
     }
   }, [open])
 
-  // Auto-detect source as user types
   const handleQueryChange = useCallback((value: string) => {
     setQuery(value)
     setError(null)
-    if (autoDetected) {
-      setSource(detectSource(value))
-    }
-  }, [autoDetected])
-
-  // Manual source override
-  const handleSourceChange = useCallback((s: FetchSource) => {
-    setSource(s)
-    setAutoDetected(false)
+    setLarge(null)
   }, [])
 
-  const handleFetch = useCallback(async () => {
+  const handleFetch = useCallback(async (confirmedLarge = false) => {
     const trimmed = query.trim()
     if (!trimmed || loading) return
 
@@ -91,21 +66,24 @@ export default function FetchModal({ open, onClose, onFetched }: Props) {
     setError(null)
 
     try {
-      let gbText: string
-
-      switch (source) {
-        case 'ncbi':
-          gbText = await fetchNCBI(trimmed)
-          break
-        case 'addgene':
-          gbText = await fetchAddgene(trimmed)
-          break
-        case 'snapgene':
-          gbText = await fetchSnapGene(trimmed)
-          break
+      if (!confirmedLarge) {
+        const summary = await ncbiRecordSummary(trimmed)
+        if (summary && summary.length > LARGE_RECORD_BP) {
+          setLarge({ accession: trimmed, ...summary })
+          return
+        }
       }
+      setLarge(null)
 
-      const doc = parseGenBank(gbText)
+      const gbText = await fetchNCBI(trimmed)
+      // Large records are parsed in the worker, off the main thread.
+      const { docs, warnings } = await parseGenbankFile(new File([gbText], `${trimmed}.gb`))
+      const doc = docs[0]
+      if (warnings.length > 0) {
+        notify.warning(`${warnings.length} ${warnings.length === 1 ? 'feature' : 'features'} in "${doc.name}" could not be read exactly as written`, {
+          detail: warnings.slice(0, 5).join('\n') + (warnings.length > 5 ? `\n…and ${warnings.length - 5} more` : ''),
+        })
+      }
       onFetched(doc)
       onClose()
     } catch (err) {
@@ -113,7 +91,7 @@ export default function FetchModal({ open, onClose, onFetched }: Props) {
     } finally {
       setLoading(false)
     }
-  }, [query, source, loading, onFetched, onClose])
+  }, [query, loading, onFetched, onClose])
 
   const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
     if (e.key === 'Enter' && !loading) {
@@ -137,46 +115,36 @@ export default function FetchModal({ open, onClose, onFetched }: Props) {
       <div className="modal-dialog fetch-modal" role="dialog" aria-modal="true" aria-labelledby="fetch-modal-title">
         {/* Header */}
         <div className="modal-header">
-          <h3 className="modal-title" id="fetch-modal-title">Import from NCBI / Addgene</h3>
+          <h3 className="modal-title" id="fetch-modal-title">Import from NCBI</h3>
           <button className="modal-close" onClick={onClose} aria-label="Close"><X size={16} /></button>
         </div>
 
         {/* Body */}
         <div className="modal-body">
           <div className="fetch-input-group">
-            <label className="fetch-label">Accession or ID</label>
+            <label className="fetch-label">Nucleotide accession</label>
             <input
               ref={inputRef}
               className="input fetch-input"
               type="text"
               value={query}
               onChange={e => handleQueryChange(e.target.value)}
-              placeholder="e.g. M13mp18, NM_001301717, #12345"
+              placeholder="e.g. L09137.2, NM_001301717, M13mp18"
               disabled={loading}
             />
-            {query.trim() && autoDetected && (
-              <div className="fetch-auto-hint">
-                Detected: {SOURCE_LABELS[source]}
-              </div>
-            )}
-          </div>
-
-          {/* Source selector */}
-          <div className="fetch-source-row">
-            <span className="fetch-source-label">Source:</span>
-            <div className="toggle-group">
-              {(['ncbi', 'addgene', 'snapgene'] as FetchSource[]).map(s => (
-                <button
-                  key={s}
-                  className={`toggle-btn ${source === s ? 'active' : ''}`}
-                  onClick={() => handleSourceChange(s)}
-                  disabled={loading}
-                >
-                  {SOURCE_LABELS[s]}
-                </button>
-              ))}
+            <div className="fetch-auto-hint">
+              For Addgene or SnapGene plasmids, download the GenBank or .dna file from their site, then drag it into SeqNexus.
             </div>
           </div>
+
+          {/* Large record: confirm first */}
+          {large && (
+            <div className="fetch-error">
+              {large.accession} is {formatBp(large.length)}
+              {large.title ? ` (${large.title})` : ''}. Records this large can take minutes to download and may make
+              the page unresponsive.
+            </div>
+          )}
 
           {/* Error */}
           {error && (
@@ -187,7 +155,7 @@ export default function FetchModal({ open, onClose, onFetched }: Props) {
           {loading && (
             <div className="fetch-loading">
               <div className="fetch-spinner" />
-              Fetching from {SOURCE_LABELS[source]}…
+              Fetching from NCBI…
             </div>
           )}
         </div>
@@ -195,13 +163,19 @@ export default function FetchModal({ open, onClose, onFetched }: Props) {
         {/* Footer */}
         <div className="modal-footer">
           <button className="btn" onClick={onClose} disabled={loading}>Cancel</button>
-          <button
-            className="btn btn-primary"
-            onClick={handleFetch}
-            disabled={!query.trim() || loading}
-          >
-            Fetch
-          </button>
+          {large ? (
+            <button className="btn btn-primary" onClick={() => handleFetch(true)} disabled={loading}>
+              Download {formatBp(large.length)} anyway
+            </button>
+          ) : (
+            <button
+              className="btn btn-primary"
+              onClick={() => handleFetch()}
+              disabled={!query.trim() || loading}
+            >
+              Fetch
+            </button>
+          )}
         </div>
       </div>
     </div>

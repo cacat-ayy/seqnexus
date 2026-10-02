@@ -1,21 +1,11 @@
 /**
- * Tests for the streaming GenBank parser state machine.
- *
- * Imports the line-processing functions directly from the worker module
- * to test parsing logic without needing File.stream() or Web Workers.
+ * Tests for the streaming GenBank path: the large-file worker feeds a file
+ * line by line to the shared GenBankReader, so these drive the reader the
+ * same way.
  */
 
-import { describe, it, expect, beforeEach } from 'vitest'
-import {
-  createState,
-  processLine,
-  finalize,
-  _resetIdCounter,
-} from './genbank-parser.worker'
-
-beforeEach(() => {
-  _resetIdCounter()
-})
+import { describe, it, expect } from 'vitest'
+import { GenBankReader } from '../io/genbank'
 
 const SAMPLE_LINES = [
   'LOCUS       pUC19                   2686 bp    DNA     circular   01-JAN-2000',
@@ -32,12 +22,14 @@ const SAMPLE_LINES = [
   '//',
 ]
 
+function parseAll(lines: string[]) {
+  const reader = new GenBankReader()
+  for (const line of lines) reader.line(line)
+  return reader.finish()
+}
+
 function parseLines(lines: string[]) {
-  const state = createState()
-  for (const line of lines) {
-    processLine(state, line)
-  }
-  return finalize(state)
+  return parseAll(lines)[0]
 }
 
 describe('streaming GenBank parser state machine', () => {
@@ -78,8 +70,8 @@ describe('streaming GenBank parser state machine', () => {
   it('parses qualifiers', () => {
     const result = parseLines(SAMPLE_LINES)
     const cds = result.annotations[0]
-    expect(cds.qualifiers['gene']).toEqual(['lacZ'])
-    expect(cds.qualifiers['label']).toEqual(['lacZ'])
+    expect(cds.qualifiers?.['gene']).toEqual(['lacZ'])
+    expect(cds.qualifiers?.['label']).toEqual(['lacZ'])
   })
 
   it('handles linear topology', () => {
@@ -100,21 +92,39 @@ describe('streaming GenBank parser state machine', () => {
     expect(result.topology).toBe('linear')
   })
 
-  it('stops at // record terminator', () => {
-    const state = createState()
-    processLine(state, 'LOCUS       pTest                    10 bp    DNA     linear   01-JAN-2000')
-    processLine(state, 'ORIGIN')
-    processLine(state, '        1 atgcgatcga')
-    processLine(state, '//')
-    // Lines after // should be ignored
-    processLine(state, 'LOCUS       pOther                   20 bp    DNA     circular   01-JAN-2000')
-    processLine(state, 'ORIGIN')
-    processLine(state, '        1 gggggggggg gggggggggg')
+  it('reads every record, not just the first', () => {
+    const records = parseAll([
+      'LOCUS       pTest                    10 bp    DNA     linear   01-JAN-2000',
+      'ORIGIN',
+      '        1 atgcgatcga',
+      '//',
+      'LOCUS       pOther                   20 bp    DNA     circular   01-JAN-2000',
+      'ORIGIN',
+      '        1 gggggggggg gggggggggg',
+      '//',
+    ])
+    expect(records.map(r => [r.name, r.bases.length, r.topology])).toEqual([
+      ['pTest', 10, 'linear'],
+      ['pOther', 20, 'circular'],
+    ])
+  })
 
-    const result = finalize(state)
-    expect(result.name).toBe('pTest')
-    expect(result.bases.length).toBe(10)
-    expect(result.topology).toBe('linear')
+  it('keeps the description and primers', () => {
+    const result = parseLines([
+      'LOCUS       pTest                    60 bp    DNA     linear   01-JAN-2000',
+      'DEFINITION  A test plasmid with a',
+      '            two-line description.',
+      'FEATURES             Location/Qualifiers',
+      '     primer_bind     1..10',
+      '                     /label="fwd"',
+      '                     /primer_sequence="ATGCGATCGA"',
+      'ORIGIN',
+      '        1 ' + 'atgcgatcga'.repeat(6),
+      '//',
+    ])
+    expect(result.description).toBe('A test plasmid with a two-line description')
+    expect(result.primers.map(p => [p.name, p.sequence])).toEqual([['fwd', 'ATGCGATCGA']])
+    expect(result.annotations).toEqual([])
   })
 
   it('handles join() locations', () => {
@@ -132,23 +142,24 @@ describe('streaming GenBank parser state machine', () => {
     const ann = result.annotations[0]
     expect(ann.start).toBe(9)   // 10 -> 0-based 9
     expect(ann.end).toBe(200)   // overall span
+    expect(ann.segments).toEqual([[9, 50], [99, 200]])
   })
 
   it('handles large sequence data efficiently', () => {
-    const state = createState()
-    processLine(state, 'LOCUS       pBig                  100000 bp    DNA     circular   01-JAN-2000')
-    processLine(state, 'ORIGIN')
+    const reader = new GenBankReader()
+    reader.line('LOCUS       pBig                  100000 bp    DNA     circular   01-JAN-2000')
+    reader.line('ORIGIN')
 
     // Simulate 100,000 bases in 60-char lines
     const chunk = 'atgcgatcga'  // 10 chars
     for (let i = 0; i < 100000; i += 60) {
       const lineNum = (i + 1).toString().padStart(9)
       const bases = chunk.repeat(6).slice(0, Math.min(60, 100000 - i))
-      processLine(state, `${lineNum} ${bases}`)
+      reader.line(`${lineNum} ${bases}`)
     }
-    processLine(state, '//')
+    reader.line('//')
 
-    const result = finalize(state)
+    const [result] = reader.finish()
     expect(result.bases.length).toBe(100000)
     expect(result.topology).toBe('circular')
   })
@@ -170,7 +181,6 @@ describe('streaming GenBank parser state machine', () => {
 
   it('produces results matching the synchronous parser', () => {
     const result = parseLines(SAMPLE_LINES)
-    expect(result.type).toBe('done')
     expect(result.name).toBe('pUC19')
     expect(result.bases.length).toBe(100)
     expect(result.annotations.length).toBe(2)

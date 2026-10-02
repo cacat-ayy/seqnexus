@@ -10,7 +10,7 @@
  */
 
 import type { RestrictionEnzyme } from '../enzymes/db'
-import { findCutSites, type CutSite } from '../enzymes/finder'
+import { findCutSites, cuttingSites, type CutSite } from '../enzymes/finder'
 import { reverseComplement } from '../models/complement'
 import type { AnnotationData } from '../models/Annotation'
 import type { DocumentState } from '../models/Document'
@@ -32,9 +32,21 @@ export interface Overhang {
  * fwdCut > revCut → 3'-protruding overhang (bottom strand extends past top).
  * fwdCut === revCut → blunt.
  */
-export function extractOverhang(bases: string, fwdCut: number, revCut: number): Overhang {
+export function extractOverhang(bases: string, fwdCut: number, revCut: number, circular = false): Overhang {
   if (fwdCut === revCut) {
     return { sequence: '', type: 'blunt' }
+  }
+  if (circular) {
+    // Cuts are wrapped into the sequence, so an overhang can straddle the
+    // origin. It is the short way round from one cut to the other.
+    const len = bases.length
+    let d = (((revCut - fwdCut) % len) + len) % len
+    if (d > len / 2) d -= len
+    const around = (from: number, n: number) =>
+      from + n <= len ? bases.slice(from, from + n) : bases.slice(from) + bases.slice(0, from + n - len)
+    return d > 0
+      ? { sequence: around(fwdCut, d), type: 'five_prime' }
+      : { sequence: reverseComplement(around(revCut, -d)), type: 'three_prime' }
   }
   if (fwdCut < revCut) {
     return { sequence: bases.slice(fwdCut, revCut), type: 'five_prime' }
@@ -237,7 +249,7 @@ export function findUnblockedSites(
   const sites: CutSite[] = []
   const blocked: CutSite[] = []
   for (const enzyme of enzymes) {
-    for (const site of findCutSites(bases, enzyme, topology)) {
+    for (const site of cuttingSites(findCutSites(bases, enzyme, topology))) {
       const meth = siteMethylationEffect(site, bases, topology, enzyme, dam, dcm)
       if (meth?.effect === 'blocked') {
         blocked.push(site)
@@ -328,9 +340,9 @@ export function digestFragments(
       }
 
       // Overhangs at left boundary (5' end of this fragment)
-      const oh5 = extractOverhang(bases, left.fwdCut, left.revCut)
+      const oh5 = extractOverhang(bases, left.fwdCut, left.revCut, true)
       // Overhangs at right boundary (3' end of this fragment)
-      const oh3 = extractOverhang(bases, right.fwdCut, right.revCut)
+      const oh3 = extractOverhang(bases, right.fwdCut, right.revCut, true)
 
       const fragAnns = sliceAnnotations(annData, bodyStart, bodyEnd, seqLen, true)
       const size = body.length
@@ -439,7 +451,7 @@ export function partialDigestFragments(
   // Collect all cut sites
   const allSites: CutSite[] = []
   for (const enzyme of enzymes) {
-    allSites.push(...findCutSites(bases, enzyme, topology))
+    allSites.push(...cuttingSites(findCutSites(bases, enzyme, topology)))
   }
 
   if (allSites.length === 0) {
@@ -528,8 +540,8 @@ function buildFragmentsFromSites(
         body = bases.slice(bodyStart) + bases.slice(0, bodyEnd)
       }
 
-      const oh5 = extractOverhang(bases, left.fwdCut, left.revCut)
-      const oh3 = extractOverhang(bases, right.fwdCut, right.revCut)
+      const oh5 = extractOverhang(bases, left.fwdCut, left.revCut, true)
+      const oh3 = extractOverhang(bases, right.fwdCut, right.revCut, true)
       const fragAnns = sliceAnnotations(annData, bodyStart, bodyEnd, seqLen, true)
 
       fragments.push({

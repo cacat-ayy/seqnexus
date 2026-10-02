@@ -391,67 +391,298 @@ function buildSessionData(theme: string): {
   }
 }
 
+// ---- Data the store doesn't hold but storage must keep ----
+
+/**
+ * Saved items the last load failed to read because storage threw (not
+ * because their data was missing). They never reach the store, so without
+ * this the next autosave would write an index without them and delete their
+ * data as orphans, turning a passing read error into permanent loss. Instead
+ * every save carries their index entries forward and leaves their data
+ * alone, and the next load tries them again.
+ */
+interface Unrestored {
+  tabs: SerializedTabV2[]
+  reads: SerializedSeqRead[]
+  alignments: SerializedAlignment[]
+  contigs: SerializedContig[]
+}
+const noneUnrestored = (): Unrestored => ({ tabs: [], reads: [], alignments: [], contigs: [] })
+let unrestored = noneUnrestored()
+
+/**
+ * Set when this page's load could not read the saved session at all. Its data
+ * is still in IndexedDB, and nothing in memory says which records are its, so
+ * no cleanup may run until the page is reloaded.
+ */
+let cleanupBlocked = false
+
+/** Append the unrestored items to the index about to be written. */
+function carryUnrestored(meta: SerializedSessionV2): void {
+  const keep = <T extends { id: string }>(live: T[] | undefined, kept: T[]): T[] => {
+    const ids = new Set((live ?? []).map(x => x.id))
+    return [...(live ?? []), ...kept.filter(x => !ids.has(x.id))]
+  }
+  meta.tabs = keep(meta.tabs, unrestored.tabs)
+  meta.sequencingReads = keep(meta.sequencingReads, unrestored.reads)
+  meta.alignments = keep(meta.alignments, unrestored.alignments)
+  if (unrestored.contigs.length > 0) meta.contigs = keep(meta.contigs, unrestored.contigs)
+}
+
+/**
+ * IDs whose stored data orphan cleanup must leave alone even though the index
+ * being written doesn't list them, or null when cleanup must not run at all.
+ *
+ * Covers the unrestored items, and every item of a parked unreadable session
+ * (preserveCorruptSession): that copy is only recoverable while the data it
+ * points at still exists.
+ */
+function cleanupKeeps(): Set<string> | null {
+  if (cleanupBlocked) return null
+  const ids = new Set<string>()
+  const { tabs, reads, alignments, contigs } = unrestored
+  for (const x of [...tabs, ...reads, ...alignments, ...contigs]) ids.add(x.id)
+  let parked: string | null
+  try {
+    parked = localStorage.getItem(CORRUPT_KEY)
+  } catch {
+    return null
+  }
+  if (!parked) return ids
+  try {
+    const data = JSON.parse((JSON.parse(parked) as { raw: string }).raw) as Partial<SerializedSessionV2>
+    const lists: unknown[] = [data.tabs, data.sequencingReads, data.alignments, data.contigs]
+    for (const list of lists) {
+      if (!Array.isArray(list)) continue
+      for (const x of list) {
+        if (x && typeof (x as { id?: unknown }).id === 'string') ids.add((x as { id: string }).id)
+      }
+    }
+    return ids
+  } catch {
+    // Can't tell which records the parked copy needs, so keep them all.
+    return null
+  }
+}
+
 /** Callback invoked after each successful save so the UI can refresh the storage indicator. */
 let _onSaveComplete: (() => void) | null = null
 export function onSaveComplete(cb: (() => void) | null): void {
   _onSaveComplete = cb
 }
 
-/** Save session. Async - writes bases/traces/alignments to IndexedDB, metadata to localStorage. */
-export async function saveSession(theme: string): Promise<void> {
+// ---- What the last save wrote ----
+
+type EditorState = ReturnType<typeof useEditorStore.getState>
+
+interface WrittenTab {
+  /** Bases are unchanged while both the Sequence and its PieceTable version are. */
+  seq: Sequence
+  version: number
+  undo: unknown
+  redo: unknown
+  hasHistory: boolean
+}
+
+/** References to what storage holds, from the last successful save (or the load). */
+interface Written {
+  tabs: Map<string, WrittenTab>
+  traces: Map<string, unknown>
+  alignments: Map<string, unknown>
+}
+
+const emptyWritten = (): Written => ({ tabs: new Map(), traces: new Map(), alignments: new Map() })
+let written = emptyWritten()
+let lastSaveFailed = false
+
+function writtenFrom(state: EditorState): Written {
+  const w = emptyWritten()
+  for (const t of state.tabs) {
+    w.tabs.set(t.id, {
+      seq: t.doc.sequence,
+      version: t.doc.sequence.pieceTable.version,
+      undo: t.undoStack,
+      redo: t.redoStack,
+      hasHistory: t.undoStack.length > 0 || t.redoStack.length > 0,
+    })
+  }
+  for (const r of state.sequencingReads) w.traces.set(r.id, r.data)
+  for (const a of state.alignments) w.alignments.set(a.id, a.doc)
+  for (const c of state.contigs) w.alignments.set(c.id, c.doc)
+  return w
+}
+
+function sameSequence(a: WrittenTab | undefined, b: WrittenTab | undefined): boolean {
+  return !!a && !!b && a.seq === b.seq && a.version === b.version
+}
+
+/**
+ * Record the store as it is now as already in storage. Called right after a
+ * session is restored: what was just read need not be written straight back
+ * (a plate of chromatograms would otherwise be rewritten on every visit).
+ */
+export function markSessionSaved(): void {
+  written = writtenFrom(useEditorStore.getState())
+}
+
+/**
+ * Whether anything that saveSession writes differs between two store states.
+ * The store changes on every caret move, hover and selection; only changes
+ * to saved data should schedule an autosave.
+ */
+export function savedStateChanged(state: EditorState, prev: EditorState): boolean {
+  if (state.tabs !== prev.tabs) {
+    if (state.tabs.length !== prev.tabs.length) return true
+    for (let i = 0; i < state.tabs.length; i++) {
+      const a = state.tabs[i]
+      const b = prev.tabs[i]
+      if (a === b) continue
+      if (
+        a.id !== b.id || a.doc !== b.doc || a.undoStack !== b.undoStack || a.redoStack !== b.redoStack ||
+        a.viewMode !== b.viewMode || a.zoomLevel !== b.zoomLevel || a.hiddenAnnotationIds !== b.hiddenAnnotationIds ||
+        a.showOrfs !== b.showOrfs || a.showEnzymes !== b.showEnzymes || a.showAutoAnnotations !== b.showAutoAnnotations ||
+        a.readOnly !== b.readOnly || a.createdAt !== b.createdAt || a.modifiedAt !== b.modifiedAt
+      ) return true
+    }
+  }
+  const keys: (keyof EditorState)[] = [
+    'activeTabId', 'folders', 'itemMeta', 'tagColors', 'sequencingReads', 'activeSequencingReadIds',
+    'alignments', 'contigs', 'oligos', 'gels', 'activeGelId', 'activeAlignmentId', 'activeContigId',
+    'orfMinCodons', 'orfStartCodons', 'orfAllowInterior',
+    'enzymeSubset', 'enzymeSearchQuery', 'enzymeFilterByCount', 'enzymeMinCuts', 'enzymeMaxCuts',
+  ]
+  return keys.some(k => state[k] !== prev[k])
+}
+
+/**
+ * True while work may not be in storage yet: a save is waiting or running,
+ * or the last one failed (including storage being unavailable).
+ */
+export function hasUnsavedChanges(): boolean {
+  return _timer !== null || saving !== null || lastSaveFailed
+}
+
+/** Save now instead of after the debounce, if a save is waiting. For page hide/close. */
+export function flushSave(theme: string): void {
+  if (_timer === null) return
+  clearTimeout(_timer)
+  _timer = null
+  void saveSession(theme)
+}
+
+/** The save currently writing, if any. */
+let saving: Promise<void> | null = null
+/** One more save requested while `saving` runs; carries the latest theme. */
+let queued: { theme: string; done: Promise<void> } | null = null
+
+/**
+ * Save session. Async - writes bases/traces/alignments to IndexedDB, metadata to localStorage.
+ *
+ * Saves run one at a time. Each is several IndexedDB steps followed by orphan
+ * cleanup and the index write, so two interleaved saves could have the older
+ * one's cleanup delete what the newer one just wrote, or the older index
+ * point at deleted data. A save requested while one runs waits for it, and
+ * however many arrive meanwhile, exactly one more runs, on the state as it is
+ * then.
+ */
+export function saveSession(theme: string): Promise<void> {
+  if (!saving) {
+    saving = writeSession(theme).finally(() => { saving = null })
+    return saving
+  }
+  if (queued) {
+    queued.theme = theme
+    return queued.done
+  }
+  const next = () => {
+    const t = queued!.theme
+    queued = null
+    return saveSession(t)
+  }
+  queued = { theme, done: saving.then(next, next) }
+  return queued.done
+}
+
+async function writeSession(theme: string): Promise<void> {
   const { meta, sequences, traces, alignmentData, undoEntries } = buildSessionData(theme)
+  // Same tick as buildSessionData, so it describes exactly what is written.
+  const next = writtenFrom(useEditorStore.getState())
+  carryUnrestored(meta)
 
   try {
-    if (await checkIdb()) {
-      // Write bases to IndexedDB
-      await saveSequences(sequences)
+    if (!(await checkIdb())) {
+      lastSaveFailed = true
+      notify.error('Your work is not being saved in this browser', {
+        detail: 'Storage is blocked or unavailable here (some private windows do this). Use File → Export session to keep a copy.',
+        key: 'session-save',
+      })
+      return
+    }
+    {
+      // Write only what changed since the last save: a caret move or one
+      // typed base must not rewrite every genome, trace and alignment.
+      const prev = written
+      const dirtySequences = sequences.filter(s => !sameSequence(prev.tabs.get(s.tabId), next.tabs.get(s.tabId)))
+      if (dirtySequences.length > 0) await saveSequences(dirtySequences)
 
-      // Write trace data to IndexedDB
-      if (traces.length > 0) {
-        await saveTraces(traces)
+      const dirtyTraces = traces.filter(t => prev.traces.get(t.readId) !== t.data)
+      if (dirtyTraces.length > 0) await saveTraces(dirtyTraces)
+
+      const dirtyAlignments = alignmentData.filter(a => prev.alignments.get(a.alignId) !== a.data)
+      if (dirtyAlignments.length > 0) await saveAlignments(dirtyAlignments)
+
+      const dirtyUndo = undoEntries.filter(u => {
+        const was = prev.tabs.get(u.tabId)
+        const now = next.tabs.get(u.tabId)
+        return !sameSequence(was, now) || was?.undo !== now?.undo || was?.redo !== now?.redo
+      })
+      if (dirtyUndo.length > 0) await saveUndoHistory(dirtyUndo)
+
+      // A tab whose history is gone must lose its stored history too: on
+      // reload a stored history wins over the stored bases, and would bring
+      // back an older document.
+      const historyGone = [...next.tabs].filter(([id, t]) => !t.hasHistory && prev.tabs.get(id)?.hasHistory !== false).map(([id]) => id)
+      if (historyGone.length > 0) await deleteUndoHistory(historyGone)
+
+      const keeps = cleanupKeeps()
+      if (keeps) {
+        // Clean up orphaned IndexedDB entries (sequences)
+        const currentIds = new Set([...meta.tabs.map(t => t.id), ...keeps])
+        const storedIds = await getAllStoredIds()
+        const orphans = storedIds.filter(id => !currentIds.has(id))
+        if (orphans.length > 0) await deleteSequences(orphans)
+
+        // Clean up orphaned IndexedDB entries (traces)
+        const currentReadIds = new Set([...(meta.sequencingReads ?? []).map(r => r.id), ...keeps])
+        const storedTraceIds = await getAllStoredTraceIds()
+        const traceOrphans = storedTraceIds.filter(id => !currentReadIds.has(id))
+        if (traceOrphans.length > 0) await deleteTraces(traceOrphans)
+
+        // Clean up orphaned IndexedDB entries (alignments)
+        const currentAlignIds = new Set([
+          ...(meta.alignments ?? []).map(a => a.id),
+          ...(meta.contigs ?? []).map(c => c.id),
+          ...keeps,
+        ])
+        const storedAlignIds = await getAllStoredAlignmentIds()
+        const alignOrphans = storedAlignIds.filter(id => !currentAlignIds.has(id))
+        if (alignOrphans.length > 0) await deleteAlignments(alignOrphans)
+
+        // Clean up orphaned IndexedDB entries (undo history)
+        const storedUndoIds = await getAllStoredUndoIds()
+        const undoOrphans = storedUndoIds.filter(id => !currentIds.has(id))
+        if (undoOrphans.length > 0) await deleteUndoHistory(undoOrphans)
       }
-
-      // Write alignment result data to IndexedDB
-      if (alignmentData.length > 0) {
-        await saveAlignments(alignmentData)
-      }
-
-      // Write undo history to IndexedDB
-      if (undoEntries.length > 0) {
-        await saveUndoHistory(undoEntries)
-      }
-
-      // Clean up orphaned IndexedDB entries (sequences)
-      const currentIds = new Set(meta.tabs.map(t => t.id))
-      const storedIds = await getAllStoredIds()
-      const orphans = storedIds.filter(id => !currentIds.has(id))
-      if (orphans.length > 0) await deleteSequences(orphans)
-
-      // Clean up orphaned IndexedDB entries (traces)
-      const currentReadIds = new Set((meta.sequencingReads ?? []).map(r => r.id))
-      const storedTraceIds = await getAllStoredTraceIds()
-      const traceOrphans = storedTraceIds.filter(id => !currentReadIds.has(id))
-      if (traceOrphans.length > 0) await deleteTraces(traceOrphans)
-
-      // Clean up orphaned IndexedDB entries (alignments)
-      const currentAlignIds = new Set([
-        ...(meta.alignments ?? []).map(a => a.id),
-        ...(meta.contigs ?? []).map(c => c.id),
-      ])
-      const storedAlignIds = await getAllStoredAlignmentIds()
-      const alignOrphans = storedAlignIds.filter(id => !currentAlignIds.has(id))
-      if (alignOrphans.length > 0) await deleteAlignments(alignOrphans)
-
-      // Clean up orphaned IndexedDB entries (undo history)
-      const storedUndoIds = await getAllStoredUndoIds()
-      const undoOrphans = storedUndoIds.filter(id => !currentIds.has(id))
-      if (undoOrphans.length > 0) await deleteUndoHistory(undoOrphans)
 
       // Write metadata (without bases/traces/alignment results) to localStorage
       localStorage.setItem(STORAGE_KEY, JSON.stringify(meta))
     }
+    // Only now: if any step failed, the next save must write it all again.
+    written = next
+    lastSaveFailed = false
     _onSaveComplete?.()
   } catch (err) {
+    lastSaveFailed = true
     const quota = err instanceof DOMException && err.name === 'QuotaExceededError'
     // Keyed: autosave retries on a timer, and a browser that is out of room
     // will fail every time. One standing notice, not one per attempt.
@@ -493,6 +724,14 @@ export interface RestoredSession {
   activeContigId?: string | null
   orfParams?: { minCodons: number; startCodons: string[]; allowInterior: boolean }
   enzymeParams?: { subset: string; searchQuery: string; filterByCount: boolean; minCuts: number; maxCuts: number }
+  /** Session import only: what the file named but did not contain. */
+  warnings?: string[]
+}
+
+/** "2 sequencing reads could not be restored (data missing): a, b" */
+function missingWarning(noun: string, names: string[], where: string): string {
+  const plural = names.length === 1 ? noun : `${noun}s`
+  return `${names.length} ${plural} could not be restored (${where}): ${names.join(', ')}`
 }
 
 /**
@@ -528,12 +767,15 @@ function preserveCorruptSession(raw: string): void {
 /** Load session. Async - reads metadata from localStorage, bases from IndexedDB. */
 export async function loadSession(): Promise<RestoredSession | null> {
   loadWarnings = []
+  unrestored = noneUnrestored()
+  cleanupBlocked = false
   let raw: string | null = null
   try {
     raw = localStorage.getItem(STORAGE_KEY)
     if (!raw) return null
     const data: SerializedSessionV2 = JSON.parse(raw)
     if (!data || data.version !== 2 || !Array.isArray(data.tabs)) {
+      cleanupBlocked = true
       preserveCorruptSession(raw)
       loadWarnings.push(
         'Your saved session could not be read (unrecognised format). A copy has been kept: export it from Storage if you need to recover it.',
@@ -543,6 +785,9 @@ export async function loadSession(): Promise<RestoredSession | null> {
 
     return await loadV2(data)
   } catch (err) {
+    // Whatever loadV2 got through, none of it reaches the store.
+    unrestored = noneUnrestored()
+    cleanupBlocked = true
     if (raw) preserveCorruptSession(raw)
     loadWarnings.push(
       `Your saved session could not be restored: ${err instanceof Error ? err.message : String(err)}. A copy of the saved data has been kept.`,
@@ -556,14 +801,14 @@ async function loadV2(data: SerializedSessionV2): Promise<RestoredSession | null
   const tabIds = data.tabs.map(t => t.id)
   let basesMap = new Map<string, string>()
   let undoMap = new Map<string, unknown>()
+  let basesError: string | null = null
 
   try {
     basesMap = await loadSequences(tabIds)
   } catch (err) {
-    // IndexedDB read failed - tabs without bases will be skipped
-    loadWarnings.push(
-      `Sequence data could not be read from storage (${err instanceof Error ? err.message : String(err)}). Affected tabs were not restored.`,
-    )
+    // IndexedDB read failed. The data may well still be there, so the tabs
+    // are kept for the next load rather than dropped (see `unrestored`).
+    basesError = err instanceof Error ? err.message : String(err)
   }
 
   try {
@@ -578,6 +823,10 @@ async function loadV2(data: SerializedSessionV2): Promise<RestoredSession | null
   for (const st of data.tabs) {
     const bases = basesMap.get(st.id)
     if (bases === undefined) {
+      if (basesError !== null) {
+        unrestored.tabs.push(st)
+        continue
+      }
       // bases lost - skip this tab, but remember it so the user is told which
       droppedTabs.push(st.doc?.name ?? st.id)
       continue
@@ -588,7 +837,17 @@ async function loadV2(data: SerializedSessionV2): Promise<RestoredSession | null
     let undoStack: UndoSnapshot[] | undefined
     let redoStack: UndoSnapshot[] | undefined
 
-    if (undoData && undoData.original !== undefined && undoData.currentTree) {
+    // Stored history is only trusted when it reproduces the stored bases: one
+    // left behind by an older save would otherwise bring back an old document.
+    const historyMatches = (h: SerializedUndoHistory) => {
+      try {
+        const pt = PieceTable.fromBuffers(h.original, h.add, h.currentTree)
+        return pt.length === bases.length && pt.toString() === bases
+      } catch {
+        return false
+      }
+    }
+    if (undoData && undoData.original !== undefined && undoData.currentTree && historyMatches(undoData)) {
       // Reconstruct PieceTable from saved buffers so undo snapshots remain valid
       try {
         const pt = PieceTable.fromBuffers(undoData.original, undoData.add, undoData.currentTree)
@@ -635,17 +894,27 @@ async function loadV2(data: SerializedSessionV2): Promise<RestoredSession | null
       `${droppedTabs.length} saved ${droppedTabs.length === 1 ? 'sequence' : 'sequences'} could not be restored (data missing from storage): ${droppedTabs.join(', ')}`,
     )
   }
+  if (unrestored.tabs.length > 0) {
+    const n = unrestored.tabs.length
+    loadWarnings.push(
+      `${n} saved ${n === 1 ? 'sequence' : 'sequences'} could not be read from storage (${basesError}): ${unrestored.tabs.map(t => t.doc?.name ?? t.id).join(', ')}. ${n === 1 ? 'It has' : 'They have'} been kept and will be tried again when SeqNexus is next opened.`,
+    )
+  }
 
   // Restore sequencing reads from IndexedDB traces
   const seqReads: RestoredSeqRead[] = []
   const serializedReads = data.sequencingReads ?? []
+  const lostReads: string[] = []
   if (serializedReads.length > 0) {
     try {
       const readIds = serializedReads.map(r => r.id)
       const tracesMap = await loadTraces(readIds)
       for (const sr of serializedReads) {
         const traceData = tracesMap.get(sr.id) as Ab1Data | undefined
-        if (!traceData) continue // trace data lost - skip
+        if (!traceData) {
+          lostReads.push(sr.name)
+          continue
+        }
         seqReads.push({
           id: sr.id,
           data: { ...traceData, name: sr.name },
@@ -657,9 +926,12 @@ async function loadV2(data: SerializedSessionV2): Promise<RestoredSession | null
         })
       }
     } catch (err) {
-      // trace load failed - sequencing reads won't be restored
+      // Trace load failed. Keep the reads for the next load (see `unrestored`).
+      seqReads.length = 0
+      unrestored.reads = serializedReads
+      const n = serializedReads.length
       loadWarnings.push(
-        `${serializedReads.length} sequencing ${serializedReads.length === 1 ? 'read' : 'reads'} could not be restored (${err instanceof Error ? err.message : String(err)}).`,
+        `${n} sequencing ${n === 1 ? 'read' : 'reads'} could not be read from storage (${err instanceof Error ? err.message : String(err)}). ${n === 1 ? 'It has' : 'They have'} been kept and will be tried again when SeqNexus is next opened.`,
       )
     }
   }
@@ -667,20 +939,33 @@ async function loadV2(data: SerializedSessionV2): Promise<RestoredSession | null
   // Restore alignments from IndexedDB
   const alignments: SavedAlignment[] = []
   const serializedAligns = data.alignments ?? []
+  const lostAlignments: string[] = []
   if (serializedAligns.length > 0) {
     try {
       const alignIds = serializedAligns.map(a => a.id)
       const alignMap = await loadAlignments(alignIds)
       for (const sa of serializedAligns) {
         const raw = alignMap.get(sa.id)
-        if (!raw) continue // data lost - skip
+        if (!raw) {
+          lostAlignments.push(sa.name)
+          continue
+        }
         const aln = restoreAlignment(sa, raw)
         if (aln) alignments.push(aln)
       }
-    } catch {
-      // alignment load failed - alignments won't be restored
+    } catch (err) {
+      // Alignment load failed. Keep them for the next load (see `unrestored`).
+      alignments.length = 0
+      unrestored.alignments = serializedAligns
+      const n = serializedAligns.length
+      loadWarnings.push(
+        `${n} ${n === 1 ? 'alignment' : 'alignments'} could not be read from storage (${err instanceof Error ? err.message : String(err)}). ${n === 1 ? 'It has' : 'They have'} been kept and will be tried again when SeqNexus is next opened.`,
+      )
     }
   }
+
+  if (lostReads.length > 0) loadWarnings.push(missingWarning('sequencing read', lostReads, 'data missing from storage'))
+  if (lostAlignments.length > 0) loadWarnings.push(missingWarning('alignment', lostAlignments, 'data missing from storage'))
 
   // Restore contigs from IndexedDB. Contigs from before the assembly rebuild
   // (built from read alignments) cannot be shown any more and are dropped.
@@ -694,7 +979,11 @@ async function loadV2(data: SerializedSessionV2): Promise<RestoredSession | null
         if (c) contigs.push(c)
       }
     } catch {
-      loadWarnings.push(`${savedContigs.length} ${savedContigs.length === 1 ? 'contig' : 'contigs'} could not be restored.`)
+      // Keep them for the next load (see `unrestored`).
+      contigs.length = 0
+      unrestored.contigs = savedContigs
+      const n = savedContigs.length
+      loadWarnings.push(`${n} ${n === 1 ? 'contig' : 'contigs'} could not be read from storage. ${n === 1 ? 'It has' : 'They have'} been kept and will be tried again when SeqNexus is next opened.`)
     }
   }
   const legacy = (data.readAlignments?.length ?? 0) + (data.contigs ?? []).filter(c => c.readAlignmentIds).length
@@ -704,10 +993,13 @@ async function loadV2(data: SerializedSessionV2): Promise<RestoredSession | null
 
   // Clean up orphaned IndexedDB entries
   try {
-    const currentIds = new Set(tabIds)
-    const storedIds = await getAllStoredIds()
-    const orphans = storedIds.filter(id => !currentIds.has(id))
-    if (orphans.length > 0) await deleteSequences(orphans)
+    const keeps = cleanupKeeps()
+    if (keeps) {
+      const currentIds = new Set([...tabIds, ...keeps])
+      const storedIds = await getAllStoredIds()
+      const orphans = storedIds.filter(id => !currentIds.has(id))
+      if (orphans.length > 0) await deleteSequences(orphans)
+    }
   } catch {
     // best-effort cleanup
   }
@@ -763,6 +1055,10 @@ export function scheduleSave(theme: string): void {
 
 /** Clear all persisted session data (both localStorage and IndexedDB). */
 export async function clearSavedSession(): Promise<void> {
+  // A save still writing would put back what is about to be cleared.
+  await (queued?.done ?? saving)
+  unrestored = noneUnrestored()
+  written = emptyWritten()
   localStorage.removeItem(STORAGE_KEY)
   try {
     if (await checkIdb()) await idbClearAll()
@@ -921,6 +1217,9 @@ function parseSessionEnvelope(json: string): SessionExportEnvelope {
  * Returns a RestoredSession ready to be applied to the store.
  */
 export function importSessionFromJson(json: string): RestoredSession {
+  // restoreAlignment and deserializeGels report into loadWarnings.
+  loadWarnings = []
+  const lost = { sequences: [] as string[], reads: [] as string[], alignments: [] as string[] }
   const envelope = parseSessionEnvelope(json)
   const data = envelope.session
 
@@ -950,7 +1249,10 @@ export function importSessionFromJson(json: string): RestoredSession {
   const tabs: RestoredSession['tabs'] = []
   for (const st of data.tabs) {
     const bases = basesMap.get(st.id)
-    if (bases === undefined) continue
+    if (bases === undefined) {
+      lost.sequences.push(st.doc?.name ?? st.id)
+      continue
+    }
     const fullSnap: DocumentSnapshot = { ...st.doc, bases }
     const doc = restore(fullSnap)
     tabs.push({
@@ -967,7 +1269,10 @@ export function importSessionFromJson(json: string): RestoredSession {
   const seqReads: RestoredSeqRead[] = []
   for (const sr of data.sequencingReads ?? []) {
     const traceData = tracesMap.get(sr.id)
-    if (!traceData) continue
+    if (!traceData) {
+      lost.reads.push(sr.name)
+      continue
+    }
     seqReads.push({
       id: sr.id,
       data: { ...traceData, name: sr.name },
@@ -982,7 +1287,10 @@ export function importSessionFromJson(json: string): RestoredSession {
   const alignments: SavedAlignment[] = []
   for (const sa of data.alignments ?? []) {
     const raw = alignMap.get(sa.id)
-    if (!raw) continue
+    if (!raw) {
+      lost.alignments.push(sa.name)
+      continue
+    }
     const aln = restoreAlignment(sa, raw)
     if (aln) alignments.push(aln)
   }
@@ -1013,6 +1321,12 @@ export function importSessionFromJson(json: string): RestoredSession {
     activeContigId: data.activeContigId ?? null,
     orfParams: data.orfParams,
     enzymeParams: data.enzymeParams,
+    warnings: [
+      ...(lost.sequences.length > 0 ? [missingWarning('sequence', lost.sequences, 'not in the file')] : []),
+      ...(lost.reads.length > 0 ? [missingWarning('sequencing read', lost.reads, 'not in the file')] : []),
+      ...(lost.alignments.length > 0 ? [missingWarning('alignment', lost.alignments, 'not in the file')] : []),
+      ...consumeLoadWarnings(),
+    ],
   }
 }
 

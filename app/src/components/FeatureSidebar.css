@@ -74,6 +74,18 @@
   font-weight: 500;
 }
 
+/* Same badge as the cloning dialog: the feature was cut at a junction. */
+.ft-truncated {
+  font-size: var(--text-2xs);
+  font-weight: 600;
+  color: var(--warning);
+  background: var(--warning-bg);
+  border: 1px solid color-mix(in srgb, var(--warning) 30%, transparent);
+  border-radius: var(--radius-xs);
+  padding: 0 var(--space-1);
+  white-space: nowrap;
+}
+
 .ft-type-badge {
   font-size: var(--text-xs);
   padding: var(--space-0-5) var(--space-1);

@@ -23,7 +23,10 @@ const CodonOptimizeModal = lazy(() => import('./components/CodonOptimizeModal'))
 const GelWorkspace = lazy(() => import('./components/gel/GelWorkspace'))
 import { useEditorStore, isOriginSpanningSelection, selectionSegments, type SequencingRead } from './store'
 import { editedRead, toFasta, toFastq } from './sanger/edits'
-import { displayPosition, internalPosition } from './models/Document'
+import { displayPosition, internalPosition, type DocumentState } from './models/Document'
+import { Sequence } from './models/Sequence'
+import { readFasta } from './io/fasta'
+import ConfirmDialog from './components/ConfirmDialog'
 import { parseGenBankMulti, writeGenBank } from './io/genbank'
 import { parseGenbankFile } from './workers/genbank-parser'
 import { parseSnapGene, writeSnapGene } from './io/snapgene'
@@ -78,10 +81,6 @@ const AssembleDialog = lazy(() => import('./components/contig/AssembleDialog'))
 import type { AlnDoc } from './msa/model'
 import { contigToAlignment } from './assembly/export'
 import { ALIGNMENT_ONLY_EXTENSIONS, ALN_EXTENSIONS, detectFormat, fastaLooksAligned, readAlignment, writeAlignment, type AlnFormatId } from './msa/formats'
-
-
-
-const DEMO_SEQUENCE = 'ATGACCATGATTACGCCAAGCTTGCATGCCTGCAGGTCGACTCTAGAGGATCCCGGGTACCGAGCTCGAATTCGTAATCATGGTCATAGCTGTTTCCTGTGTGAAATTGTTATCCGCTCACAATTCCACACAACATACGAGCCGGAAGCATAAAGTGTAAAGCCTGGGGTGCCTAATGAGTGAGCTAACTCACATTAATTGCGTTGCGCTCACTGCCCGCTTTCCAGTCGGGAAACCTGTCGTGCCAGCTGCATTAATGAATCGGCCAACGCGCGGGGAGAGGCGGTTTGCGTATTGGGCGCTCTTCCGCTTCCTCGCTCACTGACTCGCTGCGCTCGGTCGTTCGGCTGCGGCGAGCGGTATCAGCTCACTCAAAGGCGGTAATACGGTTATCCACAGAATCAGGGGATAACGCAGGAAAGAACATGTGAGCAAAAGGCCAGCAAAAGGCCAGGAACCGTAAAAAGGCCGCGTTGCTGGCGTTTTTCCATAGGCTCCGCCCCCCTGACGAGCATCACAAAAATCGACGCTCAAGTCAGAGGTGGCGAAACCCGACAGGACTATAAAGATACCAGGCGTTTCCCCCTGGAAGCTCCCTCGTGCGCTCTCCTGTTCCGACCCTGCCGCTTACCGGATACCTGTCCGCCTTTCTCCCTTCGGGAAGCGTGGCGCTTTCTCATAGCTCACGCTGTAGGTATCTCAGTTCGGTGTAGGTCGTTCGCTCCAAGCTGGGCTGTGTGCACGAACCCCCCGTTCAGCCCGACCGCTGCGCCTTATCCGGTAACTATCGTCTTGAGTCCAACCCGGTAAGACACGACTTATCGCCACTGGCAGCAGCCACTGGTAACAGGATTAGCAGAGCGAGGTATGTAGGCGGTGCTACAGAGTTCTTGAAGTGGTGGCCTAACTACGGCTACACTAGAAGAACAGTATTTGGTATCTGCGCTCTGCTGAAGCCAGTTACCTTCGGAAAAAGAGTTGGTAGCTCTTGATCCGGCAAACAAACCACCGCTGGTAGCGGTGGTTTTTTTGTTTGCAAGCAGCAGATTACGCGCAGAAAAAAAGGATCTCAAGAAGATCCTTTGATCTTTTCTACGGGGTCTGACGCTCAGTGGAACGAAAACTCACGTTAAGGGATTTTGGTCATGAGATTATCAAAAAGGATCTTCACCTAGATCCTTTTAAATTAAAAATGAAGTTTTAAATCAATCTAAAGTATATATGAGTAAACTTGGTCTGACAGTTACCAATGCTTAATCAGTGAGGCACCTATCTCAGCGATCTGTCTATTTCGTTCATCCATAGTTGCCTGACTCCCCGTCGTGTAGATAACTACGATACGGGAGGGCTTACCATCTGGCCCCAGTGCTGCAATGATACCGCGAGACCCACGCTCACCGGCTCCAGATTTATCAGCAATAAACCAGCCAGCCGGAAGGGCCGAGCGCAGAAGTGGTCCTGCAACTTTATCCGCCTCCATCCAGTCTATTAATTGTTGCCGGGAAGCTAGAGTAAGTAGTTCGCCAGTTAATAGTTTGCGCAACGTTGTTGCCATTGCTACAGGCATCGTGGTGTCACGCTCGTCGTTTGGTATGGCTTCATTCAGCTCCGGTTCCCAACGATCAAGGCGAGTTACATGATCCCCCATGTTGTGCAAAAAAGCGGTTAGCTCCTTCGGTCCTCCGATCGTTGTCAGAAGTAAGTTGGCCGCAGTGTTATCACTCATGGTTATGGCAGCACTGCATAATTCTCTTACTGTCATGCCATCCGTAAGATGCTTTTCTGTGACTGGTGAGTACTCAACCAAGTCATTCTGAGAATAGTGTATGCGGCGACCGAGTTGCTCTTGCCCGGCGTCAATACGGGATAATACCGCGCCACATAGCAGAACTTTAAAAGTGCTCATCATTGGAAAACGTTCTTCGGGGCGAAAACTCTCAAGGATCTTACCGCTGTTGAGATCCAGTTCGATGTAACCCACTCGTGCACCCAACTGATCTTCAGCATCTTTTACTTTCACCAGCGTTTCTGGGTGAGCAAAAACAGGAAGGCAAAATGCCGCAAAAAAGGGAATAAGGGCGACACGGAAATGTTGAATACTCATACTCTTCCTTTTTCAATATTATTGAAGCATTTATCAGGGTTATTGTCTCATGAGCGGATACATATTTGAATGTATTTAGAAAAATAAACAAATAGGGGTTCCGCGCACATTTCCCCGAAAAGTGCCACCTGACGTCTAAGAAACCATTATTATCATGACATTAACCTATAAAAATAGGCGTATCACGAGGCCCTTTCGTCTCGCGCGTTTCGGTGATGACGGTGAAAACCTCTGACACATGCAGCTCCCGGAGACGGTCACAGCTTGTCTGTAAGCGGATGCCGGGAGCAGACAAGCCCGTCAGGGCGCGTCAGCGGGTGTTGGCGGGTGTCGGGGCTGGCTTAACTATGCGGCATCAGAGCAGATTGTACTGAGAGTGCACCATATGCGGTGTGAAATACCGCACAGATGCGTAAGGAGAAAATACCGCATCAGGCGCCATTCGCCATTCAGGCTGCGCAACTGTTGGGAAGGGCGATCGGTGCGGGCCTCTTCGCTATTACGCCAGCTGGCGAAAGGGGGATGTGCTGCAAGGCGATTAAGTTGGGTAACGCCAGGGTTTTCCCAGTCACGACGTTGTAAAACGACGGCCAGTGAATTCGAGCTCGGTACCCGGGGATCCTCTAGAGTCGACCTGCAGGCATGCAAGCTTGGCGTAATCATGGTCAT'
 
 export type ThemeName =
   | 'light' | 'dark' | 'midnight' | 'solarized' | 'nature'
@@ -147,6 +146,23 @@ const ALN_EXPORT_FORMAT: Partial<Record<string, AlnFormatId>> = {
 /** Parser and reader failures, reduced to something fit for a detail line. */
 const errorDetail = (err: unknown): string | undefined =>
   err instanceof Error ? err.message : err ? String(err) : undefined
+
+/** Things a session file named but did not contain. */
+function reportImportWarnings(warnings: string[] | undefined): void {
+  if (!warnings || warnings.length === 0) return
+  notify.warning('Some items in the session file could not be imported', { detail: warnings.join('\n') })
+}
+
+/** One standing notice for features a GenBank import couldn't take in as written. */
+function reportGenBankWarnings(source: string, warnings: string[]): void {
+  if (warnings.length === 0) return
+  const shown = warnings.slice(0, 5).join('\n')
+  const more = warnings.length > 5 ? `\n…and ${warnings.length - 5} more` : ''
+  notify.warning(
+    `${warnings.length} ${warnings.length === 1 ? 'feature' : 'features'} in "${source}" could not be read exactly as written`,
+    { detail: shown + more },
+  )
+}
 
 /**
  * Confirm an export, but only if something was actually written.
@@ -618,7 +634,7 @@ export default function App() {
   const [contigSearchOpen, setContigSearchOpen] = useState(false)
 
   // Session persistence (save/restore/beforeunload)
-  const { storageRefreshKey, sessionLoadWarnings } = useSessionPersistence(theme, setTheme as (t: string) => void, openDocument, DEMO_SEQUENCE)
+  const { storageRefreshKey, sessionLoadWarnings } = useSessionPersistence(theme, setTheme as (t: string) => void)
 
   // Close popovers/dropdowns on outside click
   usePopoverDismiss(fileMenuOpen, () => setFileMenuOpen(false), fileMenuRef)
@@ -704,7 +720,30 @@ export default function App() {
       notify.error(`Could not read "${fileName}"`, { detail: errorDetail(err) })
     }
   }, [addAlignment])
-  const DNA_CHARS = /^[ATGCNRYSWKMBDHVatgcnryswkmbdhv\s\n\r>;\-]+$/
+  const DNA_CHARS = /^[ATGCUNRYSWKMBDHVatgcunryswkmbdhv\s\n\r>;-]+$/
+
+  /**
+   * A file with more records than this asks before opening: each record is a
+   * tab, and a FASTQ of tens of thousands of reads would freeze the page.
+   */
+  const MANY_RECORDS = 200
+  const [manyRecords, setManyRecords] = useState<{ source: string; count: number; open: (n: number) => void } | null>(null)
+  const openRecordsAsking = useCallback((source: string, count: number, open: (n: number) => void) => {
+    if (count <= MANY_RECORDS) open(count)
+    else setManyRecords({ source, count, open })
+  }, [])
+
+  /** Open records as tabs, several of them in one folder. */
+  const openDocsInFolder = useCallback((docs: DocumentState[], source: string, folderName: string, noun = 'sequences') => {
+    openRecordsAsking(source, docs.length, n => {
+      const tabIds = docs.slice(0, n).map(d => openDocumentState(d))
+      if (tabIds.length > 1) {
+        const folderId = useEditorStore.getState().createFolder(folderName)
+        for (const id of tabIds) useEditorStore.getState().moveTabToFolder(id, folderId)
+        notify.success(`Opened ${tabIds.length.toLocaleString()} ${noun} from "${source}"`)
+      }
+    })
+  }, [openRecordsAsking, openDocumentState])
 
   const [parseProgress, setParseProgress] = useState<{ bytesRead: number; totalBytes: number } | null>(null)
 
@@ -743,15 +782,9 @@ export default function App() {
       // GenBank - streaming parser for large files (supports multi-record)
       setParseProgress({ bytesRead: 0, totalBytes: file.size })
       parseGenbankFile(file, (p) => setParseProgress(p))
-        .then((docs) => {
-          const tabIds: string[] = []
-          for (const d of docs) tabIds.push(openDocumentState(d))
-          if (docs.length > 1) {
-            const folderName = file.name.replace(/\.[^.]+$/, '')
-            const folderId = useEditorStore.getState().createFolder(folderName)
-            for (const id of tabIds) useEditorStore.getState().moveTabToFolder(id, folderId)
-            notify.success(`Opened ${docs.length} sequences from "${file.name}"`)
-          }
+        .then(({ docs, warnings }) => {
+          reportGenBankWarnings(file.name, warnings)
+          openDocsInFolder(docs, file.name, file.name.replace(/\.[^.]+$/, ''))
           setParseProgress(null)
         })
         .catch((err) => {
@@ -807,19 +840,13 @@ export default function App() {
           return
         }
 
-        const tabIds = records.map(rec =>
-          openDocument(
-            rec.name || defaultName,
-            rec.bases,
-            'linear',
-            `FASTQ read · ${rec.bases.length} bp · mean Q${meanQuality(rec.qualityScores)}`,
-          ),
-        )
-        if (records.length > 1) {
-          const folderId = useEditorStore.getState().createFolder(defaultName)
-          for (const id of tabIds) useEditorStore.getState().moveTabToFolder(id, folderId)
-          notify.success(`Opened ${records.length} reads from "${file.name}"`)
-        }
+        const docs: DocumentState[] = records.map(rec => ({
+          name: rec.name || defaultName,
+          description: `FASTQ read · ${rec.bases.length} bp · mean Q${meanQuality(rec.qualityScores)}`,
+          sequence: new Sequence(rec.bases, 'linear'),
+          annotations: [],
+        }))
+        openDocsInFolder(docs, file.name, defaultName, 'reads')
       }
       reader.onerror = () => notify.error(`Could not read "${file.name}"`)
       reader.readAsText(file)
@@ -832,55 +859,51 @@ export default function App() {
           openAlignmentFile(text, file.name)
           return
         }
-        // Validate content looks like sequence data (skip for FASTA/GenBank)
-        if (text.length > 0 && !DNA_CHARS.test(text) && !text.startsWith('LOCUS') && !text.startsWith('>')) {
+        const defaultName = file.name.replace(/\.[^.]+$/, '')
+
+        // GenBank text, whatever the extension (.txt, .seq): read it as
+        // GenBank, not as FASTA where every header line became "bases".
+        if (text.trimStart().startsWith('LOCUS')) {
+          const warnings: string[] = []
+          const docs = parseGenBankMulti(text, warnings)
+          reportGenBankWarnings(file.name, warnings)
+          openDocsInFolder(docs, file.name, defaultName)
+          return
+        }
+
+        // Validate content looks like sequence data (skip for FASTA)
+        if (text.length > 0 && !DNA_CHARS.test(text) && !text.trimStart().startsWith('>')) {
           notify.error(`"${file.name}" does not look like sequence data`, { detail: 'Expected DNA or RNA bases, FASTA, or GenBank.' })
           return
         }
 
-        // Parse multi-record FASTA: split on '>' headers
-        const records: { name: string; bases: string }[] = []
-        const defaultName = file.name.replace(/\.[^.]+$/, '')
-        let currentName = defaultName
-        let currentBases = ''
-
-        for (const line of text.split(/\r?\n/)) {
-          if (line.startsWith('>')) {
-            // Flush previous record
-            if (currentBases) {
-              records.push({ name: currentName, bases: currentBases.toUpperCase() })
-            }
-            currentName = line.slice(1).trim().split(/\s+/)[0] || defaultName
-            currentBases = ''
-          } else if (!line.startsWith(';')) {
-            currentBases += line.replace(/[\s\-]/g, '')
-          }
+        const { records, proteins, unreadable } = readFasta(text, defaultName, /\.faa$/i.test(file.name))
+        if (proteins.length > 0) {
+          notify.warning(
+            `${proteins.length === 1 ? 'A protein sequence' : `${proteins.length} protein sequences`} in "${file.name}" ${proteins.length === 1 ? 'was' : 'were'} not opened`,
+            { detail: `Protein sequences aren't supported yet: ${proteins.slice(0, 5).join(', ')}${proteins.length > 5 ? ', …' : ''}` },
+          )
         }
-        // Flush last record
-        if (currentBases) {
-          records.push({ name: currentName, bases: currentBases.toUpperCase() })
+        if (unreadable.length > 0) {
+          notify.warning(`${unreadable.length} record${unreadable.length === 1 ? '' : 's'} in "${file.name}" could not be read`, {
+            detail: `They contain characters that are not sequence codes: ${unreadable.slice(0, 5).join(', ')}${unreadable.length > 5 ? ', …' : ''}`,
+          })
         }
-
         if (records.length === 0) {
-          notify.error(`No sequence data found in "${file.name}"`)
+          if (proteins.length === 0 && unreadable.length === 0) notify.error(`No sequence data found in "${file.name}"`)
           return
         }
 
-        const tabIds: string[] = []
-        for (const rec of records) {
-          tabIds.push(openDocument(rec.name, rec.bases))
-        }
-        if (records.length > 1) {
-          const folderName = file.name.replace(/\.[^.]+$/, '')
-          const folderId = useEditorStore.getState().createFolder(folderName)
-          for (const id of tabIds) useEditorStore.getState().moveTabToFolder(id, folderId)
-          notify.success(`Opened ${records.length} sequences from "${file.name}"`)
-        }
+        openDocsInFolder(
+          records.map(rec => ({ name: rec.name, sequence: new Sequence(rec.bases, 'linear'), annotations: [] })),
+          file.name,
+          defaultName,
+        )
       }
       reader.onerror = () => notify.error(`Could not read "${file.name}"`)
       reader.readAsText(file)
     }
-  }, [openDocument, openDocumentState, openAlignmentFile])
+  }, [openDocumentState, openAlignmentFile, openDocsInFolder])
 
   /**
    * Open several files. Sanger traces are imported together, so a plate
@@ -927,7 +950,9 @@ export default function App() {
       if (!text.trim()) return
       if (text.trimStart().startsWith('LOCUS')) {
         // Multi-record GenBank
-        const docs = parseGenBankMulti(text)
+        const warnings: string[] = []
+        const docs = parseGenBankMulti(text, warnings)
+        reportGenBankWarnings('clipboard', warnings)
         const tabIds: string[] = []
         for (const d of docs) {
           tabIds.push(openDocumentState({ ...d, metadata: { ...d.metadata, origin: 'paste' } }))
@@ -1032,11 +1057,13 @@ export default function App() {
     setSessionImportData(null)
     sessionImportParsedRef.current = null
     notify.success(`Replaced session (${session.tabs.length} sequences)`)
+    reportImportWarnings(session.warnings)
   }, [])
 
   const handleSessionMerge = useCallback(() => {
     let session = sessionImportParsedRef.current
     if (!session) return
+    const warnings = session.warnings
     session = remapSessionIds(session)
     const { mergeSession } = useEditorStore.getState()
     mergeSession(
@@ -1050,6 +1077,7 @@ export default function App() {
     setSessionImportData(null)
     sessionImportParsedRef.current = null
     notify.success(`Merged ${session.tabs.length} sequences into session`)
+    reportImportWarnings(warnings)
   }, [])
 
   /** Determine the kind of the currently active/viewed item. */
@@ -1351,7 +1379,7 @@ export default function App() {
     { id: 'import-file', label: 'Import File…', group: 'File', icon: FileUp, keywords: 'open load genbank fasta', run: () => fileInputRef.current?.click() },
     { id: 'import-folder', label: 'Import Folder…', group: 'File', icon: FolderUp, run: () => folderInputRef.current?.click() },
     { id: 'import-clipboard', label: 'Import from Clipboard', group: 'File', icon: ClipboardPaste, run: handleImportClipboard },
-    { id: 'fetch', label: 'Fetch from NCBI or Addgene…', group: 'File', icon: Globe, keywords: 'download accession', run: () => setFetchModalOpen(true) },
+    { id: 'fetch', label: 'Fetch from NCBI…', group: 'File', icon: Globe, keywords: 'download accession', run: () => setFetchModalOpen(true) },
     { id: 'export', label: 'Export…', group: 'File', icon: Save, shortcut: `${mod}⇧S`, disabled: noDoc, run: () => { setBulkExportItems({}); setExportModalOpen(true) } },
     { id: 'session-export', label: 'Export Session', group: 'File', run: () => setSessionExportOpen(true) },
     { id: 'session-import', label: 'Import Session', group: 'File', run: () => sessionImportInputRef.current?.click() },
@@ -1466,7 +1494,7 @@ export default function App() {
               </button>
               <button className="file-menu-item" role="menuitem" onClick={() => { setFetchModalOpen(true); setFileMenuOpen(false) }}>
                 <span className="file-menu-icon"><Globe size={14} /></span>
-                Import from NCBI / Addgene…
+                Import from NCBI…
               </button>
               <div className="file-menu-sep" />
               <button className="file-menu-item" role="menuitem" onClick={() => {
@@ -2286,6 +2314,24 @@ export default function App() {
           if (!useEditorStore.getState().showOrfs) {
             useEditorStore.getState().toggleOrfs()
           }
+        }}
+      />
+
+      <ConfirmDialog
+        open={manyRecords !== null}
+        title={`Open ${manyRecords?.count.toLocaleString() ?? ''} records?`}
+        message={`"${manyRecords?.source ?? ''}" holds ${manyRecords?.count.toLocaleString() ?? ''} records. Each opens as its own tab, and thousands of tabs can make the page unresponsive.`}
+        buttons={[
+          { label: 'Cancel', value: 'cancel' },
+          { label: `Open all ${manyRecords?.count.toLocaleString() ?? ''}`, value: 'all' },
+          { label: `Open the first ${MANY_RECORDS}`, value: 'first', variant: 'primary' },
+        ]}
+        onResult={value => {
+          const pending = manyRecords
+          setManyRecords(null)
+          if (!pending) return
+          if (value === 'first') pending.open(MANY_RECORDS)
+          else if (value === 'all') pending.open(pending.count)
         }}
       />
 

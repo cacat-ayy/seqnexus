@@ -60,7 +60,11 @@ function codonStartOffset(ann: Annotation): number {
  * one the source record declared.
  */
 export function annotationCodingBases(ann: Annotation, sequence: Sequence): string {
-  const bases = annotationBases(ann, sequence)
+  // A spliced feature is read through its exons only, never its introns.
+  // (Copying a feature's bases still gives the whole span.)
+  const bases = ann.segments
+    ? ann.segments.map(([s, e]) => sequence.basesIn(s, e)).join('')
+    : annotationBases(ann, sequence)
   const oriented = ann.strand === -1 ? reverseComplement(bases) : bases
   return oriented.slice(codonStartOffset(ann))
 }

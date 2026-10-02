@@ -59,13 +59,17 @@ export default function ORFPanel({ open, onClose }: Props) {
   const minCodons = minCodonsInput
 
   const topology = sequence.topology
+  // Stops come from the genetic code chosen for translations, so ORFs in a
+  // mitochondrial sequence end where its proteins do.
+  const geneticCode = useEditorStore(s => s.translationCodeId)
   const options: ORFOptions = useMemo(() => ({
     minCodons,
     maxCodons: 0,
     startCodons,
     allowInterior,
     topology,
-  }), [minCodons, startCodons, allowInterior, topology])
+    geneticCode,
+  }), [minCodons, startCodons, allowInterior, topology, geneticCode])
 
   // Scan for ORFs asynchronously in a Web Worker
   useEffect(() => {

@@ -23,18 +23,6 @@
   box-sizing: border-box;
 }
 
-.fetch-source-row {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-  margin-bottom: var(--space-4);
-}
-
-.fetch-source-label {
-  font-size: var(--text-xs);
-  color: var(--text-muted);
-}
-
 /* Loading state */
 .fetch-loading {
   display: flex;
@@ -66,7 +54,7 @@
   line-height: 1.4;
 }
 
-/* Auto-detected source hint */
+/* Hint under the input */
 .fetch-auto-hint {
   font-size: var(--text-xs);
   color: var(--text-muted);

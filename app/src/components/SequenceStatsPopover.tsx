@@ -8,7 +8,7 @@ import { useMemo, useRef, useEffect, useState } from 'react'
 import { X, ChevronRight, ChevronDown } from 'lucide-react'
 import { useEditorStore } from '../store'
 import type { Annotation } from '../models/Annotation'
-import { CODON_TABLE } from '../utils/codon'
+import { codonUsage } from '../utils/codon-usage'
 
 const AA_NAMES: Record<string, string> = {
   A:'Ala',C:'Cys',D:'Asp',E:'Glu',F:'Phe',G:'Gly',H:'His',I:'Ile',
@@ -114,31 +114,6 @@ function annotationTypeCounts(annotations: Annotation[]): Map<string, number> {
   return counts
 }
 
-/** Build codon usage from CDS annotations. */
-function codonUsage(annotations: Annotation[], bases: string): Map<string, { aa: string; count: number }> | null {
-  const cdsAnns = annotations.filter(a => a.type === 'CDS' && !a.id.startsWith('_orf_'))
-  if (cdsAnns.length === 0) return null
-
-  const counts = new Map<string, { aa: string; count: number }>()
-  for (const ann of cdsAnns) {
-    let seq: string
-    if (ann.start <= ann.end) {
-      seq = bases.slice(ann.start, ann.end)
-    } else {
-      seq = bases.slice(ann.start) + bases.slice(0, ann.end)
-    }
-    seq = seq.toUpperCase()
-    for (let i = 0; i + 2 < seq.length; i += 3) {
-      const codon = seq.slice(i, i + 3)
-      const aa = CODON_TABLE[codon] ?? '?'
-      const entry = counts.get(codon)
-      if (entry) entry.count++
-      else counts.set(codon, { aa, count: 1 })
-    }
-  }
-  return counts.size > 0 ? counts : null
-}
-
 // --- Component ---
 
 interface Props {
@@ -187,9 +162,9 @@ export default function SequenceStatsPopover({ anchorRef, onClose }: Props) {
     const coverage = annotationCoverage(doc.annotations, seqLen)
     const typeCounts = annotationTypeCounts(doc.annotations)
     const totalAnns = Array.from(typeCounts.values()).reduce((a, b) => a + b, 0)
-    const codons = codonUsage(doc.annotations, bases)
+    const codons = codonUsage(doc.annotations, doc.sequence)
     return { counts, gc, at, mw, tm, ext, coverage, typeCounts, totalAnns, codons }
-  }, [bases, seqLen, isDs, doc.annotations])
+  }, [bases, seqLen, isDs, doc.annotations, doc.sequence])
 
   // Position popover above the anchor button
   const anchorRect = anchorRef.current?.getBoundingClientRect()

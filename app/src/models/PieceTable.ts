@@ -172,9 +172,12 @@ function deleteRange(node: PTNode | null, start: number, count: number): PTNode 
     if (pieceStart === 0 && delInPiece === node.piece.length) {
       // Entire piece deleted - remove this node
       remaining -= delInPiece
+      // The rest of the deletion starts right after the left subtree. Take its
+      // size before merging: merge() rebalances node.right in place.
+      const at = nodeSize(node.left)
       const merged = merge(node.left, node.right)
       if (remaining > 0 && merged) {
-        return deleteRange(merged, nodeSize(merged) - nodeSize(node.right), remaining)
+        return deleteRange(merged, at, remaining)
       }
       return merged
     } else if (pieceStart === 0) {

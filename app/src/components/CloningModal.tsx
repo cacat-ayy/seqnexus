@@ -16,7 +16,7 @@ import { Annotation } from '../models/Annotation'
 import type { DocumentState, SequenceMetadata } from '../models/Document'
 import type { CloningFragment, CloningProduct, SequenceSource } from '../cloning/types'
 import { digestFragments, ligateFragments, partialDigestFragments } from '../cloning/digest'
-import { findCutSites } from '../enzymes/finder'
+import { findCutSites, cuttingSites } from '../enzymes/finder'
 import { gibsonAssemble, type OverlapInfo } from '../cloning/gibson'
 import { goldenGateAssemble } from '../cloning/golden-gate'
 import { infusionAssemble } from '../cloning/infusion'
@@ -246,7 +246,7 @@ export default function CloningModal({ open, onClose, initialMethod }: Props) {
     for (const enzyme of enzymes) {
       const counts: number[] = []
       for (const src of sources) {
-        const sites = findCutSites(src.doc.sequence.bases, enzyme, src.doc.sequence.topology)
+        const sites = cuttingSites(findCutSites(src.doc.sequence.bases, enzyme, src.doc.sequence.topology))
         counts.push(sites.length)
       }
       map.set(enzyme.name, counts)

@@ -735,6 +735,7 @@ function FeatureSidebar({ open, onClose }: FeatureSidebarProps) {
                       >
                         <span className="ann-swatch" style={{ backgroundColor: a.color }} />
                         <span className="ft-name">{a.name}</span>
+                        {a.truncated && <span className="ft-truncated" title="Cut short at a cloning junction">truncated</span>}
                         <span className="ann-range">{a.start + 1}..{a.end}</span>
                         <span className="ft-strand-badge">
                           {a.strand === 1 ? '→' : a.strand === -1 ? '←' : '·'}

@@ -52,6 +52,7 @@ export function findEnzymeSitesAsync(
         fwdCut: s.fwdCut,
         revCut: s.revCut,
         strand: s.strand,
+        ...(s.offEnd ? { offEnd: s.offEnd } : {}),
       }))
       resolve(sites)
       activeWorker = null

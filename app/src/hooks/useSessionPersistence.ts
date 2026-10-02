@@ -1,9 +1,13 @@
 import { useEffect, useRef, useState } from 'react'
 import { useEditorStore } from '../store'
-import { loadSession, scheduleSave, onSaveComplete, consumeLoadWarnings } from '../persistence'
+import {
+  loadSession, scheduleSave, onSaveComplete, consumeLoadWarnings,
+  markSessionSaved, savedStateChanged, hasUnsavedChanges, flushSave,
+} from '../persistence'
 import { findORFs } from '../workers/orf-finder'
 import { findEnzymeSitesAsync } from '../workers/enzyme-finder'
 import { ENZYME_DB, ENZYME_GROUPS, type RestrictionEnzyme } from '../enzymes/db'
+import { demoDocument } from '../demo'
 
 const SUBSET_TO_GROUP: Record<string, string | null> = {
   all: null, common6: 'Common (6-cutters)', rare8: 'Rare (8-cutters)',
@@ -29,8 +33,6 @@ function getSubsetEnzymes(subset: string, searchQuery: string): RestrictionEnzym
 export function useSessionPersistence(
   theme: string,
   setTheme: (t: string) => void,
-  openDocument: (name: string, bases: string, topology?: 'linear' | 'circular', description?: string) => void,
-  demoSequence: string,
 ) {
   const [storageRefreshKey, setStorageRefreshKey] = useState(0)
   /**
@@ -99,6 +101,7 @@ export function useSessionPersistence(
               minCodons: p.minCodons, maxCodons: 0,
               startCodons: p.startCodons, allowInterior: p.allowInterior,
               topology: doc.sequence.topology,
+              geneticCode: store.translationCodeId,
             }).then(orfs => useEditorStore.getState().setOrfResults(orfs)).catch(() => {})
           }
           if (store.showEnzymes && saved.enzymeParams) {
@@ -129,28 +132,28 @@ export function useSessionPersistence(
           }
         }
         setTheme(saved.theme || 'light')
+        // What was just restored is what storage holds: nothing to write back.
+        markSessionSaved()
         restoredRef.current = true
       } else {
-        openDocument('pUC19', demoSequence, 'circular')
-        setTimeout(() => {
-          const s = useEditorStore.getState()
-          s.addAnnotation({ id: 'f1', name: 'lacZ-alpha', type: 'CDS', start: 0, end: 396, strand: 1, color: '#4dabf7' })
-          s.addAnnotation({ id: 'f2', name: 'AmpR', type: 'CDS', start: 1629, end: 2489, strand: -1, color: '#ff6b6b' })
-          s.addAnnotation({ id: 'f3', name: 'ori', type: 'rep_origin', start: 836, end: 1424, strand: 1, color: '#51cf66' })
-          s.addAnnotation({ id: 'f4', name: 'MCS', type: 'misc_feature', start: 396, end: 452, strand: 1, color: '#ffd43b' })
-          restoredRef.current = true
-        }, 0)
+        // One document, features included: they are not undoable steps.
+        useEditorStore.getState().openDocumentState(demoDocument())
+        restoredRef.current = true
+        // Autosave only reacts to later changes; the demo itself must be saved too.
+        scheduleSave(themeRef.current)
       }
     })()
     return () => { cancelled = true }
-  }, []) // eslint-disable-line react-hooks/exhaustive-deps -- mount-only: loads session once, openDocument/theme read at call time
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps -- mount-only: loads session once, theme read at call time
 
   // Auto-save on store changes (only after session restore)
   const themeRef = useRef(theme)
   themeRef.current = theme
   useEffect(() => {
-    const unsub = useEditorStore.subscribe(() => {
-      if (restoredRef.current) scheduleSave(themeRef.current)
+    const unsub = useEditorStore.subscribe((state, prev) => {
+      // Caret moves, hovers and selections change the store too; only
+      // changes to saved data are worth a save.
+      if (restoredRef.current && savedStateChanged(state, prev)) scheduleSave(themeRef.current)
     })
     return unsub
   }, [])
@@ -160,16 +163,24 @@ export function useSessionPersistence(
     if (restoredRef.current) scheduleSave(theme)
   }, [theme])
 
-  // Warn before closing with unsaved data
+  // Save at once when the page is hidden or closed, rather than losing a
+  // save still waiting on the debounce; warn on close only if something may
+  // not have reached storage.
   useEffect(() => {
-    const handler = (e: BeforeUnloadEvent) => {
-      const { tabs } = useEditorStore.getState()
-      if (tabs.length > 0) {
-        e.preventDefault()
-      }
+    const flush = () => { if (restoredRef.current) flushSave(themeRef.current) }
+    const onVisibility = () => { if (document.visibilityState === 'hidden') flush() }
+    const onBeforeUnload = (e: BeforeUnloadEvent) => {
+      flush()
+      if (hasUnsavedChanges()) e.preventDefault()
     }
-    window.addEventListener('beforeunload', handler)
-    return () => window.removeEventListener('beforeunload', handler)
+    window.addEventListener('pagehide', flush)
+    document.addEventListener('visibilitychange', onVisibility)
+    window.addEventListener('beforeunload', onBeforeUnload)
+    return () => {
+      window.removeEventListener('pagehide', flush)
+      document.removeEventListener('visibilitychange', onVisibility)
+      window.removeEventListener('beforeunload', onBeforeUnload)
+    }
   }, [])
 
   return { storageRefreshKey, sessionLoadWarnings }

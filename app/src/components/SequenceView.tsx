@@ -80,6 +80,8 @@ import {
 } from '../utils/auto-annotations'
 import { orfIdFor, orfName, keyFromOrfId } from '../utils/orf-features'
 import { isWidgetKeyTarget } from '../utils/key-target'
+import { basesFromPaste } from '../utils/paste-bases'
+import { notify } from '../toast'
 import { usePrimerSites, useDesignPreview } from '../primers/usePrimerSites'
 import { primerItems, isPrimerItemId, type PrimerItem } from '../primers/display'
 import { drawPrimerItem } from './primer-draw'
@@ -2474,11 +2476,14 @@ function SequenceView({ onFindRequest, onAnnotateRequest, onEditFeature }: Seque
     const store = useEditorStore.getState()
     if (store.readOnly) return
 
-    const text = e.clipboardData?.getData('text') ?? ''
-    const filtered = text.replace(/[^ATGCUatgcuRYSWKMBVDHNryswkmbvdhn]/g, '').toUpperCase()
-    if (filtered.length === 0) return
-
+    const pasted = basesFromPaste(e.clipboardData?.getData('text') ?? '')
     e.preventDefault()
+    if (!pasted.ok) {
+      notify.warning("Clipboard doesn't look like a DNA sequence", { detail: pasted.reason, key: 'paste-bases' })
+      return
+    }
+    const filtered = pasted.bases
+    if (filtered.length === 0) return
 
     const curDoc = docRef.current
     const seqLen = curDoc.sequence.length
