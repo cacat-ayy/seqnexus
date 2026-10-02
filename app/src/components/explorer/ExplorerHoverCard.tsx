@@ -15,6 +15,8 @@ import { PlasmidThumbnail, QualitySparkline } from './ExplorerPreview'
 import OligoSequence from '../primers/OligoSequence'
 import { findBindingSites, type BindingSite } from '../../primers/binding'
 import { summarize } from '../../msa/stats'
+import { computeConsensus, consensusSequence } from '../../assembly/consensus'
+import ReadQcSummary from '../sanger/ReadQcSummary'
 
 interface Props {
   item: ExplorerItem
@@ -37,8 +39,10 @@ function previewBases(item: ExplorerItem): string | null {
       const aln = s.alignments.find(a => a.id === item.id)
       return aln ? summarize(aln.doc).consensusHead.slice(0, 60) : null
     }
-    case 'read-alignment':
-      return s.readAlignments.find(r => r.id === item.id)?.result.consensus.slice(0, 60) ?? null
+    case 'contig': {
+      const c = s.contigs.find(x => x.id === item.id)
+      return c ? consensusSequence(computeConsensus(c.doc, c.view.consensus)).slice(0, 60) : null
+    }
     default:
       return null
   }
@@ -76,6 +80,7 @@ export default function ExplorerHoverCard({ item, x, y, note, tags, tagColors }:
           <QualitySparkline data={read.data} trimStart={read.trimStart} trimEnd={read.trimEnd} />
         </div>
       )}
+      {read && <ReadQcSummary data={read.data} compact />}
 
       <div className="ex-hovercard-stats">{item.stats.join(' · ')}</div>
 

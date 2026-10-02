@@ -24,7 +24,6 @@ export interface SelectionCapabilities {
   /** At least one read: it can be aligned to a reference. */
   canAlignToRef: boolean
   /** Two or more read alignments sharing one reference: they can form a contig. */
-  canMakeContig: boolean
   /** Two or more alignments of one kind: they can be joined end to end. */
   canJoinAlignments: boolean
   canExport: boolean
@@ -44,7 +43,6 @@ interface Props {
   onEditTags: () => void
   onAlignToRef: () => void
   onAlignSelected: () => void
-  onCreateContig: () => void
   onJoinAlignments: () => void
   selection: SelectionCapabilities
   /** Whether the host wired up each optional action. */
@@ -53,7 +51,7 @@ interface Props {
 
 export default function ExplorerContextMenu({
   target, starred, onClose, onRename, onDuplicate, onProperties, onExport, onDelete,
-  onToggleStar, onEditNote, onEditTags, onAlignToRef, onAlignSelected, onCreateContig, onJoinAlignments, selection, has,
+  onToggleStar, onEditNote, onEditTags, onAlignToRef, onAlignSelected, onJoinAlignments, selection, has,
 }: Props) {
   const ref = useRef<HTMLDivElement>(null)
   usePopoverDismiss(true, onClose, ref)
@@ -70,13 +68,8 @@ export default function ExplorerContextMenu({
               </button>
             )}
             {has.alignToRef && selection.canAlignToRef && (
-              <button className="ctx-menu-item" onClick={onAlignToRef}>
-                <AlignLeft size={13} /> Align to Reference…
-              </button>
-            )}
-            {selection.canMakeContig && (
-              <button className="ctx-menu-item" onClick={onCreateContig}>
-                <Layers size={13} /> Create Contig
+              <button className="ctx-menu-item" onClick={onAlignToRef} title="Map the reads to a reference, or assemble them de novo">
+                <Layers size={13} /> Assemble…
               </button>
             )}
             {selection.canJoinAlignments && (
@@ -129,8 +122,8 @@ export default function ExplorerContextMenu({
               </button>
             )}
             {has.alignToRef && target.item.kind === 'read' && (
-              <button className="ctx-menu-item" onClick={onAlignToRef}>
-                <AlignLeft size={13} /> Align to Reference…
+              <button className="ctx-menu-item" onClick={onAlignToRef} title="Map the read to a reference">
+                <Layers size={13} /> Map to Reference…
               </button>
             )}
             {has.exportItems && (

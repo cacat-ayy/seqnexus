@@ -10,7 +10,7 @@ import { useMemo } from 'react'
 import { useEditorStore } from '../store'
 import type { ExplorerItem, ItemKind } from './types'
 import {
-  sequenceToItem, readToItem, alignmentToItem, readAlignmentToItem, contigToItem, oligoToItem, gelToItem,
+  sequenceToItem, readToItem, alignmentToItem, contigToItem, oligoToItem, gelToItem,
   type AdapterContext, type OpenTarget,
 } from './adapters'
 import { findBindingSites } from '../primers/binding'
@@ -35,7 +35,7 @@ export interface ExplorerItems {
 function resolveOpen(s: {
   gels: { id: string }[]; activeGelId: string | null
   contigs: { id: string }[]; activeContigId: string | null
-  readAlignments: { id: string }[]; activeReadAlignmentId: string | null
+
   activeSequencingReadIds: string[]
   alignments: { id: string }[]; activeAlignmentId: string | null
   activeTabId: string | null
@@ -45,9 +45,6 @@ function resolveOpen(s: {
   }
   if (s.activeContigId && s.contigs.some(c => c.id === s.activeContigId)) {
     return { kind: 'contig', id: s.activeContigId }
-  }
-  if (s.activeReadAlignmentId && s.readAlignments.some(ra => ra.id === s.activeReadAlignmentId)) {
-    return { kind: 'read-alignment', id: s.activeReadAlignmentId }
   }
   if (s.activeSequencingReadIds.length > 0) {
     return { kind: 'read', id: s.activeSequencingReadIds[0] }
@@ -65,8 +62,6 @@ export function useExplorerItems(): ExplorerItems {
   const activeSequencingReadIds = useEditorStore(s => s.activeSequencingReadIds)
   const alignments = useEditorStore(s => s.alignments)
   const activeAlignmentId = useEditorStore(s => s.activeAlignmentId)
-  const readAlignments = useEditorStore(s => s.readAlignments)
-  const activeReadAlignmentId = useEditorStore(s => s.activeReadAlignmentId)
   const contigs = useEditorStore(s => s.contigs)
   const activeContigId = useEditorStore(s => s.activeContigId)
   const oligos = useEditorStore(s => s.oligos)
@@ -88,7 +83,6 @@ export function useExplorerItems(): ExplorerItems {
     const open = resolveOpen({
       gels, activeGelId,
       contigs, activeContigId,
-      readAlignments, activeReadAlignmentId,
       activeSequencingReadIds,
       alignments, activeAlignmentId,
       activeTabId,
@@ -102,19 +96,10 @@ export function useExplorerItems(): ExplorerItems {
       openSequenceName: tabs.find(t => t.id === activeTabId)?.doc.name,
     }
 
-    // Read alignments owned by a contig are listed inside it, not alongside
-    // it. Same rule the old explorer applied, kept so a contig of twelve
-    // reads does not also spill twelve rows into the tree.
-    const contigOwned = new Set<string>()
-    for (const c of contigs) for (const id of c.readAlignmentIds) contigOwned.add(id)
-
     const byKind: Record<ItemKind, ExplorerItem[]> = {
       'sequence': tabs.map(t => sequenceToItem(t, ctx)),
       'read': sequencingReads.map(r => readToItem(r, ctx)),
       'alignment': alignments.map(a => alignmentToItem(a, ctx)),
-      'read-alignment': readAlignments
-        .filter(ra => !contigOwned.has(ra.id))
-        .map(ra => readAlignmentToItem(ra, ctx)),
       'contig': contigs.map(c => contigToItem(c, ctx)),
       'gel': gels.map(g => gelToItem(g, ctx)),
       'oligo': oligos.map(o => oligoToItem(o, ctx)),
@@ -122,13 +107,13 @@ export function useExplorerItems(): ExplorerItems {
 
     const items = [
       ...byKind['sequence'], ...byKind['read'], ...byKind['alignment'],
-      ...byKind['read-alignment'], ...byKind['contig'], ...byKind['gel'], ...byKind['oligo'],
+      ...byKind['contig'], ...byKind['gel'], ...byKind['oligo'],
     ]
 
     return { items, byKind, byUid: new Map(items.map(i => [i.uid, i])), open }
   }, [
     tabs, activeTabId, sequencingReads, activeSequencingReadIds,
-    alignments, activeAlignmentId, readAlignments, activeReadAlignmentId,
+    alignments, activeAlignmentId,
     contigs, activeContigId, gels, activeGelId, oligos, oligosBindingOpen,
   ])
 }

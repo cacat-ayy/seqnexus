@@ -18,7 +18,7 @@ describe('folders', () => {
     for (const t of store().tabs) store().closeTab(t.id)
     useEditorStore.setState({
       folders: [], recentlyDeleted: [], itemMeta: {},
-      sequencingReads: [], alignments: [], readAlignments: [], contigs: [],
+      sequencingReads: [], alignments: [], contigs: [],
     })
   })
 

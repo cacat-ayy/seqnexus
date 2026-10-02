@@ -10,6 +10,7 @@ import { toUid } from '../../explorer/types'
 import type { AlignmentResult } from '../../alignment/types'
 import { docFromResult } from '../../msa/model'
 import type { Ab1Data } from '../../io/ab1'
+import { testContig, testRow } from '../../assembly/testing'
 
 const store = () => useEditorStore.getState()
 const noop = vi.fn()
@@ -34,7 +35,7 @@ function result(): AlignmentResult {
 }
 
 function renderPanel() {
-  return render(<ExplorerPanel open onCollapse={noop} onExpand={noop} onImportFile={noop} />)
+  return render(<ExplorerPanel open onCollapse={noop} onExpand={noop} onImportFiles={noop} />)
 }
 
 /** Scoped to the list: the pinned copy of the current heading is a duplicate. */
@@ -49,8 +50,8 @@ describe('ExplorerPanel', () => {
     useEditorStore.setState({
       itemMeta: {}, recentlyDeleted: [], folders: [],
       sequencingReads: [], activeSequencingReadIds: [],
-      alignments: [], readAlignments: [], contigs: [],
-      activeAlignmentId: null, activeReadAlignmentId: null, activeContigId: null,
+      alignments: [], contigs: [],
+      activeAlignmentId: null, activeContigId: null,
     })
     localStorage.removeItem('seqnexus:explorer-settings')
   })
@@ -63,31 +64,15 @@ describe('ExplorerPanel', () => {
   })
 
   it('adds a group per kind as items of that kind appear', () => {
-    const tabId = store().openDocument('ref', 'ATGC')
-    const readId = store().addSequencingRead(trace('M13F'))
+    store().openDocument('ref', 'ATGC')
+    store().addSequencingRead(trace('M13F'))
     store().addAlignment(docFromResult(result(), 'dna'))
-    const raId = store().addReadAlignment(readId, tabId, result())
-    store().addContig(tabId, [raId])
+    store().addContigs([{ name: 'Assembly', doc: testContig([testRow('a', 0, 'ATGC')]) }])
 
     renderPanel()
     expect(groupLabels()).toEqual([
       'Sequences', 'Sequencing', 'Alignments', 'Contigs',
     ])
-  })
-
-  // A read alignment inside a contig is listed in the contig, not alongside
-  // it, or a twelve-read contig would spill twelve extra rows into the tree.
-  it('hides read alignments that a contig owns', () => {
-    const tabId = store().openDocument('ref', 'ATGC')
-    const readId = store().addSequencingRead(trace('M13F'))
-    const raId = store().addReadAlignment(readId, tabId, result())
-
-    const { rerender } = renderPanel()
-    expect(groupLabels()).toContain('Read alignments')
-
-    act(() => { store().addContig(tabId, [raId]) })
-    rerender(<ExplorerPanel open onCollapse={noop} onExpand={noop} onImportFile={noop} />)
-    expect(groupLabels()).not.toContain('Read alignments')
   })
 
   it('draws the metadata line next to the name', () => {
@@ -118,10 +103,9 @@ describe('ExplorerPanel', () => {
   })
 
   it('opens a contig rather than the document when both have an active id', () => {
-    const tabId = store().openDocument('ref', 'ATGC')
-    const readId = store().addSequencingRead(trace('M13F'))
-    const raId = store().addReadAlignment(readId, tabId, result())
-    const contigId = store().addContig(tabId, [raId])
+    store().openDocument('ref', 'ATGC')
+    store().addSequencingRead(trace('M13F'))
+    const [contigId] = store().addContigs([{ name: 'Assembly', doc: testContig([testRow('a', 0, 'ATGC')]) }])
     act(() => { store().setActiveContig(contigId) })
 
     renderPanel()
@@ -176,7 +160,7 @@ describe('inline rename', () => {
   beforeEach(() => {
     act(() => {
       useEditorStore.setState({
-        tabs: [], activeTabId: null, sequencingReads: [], alignments: [], readAlignments: [],
+        tabs: [], activeTabId: null, sequencingReads: [], alignments: [],
         contigs: [], oligos: [], gels: [], activeGelId: null, folders: [], itemMeta: {},
       })
     })

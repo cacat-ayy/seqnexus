@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach } from 'vitest'
 import { useEditorStore, MAX_RECENTLY_CLOSED } from './store'
+import { testContig, testRow } from './assembly/testing'
 import type { AlignmentResult } from './alignment/types'
 import { docFromResult } from './msa/model'
 import type { Ab1Data } from './io/ab1'
@@ -35,8 +36,8 @@ describe('undoing a delete', () => {
     for (const t of store().tabs) store().closeTab(t.id)
     useEditorStore.setState({
       recentlyDeleted: [], sequencingReads: [], activeSequencingReadIds: [],
-      alignments: [], readAlignments: [], contigs: [],
-      activeAlignmentId: null, activeReadAlignmentId: null, activeContigId: null,
+      alignments: [], contigs: [],
+      activeAlignmentId: null, activeContigId: null,
     })
   })
 
@@ -63,33 +64,12 @@ describe('undoing a delete', () => {
   })
 
   it('restores a contig', () => {
-    const tabId = store().openDocument('ref', 'ATGC')
-    const readId = store().addSequencingRead(trace('r'))
-    const raId = store().addReadAlignment(readId, tabId, result())
-    const contigId = store().addContig(tabId, [raId])
+    const [contigId] = store().addContigs([{ name: 'Assembly', doc: testContig([testRow('a', 0, 'ATGC')]) }])
 
     store().removeContig(contigId)
     expect(store().contigs).toHaveLength(0)
 
     store().undoDelete()
-    expect(store().contigs.map(c => c.id)).toEqual([contigId])
-  })
-
-  // Removing a read alignment rewrites the contigs holding it and deletes any
-  // that empty out, so the whole contig list is snapshotted: restoring only
-  // the read alignment would leave the contig gone.
-  it('restores the contig that emptying it removed', () => {
-    const tabId = store().openDocument('ref', 'ATGC')
-    const readId = store().addSequencingRead(trace('r'))
-    const raId = store().addReadAlignment(readId, tabId, result())
-    const contigId = store().addContig(tabId, [raId])
-
-    store().removeReadAlignment(raId)
-    expect(store().contigs).toHaveLength(0)
-    expect(store().readAlignments).toHaveLength(0)
-
-    store().undoDelete()
-    expect(store().readAlignments.map(r => r.id)).toEqual([raId])
     expect(store().contigs.map(c => c.id)).toEqual([contigId])
   })
 

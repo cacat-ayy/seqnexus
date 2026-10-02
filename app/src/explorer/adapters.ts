@@ -10,13 +10,13 @@ import { Lock, TriangleAlert, Globe, FlaskConical, Wand2, Activity, TestTube, Li
 import type { LibraryOligo } from '../primers/oligo'
 import { oligoTm } from '../primers/display'
 import type {
-  DocumentTab, SequencingRead, SavedAlignment, ReadAlignment, Contig, GelDoc,
+  DocumentTab, SequencingRead, SavedAlignment, Contig, GelDoc,
 } from '../store'
 import type { DocumentOrigin } from '../models/Document'
 import type { ExplorerItem, ItemBadge, ItemKind } from './types'
 import { toUid } from './types'
 import { formatBases, formatPercent, formatCount, meanQuality } from './format'
-import { LOW_QUALITY_THRESHOLD } from './kinds'
+import { readQc } from '../sanger/qc'
 import { originLabel } from '../msa/model'
 import { summarize } from '../msa/stats'
 
@@ -144,18 +144,21 @@ export function readToItem(read: SequencingRead, ctx: AdapterContext): ExplorerI
   // Averaged over the kept window, not the whole read. The untrimmed tails
   // are exactly the low-quality part, so a whole-read mean would drag every
   // read down and fire the low-quality badge on all of them.
-  const q = meanQuality(read.data.qualityScores.slice(start, end))
+  // A file without qualities has a track of zeros; that is no quality, not Q0.
+  const q = read.data.metadata.qualityMissing ? null : meanQuality(read.data.qualityScores.slice(start, end))
 
   const stats = [isTrimmed ? `${formatBases(trimmed)} of ${formatBases(total)}` : formatBases(total)]
   if (q !== null) stats.push(`Q${Math.round(q)}`)
 
+  // The verdict is about the trace itself, so it does not move with the trim.
   const badges: ItemBadge[] = []
-  if (q !== null && q < LOW_QUALITY_THRESHOLD) {
+  const qc = readQc(read.data)
+  if (qc.verdict !== 'good') {
     badges.push({
-      key: 'low-quality',
-      label: `Low mean quality (Q${Math.round(q)})`,
+      key: qc.verdict === 'fail' ? 'qc-fail' : 'qc-check',
+      label: `${qc.verdict === 'fail' ? 'Failed read' : 'Check read'}: ${qc.issues[0]}`,
       icon: TriangleAlert,
-      tone: 'warn',
+      tone: qc.verdict === 'fail' ? 'danger' : 'warn',
     })
   }
 
@@ -204,35 +207,12 @@ export function alignmentToItem(align: SavedAlignment, ctx: AdapterContext): Exp
   }
 }
 
-export function readAlignmentToItem(ra: ReadAlignment, ctx: AdapterContext): ExplorerItem {
-  const refName = ctx.tabNameById.get(ra.tabId)
-  const stats = [`${formatPercent(ra.result.identity)} identity`]
-  if (refName) stats.unshift(`vs ${refName}`)
-  if (ra.resolvedCols.length > 0) stats.push(formatCount(ra.resolvedCols.length, 'resolved', 'resolved'))
-
-  return {
-    uid: toUid('read-alignment', ra.id),
-    kind: 'read-alignment',
-    id: ra.id,
-    name: ra.name,
-    createdAt: ra.createdAt,
-    size: ra.result.alignmentLength,
-    isOpen: isOpen(ctx, 'read-alignment', ra.id),
-    isIncluded: false,
-    isDirty: false,
-    isReadOnly: false,
-    isCircular: false,
-    canDuplicate: false,
-    stats,
-    badges: [],
-    derivedFrom: [toUid('read', ra.readId), toUid('sequence', ra.tabId)],
-  }
-}
-
 export function contigToItem(contig: Contig, ctx: AdapterContext): ExplorerItem {
-  const refName = ctx.tabNameById.get(contig.tabId)
-  const stats = [formatCount(contig.readAlignmentIds.length, 'read')]
-  if (refName) stats.push(`vs ${refName}`)
+  const { doc } = contig
+  const stats = [formatCount(doc.rows.length, 'read')]
+  if (doc.reference) stats.push(`vs ${doc.reference.name}`)
+  else stats.push('de novo')
+  stats.push(formatBases(doc.width))
 
   return {
     uid: toUid('contig', contig.id),
@@ -240,18 +220,19 @@ export function contigToItem(contig: Contig, ctx: AdapterContext): ExplorerItem 
     id: contig.id,
     name: contig.name,
     createdAt: contig.createdAt,
-    size: contig.readAlignmentIds.length,
+    modifiedAt: contig.modifiedAt,
+    size: doc.width,
     isOpen: isOpen(ctx, 'contig', contig.id),
     isIncluded: false,
-    isDirty: false,
+    isDirty: contig.undoStack.length > 0,
     isReadOnly: false,
     isCircular: false,
     canDuplicate: false,
     stats,
     badges: [],
     derivedFrom: [
-      toUid('sequence', contig.tabId),
-      ...contig.readAlignmentIds.map(id => toUid('read-alignment', id)),
+      ...(doc.reference?.tabId ? [toUid('sequence', doc.reference.tabId)] : []),
+      ...doc.rows.filter(r => r.readId).map(r => toUid('read', r.readId!)),
     ],
   }
 }

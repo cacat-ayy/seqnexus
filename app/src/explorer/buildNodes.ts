@@ -77,7 +77,7 @@ const EMPTY_MESSAGE: Partial<Record<ItemKind, string>> = {
 }
 
 const KIND_RANK: Record<ItemKind, number> = {
-  'sequence': 0, 'read': 1, 'alignment': 2, 'read-alignment': 3, 'contig': 4, 'gel': 5, 'oligo': 6,
+  'sequence': 0, 'read': 1, 'alignment': 2, 'contig': 3, 'gel': 4, 'oligo': 5,
 }
 
 /** Compare two items by the active sort. Name is the tiebreak throughout. */
@@ -218,6 +218,7 @@ export function buildNodes(input: BuildNodesInput, now = Date.now()): BuildNodes
     depth: number,
     seen: Set<string>,
     path: string,
+    byType = false,
   ): number {
     let drawn = 0
     if (depth > MAX_FOLDER_DEPTH) return 0
@@ -239,19 +240,29 @@ export function buildNodes(input: BuildNodesInput, now = Date.now()): BuildNodes
       // parent of a full child would be hidden along with its contents.
       const subtreeCount = own.length + countSubtree(folder.id, pool, depth + 1, new Set(seen))
       if (query && subtreeCount === 0 && !matchedFolders.has(folder.id)) continue
+      // Under a kind's group, a folder that only holds other kinds is noise.
+      // A folder with nothing in it at all stays, as somewhere to drag into.
+      if (byType && subtreeCount === 0 && holdsAnything(folder.id, depth)) continue
 
       const key = `${path}/${folder.id}`
       nodes.push({ type: 'folder', key, folder, count: subtreeCount, depth })
       drawn += subtreeCount
       if (folder.collapsed) continue
 
-      const drawnBelow = pushFolderTree(folder.id, pool, depth + 1, seen, key)
+      const drawnBelow = pushFolderTree(folder.id, pool, depth + 1, seen, key, byType)
       pushItems(own, depth + 1, key)
       if (own.length === 0 && drawnBelow === 0) {
         nodes.push({ type: 'empty', key: `${key}:empty`, message: 'Drag items here', depth: depth + 1 })
       }
     }
     return drawn
+  }
+
+  function holdsAnything(folderId: string, depth: number): boolean {
+    if (depth > MAX_FOLDER_DEPTH) return false
+    const f = folders.find(x => x.id === folderId)
+    if (f && f.itemUids.length > 0) return true
+    return (childrenOf.get(folderId) ?? []).some(c => holdsAnything(c.id, depth + 1))
   }
 
   function countSubtree(
@@ -337,7 +348,7 @@ export function buildNodes(input: BuildNodesInput, now = Date.now()): BuildNodes
       if (!hasContent && (query || filter || !ALWAYS_SHOWN_KINDS.has(kind))) continue
       if (!pushGroup(kind, KIND_GROUP_LABEL[kind], all.length)) continue
 
-      const drawn = pushFolderTree(null, pool, 1, new Set(), kind)
+      const drawn = pushFolderTree(null, pool, 1, new Set(), kind, true)
       if (loose.length > 0) {
         pushItems(loose, 1, kind)
       } else if (drawn === 0) {

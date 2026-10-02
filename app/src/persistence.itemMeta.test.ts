@@ -17,7 +17,7 @@ function blobText(blob: Blob): Promise<string> {
 
 async function exportedSession() {
   const blob = exportSessionToJson('light', {
-    includeReads: false, includeAlignments: false, includeReadAlignments: false,
+    includeReads: false, includeAlignments: false, includeContigs: false,
   })
   return importSessionFromJson(await blobText(blob))
 }

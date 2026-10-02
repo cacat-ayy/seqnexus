@@ -1,11 +1,12 @@
 import { describe, it, expect, beforeEach } from 'vitest'
-import { useEditorStore, type SequencingRead, type SavedAlignment, type ReadAlignment, type Contig } from '../store'
-import type { AlignmentResult } from '../alignment/types'
+import { useEditorStore, type SequencingRead, type SavedAlignment, type Contig } from '../store'
+import { testContig, testRow } from '../assembly/testing'
+import { DEFAULT_CONTIG_VIEW } from '../assembly/view'
 import { makeDoc } from '../msa/model'
 import { DEFAULT_VIEW } from '../msa/view'
 import type { Ab1Data } from '../io/ab1'
 import {
-  sequenceToItem, readToItem, alignmentToItem, readAlignmentToItem, contigToItem,
+  sequenceToItem, readToItem, alignmentToItem, contigToItem,
   type AdapterContext,
 } from './adapters'
 
@@ -28,24 +29,6 @@ function makeRead(over: Partial<SequencingRead> = {}): SequencingRead {
     metadata: {},
   }
   return { id: 'r1', data, createdAt: 0, trimStart: 0, trimEnd: data.bases.length, edits: [], undoStack: [], redoStack: [], ...over }
-}
-
-function makeResult(over: Partial<AlignmentResult> = {}): AlignmentResult {
-  return {
-    sequences: [
-      { name: 'a', alignedBases: 'ATGC', originalBases: 'ATGC' },
-      { name: 'b', alignedBases: 'ATGG', originalBases: 'ATGG' },
-    ],
-    consensus: 'ATGN',
-    conservation: [1, 1, 1, 0.5],
-    score: 3,
-    identity: 0.75,
-    similarity: 0.75,
-    gaps: 0,
-    alignmentLength: 4,
-    algorithm: 'nw',
-    ...over,
-  }
 }
 
 describe('sequence adapter', () => {
@@ -119,13 +102,20 @@ describe('read adapter', () => {
     read.data.qualityScores = read.data.qualityScores.map((_, i) => (i >= 100 && i < 300 ? 40 : 2))
     const item = readToItem(read, ctx())
     expect(item.stats[1]).toBe('Q40')
-    expect(item.badges).toHaveLength(0)
   })
 
-  it('warns on a low mean quality', () => {
+  it('flags a failed read from its QC', () => {
     const read = makeRead()
     read.data.qualityScores = new Array(400).fill(12)
-    expect(readToItem(read, ctx()).badges.map(b => b.key)).toEqual(['low-quality'])
+    const badges = readToItem(read, ctx()).badges
+    expect(badges.map(b => b.key)).toEqual(['qc-fail'])
+    expect(badges[0].tone).toBe('danger')
+  })
+
+  it('asks for a look at a short but usable read', () => {
+    const read = makeRead()
+    read.data.qualityScores = read.data.qualityScores.map((_, i) => (i < 250 ? 40 : 5))
+    expect(readToItem(read, ctx()).badges.map(b => b.key)).toEqual(['qc-check'])
   })
 
   it('drops the quality stat when there is no quality track', () => {
@@ -157,42 +147,23 @@ describe('alignment adapter', () => {
   })
 })
 
-describe('read alignment adapter', () => {
-  const ra: ReadAlignment = {
-    id: 'readalign_1', name: 'M13F vs pUC19', readId: 'r1', tabId: 'tab_ref',
-    result: makeResult({ identity: 0.991 }), createdAt: 7, zoomLevel: 0,
-    showChromatogram: false, resolvedCols: [],
-  }
-
-  it('names the reference and reports identity', () => {
-    expect(readAlignmentToItem(ra, ctx()).stats).toEqual(['vs pUC19', '99% identity'])
-  })
-
-  it('omits the reference when the tab is gone', () => {
-    const item = readAlignmentToItem(ra, ctx({ tabNameById: new Map() }))
-    expect(item.stats).toEqual(['99% identity'])
-  })
-
-  it('counts resolved columns when there are any', () => {
-    expect(readAlignmentToItem({ ...ra, resolvedCols: [3, 9] }, ctx()).stats).toContain('2 resolved')
-  })
-
-  it('records where it came from', () => {
-    expect(readAlignmentToItem(ra, ctx()).derivedFrom).toEqual(['read:r1', 'sequence:tab_ref'])
-  })
-})
-
 describe('contig adapter', () => {
-  it('reports read count and reference', () => {
-    const contig: Contig = {
-      id: 'contig_1', name: 'Assembly', tabId: 'tab_ref',
-      readAlignmentIds: ['readalign_1', 'readalign_2'],
-      createdAt: 9, zoomLevel: 0, expandedReadId: null,
-    }
-    const item = contigToItem(contig, ctx())
-    expect(item.stats).toEqual(['2 reads', 'vs pUC19'])
-    expect(item.derivedFrom).toEqual([
-      'sequence:tab_ref', 'read-alignment:readalign_1', 'read-alignment:readalign_2',
-    ])
+  const make = (over: Partial<Contig> = {}): Contig => ({
+    id: 'contig_1', name: 'Assembly',
+    doc: testContig([testRow('a', 0, 'ACGT', { readId: 'r1' }), testRow('b', 2, 'GTAC', { readId: 'r2' })], 'ACGTAC', 'pUC19', 'tab_ref'),
+    createdAt: 9, modifiedAt: 9, view: DEFAULT_CONTIG_VIEW, undoStack: [], redoStack: [],
+    ...over,
+  })
+
+  it('reports read count, reference and width', () => {
+    const item = contigToItem(make(), ctx())
+    expect(item.stats).toEqual(['2 reads', 'vs pUC19', '6 bp'])
+    expect(item.derivedFrom).toEqual(['sequence:tab_ref', 'read:r1', 'read:r2'])
+  })
+
+  it('says de novo when there is no reference', () => {
+    const item = contigToItem(make({ doc: testContig([testRow('a', 0, 'ACGT')]) }), ctx())
+    expect(item.stats).toEqual(['1 read', 'de novo', '4 bp'])
+    expect(item.derivedFrom).toEqual([])
   })
 })

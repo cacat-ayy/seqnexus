@@ -22,7 +22,6 @@ function describe(entry: DeletedItem): { name: string; kind: ItemKind } {
     case 'sequence': return { name: entry.tab.doc.name, kind: 'sequence' }
     case 'read': return { name: entry.read.data.name, kind: 'read' }
     case 'alignment': return { name: entry.alignment.name, kind: 'alignment' }
-    case 'read-alignment': return { name: entry.readAlignment.name, kind: 'read-alignment' }
     case 'contig': return { name: entry.contig.name, kind: 'contig' }
     case 'oligo': return { name: entry.oligo.name, kind: 'oligo' }
     case 'gel': return { name: entry.gel.name, kind: 'gel' }

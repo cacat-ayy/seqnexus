@@ -28,12 +28,11 @@ export default function SessionExportModal({ open, onClose, onExport }: Props) {
   const tabs = useEditorStore(s => s.tabs)
   const reads = useEditorStore(s => s.sequencingReads)
   const alignments = useEditorStore(s => s.alignments)
-  const readAlignments = useEditorStore(s => s.readAlignments)
   const contigs = useEditorStore(s => s.contigs)
 
   const [includeReads, setIncludeReads] = useState(true)
   const [includeAlignments, setIncludeAlignments] = useState(true)
-  const [includeReadAlignments, setIncludeReadAlignments] = useState(true)
+  const [includeContigs, setIncludeContigs] = useState(true)
   const [filename, setFilename] = useState('session.seqnexus.json')
 
   // Reset state when opening
@@ -41,10 +40,10 @@ export default function SessionExportModal({ open, onClose, onExport }: Props) {
     if (open) {
       setIncludeReads(reads.length > 0)
       setIncludeAlignments(alignments.length > 0)
-      setIncludeReadAlignments(readAlignments.length > 0)
+      setIncludeContigs(contigs.length > 0)
       setFilename('session.seqnexus.json')
     }
-  }, [open, reads.length, alignments.length, readAlignments.length])
+  }, [open, reads.length, alignments.length, contigs.length])
 
   const filenameRef = useRef<HTMLInputElement>(null)
   useEffect(() => {
@@ -54,8 +53,8 @@ export default function SessionExportModal({ open, onClose, onExport }: Props) {
   const opts: SessionExportOptions = useMemo(() => ({
     includeReads,
     includeAlignments,
-    includeReadAlignments,
-  }), [includeReads, includeAlignments, includeReadAlignments])
+    includeContigs,
+  }), [includeReads, includeAlignments, includeContigs])
 
   const estimatedSize = useMemo(() => open ? estimateExportSize(opts) : 0, [opts, open])
 
@@ -119,14 +118,14 @@ export default function SessionExportModal({ open, onClose, onExport }: Props) {
             <span>Alignments ({alignments.length})</span>
           </label>
 
-          <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, opacity: (readAlignments.length === 0 && contigs.length === 0) ? 0.4 : 1 }}>
+          <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, opacity: contigs.length === 0 ? 0.4 : 1 }}>
             <input
               type="checkbox"
-              checked={includeReadAlignments}
-              disabled={readAlignments.length === 0 && contigs.length === 0}
-              onChange={e => setIncludeReadAlignments(e.target.checked)}
+              checked={includeContigs}
+              disabled={contigs.length === 0}
+              onChange={e => setIncludeContigs(e.target.checked)}
             />
-            <span>Read alignments ({readAlignments.length}) and contigs ({contigs.length})</span>
+            <span>Contigs ({contigs.length})</span>
           </label>
 
           <div style={{ borderTop: '1px solid var(--border)', paddingTop: 10, marginTop: 4 }}>

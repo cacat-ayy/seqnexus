@@ -1,299 +1,110 @@
 /**
- * ABIF (.ab1) file parser for Sanger sequencing chromatograms.
+ * ABIF (.ab1) Sanger trace parser.
  *
- * Parses the Applied Biosystems ABIF binary format and extracts:
- * - Called base sequence (PBAS)
- * - Peak locations mapping bases to trace positions (PLOC)
- * - Per-base Phred quality scores (PCON)
- * - 4 fluorescence trace channels A/C/G/T (DATA.9-12 or DATA.1-4)
- * - Sample name and run metadata
+ * Reads the called bases (PBAS), their peak positions (PLOC) and qualities
+ * (PCON), the four processed channels (DATA 9-12, ordered by FWO_) and the
+ * run details an instrument records: sample, well, capillary, instrument,
+ * run module, dye set, polymer, base caller, signal and noise.
  *
- * Format: big-endian TLV directory. Header at offset 0 contains "ABIF" magic,
- * version, and a root directory entry pointing to the directory table.
- * Each directory entry is 28 bytes.
+ * Tag number 2 holds the calls as last edited (by Sequence Scanner or the
+ * base caller's own pass), number 1 the original calls. The edited set is
+ * used; the original is kept alongside when the two differ.
  */
 
-// ---------------------------------------------------------------------------
-// Public types
-// ---------------------------------------------------------------------------
+import { AbifFile } from './abif'
+import { alignCallArrays, TRACE_BASES, type TraceBase, type TraceData, type TraceMetadata } from './trace'
 
-export interface Ab1Data {
-  name: string
-  bases: string
-  peakLocations: number[]
-  qualityScores: number[]
-  traces: {
-    A: number[]
-    C: number[]
-    G: number[]
-    T: number[]
-  }
-  metadata: {
-    lane?: number
-    runStartDate?: string
-    runEndDate?: string
-  }
-}
-
-// ---------------------------------------------------------------------------
-// Internal types
-// ---------------------------------------------------------------------------
-
-interface DirEntry {
-  tagName: string
-  tagNumber: number
-  elementType: number
-  elementSize: number
-  elementCount: number
-  dataSize: number
-  dataOffset: number // offset into file, or inline value if dataSize <= 4
-  dataIsInline: boolean
-}
-
-// ABIF element type codes
-const ELEM_PSTRING = 18 // pascal string
-const ELEM_CSTRING = 19 // c string
-
-// ---------------------------------------------------------------------------
-// Parser
-// ---------------------------------------------------------------------------
-
-const ABIF_MAGIC = 0x41424946 // "ABIF"
+/** Kept under its old name: most of the app still calls a trace `Ab1Data`. */
+export type Ab1Data = TraceData
 
 /**
  * Parse an ABIF (.ab1) file from an ArrayBuffer.
  * Throws on invalid/corrupt files.
  */
 export function parseAb1(buffer: ArrayBuffer): Ab1Data {
-  const view = new DataView(buffer)
+  const f = new AbifFile(buffer)
 
-  // Validate magic
-  if (buffer.byteLength < 128) {
-    throw new Error('File too small to be a valid ABIF file.')
-  }
-  const magic = view.getUint32(0, false)
-  if (magic !== ABIF_MAGIC) {
-    throw new Error('Not an ABIF file - invalid magic bytes.')
-  }
+  const edited = f.string('PBAS', 2)
+  const original = f.string('PBAS', 1)
+  const basesRaw = (edited || original)
+  if (!basesRaw) throw new Error('No called bases (PBAS) found in ABIF file.')
+  const callNum = edited ? 2 : 1
 
-  // Header: version at offset 4 (int16)
-  // Root directory entry starts at offset 6 (28 bytes)
-  // We need: elementCount at offset 18 (int32) and dataOffset at offset 22 (int32)
-  // But the root entry is at bytes 6..33 of the header.
-  // Root entry fields (relative to offset 6):
-  //   tagName: 4 bytes (offset 6)
-  //   tagNumber: 4 bytes (offset 10)
-  //   elementType: 2 bytes (offset 14)
-  //   elementSize: 2 bytes (offset 16)
-  //   elementCount: 4 bytes (offset 18) - number of directory entries
-  //   dataSize: 4 bytes (offset 22)
-  //   dataOffset: 4 bytes (offset 26) - offset to directory table
+  const peaksRaw = f.numbers('PLOC', callNum) ?? f.numbers('PLOC', callNum === 2 ? 1 : 2)
+  if (!peaksRaw) throw new Error('No peak locations (PLOC) found in ABIF file.')
+  const qualityRaw = f.numbers('PCON', callNum) ?? f.numbers('PCON', callNum === 2 ? 1 : 2)
 
-  const numEntries = view.getInt32(18, false)
-  const dirOffset = view.getInt32(26, false)
+  // Channel order comes from the filter wheel order; ABI's default is GATC.
+  let order = (f.string('FWO_') ?? '').toUpperCase()
+  if (order.length < 4 || !TRACE_BASES.every(b => order.includes(b))) order = 'GATC'
 
-  if (numEntries <= 0 || dirOffset <= 0 || dirOffset >= buffer.byteLength) {
-    throw new Error('Invalid ABIF directory pointer.')
-  }
+  const processed = [9, 10, 11, 12].map(n => f.numbers('DATA', n))
+  const channels = processed.every(c => c && c.length > 0)
+    ? processed
+    : [1, 2, 3, 4].map(n => f.numbers('DATA', n))
+  const traces: Record<TraceBase, number[]> = { A: [], C: [], G: [], T: [] }
+  for (let i = 0; i < 4; i++) traces[order[i] as TraceBase] = channels[i] ?? []
 
-  // Parse directory entries
-  const entries: DirEntry[] = []
-  for (let i = 0; i < numEntries; i++) {
-    const base = dirOffset + i * 28
-    if (base + 28 > buffer.byteLength) break
+  const calls = alignCallArrays(basesRaw.toUpperCase(), peaksRaw, qualityRaw)
 
-    const tagName = String.fromCharCode(
-      view.getUint8(base),
-      view.getUint8(base + 1),
-      view.getUint8(base + 2),
-      view.getUint8(base + 3),
-    )
-    const tagNumber = view.getInt32(base + 4, false)
-    const elementType = view.getInt16(base + 8, false)
-    const elementSize = view.getInt16(base + 10, false)
-    const elementCount = view.getInt32(base + 12, false)
-    const dataSize = view.getInt32(base + 16, false)
-    const dataOffset = view.getInt32(base + 20, false)
-    const dataIsInline = dataSize <= 4
-
-    entries.push({
-      tagName,
-      tagNumber,
-      elementType,
-      elementSize,
-      elementCount,
-      dataSize,
-      dataOffset: dataIsInline ? base + 20 : dataOffset,
-      dataIsInline,
-    })
+  let originalCalls: TraceData['originalCalls']
+  if (edited && original && original.toUpperCase() !== calls.bases) {
+    const o = alignCallArrays(original.toUpperCase(), f.numbers('PLOC', 1) ?? peaksRaw, f.numbers('PCON', 1))
+    originalCalls = { bases: o.bases, peakLocations: o.peakLocations, qualityScores: o.qualityScores }
   }
 
-  // Helper to find a directory entry
-  function findEntry(tag: string, num: number): DirEntry | undefined {
-    return entries.find(e => e.tagName === tag && e.tagNumber === num)
+  const metadata: TraceMetadata = {
+    format: 'ab1',
+    sampleName: f.string('SMPL') || undefined,
+    well: f.string('TUBE') || undefined,
+    lane: f.number('LANE'),
+    plateName: f.string('CTNM') || f.string('CTID') || undefined,
+    instrument: f.string('HCFG', 3) || f.string('MODL') || undefined,
+    machineName: f.string('MCHN') || undefined,
+    runName: f.string('RunN') || undefined,
+    runModule: f.string('RMdN') || f.string('MODF') || undefined,
+    runStartDate: f.date('RUND', 1),
+    runStartTime: f.time('RUNT', 1),
+    runEndDate: f.date('RUND', 2),
+    runEndTime: f.time('RUNT', 2),
+    dyeSet: f.string('DySN') || undefined,
+    polymer: f.string('GTyp') || undefined,
+    mobilityFile: f.string('PDMF', 2) || f.string('PDMF', 1) || undefined,
+    basecaller: f.string('SVER', 2) || f.string('SPAC', 2) || undefined,
+    dataCollection: f.string('SVER', 1) || undefined,
+    signal: perChannel(f.numbers('S/N%'), order),
+    noise: perChannel(f.numbers('NOIS'), order),
+    averageSpacing: positive(f.number('SPAC', 3) ?? f.number('SPAC', 1)),
+    owner: f.string('User') || f.string('CTOw') || undefined,
+    comment: f.string('CMNT') || undefined,
+    qualityMissing: calls.qualityMissing || undefined,
   }
-
-  // Helper to read a string from an entry
-  function readString(entry: DirEntry): string {
-    const offset = entry.dataOffset
-    let start: number
-    let len: number
-
-    if (entry.elementType === ELEM_PSTRING) {
-      // Pascal string: first byte is length, rest is content
-      // But for ABIF, pascal strings with dataSize > 4 store the length byte
-      // at the data offset. For inline data, it's at the entry offset.
-      if (offset + entry.dataSize <= buffer.byteLength && entry.dataSize > 0) {
-        len = view.getUint8(offset)
-        start = offset + 1
-        // Clamp to available data
-        len = Math.min(len, entry.dataSize - 1)
-      } else {
-        return ''
-      }
-    } else {
-      // Char array or C string
-      start = offset
-      len = entry.elementCount > 0 ? entry.elementCount : entry.dataSize
-    }
-
-    // Bounds check
-    if (start + len > buffer.byteLength) {
-      len = Math.max(0, buffer.byteLength - start)
-    }
-
-    const chars: string[] = []
-    for (let i = 0; i < len; i++) {
-      const c = view.getUint8(start + i)
-      if (c === 0 && entry.elementType === ELEM_CSTRING) break
-      if (c >= 32) chars.push(String.fromCharCode(c))
-    }
-    return chars.join('')
+  // Drop the keys that were not in the file, so a saved read carries only what it has.
+  for (const k of Object.keys(metadata) as (keyof TraceMetadata)[]) {
+    if (metadata[k] === undefined) delete metadata[k]
   }
-
-  // Helper to read an array of int16 values
-  function readInt16Array(entry: DirEntry): number[] {
-    const arr: number[] = []
-    const offset = entry.dataOffset
-    for (let i = 0; i < entry.elementCount; i++) {
-      arr.push(view.getInt16(offset + i * 2, false))
-    }
-    return arr
-  }
-
-  // Helper to read an array of uint16 values
-  function readUint16Array(entry: DirEntry): number[] {
-    const arr: number[] = []
-    const offset = entry.dataOffset
-    for (let i = 0; i < entry.elementCount; i++) {
-      arr.push(view.getUint16(offset + i * 2, false))
-    }
-    return arr
-  }
-
-  // Helper to read an array of uint8 values
-  function readUint8Array(entry: DirEntry): number[] {
-    const arr: number[] = []
-    const offset = entry.dataOffset
-    for (let i = 0; i < entry.elementCount; i++) {
-      arr.push(view.getUint8(offset + i))
-    }
-    return arr
-  }
-
-  // ---- Extract called bases ----
-  // Prefer PBAS.2 (edited), fall back to PBAS.1 (original)
-  const pbasEntry = findEntry('PBAS', 2) ?? findEntry('PBAS', 1)
-  if (!pbasEntry) {
-    throw new Error('No called bases (PBAS) found in ABIF file.')
-  }
-  const bases = readString(pbasEntry).toUpperCase()
-
-  // ---- Extract peak locations ----
-  const plocEntry = findEntry('PLOC', 2) ?? findEntry('PLOC', 1)
-  if (!plocEntry) {
-    throw new Error('No peak locations (PLOC) found in ABIF file.')
-  }
-  const peakLocations = readUint16Array(plocEntry)
-
-  // ---- Extract quality scores ----
-  const pconEntry = findEntry('PCON', 2) ?? findEntry('PCON', 1)
-  const qualityScores = pconEntry ? readUint8Array(pconEntry) : new Array(bases.length).fill(0)
-
-  // ---- Extract trace data ----
-  // Determine channel-to-base mapping from FWO_ (filter wheel order)
-  const fwoEntry = findEntry('FWO_', 1)
-  let channelOrder = 'GATC' // default ABI order
-  if (fwoEntry) {
-    channelOrder = readString(fwoEntry).toUpperCase()
-    if (channelOrder.length < 4) channelOrder = 'GATC'
-  }
-
-  // Processed traces are DATA.9-12, raw are DATA.1-4
-  // Try processed first
-  const traceEntries: (DirEntry | undefined)[] = [
-    findEntry('DATA', 9) ?? findEntry('DATA', 1),
-    findEntry('DATA', 10) ?? findEntry('DATA', 2),
-    findEntry('DATA', 11) ?? findEntry('DATA', 3),
-    findEntry('DATA', 12) ?? findEntry('DATA', 4),
-  ]
-
-  const traceArrays: number[][] = traceEntries.map(entry => {
-    if (!entry) return []
-    return readInt16Array(entry)
-  })
-
-  // Map channels to bases using FWO_ order
-  const traces: Ab1Data['traces'] = { A: [], C: [], G: [], T: [] }
-  for (let i = 0; i < 4; i++) {
-    const base = channelOrder[i] as 'A' | 'C' | 'G' | 'T'
-    if (base in traces) {
-      traces[base] = traceArrays[i]
-    }
-  }
-
-  // ---- Extract metadata ----
-  const smplEntry = findEntry('SMPL', 1)
-  const name = smplEntry ? readString(smplEntry) : ''
-
-  const laneEntry = findEntry('LANE', 1)
-  let lane: number | undefined
-  if (laneEntry) {
-    if (laneEntry.dataIsInline) {
-      lane = laneEntry.elementSize === 2
-        ? view.getInt16(laneEntry.dataOffset, false)
-        : view.getInt32(laneEntry.dataOffset, false)
-    } else {
-      lane = view.getInt16(laneEntry.dataOffset, false)
-    }
-  }
-
-  // Run dates (RUND.1 = start, RUND.2 = end) - stored as 4 int16: year, month, day, unused
-  function readDate(entry: DirEntry | undefined): string | undefined {
-    if (!entry || entry.dataSize < 6) return undefined
-    const off = entry.dataOffset
-    const year = view.getInt16(off, false)
-    const month = view.getUint8(off + 2)
-    const day = view.getUint8(off + 3)
-    if (year < 1900 || year > 2100 || month < 1 || month > 12 || day < 1 || day > 31) return undefined
-    return `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`
-  }
-
-  const runStartDate = readDate(findEntry('RUND', 1))
-  const runEndDate = readDate(findEntry('RUND', 2))
 
   return {
-    name: name || 'Untitled',
-    bases,
-    peakLocations,
-    qualityScores,
+    name: metadata.sampleName || 'Untitled',
+    bases: calls.bases,
+    peakLocations: calls.peakLocations,
+    qualityScores: calls.qualityScores,
     traces,
-    metadata: {
-      lane,
-      runStartDate,
-      runEndDate,
-    },
+    metadata,
+    ...(originalCalls ? { originalCalls } : {}),
   }
+}
+
+/** Four values in channel order, keyed by base. */
+function perChannel(values: number[] | undefined, order: string): Record<TraceBase, number> | undefined {
+  if (!values || values.length < 4) return undefined
+  const out = { A: 0, C: 0, G: 0, T: 0 }
+  for (let i = 0; i < 4; i++) out[order[i] as TraceBase] = Math.round(values[i] * 10) / 10
+  return out
+}
+
+function positive(n: number | undefined): number | undefined {
+  return n !== undefined && Number.isFinite(n) && n > 0 ? Math.round(n * 100) / 100 : undefined
 }
 
 // ---------------------------------------------------------------------------
@@ -312,7 +123,6 @@ export function parseAb1(buffer: ArrayBuffer): Ab1Data {
 export function autoTrim(
   qualityScores: number[],
   minQuality = 20,
-  _windowSize = 10,
 ): [number, number] {
   const n = qualityScores.length
   if (n === 0) return [0, 0]

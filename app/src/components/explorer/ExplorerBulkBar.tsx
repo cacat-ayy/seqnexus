@@ -18,7 +18,6 @@ interface Props {
   hasFolders: boolean
   onAlignSelected: () => void
   onAlignToRef: () => void
-  onCreateContig: () => void
   onJoinAlignments: () => void
   onFile: () => void
   onExport: () => void
@@ -28,7 +27,7 @@ interface Props {
 
 function ExplorerBulkBar({
   count, selection, has, hasFolders,
-  onAlignSelected, onAlignToRef, onCreateContig, onJoinAlignments, onFile, onExport, onDelete, onClear,
+  onAlignSelected, onAlignToRef, onJoinAlignments, onFile, onExport, onDelete, onClear,
 }: Props) {
   return (
     <div className="ex-bulk" role="toolbar" aria-label={`${count} items selected`}>
@@ -41,12 +40,7 @@ function ExplorerBulkBar({
         </button>
       )}
       {has.alignToRef && selection.canAlignToRef && (
-        <button className="ex-bulk-btn" title="Align to reference…" onClick={onAlignToRef}>
-          <AlignLeft size={13} />
-        </button>
-      )}
-      {selection.canMakeContig && (
-        <button className="ex-bulk-btn" title="Create contig" onClick={onCreateContig}>
+        <button className="ex-bulk-btn" title="Assemble…" onClick={onAlignToRef}>
           <Layers size={13} />
         </button>
       )}

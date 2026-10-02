@@ -21,7 +21,7 @@ function renderExplorer() {
       open
       onCollapse={noop}
       onExpand={noop}
-      onImportFile={noop}
+      onImportFiles={noop}
       onOpenProperties={noop}
       onAlignToRef={noop}
       onQuickAlign={noop}

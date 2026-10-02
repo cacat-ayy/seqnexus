@@ -51,7 +51,7 @@ interface Props {
   open: boolean
   onCollapse: () => void
   onExpand: () => void
-  onImportFile?: (file: File) => void
+  onImportFiles?: (files: File[]) => void
   onOpenProperties?: () => void
   onNewSequence?: () => void
   onFetch?: () => void
@@ -66,7 +66,7 @@ const IMPORT_ACCEPT = ['.gb', '.gbk', '.genbank', '.fasta', '.fa', '.fna', '.fas
 const EMPTY_TAGS: string[] = []
 
 function ExplorerPanel({
-  open, onCollapse, onExpand, onImportFile, onOpenProperties, onNewSequence, onFetch,
+  open, onCollapse, onExpand, onImportFiles, onOpenProperties, onNewSequence, onFetch,
   onAlignToRef, onQuickAlign, onExportItems,
 }: Props) {
   const folders = useEditorStore(s => s.folders)
@@ -265,9 +265,9 @@ function ExplorerPanel({
 
   // --- Imports ---
   const importFiles = useCallback((files: FileList | null) => {
-    if (!files || !onImportFile) return
-    for (const f of Array.from(files)) onImportFile(f)
-  }, [onImportFile])
+    if (!files || !onImportFiles) return
+    onImportFiles(Array.from(files))
+  }, [onImportFiles])
 
   // --- Deletion ---
   const deleteItem = useCallback((item: ExplorerItem) => {
@@ -381,16 +381,6 @@ function ExplorerPanel({
     }
   }, [selectedIds, setSelectedIds])
 
-  const runCreateContig = useCallback(() => {
-    setCtxMenu(null)
-    const ras = groupSelection(selectedIds)['read-alignment'] ?? []
-    const store = useEditorStore.getState()
-    const tabId = store.readAlignments.find(ra => ra.id === ras[0])?.tabId
-    if (!tabId) return
-    store.addContig(tabId, ras)
-    setSelectedIds(new Set())
-  }, [selectedIds, setSelectedIds])
-
   const fileSelectionInto = useCallback((folderId: string | null) => {
     const store = useEditorStore.getState()
     for (const uid of selectedIds) store.moveItemToFolder(uid, folderId)
@@ -402,17 +392,10 @@ function ExplorerPanel({
     const grouped = groupSelection(selectedIds)
     const seqs = grouped.sequence ?? []
     const reads = grouped.read ?? []
-    const ras = grouped['read-alignment'] ?? []
     const alns = (grouped.alignment ?? []).map(id => useEditorStore.getState().alignments.find(a => a.id === id)).filter(Boolean)
-    // A contig needs two or more read alignments against one reference.
-    const refs = new Set(
-      ras.map(id => useEditorStore.getState().readAlignments.find(ra => ra.id === id)?.tabId)
-        .filter(Boolean),
-    )
     return {
       canAlign: seqs.length + reads.length >= 2,
       canAlignToRef: reads.length > 0,
-      canMakeContig: ras.length >= 2 && refs.size === 1,
       canJoinAlignments: alns.length >= 2 && new Set(alns.map(a => a!.doc.kind)).size === 1,
       canExport: selectedIds.size > 0,
     }
@@ -686,7 +669,6 @@ function ExplorerPanel({
           hasFolders={folders.length > 0}
           onAlignSelected={runAlignSelected}
           onAlignToRef={runAlignSelectedToRef}
-          onCreateContig={runCreateContig}
           onJoinAlignments={runJoinAlignments}
           onFile={() => setFilePickerOpen(true)}
           onExport={() => exportItems(selectedIds)}
@@ -762,7 +744,6 @@ function ExplorerPanel({
             else if (menuItem) onAlignToRef?.(menuItem.id)
           }}
           onAlignSelected={runAlignSelected}
-          onCreateContig={runCreateContig}
           onJoinAlignments={runJoinAlignments}
         />
       )}

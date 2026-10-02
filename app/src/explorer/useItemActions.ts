@@ -38,7 +38,6 @@ export function useItemActions(): ItemActions {
       case 'sequence': return s.setActiveTab(item.id)
       case 'read': return s.setActiveSequencingRead(item.id)
       case 'alignment': return s.setActiveAlignment(item.id)
-      case 'read-alignment': return s.setActiveReadAlignment(item.id)
       case 'contig': return s.setActiveContig(item.id)
       case 'gel': return s.setActiveGel(item.id)
       // An oligo has no view of its own; opening it shows where it binds.
@@ -63,7 +62,6 @@ export function useItemActions(): ItemActions {
       case 'sequence': return s.renameTab(item.id, trimmed)
       case 'read': return s.renameSequencingRead(item.id, trimmed)
       case 'alignment': return s.renameAlignment(item.id, trimmed)
-      case 'read-alignment': return s.renameReadAlignment(item.id, trimmed)
       case 'contig': return s.renameContig(item.id, trimmed)
       case 'gel': return s.renameGel(item.id, trimmed)
       case 'oligo': return s.updateLibraryOligo(item.id, { name: trimmed })
@@ -76,7 +74,6 @@ export function useItemActions(): ItemActions {
       case 'sequence': return s.closeTab(item.id)
       case 'read': return s.removeSequencingRead(item.id)
       case 'alignment': return s.removeAlignment(item.id)
-      case 'read-alignment': return s.removeReadAlignment(item.id)
       case 'contig': return s.removeContig(item.id)
       case 'gel': return s.removeGel(item.id)
       case 'oligo': return s.removeLibraryOligo(item.id)

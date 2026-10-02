@@ -227,6 +227,22 @@ describe('buildNodes grouping modes', () => {
     expect(groups(nodes)).toEqual(['sequence', 'read', 'contig'])
   })
 
+  // Sequences is always drawn; a folder of reads must not appear in it empty.
+  it('type mode leaves a folder out of groups it holds nothing for', () => {
+    const reads = folder({ id: 'f2', name: 'Plate 1', itemUids: ['read:r1'] })
+    const { nodes } = build({ byKind: { read: [read] }, folders: [reads], groupBy: 'type' })
+    expect(groups(nodes)).toEqual(['sequence', 'read'])
+    const folderRows = nodes.filter(n => n.type === 'folder')
+    expect(folderRows).toHaveLength(1)
+    expect(folderRows[0].key.startsWith('read/')).toBe(true)
+  })
+
+  it('type mode still offers an empty folder to drag into', () => {
+    const empty = folder({ id: 'f3', name: 'New', itemUids: [] })
+    const { nodes } = build({ folders: [empty], groupBy: 'type' })
+    expect(nodes.filter(n => n.type === 'folder').length).toBeGreaterThan(0)
+  })
+
   it('folder mode puts unfiled items under Ungrouped', () => {
     const loose = item('sequence', 't2', 'loose')
     const { nodes } = build({

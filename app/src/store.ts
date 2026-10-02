@@ -34,7 +34,8 @@ import type { Ab1Data } from './io/ab1'
 import type { CutSite } from './enzymes/finder'
 import type { ORFResult } from './workers/orf-finder'
 import type { DesignResult } from './primers/design/types'
-import type { AlignmentResult } from './alignment/types'
+import type { ContigDoc } from './assembly/types'
+import { DEFAULT_CONTIG_VIEW, type ContigView } from './assembly/view'
 import type { AlnDoc } from './msa/model'
 import { DEFAULT_VIEW, type AlnView } from './msa/view'
 import { toUid, parseUid, type ItemMeta } from './explorer/types'
@@ -229,9 +230,6 @@ export type DeletedItem =
   | ({ kind: 'sequence' } & ClosedTab)
   | { kind: 'read'; index: number; folderId: string | null; read: SequencingRead; wasActive: boolean }
   | { kind: 'alignment'; index: number; folderId: string | null; alignment: SavedAlignment }
-  /** Removing a read alignment also rewrites the contigs holding it, so the
-   *  whole contig list is snapshotted rather than reconstructed. */
-  | { kind: 'read-alignment'; index: number; folderId: string | null; readAlignment: ReadAlignment; contigs: Contig[] }
   | { kind: 'contig'; index: number; folderId: string | null; contig: Contig }
   | { kind: 'oligo'; index: number; folderId: string | null; oligo: LibraryOligo }
   | { kind: 'gel'; index: number; folderId: string | null; gel: GelDoc; wasActive: boolean }
@@ -241,7 +239,8 @@ export type DeletedItem =
 export const MAX_RECENTLY_CLOSED = 5
 
 export type BaseEdit =
-  | { type: 'substitute'; pos: number; original: string; base: string }
+  /** `by: 'mixed'`: an IUPAC call made from second peaks, not typed by the user. */
+  | { type: 'substitute'; pos: number; original: string; base: string; by?: 'mixed' }
   | { type: 'insert'; pos: number; offset: number; base: string }
   | { type: 'delete'; pos: number; original: string }
 
@@ -249,6 +248,8 @@ interface SeqUndoSnapshot {
   edits: BaseEdit[]
   trimStart: number
   trimEnd: number
+  /** What the change after this snapshot did ("Delete 3 bases"), for undo labels. */
+  label?: string
 }
 
 export interface SequencingRead {
@@ -261,6 +262,8 @@ export interface SequencingRead {
   edits: BaseEdit[]
   undoStack: SeqUndoSnapshot[]
   redoStack: SeqUndoSnapshot[]
+  /** Shown reverse complemented (a reverse-primer read). A view choice; the data stays forward. */
+  reversed?: boolean
 }
 
 /**
@@ -349,7 +352,6 @@ const tabIds = makeIdGenerator('tab')
 const seqReadIds = makeIdGenerator('seqread')
 const folderIds = makeIdGenerator('folder')
 const alignIds = makeIdGenerator('align')
-const readAlignIds = makeIdGenerator('readalign')
 const contigIds = makeIdGenerator('contig')
 const oligoIds = makeIdGenerator('libo')
 const gelIds = makeIdGenerator('gel')
@@ -395,7 +397,6 @@ const nextFolderId = () => folderIds.next()
 const nextFeatureSourceId = () => featureSourceIds.next()
 const nextUsageTableId = () => usageTableIds.next()
 const nextAlignId = () => alignIds.next()
-const nextReadAlignId = () => readAlignIds.next()
 const nextContigId = () => contigIds.next()
 const nextOligoId = () => oligoIds.next()
 
@@ -481,26 +482,24 @@ function pruneEmptyMeta(
   return next
 }
 
-export interface ReadAlignment {
-  id: string
-  name: string
-  readId: string                // SequencingRead.id
-  tabId: string                 // DocumentTab.id
-  result: AlignmentResult
-  createdAt: number
-  zoomLevel: number
-  showChromatogram: boolean
-  resolvedCols: number[]        // alignment columns that have been resolved
+/** One contig undo step: the document before the edit, and what the edit was. */
+export interface ContigHistoryEntry {
+  doc: ContigDoc
+  label: string
 }
 
+/** A contig: reads assembled to a reference or to each other. */
 export interface Contig {
   id: string
   name: string
-  tabId: string                 // reference DocumentTab.id
-  readAlignmentIds: string[]    // ordered list of ReadAlignment.id
+  doc: ContigDoc
   createdAt: number
-  zoomLevel: number
-  expandedReadId: string | null // which read's chromatogram is expanded inline
+  modifiedAt: number
+  /** How it is shown; not part of its undo history. */
+  view: ContigView
+  /** Earlier documents, newest last. Not persisted. */
+  undoStack: ContigHistoryEntry[]
+  redoStack: ContigHistoryEntry[]
 }
 
 /** A virtual gel: what is on it, how it was run and imaged, and its history. */
@@ -866,14 +865,12 @@ interface EditorStore {
     tabs: { id: string; doc: DocumentState; createdAt?: number; modifiedAt?: number; viewMode: ViewMode; zoomLevel: number; hiddenAnnotationIds?: string[]; showOrfs?: boolean; showEnzymes?: boolean; showAutoAnnotations?: boolean; readOnly?: boolean; undoStack?: UndoSnapshot[]; redoStack?: UndoSnapshot[] }[],
     activeTabId: string | null,
     folders: ExplorerFolder[],
-    seqReads?: { id: string; data: Ab1Data; createdAt?: number; trimStart: number; trimEnd: number; edits: BaseEdit[] }[],
+    seqReads?: { id: string; data: Ab1Data; createdAt?: number; trimStart: number; trimEnd: number; edits: BaseEdit[]; reversed?: boolean }[],
     activeSeqReadIds?: string[],
     savedAlignments?: SavedAlignment[],
-    savedReadAlignments?: ReadAlignment[],
     savedContigs?: Contig[],
     activeAlignmentId?: string | null,
     activeContigId?: string | null,
-    activeReadAlignmentId?: string | null,
     itemMeta?: Record<string, ItemMeta>,
     tagColors?: Record<string, string>,
     oligos?: LibraryOligo[],
@@ -883,9 +880,8 @@ interface EditorStore {
   mergeSession: (
     tabs: { id: string; doc: DocumentState; createdAt?: number; modifiedAt?: number; viewMode: ViewMode; zoomLevel: number; hiddenAnnotationIds?: string[]; showOrfs?: boolean; showEnzymes?: boolean; showAutoAnnotations?: boolean; readOnly?: boolean }[],
     folders: ExplorerFolder[],
-    seqReads?: { id: string; data: Ab1Data; createdAt?: number; trimStart: number; trimEnd: number; edits: BaseEdit[] }[],
+    seqReads?: { id: string; data: Ab1Data; createdAt?: number; trimStart: number; trimEnd: number; edits: BaseEdit[]; reversed?: boolean }[],
     savedAlignments?: SavedAlignment[],
-    savedReadAlignments?: ReadAlignment[],
     savedContigs?: Contig[],
     itemMeta?: Record<string, ItemMeta>,
     tagColors?: Record<string, string>,
@@ -900,6 +896,11 @@ interface EditorStore {
   sequencingReads: SequencingRead[]
   activeSequencingReadIds: string[]
   addSequencingRead: (data: Ab1Data) => string
+  /**
+   * Add several reads in one update, already trimmed, optionally filed into
+   * a new folder. The first read is opened. Returns the new read ids.
+   */
+  addSequencingReads: (reads: { data: Ab1Data; trimStart: number; trimEnd: number }[], folderName?: string) => string[]
   removeSequencingRead: (id: string) => void
   setActiveSequencingRead: (id: string | null) => void
   toggleSequencingRead: (id: string) => void
@@ -909,6 +910,9 @@ interface EditorStore {
   resetSequencingEdits: (id: string) => void
   undoSequencing: (id: string) => void
   redoSequencing: (id: string) => void
+  /** Change a read's edits and/or trim as one named undo step. */
+  changeSequencingRead: (id: string, patch: { edits?: BaseEdit[]; trimStart?: number; trimEnd?: number }, label: string) => void
+  setSequencingReversed: (id: string, reversed: boolean) => void
 
   // Primer library: oligos kept across sequences, listed in the explorer
   oligos: LibraryOligo[]
@@ -948,28 +952,20 @@ interface EditorStore {
   /** Change how an alignment is shown. Not an undo step. */
   setAlignmentView: (id: string, patch: Partial<AlnView>) => void
 
-  // Read Alignments
-  readAlignments: ReadAlignment[]
-  activeReadAlignmentId: string | null
-  addReadAlignment: (readId: string, tabId: string, result: AlignmentResult) => string
-  removeReadAlignment: (id: string) => void
-  renameReadAlignment: (id: string, name: string) => void
-  setActiveReadAlignment: (id: string | null) => void
-  setReadAlignmentZoom: (id: string, level: number) => void
-  toggleReadAlignmentChromatogram: (id: string) => void
-  updateReadAlignmentResult: (id: string, result: AlignmentResult) => void
-  addReadAlignmentResolvedCol: (id: string, col: number) => void
-  clearReadAlignmentResolvedCols: (id: string) => void
-
   // Contigs
   contigs: Contig[]
   activeContigId: string | null
-  addContig: (tabId: string, readAlignmentIds: string[]) => string
+  /** Add assembled contigs, optionally filed into a new folder; the first is opened. */
+  addContigs: (items: { name: string; doc: ContigDoc }[], folderName?: string) => string[]
+  /** Change a contig's document as one named undo step. */
+  updateContig: (id: string, fn: (doc: ContigDoc) => ContigDoc, label: string) => void
+  undoContig: (id: string) => string | null
+  redoContig: (id: string) => string | null
   removeContig: (id: string) => void
   renameContig: (id: string, name: string) => void
   setActiveContig: (id: string | null) => void
-  setContigZoom: (id: string, level: number) => void
-  setContigExpandedRead: (id: string, readAlignmentId: string | null) => void
+  /** Change how a contig is shown. Not an undo step. */
+  setContigView: (id: string, patch: Partial<ContigView>) => void
 
   // Virtual gels
   gels: GelDoc[]
@@ -1843,7 +1839,6 @@ export const useEditorStore = create<EditorStore>((set, get) => {
         ...s.tabs.map(t => toUid('sequence', t.id)),
         ...s.sequencingReads.map(r => toUid('read', r.id)),
         ...s.alignments.map(a => toUid('alignment', a.id)),
-        ...s.readAlignments.map(ra => toUid('read-alignment', ra.id)),
         ...s.contigs.map(c => toUid('contig', c.id)),
         ...s.oligos.map(o => toUid('oligo', o.id)),
         ...s.gels.map(g => toUid('gel', g.id)),
@@ -1888,7 +1883,7 @@ export const useEditorStore = create<EditorStore>((set, get) => {
 
       // The whole subtree goes, and so does everything filed anywhere in it.
       const doomedFolders = folderSubtree(state.folders, folderId)
-      const doomed = { sequence: new Set<string>(), read: new Set<string>(), alignment: new Set<string>(), 'read-alignment': new Set<string>(), contig: new Set<string>(), oligo: new Set<string>(), gel: new Set<string>() }
+      const doomed = { sequence: new Set<string>(), read: new Set<string>(), alignment: new Set<string>(), contig: new Set<string>(), oligo: new Set<string>(), gel: new Set<string>() }
       for (const f of state.folders) {
         if (!doomedFolders.has(f.id)) continue
         for (const uid of f.itemUids) {
@@ -1906,12 +1901,7 @@ export const useEditorStore = create<EditorStore>((set, get) => {
       }
       const active = newTabs.find(t => t.id === newActiveId)
 
-      const readAlignments = state.readAlignments.filter(ra => !doomed['read-alignment'].has(ra.id))
-      const survivingRaIds = new Set(readAlignments.map(ra => ra.id))
-      const contigs = state.contigs
-        .filter(c => !doomed.contig.has(c.id))
-        .map(c => ({ ...c, readAlignmentIds: c.readAlignmentIds.filter(id => survivingRaIds.has(id)) }))
-        .filter(c => c.readAlignmentIds.length > 0)
+      const contigs = state.contigs.filter(c => !doomed.contig.has(c.id))
       const contigIds = new Set(contigs.map(c => c.id))
 
       set({
@@ -1935,8 +1925,6 @@ export const useEditorStore = create<EditorStore>((set, get) => {
         activeSequencingReadIds: state.activeSequencingReadIds.filter(id => !doomed.read.has(id)),
         alignments: state.alignments.filter(a => !doomed.alignment.has(a.id)),
         activeAlignmentId: doomed.alignment.has(state.activeAlignmentId ?? '') ? null : state.activeAlignmentId,
-        readAlignments,
-        activeReadAlignmentId: survivingRaIds.has(state.activeReadAlignmentId ?? '') ? state.activeReadAlignmentId : null,
         contigs,
         activeContigId: contigIds.has(state.activeContigId ?? '') ? state.activeContigId : null,
         oligos: state.oligos.filter(o => !doomed.oligo.has(o.id)),
@@ -2123,19 +2111,6 @@ export const useEditorStore = create<EditorStore>((set, get) => {
           get().setActiveAlignment(last.alignment.id)
           return
         }
-        case 'read-alignment': {
-          // The contig list is restored wholesale: removing a read alignment
-          // can empty a contig, and deleting that contig is part of the same
-          // action the user is taking back.
-          set({
-            readAlignments: insertAt(state.readAlignments, last.index, last.readAlignment),
-            contigs: last.contigs,
-            folders: withItem(state.folders, toUid('read-alignment', last.readAlignment.id), last.folderId),
-            recentlyDeleted: rest,
-          })
-          get().setActiveReadAlignment(last.readAlignment.id)
-          return
-        }
         case 'contig': {
           set({
             contigs: insertAt(state.contigs, last.index, last.contig),
@@ -2194,7 +2169,6 @@ export const useEditorStore = create<EditorStore>((set, get) => {
         activeGelId: null,
         activeSequencingReadIds: [],
         activeAlignmentId: null,
-        activeReadAlignmentId: null,
         activeContigId: null,
         doc: tab.doc,
         selection: tab.selection,
@@ -2274,7 +2248,7 @@ export const useEditorStore = create<EditorStore>((set, get) => {
       updateActiveTab({ readOnly: !tab.readOnly })
     },
 
-    restoreSession(restoredTabs, restoredActiveId, restoredFolders, seqReads, activeSeqReadIds, savedAlignments, savedReadAlignments, savedContigs, restoredActiveAlignmentId, restoredActiveContigId, restoredActiveReadAlignmentId, restoredItemMeta, restoredTagColors, restoredOligos) {
+    restoreSession(restoredTabs, restoredActiveId, restoredFolders, seqReads, activeSeqReadIds, savedAlignments, savedContigs, restoredActiveAlignmentId, restoredActiveContigId, restoredItemMeta, restoredTagColors, restoredOligos) {
       const tabs: DocumentTab[] = restoredTabs.map(rt => ({
         id: rt.id,
         doc: rt.doc,
@@ -2317,6 +2291,7 @@ export const useEditorStore = create<EditorStore>((set, get) => {
           edits: sr.edits ?? [],
           undoStack: [],
           redoStack: [],
+          ...(sr.reversed ? { reversed: true } : {}),
         }
       })
 
@@ -2324,12 +2299,6 @@ export const useEditorStore = create<EditorStore>((set, get) => {
       const alignments: SavedAlignment[] = (savedAlignments ?? []).map(a => {
         syncId(a.id, alignIds, 'align')
         return a
-      })
-
-      // Restore read alignments
-      const readAlignments: ReadAlignment[] = (savedReadAlignments ?? []).map(ra => {
-        syncId(ra.id, readAlignIds, 'readalign')
-        return ra
       })
 
       // Restore contigs
@@ -2344,11 +2313,9 @@ export const useEditorStore = create<EditorStore>((set, get) => {
         ? restoredActiveAlignmentId : null
       const validActiveContigId = restoredActiveContigId && contigs.some(c => c.id === restoredActiveContigId)
         ? restoredActiveContigId : null
-      const validActiveRAId = restoredActiveReadAlignmentId && readAlignments.some(ra => ra.id === restoredActiveReadAlignmentId)
-        ? restoredActiveReadAlignmentId : null
 
       // If a non-tab view was active, don't force a tab active
-      const hasNonTabView = (activeSeqReadIds && activeSeqReadIds.length > 0) || validActiveAlignId || validActiveContigId || validActiveRAId
+      const hasNonTabView = (activeSeqReadIds && activeSeqReadIds.length > 0) || validActiveAlignId || validActiveContigId
       const active = hasNonTabView ? null : (tabs.find(t => t.id === restoredActiveId) ?? tabs[0] ?? null)
 
       set({
@@ -2373,8 +2340,6 @@ export const useEditorStore = create<EditorStore>((set, get) => {
         activeSequencingReadIds: activeSeqReadIds ?? [],
         alignments,
         activeAlignmentId: validActiveAlignId,
-        readAlignments,
-        activeReadAlignmentId: validActiveRAId,
         contigs,
         activeContigId: validActiveContigId,
         oligos: restoredOligos ?? [],
@@ -2383,7 +2348,7 @@ export const useEditorStore = create<EditorStore>((set, get) => {
       })
     },
 
-    mergeSession(mergedTabs, mergedFolders, seqReads, savedAlignments, savedReadAlignments, savedContigs, importedItemMeta, importedTagColors, importedOligos) {
+    mergeSession(mergedTabs, mergedFolders, seqReads, savedAlignments, savedContigs, importedItemMeta, importedTagColors, importedOligos) {
       const state = get()
 
       // Convert imported tabs to DocumentTab objects
@@ -2436,6 +2401,7 @@ export const useEditorStore = create<EditorStore>((set, get) => {
         edits: sr.edits ?? [],
         undoStack: [],
         redoStack: [],
+        ...(sr.reversed ? { reversed: true } : {}),
       }))
 
       set({
@@ -2443,7 +2409,6 @@ export const useEditorStore = create<EditorStore>((set, get) => {
         folders: finalFolders,
         sequencingReads: [...state.sequencingReads, ...newReads],
         alignments: [...state.alignments, ...(savedAlignments ?? [])],
-        readAlignments: [...state.readAlignments, ...(savedReadAlignments ?? [])],
         contigs: [...state.contigs, ...(savedContigs ?? [])],
         oligos: [...state.oligos, ...(importedOligos ?? [])],
         // Imported ids were remapped before this call, so the incoming keys
@@ -2773,9 +2738,36 @@ export const useEditorStore = create<EditorStore>((set, get) => {
         activeSequencingReadIds: [id],
         activeTabId: null,
         activeAlignmentId: null,
-        activeReadAlignmentId: null,
       }))
       return id
+    },
+
+    addSequencingReads(items, folderName) {
+      if (items.length === 0) return []
+      const now = Date.now()
+      const reads: SequencingRead[] = items.map(item => ({
+        id: nextSeqReadId(),
+        data: item.data,
+        createdAt: now,
+        trimStart: item.trimStart,
+        trimEnd: item.trimEnd,
+        edits: [],
+        undoStack: [],
+        redoStack: [],
+      }))
+      const folderId = folderName ? get().createFolder(folderName) : null
+      set(s => ({
+        sequencingReads: [...s.sequencingReads, ...reads],
+        folders: folderId
+          ? s.folders.map(f => f.id === folderId ? { ...f, itemUids: [...f.itemUids, ...reads.map(r => toUid('read', r.id))] } : f)
+          : s.folders,
+        activeSequencingReadIds: [reads[0].id],
+        activeTabId: null,
+        activeAlignmentId: null,
+        activeContigId: null,
+        activeGelId: null,
+      }))
+      return reads.map(r => r.id)
     },
 
     removeSequencingRead(id) {
@@ -2803,7 +2795,6 @@ export const useEditorStore = create<EditorStore>((set, get) => {
         activeGelId: id ? null : get().activeGelId,
         activeTabId: id ? null : get().activeTabId,
         activeAlignmentId: id ? null : get().activeAlignmentId,
-        activeReadAlignmentId: id ? null : get().activeReadAlignmentId,
         activeContigId: id ? null : get().activeContigId,
       })
     },
@@ -2817,18 +2808,39 @@ export const useEditorStore = create<EditorStore>((set, get) => {
         return {
           activeSequencingReadIds: next,
           activeAlignmentId: next.length > 0 ? null : s.activeAlignmentId,
-          activeReadAlignmentId: next.length > 0 ? null : s.activeReadAlignmentId,
           activeContigId: next.length > 0 ? null : s.activeContigId,
           activeTabId: next.length > 0 ? null : s.activeTabId,
         }
       })
     },
 
+    changeSequencingRead(id, patch, label) {
+      set(s => ({
+        sequencingReads: s.sequencingReads.map(r => {
+          if (r.id !== id) return r
+          const next = {
+            edits: patch.edits ?? r.edits,
+            trimStart: patch.trimStart ?? r.trimStart,
+            trimEnd: patch.trimEnd ?? r.trimEnd,
+          }
+          if (next.edits === r.edits && next.trimStart === r.trimStart && next.trimEnd === r.trimEnd) return r
+          const snap: SeqUndoSnapshot = { edits: r.edits, trimStart: r.trimStart, trimEnd: r.trimEnd, label }
+          return { ...r, ...next, undoStack: [...r.undoStack, snap].slice(-100), redoStack: [] }
+        }),
+      }))
+    },
+
+    setSequencingReversed(id, reversed) {
+      set(s => ({
+        sequencingReads: s.sequencingReads.map(r => (r.id === id ? { ...r, reversed: reversed || undefined } : r)),
+      }))
+    },
+
     setSequencingTrim(id, start, end) {
       set(s => ({
         sequencingReads: s.sequencingReads.map(r => {
           if (r.id !== id) return r
-          const snap: SeqUndoSnapshot = { edits: r.edits, trimStart: r.trimStart, trimEnd: r.trimEnd }
+          const snap: SeqUndoSnapshot = { edits: r.edits, trimStart: r.trimStart, trimEnd: r.trimEnd, label: 'Trim' }
           return { ...r, trimStart: start, trimEnd: end, undoStack: [...r.undoStack, snap].slice(-50), redoStack: [] }
         }),
       }))
@@ -2871,7 +2883,7 @@ export const useEditorStore = create<EditorStore>((set, get) => {
         sequencingReads: s.sequencingReads.map(r => {
           if (r.id !== id || r.undoStack.length === 0) return r
           const prev = r.undoStack[r.undoStack.length - 1]
-          const redoSnap: SeqUndoSnapshot = { edits: r.edits, trimStart: r.trimStart, trimEnd: r.trimEnd }
+          const redoSnap: SeqUndoSnapshot = { edits: r.edits, trimStart: r.trimStart, trimEnd: r.trimEnd, label: prev.label }
           return {
             ...r,
             edits: prev.edits,
@@ -2889,7 +2901,7 @@ export const useEditorStore = create<EditorStore>((set, get) => {
         sequencingReads: s.sequencingReads.map(r => {
           if (r.id !== id || r.redoStack.length === 0) return r
           const next = r.redoStack[r.redoStack.length - 1]
-          const undoSnap: SeqUndoSnapshot = { edits: r.edits, trimStart: r.trimStart, trimEnd: r.trimEnd }
+          const undoSnap: SeqUndoSnapshot = { edits: r.edits, trimStart: r.trimStart, trimEnd: r.trimEnd, label: next.label }
           return {
             ...r,
             edits: next.edits,
@@ -3036,7 +3048,6 @@ export const useEditorStore = create<EditorStore>((set, get) => {
         activeTabId: id ? null : get().activeTabId,
         activeGelId: id ? null : get().activeGelId,
         activeSequencingReadIds: id ? [] : get().activeSequencingReadIds,
-        activeReadAlignmentId: id ? null : get().activeReadAlignmentId,
         activeContigId: id ? null : get().activeContigId,
       })
     },
@@ -3045,126 +3056,6 @@ export const useEditorStore = create<EditorStore>((set, get) => {
       set(s => ({
         alignments: s.alignments.map(a =>
           a.id === id ? { ...a, view: { ...a.view, ...patch } } : a
-        ),
-      }))
-    },
-
-    // ---- Read Alignments ----
-    readAlignments: [],
-    activeReadAlignmentId: null,
-
-    addReadAlignment(readId, tabId, result) {
-      const id = nextReadAlignId()
-      const read = get().sequencingReads.find(r => r.id === readId)
-      const tab = get().tabs.find(t => t.id === tabId)
-      const readName = read?.data.name ?? 'Read'
-      const refName = tab?.doc.name ?? 'Reference'
-      const ra: ReadAlignment = {
-        id,
-        name: `${readName} → ${refName}`,
-        readId,
-        tabId,
-        result,
-        createdAt: Date.now(),
-        zoomLevel: 7,
-        showChromatogram: true,
-        resolvedCols: [],
-      }
-      set({
-        readAlignments: [...get().readAlignments, ra],
-        activeReadAlignmentId: id,
-        activeTabId: null,
-        activeSequencingReadIds: [],
-        activeAlignmentId: null,
-      })
-      return id
-    },
-
-    removeReadAlignment(id) {
-      set(s => {
-        const index = s.readAlignments.findIndex(r => r.id === id)
-        if (index === -1) return {}
-        // Remove from contigs; delete contigs that become empty
-        const updatedContigs = s.contigs
-          .map(c => c.readAlignmentIds.includes(id)
-            ? { ...c, readAlignmentIds: c.readAlignmentIds.filter(rid => rid !== id) }
-            : c)
-          .filter(c => c.readAlignmentIds.length > 0)
-        const removedContigIds = s.contigs.filter(c => !updatedContigs.find(uc => uc.id === c.id)).map(c => c.id)
-        return {
-          readAlignments: s.readAlignments.filter(r => r.id !== id),
-          activeReadAlignmentId: s.activeReadAlignmentId === id ? null : s.activeReadAlignmentId,
-          contigs: updatedContigs,
-          activeContigId: removedContigIds.includes(s.activeContigId ?? '') ? null : s.activeContigId,
-          folders: withoutItem(s.folders, toUid('read-alignment', id)),
-          recentlyDeleted: pushDeleted(s.recentlyDeleted, {
-            kind: 'read-alignment',
-            index,
-            folderId: folderOf(s.folders, toUid('read-alignment', id)),
-            readAlignment: s.readAlignments[index],
-            contigs: s.contigs,
-          }),
-        }
-      })
-    },
-
-    renameReadAlignment(id, name) {
-      set(s => ({
-        readAlignments: s.readAlignments.map(r =>
-          r.id === id ? { ...r, name } : r
-        ),
-      }))
-    },
-
-    setActiveReadAlignment(id) {
-      set({
-        activeReadAlignmentId: id,
-        activeTabId: id ? null : get().activeTabId,
-        activeGelId: id ? null : get().activeGelId,
-        activeSequencingReadIds: id ? [] : get().activeSequencingReadIds,
-        activeAlignmentId: id ? null : get().activeAlignmentId,
-        activeContigId: id ? null : get().activeContigId,
-      })
-    },
-
-    setReadAlignmentZoom(id, level) {
-      set(s => ({
-        readAlignments: s.readAlignments.map(r =>
-          r.id === id ? { ...r, zoomLevel: level } : r
-        ),
-      }))
-    },
-
-    toggleReadAlignmentChromatogram(id) {
-      set(s => ({
-        readAlignments: s.readAlignments.map(r =>
-          r.id === id ? { ...r, showChromatogram: !r.showChromatogram } : r
-        ),
-      }))
-    },
-
-    updateReadAlignmentResult(id, result) {
-      set(s => ({
-        readAlignments: s.readAlignments.map(r =>
-          r.id === id ? { ...r, result } : r
-        ),
-      }))
-    },
-
-    addReadAlignmentResolvedCol(id, col) {
-      set(s => ({
-        readAlignments: s.readAlignments.map(r =>
-          r.id === id && !r.resolvedCols.includes(col)
-            ? { ...r, resolvedCols: [...r.resolvedCols, col] }
-            : r
-        ),
-      }))
-    },
-
-    clearReadAlignmentResolvedCols(id) {
-      set(s => ({
-        readAlignments: s.readAlignments.map(r =>
-          r.id === id ? { ...r, resolvedCols: [] } : r
         ),
       }))
     },
@@ -3222,7 +3113,6 @@ export const useEditorStore = create<EditorStore>((set, get) => {
           activeTabId: null,
           activeSequencingReadIds: [],
           activeAlignmentId: null,
-          activeReadAlignmentId: null,
           activeContigId: null,
         })
         return
@@ -3230,7 +3120,7 @@ export const useEditorStore = create<EditorStore>((set, get) => {
       set({ activeGelId: null })
       const back = s.gelReturnTabId
       const nothingElseOpen = !s.activeTabId && !s.activeAlignmentId && !s.activeContigId
-        && !s.activeReadAlignmentId && s.activeSequencingReadIds.length === 0
+        && s.activeSequencingReadIds.length === 0
       if (nothingElseOpen && back && s.tabs.some(t => t.id === back)) get().setActiveTab(back)
     },
 
@@ -3354,28 +3244,73 @@ export const useEditorStore = create<EditorStore>((set, get) => {
     contigs: [],
     activeContigId: null,
 
-    addContig(tabId, readAlignmentIds) {
-      const id = nextContigId()
-      const tab = get().tabs.find(t => t.id === tabId)
-      const refName = tab?.doc.name ?? 'Reference'
-      const contig: Contig = {
-        id,
-        name: `Contig: ${refName}`,
-        tabId,
-        readAlignmentIds,
-        createdAt: Date.now(),
-        zoomLevel: 7,
-        expandedReadId: null,
-      }
+    addContigs(items, folderName) {
+      if (items.length === 0) return []
+      const now = Date.now()
+      const made: Contig[] = items.map(it => ({
+        id: nextContigId(), name: it.name, doc: it.doc, createdAt: now, modifiedAt: now,
+        view: DEFAULT_CONTIG_VIEW, undoStack: [], redoStack: [],
+      }))
+      const folderId = folderName ? get().createFolder(folderName) : null
       set(s => ({
-        contigs: [...s.contigs, contig],
-        activeContigId: id,
+        contigs: [...s.contigs, ...made],
+        folders: folderId
+          ? s.folders.map(f => f.id === folderId ? { ...f, itemUids: [...f.itemUids, ...made.map(c => toUid('contig', c.id))] } : f)
+          : s.folders,
+        activeContigId: made[0].id,
         activeTabId: null,
         activeSequencingReadIds: [],
         activeAlignmentId: null,
-        activeReadAlignmentId: null,
+        activeGelId: null,
       }))
-      return id
+      return made.map(c => c.id)
+    },
+
+    updateContig(id, fn, label) {
+      set(s => {
+        const idx = s.contigs.findIndex(c => c.id === id)
+        if (idx === -1) return {}
+        const c = s.contigs[idx]
+        const next = fn(c.doc)
+        if (next === c.doc) return {}
+        const contigs = [...s.contigs]
+        contigs[idx] = { ...c, doc: next, modifiedAt: Date.now(), undoStack: [...c.undoStack, { doc: c.doc, label }].slice(-60), redoStack: [] }
+        return { contigs }
+      })
+    },
+
+    undoContig(id) {
+      const c = get().contigs.find(x => x.id === id)
+      const step = c?.undoStack[c.undoStack.length - 1]
+      if (!c || !step) return null
+      set(s => ({
+        contigs: s.contigs.map(x => x.id !== id ? x : {
+          ...x, doc: step.doc, modifiedAt: Date.now(),
+          undoStack: x.undoStack.slice(0, -1),
+          redoStack: [...x.redoStack, { doc: x.doc, label: step.label }],
+        }),
+      }))
+      return step.label
+    },
+
+    redoContig(id) {
+      const c = get().contigs.find(x => x.id === id)
+      const step = c?.redoStack[c.redoStack.length - 1]
+      if (!c || !step) return null
+      set(s => ({
+        contigs: s.contigs.map(x => x.id !== id ? x : {
+          ...x, doc: step.doc, modifiedAt: Date.now(),
+          redoStack: x.redoStack.slice(0, -1),
+          undoStack: [...x.undoStack, { doc: x.doc, label: step.label }],
+        }),
+      }))
+      return step.label
+    },
+
+    setContigView(id, patch) {
+      set(s => ({
+        contigs: s.contigs.map(c => (c.id === id ? { ...c, view: { ...c.view, ...patch } } : c)),
+      }))
     },
 
     removeContig(id) {
@@ -3451,24 +3386,8 @@ export const useEditorStore = create<EditorStore>((set, get) => {
         activeGelId: id ? null : get().activeGelId,
         activeSequencingReadIds: id ? [] : get().activeSequencingReadIds,
         activeAlignmentId: id ? null : get().activeAlignmentId,
-        activeReadAlignmentId: id ? null : get().activeReadAlignmentId,
       })
     },
 
-    setContigZoom(id, level) {
-      set(s => ({
-        contigs: s.contigs.map(c =>
-          c.id === id ? { ...c, zoomLevel: level } : c
-        ),
-      }))
-    },
-
-    setContigExpandedRead(id, readAlignmentId) {
-      set(s => ({
-        contigs: s.contigs.map(c =>
-          c.id === id ? { ...c, expandedReadId: readAlignmentId } : c
-        ),
-      }))
-    },
   }
 })

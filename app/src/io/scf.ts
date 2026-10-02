@@ -12,6 +12,7 @@
  */
 
 import type { Ab1Data } from './ab1'
+import { alignCallArrays, type TraceMetadata } from './trace'
 
 // SCF magic: ".scf" at offset 0
 const SCF_MAGIC = 0x2E736366
@@ -56,23 +57,19 @@ export function parseScf(buffer: ArrayBuffer): Ab1Data {
     throw new Error('SCF file contains no data.')
   }
 
-  // Parse comments to extract sample name
-  let name = 'Untitled'
+  // Comments are KEY=value lines (Staden conventions: NAME, MACH, LANE, SIGN, ...)
+  const comments = new Map<string, string>()
   if (commentsSize > 0 && commentsOffset + commentsSize <= buffer.byteLength) {
-    const commentBytes = new Uint8Array(buffer, commentsOffset, commentsSize)
-    const commentStr = new TextDecoder().decode(commentBytes)
-    // Comments are key=value pairs separated by newlines
-    for (const line of commentStr.split('\n')) {
+    const commentStr = new TextDecoder('latin1').decode(new Uint8Array(buffer, commentsOffset, commentsSize))
+    for (const line of commentStr.split(/\r?\n/)) {
       const eq = line.indexOf('=')
       if (eq < 0) continue
-      const key = line.slice(0, eq).trim()
-      const val = line.slice(eq + 1).trim()
-      if (key === 'NAME' || key === 'SAMP') {
-        name = val
-        break
-      }
+      const key = line.slice(0, eq).trim().toUpperCase()
+      const val = line.slice(eq + 1).replace(/\0/g, '').trim()
+      if (key && val && !comments.has(key)) comments.set(key, val)
     }
   }
+  const name = comments.get('NAME') || comments.get('SAMP') || 'Untitled'
 
   let tracesA: number[]
   let tracesC: number[]
@@ -162,10 +159,8 @@ export function parseScf(buffer: ArrayBuffer): Ab1Data {
       const pC = view.getUint8(probCOff + i)
       const pG = view.getUint8(probGOff + i)
       const pT = view.getUint8(probTOff + i)
-      // Quality = max of the 4 probabilities
-      qualityScores.push(Math.max(pA, pC, pG, pT))
-
       const b = String.fromCharCode(view.getUint8(baseOff + i)).toUpperCase()
+      qualityScores.push(calledProbability(b, pA, pC, pG, pT))
       bases += b
     }
   } else {
@@ -180,26 +175,67 @@ export function parseScf(buffer: ArrayBuffer): Ab1Data {
       const pC = view.getUint8(off + 5)
       const pG = view.getUint8(off + 6)
       const pT = view.getUint8(off + 7)
-      qualityScores.push(Math.max(pA, pC, pG, pT))
-
       const b = String.fromCharCode(view.getUint8(off + 8)).toUpperCase()
+      qualityScores.push(calledProbability(b, pA, pC, pG, pT))
       bases += b
     }
   }
 
-  return {
-    name: name || 'Untitled',
-    bases,
-    peakLocations,
-    qualityScores,
-    traces: {
-      A: tracesA,
-      C: tracesC,
-      G: tracesG,
-      T: tracesT,
-    },
-    metadata: {},
+  const traces = { A: tracesA, C: tracesC, G: tracesG, T: tracesT }
+  const calls = alignCallArrays(bases, peakLocations, qualityScores.some(q => q > 0) ? qualityScores : undefined)
+
+  const metadata: TraceMetadata = { format: 'scf' }
+  const lane = Number.parseInt(comments.get('LANE') ?? '', 10)
+  if (Number.isFinite(lane)) metadata.lane = lane
+  const setText = (key: keyof TraceMetadata, ...from: string[]) => {
+    for (const k of from) {
+      const v = comments.get(k)
+      if (v) { (metadata as Record<string, unknown>)[key] = v; return }
+    }
   }
+  setText('sampleName', 'NAME', 'SAMP')
+  setText('machineName', 'MACH')
+  setText('instrument', 'MODL')
+  setText('basecaller', 'BCSW')
+  setText('dyeSet', 'DYEP')
+  setText('comment', 'COMM')
+  const signal = parseSignal(comments.get('SIGN'))
+  if (signal) metadata.signal = signal
+  const spacing = Number.parseFloat(comments.get('SPAC') ?? '')
+  if (Number.isFinite(spacing) && spacing > 0) metadata.averageSpacing = spacing
+  const date = /^(\d{4})(\d{2})(\d{2})/.exec(comments.get('RUND') ?? comments.get('DATE') ?? '')
+  if (date) metadata.runStartDate = `${date[1]}-${date[2]}-${date[3]}`
+  if (calls.qualityMissing) metadata.qualityMissing = true
+
+  return {
+    name,
+    bases: calls.bases,
+    peakLocations: calls.peakLocations,
+    qualityScores: calls.qualityScores,
+    traces,
+    metadata,
+  }
+}
+
+/** SCF stores a probability per channel; the call's quality is its own channel's. */
+function calledProbability(base: string, pA: number, pC: number, pG: number, pT: number): number {
+  switch (base) {
+    case 'A': return pA
+    case 'C': return pC
+    case 'G': return pG
+    case 'T': return pT
+    default: return Math.max(pA, pC, pG, pT)
+  }
+}
+
+/** "A=123,C=98,G=110,T=87" */
+function parseSignal(text: string | undefined): TraceMetadata['signal'] {
+  if (!text) return undefined
+  const out = { A: NaN, C: NaN, G: NaN, T: NaN }
+  for (const m of text.matchAll(/([ACGT])\s*=\s*([\d.]+)/gi)) {
+    out[m[1].toUpperCase() as 'A'] = Number.parseFloat(m[2])
+  }
+  return Object.values(out).every(Number.isFinite) ? out : undefined
 }
 
 /**

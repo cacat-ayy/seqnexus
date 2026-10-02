@@ -56,7 +56,7 @@ export function useSessionPersistence(
       if (cancelled) return
       const warnings = consumeLoadWarnings()
       if (warnings.length > 0) setSessionLoadWarnings(warnings)
-      if (saved && (saved.tabs.length > 0 || saved.sequencingReads.length > 0 || saved.alignments.length > 0 || saved.readAlignments.length > 0 || saved.contigs.length > 0 || saved.oligos.length > 0 || saved.gels.length > 0)) {
+      if (saved && (saved.tabs.length > 0 || saved.sequencingReads.length > 0 || saved.alignments.length > 0 || saved.contigs.length > 0 || saved.oligos.length > 0 || saved.gels.length > 0)) {
         useEditorStore.getState().restoreSession(
           saved.tabs,
           saved.activeTabId,
@@ -64,11 +64,9 @@ export function useSessionPersistence(
           saved.sequencingReads,
           saved.activeSequencingReadIds,
           saved.alignments,
-          saved.readAlignments,
           saved.contigs,
           saved.activeAlignmentId,
           saved.activeContigId,
-          saved.activeReadAlignmentId,
           saved.itemMeta,
           saved.tagColors,
           saved.oligos,

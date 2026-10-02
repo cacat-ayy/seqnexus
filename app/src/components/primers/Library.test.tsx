@@ -36,7 +36,7 @@ describe('primer library in the UI', () => {
   afterEach(cleanup)
 
   it('lists library oligos in their own explorer group', () => {
-    render(<ExplorerPanel open onCollapse={noop} onExpand={noop} onImportFile={noop} />)
+    render(<ExplorerPanel open onCollapse={noop} onExpand={noop} onImportFiles={noop} />)
     const groups = [...document.querySelectorAll('.ex-viewport .ex-group-title')].map(el => el.textContent)
     expect(groups).toContain('Oligos')
     expect(screen.getByText('LibFwd')).toBeTruthy()

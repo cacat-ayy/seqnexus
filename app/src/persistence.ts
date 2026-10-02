@@ -6,10 +6,12 @@
  * search parameters) is stored in localStorage.
  */
 
-import { useEditorStore, type ExplorerFolder, type ViewMode, type BaseEdit, type SavedAlignment, type ReadAlignment, type Contig, type GelDoc } from './store'
+import { useEditorStore, type ExplorerFolder, type ViewMode, type BaseEdit, type SavedAlignment, type Contig, type GelDoc } from './store'
 import { sanitizeWorkspace, type GelWorkspaceState } from './gel/workspace'
 import type { Ab1Data } from './io/ab1'
 import type { AlignmentResult } from './alignment/types'
+import type { ContigDoc } from './assembly/types'
+import { sanitizeContigView } from './assembly/view'
 import { sanitizeDoc, type AlnDoc } from './msa/model'
 import { sanitizeView } from './msa/view'
 import { toUid, parseUid, type ItemMeta } from './explorer/types'
@@ -86,6 +88,7 @@ interface SerializedSeqRead {
   trimStart: number
   trimEnd: number
   edits: BaseEdit[]
+  reversed?: boolean
 }
 
 /** Alignment metadata (result data stored in IndexedDB). */
@@ -124,26 +127,19 @@ function restoreAlignment(sa: SerializedAlignment, raw: unknown): SavedAlignment
   }
 }
 
-/** Read alignment metadata (result data stored in IndexedDB). */
-interface SerializedReadAlignment {
-  id: string
-  name: string
-  readId: string
-  tabId: string
-  createdAt: number
-  zoomLevel: number
-  showChromatogram: boolean
-  resolvedCols?: number[]
-}
-
+/**
+ * Contig metadata; the contig document is stored in IndexedDB beside the
+ * alignments. Contigs written before the assembly rebuild referenced read
+ * alignments instead (`readAlignmentIds`); those are not restored.
+ */
 interface SerializedContig {
   id: string
   name: string
-  tabId: string
-  readAlignmentIds: string[]
   createdAt: number
-  zoomLevel: number
-  expandedReadId: string | null
+  modifiedAt?: number
+  view?: unknown
+  /** Written before the assembly rebuild. */
+  readAlignmentIds?: string[]
 }
 
 /** A gel is plain data; its undo history is not kept. */
@@ -196,7 +192,8 @@ interface SerializedSessionV2 {
   sequencingReads?: SerializedSeqRead[]
   activeSequencingReadIds?: string[]
   alignments?: SerializedAlignment[]
-  readAlignments?: SerializedReadAlignment[]
+  /** Written before the assembly rebuild; read only to report it. */
+  readAlignments?: { id: string }[]
   contigs?: SerializedContig[]
   /** The primer library. Plain data; optional so older sessions still load. */
   oligos?: LibraryOligo[]
@@ -205,7 +202,6 @@ interface SerializedSessionV2 {
   activeGelId?: string | null
   activeAlignmentId?: string | null
   activeContigId?: string | null
-  activeReadAlignmentId?: string | null
   // ORF/enzyme panel params (re-run searches on restore)
   orfParams?: { minCodons: number; startCodons: string[]; allowInterior: boolean }
   enzymeParams?: { subset: string; searchQuery: string; filterByCount: boolean; minCuts: number; maxCuts: number }
@@ -266,7 +262,6 @@ function liveItemMeta(state: ReturnType<typeof useEditorStore.getState>): Record
     ...state.tabs.map(t => toUid('sequence', t.id)),
     ...state.sequencingReads.map(r => toUid('read', r.id)),
     ...state.alignments.map(a => toUid('alignment', a.id)),
-    ...state.readAlignments.map(ra => toUid('read-alignment', ra.id)),
     ...state.contigs.map(c => toUid('contig', c.id)),
     ...state.oligos.map(o => toUid('oligo', o.id)),
     ...state.gels.map(g => toUid('gel', g.id)),
@@ -286,7 +281,7 @@ function buildSessionData(theme: string): {
   meta: SerializedSessionV2
   sequences: { tabId: string; bases: string }[]
   traces: { readId: string; data: Ab1Data }[]
-  alignmentData: { alignId: string; data: AlnDoc | AlignmentResult }[]
+  alignmentData: { alignId: string; data: AlnDoc | AlignmentResult | ContigDoc }[]
   undoEntries: { tabId: string; data: SerializedUndoHistory }[]
 } {
   const state = useEditorStore.getState()
@@ -334,6 +329,7 @@ function buildSessionData(theme: string): {
     trimStart: r.trimStart,
     trimEnd: r.trimEnd,
     edits: r.edits,
+    ...(r.reversed ? { reversed: true } : {}),
   }))
   const traces = state.sequencingReads.map(r => ({ readId: r.id, data: r.data }))
 
@@ -347,28 +343,15 @@ function buildSessionData(theme: string): {
   }))
   const alignmentData = state.alignments.map(a => ({ alignId: a.id, data: a.doc }))
 
-  // Read alignments: metadata in localStorage, result data in IndexedDB (shared store with alignments)
-  const serializedReadAlignments: SerializedReadAlignment[] = state.readAlignments.map(ra => ({
-    id: ra.id,
-    name: ra.name,
-    readId: ra.readId,
-    tabId: ra.tabId,
-    createdAt: ra.createdAt,
-    zoomLevel: ra.zoomLevel,
-    showChromatogram: ra.showChromatogram,
-    resolvedCols: ra.resolvedCols.length > 0 ? ra.resolvedCols : undefined,
-  }))
-  const readAlignmentData = state.readAlignments.map(ra => ({ alignId: ra.id, data: ra.result }))
-
+  // Contigs: metadata in localStorage, the document in IndexedDB (shared store with alignments)
   const serializedContigs: SerializedContig[] = state.contigs.map(c => ({
     id: c.id,
     name: c.name,
-    tabId: c.tabId,
-    readAlignmentIds: c.readAlignmentIds,
     createdAt: c.createdAt,
-    zoomLevel: c.zoomLevel,
-    expandedReadId: c.expandedReadId,
+    modifiedAt: c.modifiedAt,
+    view: c.view,
   }))
+  const contigData = state.contigs.map(c => ({ alignId: c.id, data: c.doc }))
 
   return {
     meta: {
@@ -383,9 +366,7 @@ function buildSessionData(theme: string): {
       activeSequencingReadIds: state.activeSequencingReadIds,
       activeAlignmentId: state.activeAlignmentId,
       activeContigId: state.activeContigId,
-      activeReadAlignmentId: state.activeReadAlignmentId,
       alignments: serializedAlignments,
-      readAlignments: serializedReadAlignments,
       contigs: serializedContigs.length > 0 ? serializedContigs : undefined,
       oligos: state.oligos.length > 0 ? state.oligos : undefined,
       gels: serializeGels(state.gels),
@@ -405,7 +386,7 @@ function buildSessionData(theme: string): {
     },
     sequences,
     traces,
-    alignmentData: [...alignmentData, ...readAlignmentData],
+    alignmentData: [...alignmentData, ...contigData],
     undoEntries,
   }
 }
@@ -455,7 +436,7 @@ export async function saveSession(theme: string): Promise<void> {
       // Clean up orphaned IndexedDB entries (alignments)
       const currentAlignIds = new Set([
         ...(meta.alignments ?? []).map(a => a.id),
-        ...(meta.readAlignments ?? []).map(ra => ra.id),
+        ...(meta.contigs ?? []).map(c => c.id),
       ])
       const storedAlignIds = await getAllStoredAlignmentIds()
       const alignOrphans = storedAlignIds.filter(id => !currentAlignIds.has(id))
@@ -490,6 +471,7 @@ export interface RestoredSeqRead {
   trimStart: number
   trimEnd: number
   edits: BaseEdit[]
+  reversed?: boolean
 }
 
 export interface RestoredSession {
@@ -503,14 +485,12 @@ export interface RestoredSession {
   sequencingReads: RestoredSeqRead[]
   activeSequencingReadIds: string[]
   alignments: SavedAlignment[]
-  readAlignments: ReadAlignment[]
   contigs: Contig[]
   oligos: LibraryOligo[]
   gels: GelDoc[]
   activeGelId?: string | null
   activeAlignmentId?: string | null
   activeContigId?: string | null
-  activeReadAlignmentId?: string | null
   orfParams?: { minCodons: number; startCodons: string[]; allowInterior: boolean }
   enzymeParams?: { subset: string; searchQuery: string; filterByCount: boolean; minCuts: number; maxCuts: number }
 }
@@ -673,6 +653,7 @@ async function loadV2(data: SerializedSessionV2): Promise<RestoredSession | null
           trimStart: sr.trimStart,
           trimEnd: sr.trimEnd,
           edits: sr.edits ?? [],
+          reversed: sr.reversed,
         })
       }
     } catch (err) {
@@ -701,31 +682,24 @@ async function loadV2(data: SerializedSessionV2): Promise<RestoredSession | null
     }
   }
 
-  // Restore read alignments from IndexedDB
-  const readAlignments: ReadAlignment[] = []
-  const serializedReadAligns = data.readAlignments ?? []
-  if (serializedReadAligns.length > 0) {
+  // Restore contigs from IndexedDB. Contigs from before the assembly rebuild
+  // (built from read alignments) cannot be shown any more and are dropped.
+  const contigs: Contig[] = []
+  const savedContigs = (data.contigs ?? []).filter(c => !c.readAlignmentIds)
+  if (savedContigs.length > 0) {
     try {
-      const raIds = serializedReadAligns.map(ra => ra.id)
-      const raMap = await loadAlignments(raIds)
-      for (const sra of serializedReadAligns) {
-        const result = raMap.get(sra.id) as AlignmentResult | undefined
-        if (!result) continue
-        readAlignments.push({
-          id: sra.id,
-          name: sra.name,
-          readId: sra.readId,
-          tabId: sra.tabId,
-          result,
-          createdAt: sra.createdAt,
-          zoomLevel: sra.zoomLevel,
-          showChromatogram: sra.showChromatogram,
-          resolvedCols: sra.resolvedCols ?? [],
-        })
+      const map = await loadAlignments(savedContigs.map(c => c.id))
+      for (const sc of savedContigs) {
+        const c = restoreContig(sc, map.get(sc.id))
+        if (c) contigs.push(c)
       }
     } catch {
-      // read alignment load failed
+      loadWarnings.push(`${savedContigs.length} ${savedContigs.length === 1 ? 'contig' : 'contigs'} could not be restored.`)
     }
+  }
+  const legacy = (data.readAlignments?.length ?? 0) + (data.contigs ?? []).filter(c => c.readAlignmentIds).length
+  if (legacy > 0) {
+    loadWarnings.push(`${legacy} read ${legacy === 1 ? 'alignment or contig' : 'alignments and contigs'} from before the assembly rebuild could not be kept. Assemble the reads again to get them back.`)
   }
 
   // Clean up orphaned IndexedDB entries
@@ -738,22 +712,6 @@ async function loadV2(data: SerializedSessionV2): Promise<RestoredSession | null
     // best-effort cleanup
   }
 
-  // Restore contigs (metadata only – they reference existing ReadAlignments)
-  const contigs: Contig[] = (data.contigs ?? []).map(sc => ({
-    id: sc.id,
-    name: sc.name,
-    tabId: sc.tabId,
-    readAlignmentIds: sc.readAlignmentIds,
-    createdAt: sc.createdAt,
-    zoomLevel: sc.zoomLevel,
-    expandedReadId: sc.expandedReadId,
-  }))
-  // Filter out contigs whose read alignments didn't survive restore
-  const raIdSet = new Set(readAlignments.map(ra => ra.id))
-  const validContigs = contigs
-    .map(c => ({ ...c, readAlignmentIds: c.readAlignmentIds.filter(id => raIdSet.has(id)) }))
-    .filter(c => c.readAlignmentIds.length > 0)
-
   return {
     tabs,
     activeTabId: data.activeTabId,
@@ -764,16 +722,30 @@ async function loadV2(data: SerializedSessionV2): Promise<RestoredSession | null
     sequencingReads: seqReads,
     activeSequencingReadIds: data.activeSequencingReadIds ?? [],
     alignments,
-    readAlignments,
-    contigs: validContigs,
+    contigs,
     oligos: data.oligos ?? [],
     gels: deserializeGels(data.gels),
     activeGelId: data.activeGelId ?? null,
     activeAlignmentId: data.activeAlignmentId ?? null,
     activeContigId: data.activeContigId ?? null,
-    activeReadAlignmentId: data.activeReadAlignmentId ?? null,
     orfParams: data.orfParams,
     enzymeParams: data.enzymeParams,
+  }
+}
+
+/** A saved contig, or null when its document is missing or from before the assembly rebuild. */
+function restoreContig(sc: SerializedContig, raw: unknown): Contig | null {
+  const doc = raw as ContigDoc | undefined
+  if (!doc || typeof doc !== 'object' || typeof doc.width !== 'number' || !Array.isArray(doc.rows) || !('method' in doc)) return null
+  return {
+    id: sc.id,
+    name: sc.name,
+    doc,
+    createdAt: sc.createdAt,
+    modifiedAt: sc.modifiedAt ?? sc.createdAt,
+    view: sanitizeContigView(sc.view),
+    undoStack: [],
+    redoStack: [],
   }
 }
 
@@ -804,7 +776,7 @@ export async function clearSavedSession(): Promise<void> {
 export interface SessionExportOptions {
   includeReads: boolean
   includeAlignments: boolean
-  includeReadAlignments: boolean
+  includeContigs: boolean
 }
 
 interface SessionExportEnvelope {
@@ -815,12 +787,12 @@ interface SessionExportEnvelope {
     sequences: true
     reads: boolean
     alignments: boolean
-    readAlignments: boolean
+    contigs: boolean
   }
   session: SerializedSessionV2
   sequences: { tabId: string; bases: string }[]
   traces?: { readId: string; data: Ab1Data }[]
-  alignmentData?: { alignId: string; data: AlnDoc | AlignmentResult }[]
+  alignmentData?: { alignId: string; data: AlnDoc | AlignmentResult | ContigDoc }[]
 }
 
 /**
@@ -851,12 +823,8 @@ export function estimateExportSize(opts: SessionExportOptions): number {
       size += JSON.stringify(a.doc).length
     }
   }
-  if (opts.includeReadAlignments) {
-    for (const ra of state.readAlignments) {
-      size += JSON.stringify(ra.result).length
-    }
-    // Contig metadata is small
-    size += state.contigs.length * 200
+  if (opts.includeContigs) {
+    for (const c of state.contigs) size += JSON.stringify(c.doc).length
   }
   // Gels are small and always included
   size += JSON.stringify(serializeGels(state.gels) ?? []).length
@@ -879,16 +847,13 @@ export function exportSessionToJson(theme: string, opts: SessionExportOptions): 
     meta.alignments = []
     meta.activeAlignmentId = null
   }
-  if (!opts.includeReadAlignments) {
-    meta.readAlignments = []
+  if (!opts.includeContigs) {
     meta.contigs = undefined
     meta.activeContigId = null
-    meta.activeReadAlignmentId = null
   }
 
-  // Separate alignment data into alignment vs read-alignment
   const alignIds = new Set((meta.alignments ?? []).map(a => a.id))
-  const raIds = new Set((meta.readAlignments ?? []).map(ra => ra.id))
+  const contigIds = new Set((meta.contigs ?? []).map(c => c.id))
 
   // Drop metadata for whatever the user left out, so an export without reads
   // does not carry favourites for reads it does not contain.
@@ -897,7 +862,6 @@ export function exportSessionToJson(theme: string, opts: SessionExportOptions): 
       ...meta.tabs.map(t => toUid('sequence', t.id)),
       ...(meta.sequencingReads ?? []).map(r => toUid('read', r.id)),
       ...[...alignIds].map(id => toUid('alignment', id)),
-      ...[...raIds].map(id => toUid('read-alignment', id)),
       ...(meta.contigs ?? []).map(c => toUid('contig', c.id)),
       ...(meta.oligos ?? []).map(o => toUid('oligo', o.id)),
       ...(meta.gels ?? []).map(g => toUid('gel', g.id)),
@@ -924,12 +888,12 @@ export function exportSessionToJson(theme: string, opts: SessionExportOptions): 
       sequences: true,
       reads: opts.includeReads,
       alignments: opts.includeAlignments,
-      readAlignments: opts.includeReadAlignments,
+      contigs: opts.includeContigs,
     },
     session: meta,
     sequences,
     traces: opts.includeReads ? traces : undefined,
-    alignmentData: alignmentData.filter(ad => alignIds.has(ad.alignId) || raIds.has(ad.alignId)),
+    alignmentData: alignmentData.filter(ad => alignIds.has(ad.alignId) || contigIds.has(ad.alignId)),
   }
 
   // Remove empty optional fields to reduce size
@@ -1010,6 +974,7 @@ export function importSessionFromJson(json: string): RestoredSession {
       createdAt: sr.createdAt,
       trimStart: sr.trimStart, trimEnd: sr.trimEnd,
       edits: sr.edits ?? [],
+      reversed: sr.reversed,
     })
   }
 
@@ -1022,28 +987,13 @@ export function importSessionFromJson(json: string): RestoredSession {
     if (aln) alignments.push(aln)
   }
 
-  // Reconstruct read alignments
-  const readAlignments: ReadAlignment[] = []
-  for (const sra of data.readAlignments ?? []) {
-    const result = alignMap.get(sra.id) as AlignmentResult | undefined
-    if (!result) continue
-    readAlignments.push({
-      id: sra.id, name: sra.name, readId: sra.readId, tabId: sra.tabId,
-      result, createdAt: sra.createdAt, zoomLevel: sra.zoomLevel,
-      showChromatogram: sra.showChromatogram, resolvedCols: sra.resolvedCols ?? [],
-    })
+  // Reconstruct contigs (ones from before the assembly rebuild are dropped)
+  const contigs: Contig[] = []
+  for (const sc of data.contigs ?? []) {
+    if (sc.readAlignmentIds) continue
+    const c = restoreContig(sc, alignMap.get(sc.id))
+    if (c) contigs.push(c)
   }
-
-  // Reconstruct contigs
-  const raIdSet = new Set(readAlignments.map(ra => ra.id))
-  const contigs: Contig[] = (data.contigs ?? [])
-    .map(sc => ({
-      id: sc.id, name: sc.name, tabId: sc.tabId,
-      readAlignmentIds: sc.readAlignmentIds.filter(id => raIdSet.has(id)),
-      createdAt: sc.createdAt, zoomLevel: sc.zoomLevel,
-      expandedReadId: sc.expandedReadId,
-    }))
-    .filter(c => c.readAlignmentIds.length > 0)
 
   return {
     tabs,
@@ -1055,14 +1005,12 @@ export function importSessionFromJson(json: string): RestoredSession {
     sequencingReads: seqReads,
     activeSequencingReadIds: data.activeSequencingReadIds ?? [],
     alignments,
-    readAlignments,
     contigs,
     oligos: data.oligos ?? [],
     gels: deserializeGels(data.gels),
     activeGelId: data.activeGelId ?? null,
     activeAlignmentId: data.activeAlignmentId ?? null,
     activeContigId: data.activeContigId ?? null,
-    activeReadAlignmentId: data.activeReadAlignmentId ?? null,
     orfParams: data.orfParams,
     enzymeParams: data.enzymeParams,
   }
@@ -1081,7 +1029,6 @@ export function remapSessionIds(session: RestoredSession): RestoredSession {
   const tabIdMap = new Map<string, string>()
   const readIdMap = new Map<string, string>()
   const alignIdMap = new Map<string, string>()
-  const raIdMap = new Map<string, string>()
   const contigIdMap = new Map<string, string>()
   const folderIdMap = new Map<string, string>()
 
@@ -1094,9 +1041,6 @@ export function remapSessionIds(session: RestoredSession): RestoredSession {
   }
   for (const a of session.alignments) {
     alignIdMap.set(a.id, newId())
-  }
-  for (const ra of session.readAlignments) {
-    raIdMap.set(ra.id, newId())
   }
   const oligoIdMap = new Map<string, string>()
   for (const o of session.oligos) oligoIdMap.set(o.id, newId())
@@ -1116,7 +1060,6 @@ export function remapSessionIds(session: RestoredSession): RestoredSession {
     'sequence': tabIdMap,
     'read': readIdMap,
     'alignment': alignIdMap,
-    'read-alignment': raIdMap,
     'contig': contigIdMap,
     'gel': gelIdMap,
     'oligo': oligoIdMap,
@@ -1174,18 +1117,15 @@ export function remapSessionIds(session: RestoredSession): RestoredSession {
       ...a,
       id: alignIdMap.get(a.id) || a.id,
     })),
-    readAlignments: session.readAlignments.map(ra => ({
-      ...ra,
-      id: raIdMap.get(ra.id) || ra.id,
-      readId: readIdMap.get(ra.readId) || ra.readId,
-      tabId: tabIdMap.get(ra.tabId) || ra.tabId,
-    })),
     oligos: session.oligos.map(o => ({ ...o, id: oligoIdMap.get(o.id) || o.id })),
     contigs: session.contigs.map(c => ({
       ...c,
       id: contigIdMap.get(c.id) || c.id,
-      tabId: tabIdMap.get(c.tabId) || c.tabId,
-      readAlignmentIds: c.readAlignmentIds.map(id => raIdMap.get(id) || id),
+      doc: {
+        ...c.doc,
+        reference: c.doc.reference ? { ...c.doc.reference, tabId: c.doc.reference.tabId ? (tabIdMap.get(c.doc.reference.tabId) ?? null) : null } : null,
+        rows: c.doc.rows.map(r => ({ ...r, readId: r.readId ? (readIdMap.get(r.readId) ?? null) : null })),
+      },
     })),
     gels: session.gels.map(g => ({
       ...g,
@@ -1195,7 +1135,6 @@ export function remapSessionIds(session: RestoredSession): RestoredSession {
     activeGelId: session.activeGelId ? (gelIdMap.get(session.activeGelId) ?? null) : null,
     activeAlignmentId: session.activeAlignmentId ? (alignIdMap.get(session.activeAlignmentId) ?? session.activeAlignmentId) : null,
     activeContigId: session.activeContigId ? (contigIdMap.get(session.activeContigId) ?? session.activeContigId) : null,
-    activeReadAlignmentId: session.activeReadAlignmentId ? (raIdMap.get(session.activeReadAlignmentId) ?? session.activeReadAlignmentId) : null,
     orfParams: session.orfParams,
     enzymeParams: session.enzymeParams,
   }

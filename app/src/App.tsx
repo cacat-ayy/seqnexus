@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, useCallback, useMemo, lazy, Suspense } from 'react'
+import { useEffect, useRef, useState, useCallback, useMemo, lazy, Suspense, useSyncExternalStore } from 'react'
 import { formatBp } from './utils/format'
 import { gcPercent } from './primers/thermodynamics'
 import './App.css'
@@ -21,7 +21,8 @@ import SequenceStatsPopover from './components/SequenceStatsPopover'
 const CloningModal = lazy(() => import('./components/CloningModal'))
 const CodonOptimizeModal = lazy(() => import('./components/CodonOptimizeModal'))
 const GelWorkspace = lazy(() => import('./components/gel/GelWorkspace'))
-import { useEditorStore, isOriginSpanningSelection, selectionSegments, applyEdits, type SequencingRead } from './store'
+import { useEditorStore, isOriginSpanningSelection, selectionSegments, type SequencingRead } from './store'
+import { editedRead, toFasta, toFastq } from './sanger/edits'
 import { displayPosition, internalPosition } from './models/Document'
 import { parseGenBankMulti, writeGenBank } from './io/genbank'
 import { parseGenbankFile } from './workers/genbank-parser'
@@ -29,8 +30,9 @@ import { parseSnapGene, writeSnapGene } from './io/snapgene'
 import { writeGff3 } from './io/gff3'
 import { writeCsv } from './io/csv'
 import { parseGeneious } from './io/geneious'
-import { parseAb1, autoTrim } from './io/ab1'
-import { parseScf } from './io/scf'
+import { importTraceFiles, isTraceFile } from './sanger/import'
+import { getTraceView, subscribeTraceView, updateTraceView, ZOOM_WIDTHS } from './sanger/view'
+import { CONTIG_ZOOM } from './assembly/view'
 import { parseFastq, meanQuality } from './io/fastq'
 import { libraryMatches } from './primers/library'
 import { notify } from './toast'
@@ -65,14 +67,16 @@ import SessionImportModal from './components/SessionImportModal'
 import { exportSessionToJson, importSessionFromJson, remapSessionIds, type SessionExportOptions } from './persistence'
 import FilenamePrompt from './components/ExportDialog'
 import FetchModal from './components/FetchModal'
-import ChromatogramView, { type ChromZoomHandle } from './components/ChromatogramView'
 const AlignmentModal = lazy(() => import('./components/AlignmentModal'))
 const AlignmentWorkspace = lazy(() => import('./components/alignment/AlignmentWorkspace'))
+const ReadWorkspace = lazy(() => import('./components/sanger/ReadWorkspace'))
+const ReadSetView = lazy(() => import('./components/sanger/ReadSetView'))
 
-const ReadAlignmentView = lazy(() => import('./components/ReadAlignmentView'))
-const ContigView = lazy(() => import('./components/ContigView'))
+const ContigWorkspace = lazy(() => import('./components/contig/ContigWorkspace'))
+const AssembleDialog = lazy(() => import('./components/contig/AssembleDialog'))
 
-import { docFromResult, type AlnDoc } from './msa/model'
+import type { AlnDoc } from './msa/model'
+import { contigToAlignment } from './assembly/export'
 import { ALIGNMENT_ONLY_EXTENSIONS, ALN_EXTENSIONS, detectFormat, fastaLooksAligned, readAlignment, writeAlignment, type AlnFormatId } from './msa/formats'
 
 
@@ -107,80 +111,6 @@ const THEMES: ThemeInfo[] = [
   { id: 'catppuccin', label: 'Catppuccin', group: 'dark',  bg: '#1e1e2e', outer: '#11111b', accent: '#cba6f7', text: '#cdd6f4', muted: '#6c7086' },
 ]
 
-/** Shared scrollbar for multi-read chromatogram stacking */
-function MultiChromScrollbar({ scrollX, zoom, setScrollX, readIds }: { scrollX: number; zoom: number; setScrollX: (v: number) => void; readIds: string[] }) {
-  // Stable selector: extract only the max trace length (a number, not a new array)
-  const maxTraceLength = useEditorStore(useCallback((s) => {
-    let max = 0
-    for (const r of s.sequencingReads) {
-      if (!readIds.includes(r.id)) continue
-      const len = Math.max(r.data.traces.A.length, r.data.traces.C.length, r.data.traces.G.length, r.data.traces.T.length)
-      if (len > max) max = len
-    }
-    return max || 1
-  }, [readIds]))
-
-  const barRef = useRef<HTMLDivElement>(null)
-  const [dragging, setDragging] = useState(false)
-  const [barWidth, setBarWidth] = useState(300)
-  const dragRef = useRef<{ startX: number; startScroll: number } | null>(null)
-
-  // Track bar width via ResizeObserver to avoid layout reads during render
-  useEffect(() => {
-    const el = barRef.current
-    if (!el) return
-    const ro = new ResizeObserver(() => setBarWidth(el.clientWidth))
-    ro.observe(el)
-    setBarWidth(el.clientWidth)
-    return () => ro.disconnect()
-  }, [])
-
-  const visibleSamples = barWidth / zoom
-  const visibleFraction = Math.min(1, visibleSamples / maxTraceLength)
-  const scrollFraction = scrollX / maxTraceLength
-  const thumbLeft = scrollFraction * barWidth
-  const thumbWidth = Math.max(30, visibleFraction * barWidth)
-
-  const clampRef = useRef((s: number) => s)
-  clampRef.current = (s: number) => Math.max(0, Math.min(s, maxTraceLength - visibleSamples))
-
-  const handleMouseDown = useCallback((e: React.MouseEvent) => {
-    const thumb = e.target as HTMLElement
-    if (thumb.classList.contains('chrom-scrollbar-thumb')) {
-      dragRef.current = { startX: e.clientX, startScroll: scrollX }
-      setDragging(true)
-      e.preventDefault()
-    } else {
-      const bar = barRef.current
-      if (!bar) return
-      const rect = bar.getBoundingClientRect()
-      const fraction = (e.clientX - rect.left) / rect.width
-      setScrollX(clampRef.current(fraction * maxTraceLength))
-    }
-  }, [scrollX, maxTraceLength, setScrollX])
-
-  useEffect(() => {
-    if (!dragging) return
-    const handleMove = (e: MouseEvent) => {
-      const drag = dragRef.current
-      if (!drag || !barRef.current) return
-      const dx = e.clientX - drag.startX
-      const bw = barRef.current.clientWidth
-      const scrollDelta = (dx / bw) * maxTraceLength
-      setScrollX(clampRef.current(drag.startScroll + scrollDelta))
-    }
-    const handleUp = () => { dragRef.current = null; setDragging(false) }
-    window.addEventListener('mousemove', handleMove)
-    window.addEventListener('mouseup', handleUp)
-    return () => { window.removeEventListener('mousemove', handleMove); window.removeEventListener('mouseup', handleUp) }
-  }, [dragging, maxTraceLength, setScrollX])
-
-  return (
-    <div className="chrom-scrollbar chrom-scrollbar-shared" ref={barRef} onMouseDown={handleMouseDown}>
-      <div className={`chrom-scrollbar-thumb ${dragging ? 'dragging' : ''}`} style={{ left: thumbLeft, width: thumbWidth }} />
-    </div>
-  )
-}
 
 /**
  * Detail line for the "can't open this" error. Kept out of the headline: the
@@ -245,8 +175,6 @@ export default function App() {
   const selectedExportableCount = useEditorStore(s => countSelectable(s.explorerSelectedIds))
   const openDocument = useEditorStore(s => s.openDocument)
   const openDocumentState = useEditorStore(s => s.openDocumentState)
-  const addSequencingRead = useEditorStore(s => s.addSequencingRead)
-  const setSequencingTrim = useEditorStore(s => s.setSequencingTrim)
   const activeSequencingReadIds = useEditorStore(s => s.activeSequencingReadIds)
   const alignments = useEditorStore(s => s.alignments)
   const activeAlignmentId = useEditorStore(s => s.activeAlignmentId)
@@ -301,20 +229,8 @@ export default function App() {
   const [viewNameValue, setViewNameValue] = useState('')
   const viewNameInputRef = useRef<HTMLInputElement>(null)
 
-  const chromZoomRef = useRef<ChromZoomHandle | null>(null)
-  const [chromZoomPct, setChromZoomPct] = useState(50)
-
-  // Synchronized scroll/zoom/traces for multi-read chromatogram stacking
-  const [multiChromScrollX, setMultiChromScrollX] = useState(0)
-  const [multiChromZoom, setMultiChromZoom] = useState(1)
-  const [multiChromShowTraces, setMultiChromShowTraces] = useState({ A: true, C: true, G: true, T: true })
-  const [multiChromShowQuality, setMultiChromShowQuality] = useState(true)
-  const [multiChromShowCurves, setMultiChromShowCurves] = useState(true)
-  // Track which read is actively selecting, and a trigger to clear others
-  const [multiChromClearSel, setMultiChromClearSel] = useState<{ activeReadId: string; trigger: number }>({ activeReadId: '', trigger: 0 })
-  const handleMultiSelectionStart = useCallback((readId: string) => {
-    setMultiChromClearSel(prev => ({ activeReadId: readId, trigger: prev.trigger + 1 }))
-  }, [])
+  // The trace view's zoom is shared with the read workspace's own slider.
+  const traceZoom = useSyncExternalStore(subscribeTraceView, () => getTraceView().zoom, () => getTraceView().zoom)
 
   const [dragOver, setDragOver] = useState(false)
   const [dropError, setDropError] = useState<string | null>(null)
@@ -424,56 +340,27 @@ export default function App() {
   const anyPicked = pickedProposalCount + pickedOrfCount
 
   const addAlignment = useEditorStore(s => s.addAlignment)
-  const addReadAlignment = useEditorStore(s => s.addReadAlignment)
-  const readAlignments = useEditorStore(s => s.readAlignments)
-  const activeReadAlignmentId = useEditorStore(s => s.activeReadAlignmentId)
-  const setReadAlignmentZoom = useEditorStore(s => s.setReadAlignmentZoom)
-  const addContig = useEditorStore(s => s.addContig)
   const contigs = useEditorStore(s => s.contigs)
   const activeContigId = useEditorStore(s => s.activeContigId)
-  const setActiveContig = useEditorStore(s => s.setActiveContig)
-  const setContigZoom = useEditorStore(s => s.setContigZoom)
-
-  // Collect read alignment IDs during a batch alignment for contig creation
-  const batchReadAlignIdsRef = useRef<string[]>([])
-  const batchRefTabIdRef = useRef<string | null>(null)
-
-  // Track "came from contig" for back navigation from single-read view
-  const [parentContigId, setParentContigId] = useState<string | null>(null)
+  const setContigView = useEditorStore(s => s.setContigView)
+  // Reads waiting to be assembled (the assemble dialog is open while set).
+  const [assembleReadIds, setAssembleReadIds] = useState<string[] | null>(null)
 
   /** Extract trimmed, edited bases from a sequencing read. */
   const getReadBases = useCallback((read: SequencingRead): string => {
-    const edits = read.edits ?? []
-    const { bases: editedBases, editMap } = applyEdits(read.data.bases, edits)
-    const trimStart = read.trimStart ?? 0
-    const trimEnd = read.trimEnd ?? read.data.bases.length
-    let readBases = ''
-    for (let i = trimStart; i < trimEnd && i < editedBases.length; i++) {
-      if (editMap[i] !== 'delete') readBases += editedBases[i]
-    }
-    return readBases
+    return editedRead(read.data, read.edits ?? [], read.trimStart, read.trimEnd, { reversed: !!read.reversed }).bases
   }, [])
 
-  /** Open alignment modal pre-populated with sequencing reads. */
+  /** Assemble reads: to a reference, or de novo. */
   const openRefPicker = useCallback((readIds: string | string[]) => {
-    const ids = Array.isArray(readIds) ? readIds : [readIds]
-    const state = useEditorStore.getState()
-    const entries: import('./components/AlignmentModal').AlignmentInitialEntry[] = []
-    for (const rid of ids) {
-      const read = state.sequencingReads.find(r => r.id === rid)
-      if (read) {
-        const bases = getReadBases(read)
-        if (bases.length > 0) entries.push({ id: `read_${rid}_${Date.now()}`, name: read.data.name, bases, source: 'read', sourceId: rid })
-      }
-    }
-    if (entries.length > 0) {
-      setAlignInitialEntries(entries)
-      setAlignModalOpen(true)
-    }
-  }, [getReadBases])
+    setAssembleReadIds(Array.isArray(readIds) ? readIds : [readIds])
+  }, [])
 
   const activeGel = useEditorStore(s => s.gels.find(g => g.id === s.activeGelId) ?? null)
   const activeAln = useEditorStore(s => (s.activeAlignmentId ? s.alignments.find(a => a.id === s.activeAlignmentId) ?? null : null))
+  const activeContig = useEditorStore(s => (s.activeContigId ? s.contigs.find(c => c.id === s.activeContigId) ?? null : null))
+  // One read open on its own has an undo history of its own; several at once are a table.
+  const activeRead = useEditorStore(s => (s.activeSequencingReadIds.length === 1 ? s.sequencingReads.find(r => r.id === s.activeSequencingReadIds[0]) ?? null : null))
   const undoAlignment = useEditorStore(s => s.undoAlignment)
   const redoAlignment = useEditorStore(s => s.redoAlignment)
   const gelOpen = activeGel !== null
@@ -506,7 +393,6 @@ export default function App() {
     if (
       (s.activeTabId !== prev.activeTabId && s.activeTabId !== null) ||
       (s.activeAlignmentId !== prev.activeAlignmentId && s.activeAlignmentId !== null) ||
-      (s.activeReadAlignmentId !== prev.activeReadAlignmentId && s.activeReadAlignmentId !== null) ||
       (s.activeContigId !== prev.activeContigId && s.activeContigId !== null) ||
       (s.activeSequencingReadIds !== prev.activeSequencingReadIds && s.activeSequencingReadIds.length > 0)
     ) s.setActiveGel(null)
@@ -650,7 +536,7 @@ export default function App() {
       if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key === 'S') {
         e.preventDefault()
         const s = useEditorStore.getState()
-        if (s.activeTabId || s.activeSequencingReadIds.length > 0 || s.activeAlignmentId || s.activeReadAlignmentId || s.activeContigId) {
+        if (s.activeTabId || s.activeSequencingReadIds.length > 0 || s.activeAlignmentId || s.activeContigId) {
           setBulkExportItems({})
           setExportModalOpen(true)
         }
@@ -730,7 +616,6 @@ export default function App() {
   const [chromSearchOpen, setChromSearchOpen] = useState(false)
   const [alignSearchOpen, setAlignSearchOpen] = useState(false)
   const [contigSearchOpen, setContigSearchOpen] = useState(false)
-  const [contigSelInfo, setContigSelInfo] = useState<{ anchor: number; caret: number } | null>(null)
 
   // Session persistence (save/restore/beforeunload)
   const { storageRefreshKey, sessionLoadWarnings } = useSessionPersistence(theme, setTheme as (t: string) => void, openDocument, DEMO_SEQUENCE)
@@ -899,38 +784,9 @@ export default function App() {
       }
       reader.onerror = () => notify.error(`Could not read "${file.name}"`)
       reader.readAsArrayBuffer(file)
-    } else if (file.name.match(/\.(ab1|abi|abif)$/i)) {
-      // Sanger sequencing chromatogram (ABIF)
-      const reader = new FileReader()
-      reader.onload = () => {
-        try {
-          const ab1 = parseAb1(reader.result as ArrayBuffer)
-          ab1.name = file.name.replace(/\.[^.]+$/, '')
-          const id = addSequencingRead(ab1)
-          const [trimStart, trimEnd] = autoTrim(ab1.qualityScores)
-          setSequencingTrim(id, trimStart, trimEnd)
-        } catch (err) {
-          notify.error(`Could not read "${file.name}"`, { detail: errorDetail(err) })
-        }
-      }
-      reader.onerror = () => notify.error(`Could not read "${file.name}"`)
-      reader.readAsArrayBuffer(file)
-    } else if (file.name.match(/\.scf$/i)) {
-      // Sanger sequencing chromatogram (SCF)
-      const reader = new FileReader()
-      reader.onload = () => {
-        try {
-          const scf = parseScf(reader.result as ArrayBuffer)
-          scf.name = file.name.replace(/\.[^.]+$/, '')
-          const id = addSequencingRead(scf)
-          const [trimStart, trimEnd] = autoTrim(scf.qualityScores)
-          setSequencingTrim(id, trimStart, trimEnd)
-        } catch (err) {
-          notify.error(`Could not read "${file.name}"`, { detail: errorDetail(err) })
-        }
-      }
-      reader.onerror = () => notify.error(`Could not read "${file.name}"`)
-      reader.readAsArrayBuffer(file)
+    } else if (isTraceFile(file.name)) {
+      // Sanger chromatogram (.ab1/.scf). Batches go through handleFilesOpen.
+      void importTraceFiles([file])
     } else if (file.name.match(/\.(fastq|fq)$/i)) {
       // FASTQ. Opened as plain sequences, not chromatograms: the format
       // carries quality scores but no trace, and fabricating one would show
@@ -1024,7 +880,17 @@ export default function App() {
       reader.onerror = () => notify.error(`Could not read "${file.name}"`)
       reader.readAsText(file)
     }
-  }, [openDocument, openDocumentState, addSequencingRead, setSequencingTrim, openAlignmentFile])
+  }, [openDocument, openDocumentState, openAlignmentFile])
+
+  /**
+   * Open several files. Sanger traces are imported together, so a plate
+   * lands in one folder with one summary instead of a toast per well.
+   */
+  const handleFilesOpen = useCallback((files: File[]) => {
+    const traces = files.filter(f => isTraceFile(f.name))
+    if (traces.length > 0) void importTraceFiles(traces)
+    for (const f of files) if (!isTraceFile(f.name)) handleFileOpen(f)
+  }, [handleFileOpen])
 
   // --- File menu actions ---
   // Stable identities: the explorer is memo'd, so an inline arrow here would
@@ -1051,11 +917,9 @@ export default function App() {
 
   const handleMenuImportFiles = useCallback((files: FileList | null) => {
     if (!files) return
-    for (const f of Array.from(files)) {
-      handleFileOpen(f)
-    }
+    handleFilesOpen(Array.from(files))
     setFileMenuOpen(false)
-  }, [handleFileOpen])
+  }, [handleFilesOpen])
 
   const handleImportClipboard = useCallback(async () => {
     try {
@@ -1114,9 +978,9 @@ export default function App() {
       setTimeout(() => { setDropError(null); setDragOver(false) }, 1500)
     } else {
       setDragOver(false)
-      for (const file of files) handleFileOpen(file)
+      handleFilesOpen(files)
     }
-  }, [handleFileOpen])
+  }, [handleFilesOpen])
 
 
 
@@ -1157,8 +1021,8 @@ export default function App() {
     restoreSession(
       session.tabs, session.activeTabId, session.folders,
       session.sequencingReads, session.activeSequencingReadIds,
-      session.alignments, session.readAlignments, session.contigs,
-      session.activeAlignmentId, session.activeContigId, session.activeReadAlignmentId,
+      session.alignments, session.contigs,
+      session.activeAlignmentId, session.activeContigId,
       session.itemMeta,
       session.tagColors,
       session.oligos,
@@ -1178,7 +1042,7 @@ export default function App() {
     mergeSession(
       session.tabs, session.folders,
       session.sequencingReads, session.alignments,
-      session.readAlignments, session.contigs, session.itemMeta, session.tagColors,
+      session.contigs, session.itemMeta, session.tagColors,
       session.oligos,
     )
     useEditorStore.getState().mergeGels(session.gels)
@@ -1191,7 +1055,6 @@ export default function App() {
   /** Determine the kind of the currently active/viewed item. */
   const getActiveItemKind = (s: ReturnType<typeof useEditorStore.getState>): ExportItemKind => {
     if (s.activeContigId) return 'contig'
-    if (s.activeReadAlignmentId) return 'read-alignment'
     if (s.activeAlignmentId) return 'alignment'
     if (s.activeSequencingReadIds.length > 0) return 'read'
     return 'sequence'
@@ -1217,24 +1080,12 @@ export default function App() {
     }
 
     const exportReadText = (read: SequencingRead, fmt: ExportFormat): string => {
-      const { bases: editedBases, editMap } = applyEdits(read.data.bases, read.edits)
-      let seq = ''
-      for (let i = read.trimStart; i < read.trimEnd && i < editedBases.length; i++) {
-        if (editMap[i] !== 'delete') seq += editedBases[i]
-      }
+      const r = editedRead(read.data, read.edits, read.trimStart, read.trimEnd, { reversed: !!read.reversed })
       const name = read.data.name.replace(/\s+/g, '_')
-      if (fmt === 'fastq') {
-        const quals: number[] = []
-        for (let i = read.trimStart; i < read.trimEnd && i < editedBases.length; i++) {
-          if (editMap[i] !== 'delete') {
-            quals.push(editMap[i] === 'insert' ? 0 : (read.data.qualityScores[i] ?? 0))
-          }
-        }
-        const qualStr = quals.map(q => String.fromCharCode(Math.min(q, 93) + 33)).join('')
-        return `@${name}\n${seq}\n+\n${qualStr}\n`
-      }
-      return `>${name}\n${seq}\n`
+      return fmt === 'fastq' ? toFastq(name, r) : toFasta(name, r.bases)
     }
+    const contigText = (c: (typeof state.contigs)[number], fmt: ExportFormat): string =>
+      exportAlignmentText(contigToAlignment(c.doc, c.name, c.view.consensus), fmt)
 
     const exportAlignmentText = (doc: AlnDoc, fmt: ExportFormat): string =>
       writeAlignment(doc, ALN_EXPORT_FORMAT[fmt] ?? 'fasta')
@@ -1281,19 +1132,10 @@ export default function App() {
             const align = state.alignments.find(a => a.id === id)
             if (!align) continue
             downloadItem(exportAlignmentText(align.doc, defFmt), align.name.replace(/\s+/g, '_'), ext)
-          } else if (kind === 'read-alignment') {
-            const ra = state.readAlignments.find(r => r.id === id)
-            if (!ra) continue
-            downloadItem(exportAlignmentText(docFromResult(ra.result, 'dna'), defFmt), ra.name.replace(/\s+/g, '_'), ext)
           } else if (kind === 'contig') {
             const contig = state.contigs.find(c => c.id === id)
             if (!contig) continue
-            const raResults = contig.readAlignmentIds
-              .map(raId => state.readAlignments.find(r => r.id === raId))
-              .filter(Boolean) as typeof state.readAlignments
-            if (raResults.length > 0) {
-              downloadItem(exportAlignmentText(docFromResult(raResults[0].result, 'dna'), defFmt), contig.name.replace(/\s+/g, '_'), ext)
-            }
+            downloadItem(contigText(contig, defFmt), contig.name.replace(/\s+/g, '_'), ext)
           }
           fileCount++
         }
@@ -1326,24 +1168,11 @@ export default function App() {
           downloadBlob(new Blob([text], { type: 'text/plain' }), filename)
           written = 1
         }
-      } else if (activeKind === 'read-alignment') {
-        const ra = state.readAlignments.find(r => r.id === state.activeReadAlignmentId)
-        if (ra) {
-          const text = exportAlignmentText(docFromResult(ra.result, 'dna'), format)
-          downloadBlob(new Blob([text], { type: 'text/plain' }), filename)
-          written = 1
-        }
       } else if (activeKind === 'contig') {
         const contig = state.contigs.find(c => c.id === state.activeContigId)
         if (contig) {
-          const raResults = contig.readAlignmentIds
-            .map(raId => state.readAlignments.find(r => r.id === raId))
-            .filter(Boolean) as typeof state.readAlignments
-          if (raResults.length > 0) {
-            const text = exportAlignmentText(docFromResult(raResults[0].result, 'dna'), format)
-            downloadBlob(new Blob([text], { type: 'text/plain' }), filename)
-            written = 1
-          }
+          downloadBlob(new Blob([contigText(contig, format)], { type: 'text/plain' }), filename)
+          written = 1
         }
       }
       reportExport(written, filename)
@@ -1378,21 +1207,11 @@ export default function App() {
             if (!align) continue
             downloadItem(exportAlignmentText(align.doc, format), align.name.replace(/\s+/g, '_'), ext)
             written++
-          } else if (kind === 'read-alignment') {
-            const ra = state.readAlignments.find(r => r.id === id)
-            if (!ra) continue
-            downloadItem(exportAlignmentText(docFromResult(ra.result, 'dna'), format), ra.name.replace(/\s+/g, '_'), ext)
-            written++
           } else if (kind === 'contig') {
             const contig = state.contigs.find(c => c.id === id)
             if (!contig) continue
-            const raResults = contig.readAlignmentIds
-              .map(raId => state.readAlignments.find(r => r.id === raId))
-              .filter(Boolean) as typeof state.readAlignments
-            if (raResults.length > 0) {
-              downloadItem(exportAlignmentText(docFromResult(raResults[0].result, 'dna'), format), contig.name.replace(/\s+/g, '_'), ext)
-              written++
-            }
+            downloadItem(contigText(contig, format), contig.name.replace(/\s+/g, '_'), ext)
+            written++
           }
         }
         reportExport(written, filename)
@@ -1410,17 +1229,9 @@ export default function App() {
           } else if (kind === 'alignment') {
             const align = state.alignments.find(a => a.id === id)
             if (align) parts.push(exportAlignmentText(align.doc, format))
-          } else if (kind === 'read-alignment') {
-            const ra = state.readAlignments.find(r => r.id === id)
-            if (ra) parts.push(exportAlignmentText(docFromResult(ra.result, 'dna'), format))
           } else if (kind === 'contig') {
             const contig = state.contigs.find(c => c.id === id)
-            if (contig) {
-              const raResults = contig.readAlignmentIds
-                .map(raId => state.readAlignments.find(r => r.id === raId))
-                .filter(Boolean) as typeof state.readAlignments
-              if (raResults.length > 0) parts.push(exportAlignmentText(docFromResult(raResults[0].result, 'dna'), format))
-            }
+            if (contig) parts.push(contigText(contig, format))
           }
         }
         const mime = format === 'csv' ? 'text/csv' : 'text/plain'
@@ -1500,23 +1311,30 @@ export default function App() {
   // Shared by the Undo/Redo buttons and their palette entries, so the two
   // cannot disagree about whether there is anything to step to.
   // A gel or an alignment on screen keeps its own history.
-  const ownHistory = activeGel ?? activeAln
+  const ownHistory = activeGel ?? activeAln ?? activeContig ?? activeRead
   const undoDisabled = ownHistory ? ownHistory.undoStack.length === 0 : noDoc || readOnly || undoTop === null
   const redoDisabled = ownHistory ? ownHistory.redoStack.length === 0 : noDoc || readOnly || redoTop === null
-  const undoDesc = activeGel ? undefined : activeAln ? activeAln.undoStack[activeAln.undoStack.length - 1]?.label : undoTop || undefined
-  const redoDesc = activeGel ? undefined : activeAln ? activeAln.redoStack[activeAln.redoStack.length - 1]?.label : redoTop || undefined
+  const historyOf = activeAln ?? activeContig ?? activeRead
+  const undoDesc = activeGel ? undefined : historyOf ? historyOf.undoStack[historyOf.undoStack.length - 1]?.label : undoTop || undefined
+  const redoDesc = activeGel ? undefined : historyOf ? historyOf.redoStack[historyOf.redoStack.length - 1]?.label : redoTop || undefined
   const activeGelId = activeGel?.id
   const activeAlnId = activeAln?.id
+  const activeReadId = activeRead?.id
+  const activeContigIdForHistory = activeContig?.id
   const runUndo = useCallback(() => {
     if (activeGelId) undoGel(activeGelId)
     else if (activeAlnId) undoAlignment(activeAlnId)
+    else if (activeContigIdForHistory) useEditorStore.getState().undoContig(activeContigIdForHistory)
+    else if (activeReadId) useEditorStore.getState().undoSequencing(activeReadId)
     else undo()
-  }, [activeGelId, activeAlnId, undoGel, undoAlignment, undo])
+  }, [activeGelId, activeAlnId, activeContigIdForHistory, activeReadId, undoGel, undoAlignment, undo])
   const runRedo = useCallback(() => {
     if (activeGelId) redoGel(activeGelId)
     else if (activeAlnId) redoAlignment(activeAlnId)
+    else if (activeContigIdForHistory) useEditorStore.getState().redoContig(activeContigIdForHistory)
+    else if (activeReadId) useEditorStore.getState().redoSequencing(activeReadId)
     else redo()
-  }, [activeGelId, activeAlnId, redoGel, redoAlignment, redo])
+  }, [activeGelId, activeAlnId, activeContigIdForHistory, activeReadId, redoGel, redoAlignment, redo])
   const stepWhy = (verb: 'undo' | 'redo') =>
     !ownHistory && noDoc ? `Open a sequence to ${verb} its edits`
       : !ownHistory && readOnly ? 'This sequence is read-only. Unlock it to edit'
@@ -1655,7 +1473,7 @@ export default function App() {
                 setBulkExportItems({})
                 setExportModalOpen(true)
                 setFileMenuOpen(false)
-              }} disabled={!activeTabId && activeSequencingReadIds.length === 0 && !activeAlignmentId && !activeReadAlignmentId && !activeContigId}>
+              }} disabled={!activeTabId && activeSequencingReadIds.length === 0 && !activeAlignmentId && !activeContigId}>
                 <span className="file-menu-icon"><Save size={14} /></span>
                 Export…
               </button>
@@ -1804,29 +1622,14 @@ export default function App() {
           {(() => {
             const activeContig = activeContigId ? contigs.find(c => c.id === activeContigId) : null
             if (activeContig) {
-              const cz = activeContig.zoomLevel
+              const cz = activeContig.view.zoom
               return (
                 <>
-                  <button className="tb" onClick={() => setContigZoom(activeContig.id, cz - 1)} disabled={cz <= 0} {...tip({ label: 'Zoom out' })}>
+                  <button className="tb" onClick={() => setContigView(activeContig.id, { zoom: cz - 1 })} disabled={cz <= 0} {...tip({ label: 'Zoom out' })}>
                     <span className="tb-icon"><ZoomOut size={14} /></span>
                   </button>
-                  <span className="tb zoom-label" title={`Zoom level ${cz}`}>{Math.round(cz / 9 * 100)}%</span>
-                  <button className="tb" onClick={() => setContigZoom(activeContig.id, cz + 1)} disabled={cz >= 9} {...tip({ label: 'Zoom in' })}>
-                    <span className="tb-icon"><ZoomIn size={14} /></span>
-                  </button>
-                </>
-              )
-            }
-            const activeRA = activeReadAlignmentId ? readAlignments.find(ra => ra.id === activeReadAlignmentId) : null
-            if (activeRA) {
-              const rz = activeRA.zoomLevel
-              return (
-                <>
-                  <button className="tb" onClick={() => setReadAlignmentZoom(activeRA.id, rz - 1)} disabled={rz <= 0} {...tip({ label: 'Zoom out' })}>
-                    <span className="tb-icon"><ZoomOut size={14} /></span>
-                  </button>
-                  <span className="tb zoom-label" title={`Zoom level ${rz}`}>{Math.round(rz / 9 * 100)}%</span>
-                  <button className="tb" onClick={() => setReadAlignmentZoom(activeRA.id, rz + 1)} disabled={rz >= 9} {...tip({ label: 'Zoom in' })}>
+                  <span className="tb zoom-label" title={`Zoom level ${cz}`}>{Math.round(cz / (CONTIG_ZOOM.length - 1) * 100)}%</span>
+                  <button className="tb" onClick={() => setContigView(activeContig.id, { zoom: cz + 1 })} disabled={cz >= CONTIG_ZOOM.length - 1} {...tip({ label: 'Zoom in' })}>
                     <span className="tb-icon"><ZoomIn size={14} /></span>
                   </button>
                 </>
@@ -1850,11 +1653,11 @@ export default function App() {
             if (activeSequencingReadIds.length > 0) {
               return (
                 <>
-                  <button className="tb" onClick={() => chromZoomRef.current?.zoomOut()} disabled={chromZoomPct <= 0} {...tip({ label: 'Zoom out' })}>
+                  <button className="tb" onClick={() => updateTraceView({ zoom: Math.max(0, traceZoom - 1) })} disabled={traceZoom <= 0 || activeSequencingReadIds.length > 1} {...tip({ label: 'Zoom out' })}>
                     <span className="tb-icon"><ZoomOut size={14} /></span>
                   </button>
-                  <span className="tb zoom-label">{chromZoomPct}%</span>
-                  <button className="tb" onClick={() => chromZoomRef.current?.zoomIn()} disabled={chromZoomPct >= 100} {...tip({ label: 'Zoom in' })}>
+                  <span className="tb zoom-label" title={`${ZOOM_WIDTHS[traceZoom]} px per base`}>{Math.round(traceZoom / (ZOOM_WIDTHS.length - 1) * 100)}%</span>
+                  <button className="tb" onClick={() => updateTraceView({ zoom: Math.min(ZOOM_WIDTHS.length - 1, traceZoom + 1) })} disabled={traceZoom >= ZOOM_WIDTHS.length - 1 || activeSequencingReadIds.length > 1} {...tip({ label: 'Zoom in' })}>
                     <span className="tb-icon"><ZoomIn size={14} /></span>
                   </button>
                 </>
@@ -2053,7 +1856,7 @@ export default function App() {
           open={sidebarOpen}
           onCollapse={handleHideSidebar}
           onExpand={handleShowSidebar}
-          onImportFile={handleFileOpen}
+          onImportFiles={handleFilesOpen}
           onOpenProperties={handleOpenProperties}
           onNewSequence={handleNewSequence}
           onFetch={handleOpenFetch}
@@ -2079,112 +1882,35 @@ export default function App() {
               </div>
             </>
           ) : activeContigId && contigs.find(c => c.id === activeContigId) ? (
-            (() => {
-              const activeContig = contigs.find(c => c.id === activeContigId)!
-              return (
-                <>
-                  <Suspense fallback={null}>
-                    <ContigView
-                      contig={activeContig}
-                      onZoomChange={(level) => setContigZoom(activeContig.id, level)}
-                      onViewReadAlignment={(raId) => {
-                        setParentContigId(activeContig.id)
-                        useEditorStore.getState().setActiveReadAlignment(raId)
-                      }}
-                      externalSearchOpen={contigSearchOpen}
-                      onSearchClose={() => setContigSearchOpen(false)}
-                      onSelectionChange={setContigSelInfo}
-                    />
-                  </Suspense>
-                  <div className="status-bar">
-                    <span style={{ flex: 1 }} />
-                    <span className="status-bar-right">
-                      {contigSelInfo && (
-                        <>
-                          <span className="status-goto-btn" style={{ cursor: 'default' }}>
-                            {contigSelInfo.anchor !== contigSelInfo.caret
-                              ? `${Math.min(contigSelInfo.anchor, contigSelInfo.caret) + 1}..${Math.max(contigSelInfo.anchor, contigSelInfo.caret)} (${Math.abs(contigSelInfo.caret - contigSelInfo.anchor)} bp)`
-                              : `Pos ${contigSelInfo.caret + 1}`
-                            }
-                          </span>
-                          <span className="status-sep" />
-                        </>
-                      )}
-                      <StorageIndicator refreshKey={storageRefreshKey} />
-                    </span>
-                  </div>
-                </>
-              )
-            })()
-          ) : activeReadAlignmentId && readAlignments.find(ra => ra.id === activeReadAlignmentId) ? (
-            (() => {
-              const activeRA = readAlignments.find(ra => ra.id === activeReadAlignmentId)!
-              return (
-                <>
-                  {parentContigId && (
-                    <div className="contig-back-bar">
-                      <button className="contig-back-btn" onClick={() => {
-                        setActiveContig(parentContigId)
-                        setParentContigId(null)
-                      }}>
-                        ← Back to Contig
-                      </button>
-                    </div>
-                  )}
-                  <Suspense fallback={null}>
-                    <ReadAlignmentView
-                      ra={activeRA}
-                      onZoomChange={(level) => setReadAlignmentZoom(activeRA.id, level)}
-                    />
-                  </Suspense>
-                  <div className="status-bar">
-                    <span style={{ flex: 1 }} />
-                    <span className="status-bar-right">
-                      <StorageIndicator refreshKey={storageRefreshKey} />
-                    </span>
-                  </div>
-                </>
-              )
-            })()
-          ) : activeSequencingReadIds.length > 0 ? (
-            <>
-              <div className="chrom-stack">
-                {activeSequencingReadIds.length > 1 && (
-                  <div className="chrom-multi-toolbar">
-                    <button className={`chrom-tb ${multiChromShowCurves ? 'active' : ''}`} onClick={() => setMultiChromShowCurves(v => !v)} title="Show/hide trace curves">Traces</button>
-                    {multiChromShowCurves && <>
-                      {(['A', 'C', 'G', 'T'] as const).map(base => (
-                        <button key={base} className={`chrom-trace-toggle chrom-trace-${base} ${multiChromShowTraces[base] ? '' : 'off'}`} onClick={() => setMultiChromShowTraces(prev => ({ ...prev, [base]: !prev[base] }))}>{base}</button>
-                      ))}
-                      <button className={`chrom-tb ${multiChromShowQuality ? 'active' : ''}`} onClick={() => setMultiChromShowQuality(v => !v)} title="Toggle quality">Q</button>
-                    </>}
-                  </div>
-                )}
-                {activeSequencingReadIds.map((rid, idx) => {
-                  const isMulti = activeSequencingReadIds.length > 1
-                  return (
-                    <ChromatogramView key={rid} readId={rid} compact={isMulti} zoomRef={idx === 0 ? chromZoomRef : undefined} onZoomChange={idx === 0 ? setChromZoomPct : undefined} externalSearchOpen={chromSearchOpen} onSearchClose={() => setChromSearchOpen(false)}
-                      syncScrollX={isMulti ? multiChromScrollX : undefined}
-                      onSyncScroll={isMulti ? setMultiChromScrollX : undefined}
-                      syncZoom={isMulti ? multiChromZoom : undefined}
-                      onSyncZoom={isMulti ? setMultiChromZoom : undefined}
-                      syncShowTraces={isMulti ? multiChromShowTraces : undefined}
-                      syncShowQuality={isMulti ? multiChromShowQuality : undefined}
-                      hideCurves={isMulti ? !multiChromShowCurves : undefined}
-                      onSelectionStart={isMulti ? handleMultiSelectionStart : undefined}
-                      clearSelectionTrigger={isMulti && multiChromClearSel.activeReadId !== rid ? multiChromClearSel.trigger : undefined}
-                    />
-                  )
-                })}
-                {activeSequencingReadIds.length > 1 && <MultiChromScrollbar scrollX={multiChromScrollX} zoom={multiChromZoom} setScrollX={setMultiChromScrollX} readIds={activeSequencingReadIds} />}
-              </div>
-              <div className="status-bar">
-                <span style={{ flex: 1 }} />
-                <span className="status-bar-right">
-                  <StorageIndicator refreshKey={storageRefreshKey} />
-                </span>
-              </div>
-            </>
+            <Suspense fallback={null}>
+              <ContigWorkspace
+                key={activeContigId}
+                contig={contigs.find(c => c.id === activeContigId)!}
+                onClose={() => useEditorStore.getState().setActiveContig(null)}
+                onExportPrompt={handleFilenamePrompt}
+                findRequested={contigSearchOpen}
+                onFindClosed={() => setContigSearchOpen(false)}
+              />
+            </Suspense>
+          ) : activeSequencingReadIds.length > 1 ? (
+            <Suspense fallback={null}>
+              <ReadSetView
+                readIds={activeSequencingReadIds}
+                onClose={() => useEditorStore.getState().setActiveSequencingRead(null)}
+                onExportPrompt={handleFilenamePrompt}
+              />
+            </Suspense>
+          ) : activeRead ? (
+            <Suspense fallback={null}>
+              <ReadWorkspace
+                key={activeRead.id}
+                read={activeRead}
+                onClose={() => useEditorStore.getState().setActiveSequencingRead(null)}
+                onExportPrompt={handleFilenamePrompt}
+                findRequested={chromSearchOpen}
+                onFindClosed={() => setChromSearchOpen(false)}
+              />
+            </Suspense>
           ) : activeAlignmentId && alignments.find(a => a.id === activeAlignmentId) ? (
             (() => {
               const activeAlign = alignments.find(a => a.id === activeAlignmentId)!
@@ -2603,24 +2329,12 @@ export default function App() {
           setAlignModalOpen(false)
           setAlignInitialEntries(undefined)
         }}
-        onReadAlignResult={(readId, refTabId, result, batchIndex, batchTotal) => {
-          if (batchIndex === 0) {
-            batchReadAlignIdsRef.current = []
-            batchRefTabIdRef.current = refTabId
-          }
-          const raId = addReadAlignment(readId, refTabId, result)
-          batchReadAlignIdsRef.current.push(raId)
-          // When all reads in the batch are done, create a contig if 2+
-          if (batchReadAlignIdsRef.current.length === batchTotal && batchTotal >= 2) {
-            addContig(batchRefTabIdRef.current!, batchReadAlignIdsRef.current)
-            // Worth confirming, unlike a single alignment: several reads
-            // collapse into one contig, so the count is not on screen anywhere.
-            notify.success(`Assembled ${batchTotal} reads into a contig`)
-            batchReadAlignIdsRef.current = []
-            batchRefTabIdRef.current = null
-          }
-        }}
       />
+      {assembleReadIds && (
+        <Suspense fallback={null}>
+          <AssembleDialog readIds={assembleReadIds} onClose={() => setAssembleReadIds(null)} />
+        </Suspense>
+      )}
       <FetchModal
         open={fetchModalOpen}
         onClose={() => setFetchModalOpen(false)}
@@ -2639,7 +2353,7 @@ export default function App() {
         filename={sessionImportData?.filename ?? ''}
         tabCount={sessionImportParsedRef.current?.tabs.length ?? 0}
         readCount={sessionImportParsedRef.current?.sequencingReads.length ?? 0}
-        alignmentCount={(sessionImportParsedRef.current?.alignments.length ?? 0) + (sessionImportParsedRef.current?.readAlignments.length ?? 0)}
+        alignmentCount={sessionImportParsedRef.current?.alignments.length ?? 0}
         onClose={() => { setSessionImportOpen(false); setSessionImportData(null); sessionImportParsedRef.current = null }}
         onReplace={handleSessionReplace}
         onMerge={handleSessionMerge}
@@ -2679,9 +2393,6 @@ export default function App() {
             } else if (kind === 'alignment') {
               const align = s.alignments.find(a => a.id === id)
               if (align) itemNames.push(`${align.name.replace(/\s+/g, '_')}${ext}`)
-            } else if (kind === 'read-alignment') {
-              const ra = s.readAlignments.find(r => r.id === id)
-              if (ra) itemNames.push(`${ra.name.replace(/\s+/g, '_')}${ext}`)
             } else if (kind === 'contig') {
               const contig = s.contigs.find(c => c.id === id)
               if (contig) itemNames.push(`${contig.name.replace(/\s+/g, '_')}${ext}`)
@@ -2705,9 +2416,6 @@ export default function App() {
           } else if (ak === 'alignment') {
             const align = s.alignments.find(a => a.id === s.activeAlignmentId)
             defaultName = align?.name.replace(/\s+/g, '_') ?? 'alignment'
-          } else if (ak === 'read-alignment') {
-            const ra = s.readAlignments.find(r => r.id === s.activeReadAlignmentId)
-            defaultName = ra?.name.replace(/\s+/g, '_') ?? 'read_alignment'
           } else if (ak === 'contig') {
             const contig = s.contigs.find(c => c.id === s.activeContigId)
             defaultName = contig?.name.replace(/\s+/g, '_') ?? 'contig'
