@@ -33,8 +33,9 @@ import ExplorerHoverCard from './ExplorerHoverCard'
 import { useExplorerItems } from '../../explorer/useExplorerItems'
 import { useItemActions } from '../../explorer/useItemActions'
 import { buildNodes } from '../../explorer/buildNodes'
+import { gelsUsingSequences } from '../../gel/workspace'
 import { groupSelection } from '../../explorer/selection'
-import { ITEM_KINDS, type ExplorerItem, type Density, type ItemKind } from '../../explorer/types'
+import { ITEM_KINDS, parseUid, type ExplorerItem, type Density, type ItemKind } from '../../explorer/types'
 import { DENSITIES } from '../../explorer/types'
 import {
   buildFilter, filterCount, toggleIn, NO_FILTERS, type ExplorerFilters,
@@ -64,6 +65,27 @@ const IMPORT_ACCEPT = ['.gb', '.gbk', '.genbank', '.fasta', '.fa', '.fna', '.fas
 
 /** Stable empty array, so an untagged row's props keep their identity. */
 const EMPTY_TAGS: string[] = []
+
+/**
+ * The gel lanes that deleting these sequences would take with them, as
+ * `2 lanes on "Gel A" and "Gel B"`, or null when no gel uses them. Gels
+ * going in the same delete are skipped: their lanes go either way.
+ */
+function gelLanesAtRisk(
+  sequenceIds: readonly string[],
+  deletedGelIds: ReadonlySet<string> = new Set(),
+): { count: number; phrase: string } | null {
+  const gels = useEditorStore.getState().gels.filter(g => !deletedGelIds.has(g.id))
+  const usage = gelsUsingSequences(gels, new Set(sequenceIds))
+  if (usage.length === 0) return null
+  const count = usage.reduce((n, g) => n + g.lanes, 0)
+  const names = usage.slice(0, 3).map(g => `"${g.name}"`)
+  const others = usage.length - names.length
+  const where = others > 0
+    ? `${names.join(', ')} and ${others} other gel${others === 1 ? '' : 's'}`
+    : names.length > 1 ? `${names.slice(0, -1).join(', ')} and ${names[names.length - 1]}` : names[0]
+  return { count, phrase: `${count} lane${count === 1 ? '' : 's'} on ${where}` }
+}
 
 function ExplorerPanel({
   open, onCollapse, onExpand, onImportFiles, onOpenProperties, onNewSequence, onFetch,
@@ -203,6 +225,31 @@ function ExplorerPanel({
   const { target: hoverTarget, show: showHover, hide: hideHover } =
     useDelayedHover<HoverTarget & { item: ExplorerItem }>()
 
+  // --- Single delete ---
+  // Ahead of the keyboard handlers, so the Delete key goes through it too.
+  const deleteItem = useCallback((item: ExplorerItem) => {
+    setCtxMenu(null)
+    // No confirmation for a single item: every kind lands in the delete
+    // buffer now, so the undo in the toast is the safety net. A modal on
+    // every delete trained people to dismiss it without reading. The
+    // exception is a sequence that gels are made from, since deleting it
+    // takes their lanes too, somewhere the user is not looking.
+    const atRisk = item.kind === 'sequence' ? gelLanesAtRisk([item.id]) : null
+    if (!atRisk) { actions.remove(item); return }
+    setConfirmState({
+      title: 'Delete Sequence',
+      message: `"${item.name}" is used in ${atRisk.phrase}. Deleting it also deletes ${atRisk.count === 1 ? 'that lane' : 'those lanes'}.`,
+      buttons: [
+        { label: 'Cancel', value: 'cancel' },
+        { label: 'Delete', value: 'delete', variant: 'danger' },
+      ],
+      onResult: value => {
+        setConfirmState(null)
+        if (value === 'delete') actions.remove(item)
+      },
+    })
+  }, [actions])
+
   // --- Keyboard navigation ---
   const keyboard = useTreeKeyboard(nodes, useMemo(() => ({
     open: item => actions.open(item),
@@ -211,7 +258,7 @@ function ExplorerPanel({
       if (node.type === 'item') setRenamingKey(node.item.uid)
       else if (node.type === 'folder') setRenamingKey(node.folder.id)
     },
-    remove: item => actions.remove(item),
+    remove: item => deleteItem(item),
     setExpanded: (node, expanded) => {
       if (node.type === 'folder') {
         if (node.folder.collapsed === expanded) toggleFolder(node.folder.id)
@@ -230,7 +277,7 @@ function ExplorerPanel({
       else if (mode === 'toggle') setSelectedIds(toggleIn(selectedIds, node.item.uid))
       else setSelectedIds(new Set([...selectedIds, node.item.uid]))
     },
-  }), [actions, nodes, toggleFolder, settings.collapsedGroups, patchSettings, selectedIds, setSelectedIds]))
+  }), [actions, deleteItem, nodes, toggleFolder, settings.collapsedGroups, patchSettings, selectedIds, setSelectedIds]))
 
   // --- Width and resizing ---
   const resizing = useRef(false)
@@ -270,22 +317,20 @@ function ExplorerPanel({
   }, [onImportFiles])
 
   // --- Deletion ---
-  const deleteItem = useCallback((item: ExplorerItem) => {
-    setCtxMenu(null)
-    // No confirmation for a single item: every kind lands in the delete
-    // buffer now, so the undo in the toast is the safety net. A modal on
-    // every delete trained people to dismiss it without reading.
-    actions.remove(item)
-  }, [actions])
-
   const deleteSelection = useCallback(() => {
     const uids = [...selectedIds]
     const count = uids.length
     if (count === 0) return
     setCtxMenu(null)
+    const picked = uids.map(uid => byUid.get(uid)).filter((i): i is ExplorerItem => !!i)
+    const seqIds = picked.filter(i => i.kind === 'sequence').map(i => i.id)
+    const atRisk = gelLanesAtRisk(seqIds, new Set(picked.filter(i => i.kind === 'gel').map(i => i.id)))
     setConfirmState({
       title: 'Delete Selected',
-      message: `Are you sure you want to delete ${count} selected item${count > 1 ? 's' : ''}?`,
+      message: `Are you sure you want to delete ${count} selected item${count > 1 ? 's' : ''}?`
+        + (atRisk
+          ? ` ${atRisk.phrase} ${atRisk.count === 1 ? 'uses' : 'use'} the selected sequence${seqIds.length === 1 ? '' : 's'} and will be deleted too.`
+          : ''),
       buttons: [
         { label: 'Cancel', value: 'cancel' },
         { label: 'Delete', value: 'delete', variant: 'danger' },
@@ -309,13 +354,16 @@ function ExplorerPanel({
     // Counted across the whole subtree, because that is what Delete All
     // takes: a folder that looks empty can still have a full child.
     const subtree = folderSubtree(folders, folderId)
-    const count = folders
-      .filter(f => subtree.has(f.id))
-      .reduce((n, f) => n + f.itemUids.length, 0)
+    const contents = folders.filter(f => subtree.has(f.id)).flatMap(f => f.itemUids)
+    const count = contents.length
+    const parsed = contents.map(parseUid)
+    const idsOf = (kind: ItemKind) => parsed.flatMap(p => (p?.kind === kind ? [p.id] : []))
+    const atRisk = gelLanesAtRisk(idsOf('sequence'), new Set(idsOf('gel')))
     setConfirmState({
       title: 'Delete Folder',
       message: count > 0
         ? `"${name}" contains ${count} item${count > 1 ? 's' : ''}. What would you like to do?`
+          + (atRisk ? ` Delete All also deletes ${atRisk.phrase} made from sequences in it.` : '')
         : `Are you sure you want to delete the folder "${name}"?`,
       buttons: count > 0
         ? [

@@ -41,6 +41,8 @@ export function useSessionPersistence(
    * "you never saved anything".
    */
   const [sessionLoadWarnings, setSessionLoadWarnings] = useState<string[]>([])
+  /** Set once the session is in the store, and whether it came from storage or is the demo. */
+  const [restored, setRestored] = useState<{ fromSave: boolean } | null>(null)
   // Block saves until the session has been restored (or demo loaded)
   const restoredRef = useRef(false)
 
@@ -135,10 +137,12 @@ export function useSessionPersistence(
         // What was just restored is what storage holds: nothing to write back.
         markSessionSaved()
         restoredRef.current = true
+        setRestored({ fromSave: true })
       } else {
         // One document, features included: they are not undoable steps.
         useEditorStore.getState().openDocumentState(demoDocument())
         restoredRef.current = true
+        setRestored({ fromSave: false })
         // Autosave only reacts to later changes; the demo itself must be saved too.
         scheduleSave(themeRef.current)
       }
@@ -183,5 +187,5 @@ export function useSessionPersistence(
     }
   }, [])
 
-  return { storageRefreshKey, sessionLoadWarnings }
+  return { storageRefreshKey, sessionLoadWarnings, restored }
 }

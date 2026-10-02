@@ -7,6 +7,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import ExplorerPanel from './ExplorerPanel'
 import { useEditorStore } from '../../store'
 import { toUid } from '../../explorer/types'
+import { digestWorkspace } from '../../gel/workspace'
 import type { AlignmentResult } from '../../alignment/types'
 import { docFromResult } from '../../msa/model'
 import type { Ab1Data } from '../../io/ab1'
@@ -187,5 +188,63 @@ describe('inline rename', () => {
     fireEvent.change(container.querySelector('.ex-rename-input')!, { target: { value: 'New name' } })
     fireEvent.keyDown(container.querySelector('.ex-rename-input')!, { key: 'Enter' })
     expect(store().gels[0].name).toBe('New name')
+  })
+})
+
+describe('deleting a sequence a gel uses', () => {
+  beforeEach(() => {
+    act(() => {
+      useEditorStore.setState({
+        tabs: [], activeTabId: null, sequencingReads: [], alignments: [], recentlyDeleted: [],
+        contigs: [], oligos: [], gels: [], activeGelId: null, folders: [], itemMeta: {},
+      })
+    })
+  })
+  afterEach(cleanup)
+
+  function pressDeleteOnFirstRow(container: HTMLElement) {
+    const tree = container.querySelector<HTMLElement>('[role="tree"]')!
+    act(() => { tree.focus() })
+    // Home lands on the Sequences heading; the sequence is the row below it.
+    act(() => { fireEvent.keyDown(tree, { key: 'Home' }) })
+    act(() => { fireEvent.keyDown(document.activeElement!, { key: 'ArrowDown' }) })
+    expect(document.activeElement?.getAttribute('data-uid')).toBe(toUid('sequence', store().tabs[0].id))
+    act(() => { fireEvent.keyDown(document.activeElement!, { key: 'Delete' }) })
+  }
+
+  it('warns that the lanes go too, and keeps everything on Cancel', () => {
+    let seq = ''
+    act(() => {
+      seq = store().openDocument('pX', 'ACGT'.repeat(100), 'circular')
+      store().createGel({ state: digestWorkspace(seq, ['EcoRI']), activate: false, name: 'Check digest' })
+    })
+    const { container } = renderPanel()
+    pressDeleteOnFirstRow(container)
+
+    const message = document.querySelector('.confirm-message')?.textContent
+    expect(message).toBe('"pX" is used in 2 lanes on "Check digest". Deleting it also deletes those lanes.')
+    act(() => { fireEvent.click([...document.querySelectorAll('button')].find(b => b.textContent === 'Cancel')!) })
+    expect(store().tabs.map(t => t.id)).toEqual([seq])
+    expect(store().gels[0].state.lanes).toHaveLength(3)
+  })
+
+  it('deletes the sequence and its lanes on Delete', () => {
+    act(() => {
+      const seq = store().openDocument('pX', 'ACGT'.repeat(100), 'circular')
+      store().createGel({ state: digestWorkspace(seq, ['EcoRI']), activate: false })
+    })
+    const { container } = renderPanel()
+    pressDeleteOnFirstRow(container)
+    act(() => { fireEvent.click(document.querySelector('.confirm-dialog .btn-danger')!) })
+    expect(store().tabs).toHaveLength(0)
+    expect(store().gels[0].state.lanes.map(l => l.sample.kind)).toEqual(['ladder'])
+  })
+
+  it('deletes without asking when no gel uses it', () => {
+    act(() => { store().openDocument('pX', 'ACGT'.repeat(100), 'circular') })
+    const { container } = renderPanel()
+    pressDeleteOnFirstRow(container)
+    expect(document.querySelector('.confirm-dialog')).toBeNull()
+    expect(store().tabs).toHaveLength(0)
   })
 })

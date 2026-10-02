@@ -41,6 +41,8 @@ import { libraryMatches } from './primers/library'
 import { notify } from './toast'
 import { loadStoredWorkspace, clearStoredWorkspace } from './gel/workspace'
 import { useSessionPersistence } from './hooks/useSessionPersistence'
+import { useBackupReminder } from './hooks/useBackupReminder'
+import { useBackupStore } from './backup/backup'
 import { usePopoverDismiss } from './hooks/usePopoverDismiss'
 import { useToolbarDensity } from './hooks/useToolbarDensity'
 import { ToolbarTooltip, tip } from './components/ToolbarTooltip'
@@ -634,7 +636,9 @@ export default function App() {
   const [contigSearchOpen, setContigSearchOpen] = useState(false)
 
   // Session persistence (save/restore/beforeunload)
-  const { storageRefreshKey, sessionLoadWarnings } = useSessionPersistence(theme, setTheme as (t: string) => void)
+  const { storageRefreshKey, sessionLoadWarnings, restored } = useSessionPersistence(theme, setTheme as (t: string) => void)
+  const openSessionExport = useCallback(() => setSessionExportOpen(true), [])
+  useBackupReminder(restored !== null, restored?.fromSave ?? false, openSessionExport)
 
   // Close popovers/dropdowns on outside click
   usePopoverDismiss(fileMenuOpen, () => setFileMenuOpen(false), fileMenuRef)
@@ -1014,6 +1018,13 @@ export default function App() {
     const blob = exportSessionToJson(theme, opts)
     downloadBlob(blob, filename)
     notify.success(`Exported session (${(blob.size / 1024).toFixed(0)} KB)`)
+    // Only an export with everything in it is a backup; one that leaves out
+    // the reads would let the reminder go quiet over work it does not hold.
+    const s = useEditorStore.getState()
+    const complete = (opts.includeReads || s.sequencingReads.length === 0)
+      && (opts.includeAlignments || s.alignments.length === 0)
+      && (opts.includeContigs || s.contigs.length === 0)
+    if (complete) useBackupStore.getState().noteBackup()
   }, [theme])
 
   const handleSessionImportFile = useCallback((files: FileList | null) => {
@@ -1905,7 +1916,7 @@ export default function App() {
               <div className="status-bar">
                 <span style={{ flex: 1 }} />
                 <span className="status-bar-right">
-                  <StorageIndicator refreshKey={storageRefreshKey} />
+                  <StorageIndicator refreshKey={storageRefreshKey} onBackup={openSessionExport} />
                 </span>
               </div>
             </>
@@ -2280,7 +2291,7 @@ export default function App() {
                     )
                   })()}
                   <span className="status-sep" />
-                  <StorageIndicator refreshKey={storageRefreshKey} />
+                  <StorageIndicator refreshKey={storageRefreshKey} onBackup={openSessionExport} />
                 </span>
               </div>
             </>

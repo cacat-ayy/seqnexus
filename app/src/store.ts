@@ -59,7 +59,8 @@ import type {
   AminoAcidStyleId, TranslationFrameId,
 } from './codon/translation-display'
 import type { CodonUsageTable } from './codon/usage-tables'
-import { defaultWorkspace, type GelWorkspaceState } from './gel/workspace'
+import { defaultWorkspace, laneUsesSequence, MAX_LANES, type GelWorkspaceState } from './gel/workspace'
+import type { GelLane } from './gel/model'
 
 const MAX_UNDO = 100
 
@@ -227,12 +228,20 @@ export interface ClosedTab {
  * all kinds lets every delete act immediately and offer an Undo instead.
  */
 export type DeletedItem =
-  | ({ kind: 'sequence' } & ClosedTab)
+  | ({ kind: 'sequence'; gelLanes?: RemovedGelLane[] } & ClosedTab)
   | { kind: 'read'; index: number; folderId: string | null; read: SequencingRead; wasActive: boolean }
   | { kind: 'alignment'; index: number; folderId: string | null; alignment: SavedAlignment }
   | { kind: 'contig'; index: number; folderId: string | null; contig: Contig }
   | { kind: 'oligo'; index: number; folderId: string | null; oligo: LibraryOligo }
   | { kind: 'gel'; index: number; folderId: string | null; gel: GelDoc; wasActive: boolean }
+
+/** A gel lane taken out because the sequence it was made from was deleted. */
+export interface RemovedGelLane {
+  gelId: string
+  /** Where it sat on the gel. */
+  index: number
+  lane: GelLane
+}
 
 /** How many deletes can be taken back. Small on purpose: this is an undo
     buffer, and every entry pins a full sequence or trace in memory. */
@@ -457,6 +466,44 @@ function withItem(folders: ExplorerFolder[], uid: string, folderId: string | nul
 /** Append to the delete buffer, dropping the oldest entry past the cap. */
 function pushDeleted(buffer: DeletedItem[], entry: DeletedItem): DeletedItem[] {
   return [...buffer.slice(-(MAX_RECENTLY_CLOSED - 1)), entry]
+}
+
+/**
+ * Take every lane made from these sequences off every gel. A deleted
+ * sequence leaves nothing to run, so the lane would only show a warning.
+ * Not a gel edit, so it skips the gel's undo stack; the sequence's undo
+ * puts the lanes back.
+ */
+function withoutSequenceLanes(gels: GelDoc[], sequenceIds: ReadonlySet<string>): { gels: GelDoc[]; removed: RemovedGelLane[] } {
+  const removed: RemovedGelLane[] = []
+  const now = Date.now()
+  const next = gels.map(g => {
+    const lanes = g.state.lanes.filter((lane, index) => {
+      if (!laneUsesSequence(lane, sequenceIds)) return true
+      removed.push({ gelId: g.id, index, lane })
+      return false
+    })
+    return lanes.length === g.state.lanes.length ? g : { ...g, modifiedAt: now, state: { ...g.state, lanes } }
+  })
+  return { gels: removed.length > 0 ? next : gels, removed }
+}
+
+/** Put lanes back where they were, on the gels that still exist and have room. */
+function withSequenceLanes(gels: GelDoc[], removed: readonly RemovedGelLane[]): GelDoc[] {
+  if (removed.length === 0) return gels
+  const now = Date.now()
+  return gels.map(g => {
+    const mine = removed.filter(r => r.gelId === g.id)
+    if (mine.length === 0) return g
+    // Ascending, so each goes back at its old index with the earlier ones
+    // already in place.
+    let lanes = g.state.lanes
+    for (const r of [...mine].sort((a, b) => a.index - b.index)) {
+      if (lanes.length >= MAX_LANES) break
+      lanes = insertAt(lanes, r.index, r.lane)
+    }
+    return { ...g, modifiedAt: now, state: { ...g.state, lanes } }
+  })
 }
 
 /** Put an item back at the index it was removed from, clamped to the end. */
@@ -1903,6 +1950,7 @@ export const useEditorStore = create<EditorStore>((set, get) => {
 
       const contigs = state.contigs.filter(c => !doomed.contig.has(c.id))
       const contigIds = new Set(contigs.map(c => c.id))
+      const { gels } = withoutSequenceLanes(state.gels.filter(g => !doomed.gel.has(g.id)), doomed.sequence)
 
       set({
         tabs: newTabs,
@@ -1928,7 +1976,7 @@ export const useEditorStore = create<EditorStore>((set, get) => {
         contigs,
         activeContigId: contigIds.has(state.activeContigId ?? '') ? state.activeContigId : null,
         oligos: state.oligos.filter(o => !doomed.oligo.has(o.id)),
-        gels: state.gels.filter(g => !doomed.gel.has(g.id)),
+        gels,
         activeGelId: doomed.gel.has(state.activeGelId ?? '') ? null : state.activeGelId,
         folders: state.folders.filter(f => !doomedFolders.has(f.id)),
       })
@@ -2029,6 +2077,7 @@ export const useEditorStore = create<EditorStore>((set, get) => {
     closeTab(tabId) {
       const { tabs, activeTabId, folders, recentlyDeleted } = get()
       const closing = tabs.find(t => t.id === tabId)
+      const { gels, removed: gelLanes } = withoutSequenceLanes(get().gels, new Set([tabId]))
       const newTabs = tabs.filter(t => t.id !== tabId)
       let newActiveId = activeTabId
       if (activeTabId === tabId) {
@@ -2056,6 +2105,7 @@ export const useEditorStore = create<EditorStore>((set, get) => {
         primerDesign: active?.primerDesign ?? EMPTY_DESIGN,
         // Remove closed tab from any folder
         folders: withoutItem(folders, toUid('sequence', tabId)),
+        gels,
         // Keep enough to put it back. Deleting a sequence discards it
         // outright, and a mis-aimed click on a dense explorer list is easy.
         recentlyDeleted: closing
@@ -2064,6 +2114,7 @@ export const useEditorStore = create<EditorStore>((set, get) => {
               tab: closing,
               index: tabs.findIndex(t => t.id === tabId),
               folderId: folderOf(folders, toUid('sequence', tabId)),
+              ...(gelLanes.length > 0 ? { gelLanes } : {}),
             })
           : recentlyDeleted,
       })
@@ -2084,6 +2135,7 @@ export const useEditorStore = create<EditorStore>((set, get) => {
             tabs: restored,
             recentlyDeleted: rest,
             folders: withItem(state.folders, toUid('sequence', last.tab.id), last.folderId),
+            gels: withSequenceLanes(state.gels, last.gelLanes ?? []),
           })
           // Focus it, so an undo lands the user back where they were. This
           // also repopulates doc/selection/view state from the restored tab.

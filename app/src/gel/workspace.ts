@@ -55,6 +55,27 @@ export function newLaneId(): string {
   return `lane_${Date.now().toString(36)}_${laneCounter}`
 }
 
+/** Whether a lane is made from one of these sequences: run as is, cut, or as a PCR template. */
+export function laneUsesSequence(lane: GelLane, sequenceIds: ReadonlySet<string>): boolean {
+  const s = lane.sample
+  return (s.kind === 'sequence' && sequenceIds.has(s.sourceId))
+    || (s.kind === 'pcr' && sequenceIds.has(s.templateId))
+}
+
+/** The gels with lanes made from any of these sequences, and how many lanes on each. */
+export function gelsUsingSequences(
+  gels: readonly { id: string; name: string; state: { lanes: readonly GelLane[] } }[],
+  sequenceIds: ReadonlySet<string>,
+): { id: string; name: string; lanes: number }[] {
+  if (sequenceIds.size === 0) return []
+  const out: { id: string; name: string; lanes: number }[] = []
+  for (const g of gels) {
+    const lanes = g.state.lanes.filter(l => laneUsesSequence(l, sequenceIds)).length
+    if (lanes > 0) out.push({ id: g.id, name: g.name, lanes })
+  }
+  return out
+}
+
 // ---------------------------------------------------------------------------
 // Form mixes offered for uncut plasmid
 // ---------------------------------------------------------------------------
