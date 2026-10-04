@@ -146,6 +146,11 @@ export interface PlasmidSceneInput {
   selectionSpansOrigin: boolean
   selectionLength: number
 
+  /** Find hits, sorted by start; `end` may run past the origin (> seqLen). */
+  searchHits?: readonly { start: number; end: number }[]
+  /** Index into searchHits of the current hit, or -1. */
+  currentSearchHit?: number
+
   /** Precomputed so the layout never walks the sequence. */
   methylation: { dam: number[]; dcm: number[] }
   gc: SceneGcSeries | null
@@ -267,6 +272,7 @@ export function buildPlasmidScene(input: PlasmidSceneInput): PlasmidScene {
     selection, selectionSpansOrigin, selectionLength, methylation, gc,
     gcPercent, legend, displayOrigin, name, topology,
     showFeatureLabels = true, showCentre = true,
+    searchHits = [], currentSearchHit = -1,
   } = input
 
   const items: SceneItem[] = []
@@ -323,6 +329,39 @@ export function buildPlasmidScene(input: PlasmidSceneInput): PlasmidScene {
     kind: 'ring', cx, cy, radius: baseRadius,
     width: style.backboneWidth, stroke: colors.backbone,
   })
+
+  // --- Find hits ---
+  // A mark on the backbone per hit, at least a few pixels long so a 6 bp
+  // site on a 10 kb map still shows. Hits closer than that are merged into
+  // one mark, which also keeps a genome-scale hit list to a few hundred
+  // items. The current hit is drawn last, wider and stronger.
+  if (searchHits.length > 0) {
+    const minSpan = 3 / baseRadius
+    const minBp = (minSpan / TWO_PI) * seqLen
+    const mark = (start: number, end: number, current: boolean) => {
+      let startAngle = posToAngle(start, seqLen)
+      let span = annArcSpan(start, end % seqLen, seqLen)
+      if (end - start >= seqLen) span = TWO_PI
+      if (span < minSpan) { startAngle -= (minSpan - span) / 2; span = minSpan }
+      items.push({
+        kind: 'arcBand', cx, cy, radius: baseRadius,
+        startAngle, span, width: style.backboneWidth + (current ? 10 : 6), strand: 0,
+        fill: current ? colors.searchCurrent : colors.search,
+      })
+    }
+    let runStart = searchHits[0].start
+    let runEnd = searchHits[0].end
+    for (let i = 1; i < searchHits.length; i++) {
+      const h = searchHits[i]
+      if (h.start <= runEnd + minBp) { runEnd = Math.max(runEnd, h.end); continue }
+      mark(runStart, runEnd, false)
+      runStart = h.start
+      runEnd = h.end
+    }
+    mark(runStart, runEnd, false)
+    const cur = searchHits[currentSearchHit]
+    if (cur) mark(cur.start, cur.end, true)
+  }
 
   // --- Ruler ---
   // Ticks sit outside the backbone rather than straddling it, so the ring

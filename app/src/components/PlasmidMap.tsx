@@ -68,6 +68,7 @@ function PlasmidMap(_props: PlasmidMapProps) {
 
   const doc = useEditorStore(s => s.doc)
   const selection = useEditorStore(s => s.selection)
+  const search = useEditorStore(s => s.search)
   const setSelection = useEditorStore(s => s.setSelection)
   const setCaret = useEditorStore(s => s.setCaret)
   const hoveredAnnotationId = useEditorStore(s => s.hoveredAnnotationId)
@@ -158,6 +159,8 @@ function PlasmidMap(_props: PlasmidMapProps) {
       selection,
       selectionSpansOrigin: isOriginSpanningSelection(selection, 'circular'),
       selectionLength: selectionLength(selection, 'circular', doc.sequence.length),
+      searchHits: search.matches,
+      currentSearchHit: search.currentMatch,
       methylation,
       gc: gcSeries,
       gcPercent: gcOverall,
@@ -166,7 +169,7 @@ function PlasmidMap(_props: PlasmidMapProps) {
   }, [
     canvasSize, doc.sequence.length, doc.sequence.topology, doc.name, doc.metadata,
     style, rings, hoveredAnnotationId, proposalIds, pickedIds, sceneEnzymes,
-    hoveredEnzymeKey, scenePrimers, selection, methylation, gcSeries, gcOverall, legend,
+    hoveredEnzymeKey, scenePrimers, selection, search, methylation, gcSeries, gcOverall, legend,
     themeVersion,
   ])
 

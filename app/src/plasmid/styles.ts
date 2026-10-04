@@ -166,6 +166,9 @@ export interface PlasmidColors {
   tickMinor: string
   accent: string
   selection: string
+  /** Find hits on the backbone, and the current one. */
+  search: string
+  searchCurrent: string
   enzyme: string
   primer: string
   gc: string
@@ -184,6 +187,8 @@ const PRINT_COLORS: PlasmidColors = {
   tickMinor: '#999999',
   accent: '#000000',
   selection: 'rgba(0,0,0,0.12)',
+  search: '#888888',
+  searchCurrent: '#000000',
   enzyme: '#333333',
   primer: '#555555',
   gc: '#666666',
@@ -218,6 +223,9 @@ export function resolvePlasmidColors(
     tickMinor: v('--canvas-ruler-tick', '#cccccc'),
     accent: v('--accent', '#3b82f6'),
     selection: v('--selection-bg', 'rgba(59,130,246,0.3)'),
+    // The minimap marks hits in --warning too, so the two views agree.
+    search: v('--warning', '#f59e0b'),
+    searchCurrent: v('--canvas-search-edge', '#ea580c'),
     enzyme: v('--canvas-enzyme', '#e53e3e'),
     primer: v('--success', '#16a34a'),
     gc: v('--text-muted', '#94a3b8'),

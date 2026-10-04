@@ -20,6 +20,8 @@ import { useRef, useEffect, useCallback, useState, useMemo, memo } from 'react'
 import {
   useEditorStore, selectionRange, selectionSegments, isOriginSpanningSelection, selectionLength,
   selectionIsReverse,
+  selectionEnds,
+  extendSelection,
 } from '../store'
 import { Annotation } from '../models/Annotation'
 import { displayPosition } from '../models/Document'
@@ -434,11 +436,13 @@ const EnzymeTooltipPopup = EnzymeTooltip
 
 interface SequenceViewProps {
   onFindRequest?: () => void
+  /** Escape cleared the search: the Find panel should close with it. */
+  onFindClose?: () => void
   onAnnotateRequest?: () => void
   onEditFeature?: (annId: string) => void
 }
 
-function SequenceView({ onFindRequest, onAnnotateRequest, onEditFeature }: SequenceViewProps) {
+function SequenceView({ onFindRequest, onFindClose, onAnnotateRequest, onEditFeature }: SequenceViewProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const containerRef = useRef<HTMLDivElement>(null)
   const spacerRef = useRef<HTMLDivElement>(null)
@@ -603,6 +607,8 @@ function SequenceView({ onFindRequest, onAnnotateRequest, onEditFeature }: Seque
   orfPicksRef.current = orfPicks
   primerItemByIdRef.current = primerItemById
   onFindRequestRef.current = onFindRequest
+  const onFindCloseRef = useRef(onFindClose)
+  onFindCloseRef.current = onFindClose
 
   const draw = useCallback(() => {
     const canvas = canvasRef.current
@@ -782,7 +788,7 @@ function SequenceView({ onFindRequest, onAnnotateRequest, onEditFeature }: Seque
       if (seqLen === 0) {
         caretEl.style.display = 'none'
       } else {
-        const c = Math.min(selection.caret, seqLen)
+        const c = Math.min(selectionEnds(selection, doc.sequence.topology).focus, seqLen)
         const row = Math.min(Math.floor(c / L.basesPerRow), totalRows - 1)
         const rs = row * L.basesPerRow
         const re = Math.min(rs + L.basesPerRow, seqLen)
@@ -954,8 +960,10 @@ function SequenceView({ onFindRequest, onAnnotateRequest, onEditFeature }: Seque
     isDragging.current = true
     edgeDrag.current = null
     if (e.shiftKey) {
-      dragAnchor.current = sel.anchor
-      useEditorStore.getState().setSelection({ anchor: sel.anchor, caret: seqPos })
+      // Extend from the end that stays put, as the drag that follows will.
+      const topology = docRef.current.sequence.topology
+      dragAnchor.current = selectionEnds(sel, topology).fixed
+      useEditorStore.getState().setSelection(extendSelection(sel, { to: seqPos }, topology, seqLen))
     } else {
       dragAnchor.current = seqPos
       useEditorStore.getState().setCaret(seqPos)
@@ -1229,6 +1237,11 @@ function SequenceView({ onFindRequest, onAnnotateRequest, onEditFeature }: Seque
       return text
     }
 
+    // Shift+key extends from the end that stays put; the other end, the
+    // focus, is where the caret is and what the keys move.
+    const focus = selectionEnds(sel, curTopology).focus
+    const extend = (move: { to: number } | { by: number }) => extendSelection(sel, move, curTopology, seqLen)
+
     const isOriginSpan = isOriginSpanningSelection(sel, curTopology)
     const selLen = selectionLength(sel, curTopology, seqLen)
     const LARGE_DELETE_THRESHOLD = 1000
@@ -1295,11 +1308,11 @@ function SequenceView({ onFindRequest, onAnnotateRequest, onEditFeature }: Seque
     // side of the selection it is heading towards, as plain arrows do.
     if (ctrlOrMeta && (e.key === 'ArrowLeft' || e.key === 'ArrowRight')) {
       e.preventDefault()
-      const from = e.shiftKey || !range ? sel.caret : (e.key === 'ArrowLeft' ? range[0] : range[1])
+      const from = e.shiftKey || !range ? focus : (e.key === 'ArrowLeft' ? range[0] : range[1])
       const target = e.key === 'ArrowLeft'
         ? Math.max(0, Math.ceil(from / WORD_JUMP) * WORD_JUMP - WORD_JUMP)
         : Math.min(seqLen, Math.floor(from / WORD_JUMP) * WORD_JUMP + WORD_JUMP)
-      if (e.shiftKey) { store.setSelection({ anchor: sel.anchor, caret: target }) }
+      if (e.shiftKey) { store.setSelection(extend({ to: target })) }
       else { store.setCaret(target) }
       return
     }
@@ -1312,8 +1325,8 @@ function SequenceView({ onFindRequest, onAnnotateRequest, onEditFeature }: Seque
       const bpr = layoutRef.current.basesPerRow
       if (!container || seqLen === 0 || rl.totalRows === 0) return
       const down = e.key === 'PageDown'
-      const row = Math.min(Math.floor(sel.caret / bpr), rl.totalRows - 1)
-      const col = sel.caret - row * bpr
+      const row = Math.min(Math.floor(focus / bpr), rl.totalRows - 1)
+      const col = focus - row * bpr
       // A page is the view less one row, so a row of context carries over.
       const page = Math.max(rl.rowH(row), container.clientHeight - rl.rowH(row))
       const targetRow = rl.rowAtY(rl.rowY(row) + (down ? page : -page))
@@ -1324,7 +1337,7 @@ function SequenceView({ onFindRequest, onAnnotateRequest, onEditFeature }: Seque
         ? (down ? seqLen : 0)
         : Math.min(newRow * bpr + col, seqLen)
       container.scrollTop += rl.rowY(newRow) - rl.rowY(row)
-      if (e.shiftKey) { store.setSelection({ anchor: sel.anchor, caret: newPos }) }
+      if (e.shiftKey) { store.setSelection(extend({ to: newPos })) }
       else { store.setCaret(newPos) }
       return
     }
@@ -1332,7 +1345,7 @@ function SequenceView({ onFindRequest, onAnnotateRequest, onEditFeature }: Seque
       e.preventDefault()
       const isCirc = curTopology === 'circular'
       const newPos = sel.caret - 1 < 0 ? (isCirc ? seqLen : 0) : sel.caret - 1
-      if (e.shiftKey) { store.setSelection({ anchor: sel.anchor, caret: newPos }) }
+      if (e.shiftKey) { store.setSelection(extend({ by: -1 })) }
       else { store.setCaret(range ? range[0] : newPos) }
       return
     }
@@ -1340,7 +1353,7 @@ function SequenceView({ onFindRequest, onAnnotateRequest, onEditFeature }: Seque
       e.preventDefault()
       const isCirc = curTopology === 'circular'
       const newPos = sel.caret + 1 > seqLen ? (isCirc ? 0 : seqLen) : sel.caret + 1
-      if (e.shiftKey) { store.setSelection({ anchor: sel.anchor, caret: newPos }) }
+      if (e.shiftKey) { store.setSelection(extend({ by: 1 })) }
       else { store.setCaret(range ? range[1] : newPos) }
       return
     }
@@ -1350,7 +1363,7 @@ function SequenceView({ onFindRequest, onAnnotateRequest, onEditFeature }: Seque
       const isCirc = curTopology === 'circular'
       let newPos = sel.caret - bpr
       if (newPos < 0) newPos = isCirc ? ((newPos % seqLen) + seqLen) % seqLen : 0
-      if (e.shiftKey) { store.setSelection({ anchor: sel.anchor, caret: newPos }) }
+      if (e.shiftKey) { store.setSelection(extend({ by: -bpr })) }
       else { store.setCaret(newPos) }
       return
     }
@@ -1360,19 +1373,19 @@ function SequenceView({ onFindRequest, onAnnotateRequest, onEditFeature }: Seque
       const isCirc = curTopology === 'circular'
       let newPos = sel.caret + bpr
       if (newPos > seqLen) newPos = isCirc ? newPos % seqLen : seqLen
-      if (e.shiftKey) { store.setSelection({ anchor: sel.anchor, caret: newPos }) }
+      if (e.shiftKey) { store.setSelection(extend({ by: bpr })) }
       else { store.setCaret(newPos) }
       return
     }
     if (e.key === 'Home') {
       e.preventDefault()
-      if (e.shiftKey) { store.setSelection({ anchor: sel.anchor, caret: 0 }) }
+      if (e.shiftKey) { store.setSelection(extend({ to: 0 })) }
       else { store.setCaret(0) }
       return
     }
     if (e.key === 'End') {
       e.preventDefault()
-      if (e.shiftKey) { store.setSelection({ anchor: sel.anchor, caret: seqLen }) }
+      if (e.shiftKey) { store.setSelection(extend({ to: seqLen })) }
       else { store.setCaret(seqLen) }
       return
     }
@@ -1390,6 +1403,7 @@ function SequenceView({ onFindRequest, onAnnotateRequest, onEditFeature }: Seque
       if (store.search.query) {
         e.preventDefault()
         store.clearSearch()
+        onFindCloseRef.current?.()
         return
       }
     }
@@ -1497,20 +1511,43 @@ function SequenceView({ onFindRequest, onAnnotateRequest, onEditFeature }: Seque
     const followCaret = followCaretRef.current
     followCaretRef.current = false
     const rl = rowLayoutRef.current
-    const focusPos = followCaret ? selection.caret : Math.min(selection.anchor, selection.caret)
+    const focusPos = followCaret
+      ? selectionEnds(selection, docRef.current.sequence.topology).focus
+      : Math.min(selection.anchor, selection.caret)
     const row = Math.min(Math.floor(focusPos / layoutRef.current.basesPerRow), Math.max(0, rl.totalRows - 1))
     const rowTop = rl.rowY(row)
     const rowBottom = rowTop + rl.rowH(row)
-    const viewTop = container.scrollTop
-    const viewBottom = viewTop + container.clientHeight
+    // The Find panel floats over the view. A hit that lands under it is out
+    // of sight just the same, so the band of view the panel covers counts
+    // as off-screen for a hit whose bases sit beneath it.
+    let viewTop = container.scrollTop
+    if (!followCaret) {
+      const card = container.closest('.view-area')?.querySelector<HTMLElement>('.find-modal:not(.closing)')
+      if (card) {
+        const c = card.getBoundingClientRect()
+        const v = container.getBoundingClientRect()
+        const L = layoutRef.current
+        const rowStart = row * L.basesPerRow
+        const rowEnd = Math.min(rowStart + L.basesPerRow, docRef.current.sequence.length)
+        const hitEnd = Math.min(Math.max(selection.anchor, selection.caret), rowEnd)
+        const x1 = v.left + baseX(Math.max(focusPos, rowStart), rowStart, L)
+        const x2 = v.left + baseX(Math.max(hitEnd - 1, rowStart), rowStart, L) + L.bpWidth
+        const covered = c.bottom - v.top
+        if (x2 > c.left && x1 < c.right && covered > 0 && covered < container.clientHeight - (rowBottom - rowTop)) {
+          viewTop += covered
+        }
+      }
+    }
+    const viewBottom = container.scrollTop + container.clientHeight
     const store = useEditorStore.getState()
     const useSmooth = store.smoothScrollRequested
     if (useSmooth) store.smoothScrollRequested = false
     if (rowTop < viewTop) {
+      const top = rowTop - (viewTop - container.scrollTop)
       if (useSmooth) {
-        container.scrollTo({ top: rowTop, behavior: 'smooth' })
+        container.scrollTo({ top, behavior: 'smooth' })
       } else {
-        container.scrollTop = rowTop
+        container.scrollTop = top
       }
     } else if (rowBottom > viewBottom) {
       const target = rowBottom - container.clientHeight

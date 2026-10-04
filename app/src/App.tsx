@@ -11,6 +11,7 @@ import FeatureSidebar from './components/FeatureSidebar'
 import EmptyState from './components/EmptyState'
 import DisplayPopover from './components/DisplayPopover'
 import { downloadBlob } from './utils/download'
+import './components/Shell.css'
 import FindModal from './components/FindModal'
 const AnnotateModal = lazy(() => import('./components/AnnotateModal'))
 import NewSequenceModal, { type NewSequenceResult } from './components/NewSequenceModal'
@@ -672,6 +673,8 @@ export default function App() {
 
   // Find/replace
   const [showFind, setShowFind] = useState(false)
+  /** Bumped on every request to find, so Ctrl+F on an open panel focuses it. */
+  const [findRequest, setFindRequest] = useState(0)
   const [chromSearchOpen, setChromSearchOpen] = useState(false)
   const [alignSearchOpen, setAlignSearchOpen] = useState(false)
   const [contigSearchOpen, setContigSearchOpen] = useState(false)
@@ -1360,6 +1363,7 @@ export default function App() {
       setAlignSearchOpen(true)
     } else {
       setShowFind(true)
+      setFindRequest(n => n + 1)
     }
   }, [])
 
@@ -2224,7 +2228,7 @@ export default function App() {
               {/* View area */}
                 <div className="view-and-panels">
                   <div className="view-area">
-                    <FindModal open={showFind} onClose={handleCloseFind} />
+                    <FindModal open={showFind} focusRequest={findRequest} onClose={handleCloseFind} />
                     {/* Empty state hints for active panels with no results */}
                     {/* Worker results arrive asynchronously, so a screen
                         reader gets no cue that a search finished empty. */}
@@ -2257,7 +2261,7 @@ export default function App() {
                         </div>
                       </div>
                     )}
-                    {viewMode === 'linear' && <SequenceView onFindRequest={handleOpenFind} onAnnotateRequest={handleAnnotateRequest} onEditFeature={handleOpenFeaturesPanel} />}
+                    {viewMode === 'linear' && <SequenceView onFindRequest={handleOpenFind} onFindClose={handleCloseFind} onAnnotateRequest={handleAnnotateRequest} onEditFeature={handleOpenFeaturesPanel} />}
                     {viewMode === 'circular' && <PlasmidMap onFindRequest={handleOpenFind} onAnnotateRequest={handleAnnotateRequest} onEditFeature={handleOpenFeaturesPanel} onExportPrompt={handleFilenamePrompt} />}
                     {viewMode === 'split' && (
                       <div
@@ -2274,7 +2278,7 @@ export default function App() {
                           onPointerDown={handleSplitPointerDown}
                         />
                         <div className="split-pane" style={{ flex: 1 }}>
-                          <SequenceView onFindRequest={handleOpenFind} onAnnotateRequest={handleAnnotateRequest} onEditFeature={handleOpenFeaturesPanel} />
+                          <SequenceView onFindRequest={handleOpenFind} onFindClose={handleCloseFind} onAnnotateRequest={handleAnnotateRequest} onEditFeature={handleOpenFeaturesPanel} />
                         </div>
                       </div>
                     )}

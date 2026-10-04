@@ -12,7 +12,7 @@
  * selection, the drag preview) and what is left out (all of it, in print).
  */
 
-import { selectionSegments, type Selection, type SearchState } from '../store'
+import { selectionSegments, type Selection, type SearchState, type SearchMatch } from '../store'
 import { Annotation } from '../models/Annotation'
 import { displayPosition, type DocumentState } from '../models/Document'
 import { baseX, type ZoomLayout } from './zoom-layout'
@@ -356,6 +356,22 @@ export function paintSequenceRows(
   const sansFont = (spec: string) => `${spec} ${s.fonts.sans}`
   const enzymeLabelFont = (hovered = false) => sansFont(hovered ? `600 ${ENZYME_LABEL_SPEC}` : ENZYME_LABEL_SPEC)
 
+  // Search hits: the longest one (to find hits reaching into a row) and the
+  // ones that run across the origin, worked out once for all rows.
+  let searchSpan: { matches: SearchMatch[]; maxLen: number; wrapping: number[] } | null = null
+  if (search && search.matches.length > 0) {
+    const ms = search.matches
+    let maxLen = 0
+    for (const m of ms) if (m.end - m.start > maxLen) maxLen = m.end - m.start
+    const wrapping: number[] = []
+    for (let i = ms.length - 1; i >= 0 && ms[i].start + maxLen > seqLen; i--) {
+      if (ms[i].end > seqLen) wrapping.push(i)
+    }
+    searchSpan = { matches: ms, maxLen, wrapping }
+  }
+  // Height of one strand when both are drawn as letters; 0 when they are not.
+  const strandH = L.mode === 'letters' && L.showComplement ? (L.seqLineHeight - L.strandGap) / 2 : 0
+
   const visibleStart = s.rowSpan(firstRow)[0]
   const visibleEnd = s.rowSpan(lastRow)[1]
   const visibleBases = seq.basesIn(visibleStart, visibleEnd)
@@ -584,36 +600,42 @@ export function paintSequenceRows(
     /** Search match bands for this row. Buried by opaque base blocks the
      * same way the selection is, so it moves on top under the same rule. */
     const paintSearchBands = (onTop: boolean) => {
-      if (!search || search.matches.length === 0) return
-      // Binary search for first match that could overlap this row
-      let mi = 0
-      {
-        let lo = 0, hi = search.matches.length
-        while (lo < hi) {
-          const mid = (lo + hi) >>> 1
-          if (search.matches[mid][1] <= rowStart) lo = mid + 1
-          else hi = mid
-        }
-        mi = lo
-      }
-      for (; mi < search.matches.length; mi++) {
-        const [mStart, mEnd] = search.matches[mi]
-        if (mStart >= rowEnd) break
-        const hlStart = Math.max(mStart, rowStart)
-        const hlEnd = Math.min(mEnd, rowEnd)
-        if (hlStart < hlEnd) {
-          const x1 = baseX(hlStart, rowStart, L)
-          const x2 = baseX(hlEnd - 1, rowStart, L) + L.bpWidth
-          const isCurrent = mi === search.currentMatch
-          ctx.fillStyle = isCurrent ? COLORS.searchCurrent : COLORS.search
-          ctx.fillRect(x1, forwardY, x2 - x1, L.seqLineHeight)
-          if (onTop && isCurrent) {
-            ctx.strokeStyle = COLORS.searchEdge
-            ctx.lineWidth = 1.5
-            ctx.strokeRect(x1 + 0.75, forwardY + 0.75, x2 - x1 - 1.5, L.seqLineHeight - 1.5)
-          }
+      if (!searchSpan) return
+      const ms = searchSpan.matches
+      const band = (from: number, to: number, mi: number) => {
+        const hlStart = Math.max(from, rowStart)
+        const hlEnd = Math.min(to, rowEnd)
+        if (hlStart >= hlEnd) return
+        const x1 = baseX(hlStart, rowStart, L)
+        const x2 = baseX(hlEnd - 1, rowStart, L) + L.bpWidth
+        // With both strands drawn as letters, a hit sits on the strand it
+        // reads on; a hit on both strands, or any hit at a zoom with no
+        // strands to tell apart, covers the whole line.
+        const strand = ms[mi].strand
+        const split = strandH > 0 && strand !== 0
+        const y = split && strand === -1 ? forwardY + strandH + L.strandGap : forwardY
+        const h = split ? strandH : L.seqLineHeight
+        const isCurrent = mi === search!.currentMatch
+        ctx.fillStyle = isCurrent ? COLORS.searchCurrent : COLORS.search
+        ctx.fillRect(x1, y, x2 - x1, h)
+        if (onTop && isCurrent) {
+          ctx.strokeStyle = COLORS.searchEdge
+          ctx.lineWidth = 1.5
+          ctx.strokeRect(x1 + 0.75, y + 0.75, x2 - x1 - 1.5, h - 1.5)
         }
       }
+      // Hits are sorted by start; backing off by the longest finds every hit
+      // that reaches into this row.
+      let lo = 0, hi = ms.length
+      const from = rowStart - searchSpan.maxLen
+      while (lo < hi) {
+        const mid = (lo + hi) >>> 1
+        if (ms[mid].start < from) lo = mid + 1
+        else hi = mid
+      }
+      for (let mi = lo; mi < ms.length && ms[mi].start < rowEnd; mi++) band(ms[mi].start, ms[mi].end, mi)
+      // The part of an origin-spanning hit past the origin, at the start.
+      for (const mi of searchSpan.wrapping) band(0, ms[mi].end - seqLen, mi)
     }
 
     // Opaque per-base colour blocks are only painted in letters mode; in the

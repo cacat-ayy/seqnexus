@@ -64,11 +64,11 @@ export default function SequenceMinimap({
   const searchMatches = useEditorStore(s => s.search.matches)
   const searchTrack = useMemo(() => {
     if (searchMatches.length === 0) return null
-    const [s0, e0] = searchMatches[0]
+    const first = searchMatches[0]
     return markerTrack('search-hits', [{
       label: 'Find hit',
-      positions: searchMatches.map(m => m[0]),
-      width: Math.max(1, e0 - s0),
+      positions: searchMatches.map(m => m.start),
+      width: Math.max(1, first.end - first.start),
       color: t => t.warning,
     }])
   }, [searchMatches])

@@ -1,192 +1,438 @@
-/* ===== Find Modal (floating, non-blocking) ===== */
+/* ===== Find panel (floating card over the sequence view) ===== */
 
 @keyframes find-modal-in {
-  from {
-    opacity: 0;
-    transform: translateY(-12px) scale(0.97);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0) scale(1);
-  }
+  from { opacity: 0; transform: translateY(-8px) scale(0.98); }
+  to   { opacity: 1; transform: none; }
 }
 
 @keyframes find-modal-out {
-  from {
-    opacity: 1;
-    transform: translateY(0) scale(1);
-  }
-  to {
-    opacity: 0;
-    transform: translateY(-12px) scale(0.97);
-  }
+  from { opacity: 1; transform: none; }
+  to   { opacity: 0; transform: translateY(-8px) scale(0.98); }
 }
 
 .find-modal {
   position: absolute;
-  top: 8px;
-  right: 8px;
+  /* Placed by FindModal.tsx; this is where it sits before the first measure. */
+  top: var(--space-4);
+  right: var(--space-4);
   z-index: var(--z-dropdown);
-  width: 330px;
+  width: 360px;
+  max-width: calc(100% - var(--space-4) * 2);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-2);
   background: var(--bg-alt);
   border: 1px solid var(--border-hover);
   border-radius: var(--radius-popover);
   box-shadow: var(--shadow-popover);
-  overflow: hidden;
-  animation: find-modal-in 0.18s ease-out both;
+  /* Drag from any empty part; controls set their own cursors. */
+  cursor: grab;
+  animation: find-modal-in var(--dur-normal) var(--ease-out) both;
 }
 
 .find-modal.closing {
-  animation: find-modal-out 0.15s ease-in both;
+  animation: find-modal-out var(--dur-fast) ease-in both;
   pointer-events: none;
 }
 
 .find-modal.dragging {
-  box-shadow: var(--shadow-popover);
+  cursor: grabbing;
   user-select: none;
 }
 
-.find-modal-header {
+/* --- Query row --- */
+
+.find-query-row {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  padding: var(--space-2) var(--space-3);
-  border-bottom: 1px solid var(--border);
-  cursor: grab;
+  gap: var(--space-0-5);
 }
 
-.find-modal-header:active {
-  cursor: grabbing;
+.find-query {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: var(--space-1-5);
+  padding: 0 var(--space-2);
+  height: 30px;
+  background: var(--input-bg);
+  border: 1px solid var(--input-border);
+  border-radius: var(--radius-input);
+  cursor: text;
+  transition: border-color var(--dur-fast), box-shadow var(--dur-fast);
 }
 
-.find-modal-title {
+.find-query:focus-within {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-ring);
+}
+
+.find-query.invalid,
+.find-query.invalid:focus-within {
+  border-color: var(--danger);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--danger) 20%, transparent);
+}
+
+.find-query-icon {
+  flex-shrink: 0;
+  color: var(--text-muted);
+}
+
+.find-query-input {
+  flex: 1;
+  min-width: 0;
+  padding: 0;
+  border: none;
+  outline: none;
+  background: none;
+  color: var(--text);
+  font-family: var(--font-mono);
   font-size: var(--text-sm);
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-  color: var(--accent);
 }
 
-.find-modal-close {
+/* The field around it shows focus (:focus-within); the global input ring
+   would draw a second box inside it. */
+.find-query .find-query-input:focus-visible {
+  box-shadow: none;
+}
+
+.find-query-input::placeholder {
+  color: var(--text-muted);
+  font-family: inherit;
+}
+
+/* Inside the field, so it never pushes anything around as it appears. */
+.find-count {
+  flex-shrink: 0;
+  font-size: var(--text-xs);
+  color: var(--text-secondary);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.find-icon-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  padding: 0;
   background: none;
   border: none;
-  color: var(--text-secondary);
-  cursor: pointer;
-  padding: var(--space-0-5);
-  border-radius: var(--radius-sm);
-  display: flex;
-  align-items: center;
-}
-.find-modal-close:hover {
-  color: var(--text);
-  background: var(--bg-hover);
-}
-
-.find-modal-body {
-  padding: var(--space-2-5) var(--space-3) var(--space-3);
-}
-
-/* Mode toggle: uses shared .toggle-group / .toggle-btn from App.css */
-
-/* Find input row */
-.find-input-row {
-  display: flex;
-  gap: var(--space-1);
-  margin-bottom: var(--space-1);
-}
-
-.find-modal-input {
-  flex: 1;
-  padding: var(--space-1-5) var(--space-2);
-  font-family: monospace;
-  border-radius: var(--radius-input);
-  min-width: 0;
-}
-
-.find-nav-group {
-  display: flex;
-  gap: var(--space-0-5);
-  flex-shrink: 0;
-}
-
-.find-nav-btn {
-  background: none;
-  border: 1px solid var(--border);
   border-radius: var(--radius-sm);
   color: var(--text-secondary);
   cursor: pointer;
-  padding: var(--space-1) var(--space-1);
-  display: flex;
-  align-items: center;
+  transition: background var(--dur-fast), color var(--dur-fast);
 }
-.find-nav-btn:hover:not(:disabled) {
+
+.find-icon-btn:hover:not(:disabled) {
   background: var(--bg-hover);
   color: var(--text);
 }
-.find-nav-btn:disabled {
+
+.find-icon-btn:disabled {
   opacity: 0.35;
   cursor: default;
 }
 
-/* Match count */
-.find-match-count {
-  font-size: var(--text-xs);
-  color: var(--text-secondary);
-  margin-bottom: var(--space-1-5);
-}
+/* --- Options --- */
 
-/* Options (checkboxes) */
 .find-options {
   display: flex;
-  flex-direction: column;
-  gap: var(--space-1);
-  margin-bottom: var(--space-2);
-}
-
-.find-option {
-  display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: var(--space-1-5);
-  font-size: var(--text-sm);
+}
+
+.find-seg {
+  display: inline-flex;
+  padding: var(--space-0-5);
+  gap: var(--space-0-5);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-input);
+}
+
+.find-seg button {
+  padding: var(--space-0-5) var(--space-2-5);
+  font-family: inherit;
+  font-size: var(--text-xs);
+  font-weight: 600;
   color: var(--text-secondary);
+  background: none;
+  border: none;
+  border-radius: var(--radius-sm);
   cursor: pointer;
+  transition: background var(--dur-fast), color var(--dur-fast);
 }
-.find-option input[type="checkbox"] {
-  accent-color: var(--accent);
-  margin: 0;
-  width: 13px;
-  height: 13px;
-}
-.find-option:hover {
+
+.find-seg button:hover:not(.active):not(:disabled) {
+  background: var(--bg-hover);
   color: var(--text);
 }
 
-/* Replace toggle */
-.find-replace-toggle {
-  border-top: 1px solid var(--border);
-  padding-top: var(--space-1-5);
-  margin-bottom: var(--space-1);
+.find-seg button.active {
+  background: var(--accent);
+  color: var(--on-accent);
 }
 
-.find-replace-toggle-btn {
+.find-seg button:disabled {
+  cursor: default;
+  opacity: 0.45;
+}
+
+.find-seg-small button {
+  min-width: 22px;
+  padding: var(--space-0-5) var(--space-1);
+  font-variant-numeric: tabular-nums;
+}
+
+.find-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  padding: var(--space-1) var(--space-2);
+  font-family: inherit;
+  font-size: var(--text-xs);
+  font-weight: 500;
+  color: var(--text-secondary);
   background: none;
-  border: none;
-  color: var(--accent);
-  font-size: var(--text-sm);
-  font-weight: 600;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-pill);
   cursor: pointer;
-  padding: var(--space-0-5) 0;
-}
-.find-replace-toggle-btn:hover {
-  text-decoration: underline;
+  transition: background var(--dur-fast), color var(--dur-fast), border-color var(--dur-fast);
 }
 
-/* Replace section */
-.find-replace-section {
+.find-chip:hover:not(:disabled) {
+  color: var(--text);
+  border-color: var(--border-hover);
+}
+
+.find-chip.on {
+  color: var(--accent);
+  background: var(--accent-bg);
+  border-color: color-mix(in srgb, var(--accent) 45%, transparent);
+}
+
+.find-chip:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.find-chip-glyph {
+  font-family: var(--font-mono);
+  font-weight: 700;
+}
+
+.find-mismatch {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1-5);
+  margin-left: auto;
+  cursor: default;
+}
+
+.find-mismatch-label {
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+}
+
+/* --- Messages --- */
+
+.find-message {
+  padding: var(--space-1-5) var(--space-2);
+  font-size: var(--text-xs);
+  border-radius: var(--radius-sm);
+  cursor: default;
+}
+
+.find-message-error {
+  color: var(--danger);
+  background: var(--danger-bg);
+}
+
+/* --- Hit list --- */
+
+.find-hits {
+  max-height: 248px;
+  overflow-y: auto;
+  margin: 0 calc(var(--space-2) * -1);
+  padding: 0 var(--space-2);
+  border-top: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
+  cursor: default;
+}
+
+.find-hit {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-0-5);
+  margin: var(--space-0-5) 0;
+  padding: var(--space-1) var(--space-2);
+  border-radius: var(--radius-sm);
+  border-left: 2px solid transparent;
+  cursor: pointer;
+}
+
+.find-hit:first-child { margin-top: var(--space-1); }
+.find-hit:last-child { margin-bottom: var(--space-1); }
+
+.find-hit:hover {
+  background: var(--bg-hover);
+}
+
+.find-hit.current {
+  background: var(--accent-bg);
+  border-left-color: var(--accent);
+}
+
+.find-hit-meta {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2);
+  min-width: 0;
+  font-size: var(--text-xs);
+}
+
+.find-hit-pos {
+  flex-shrink: 0;
+  color: var(--text);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.find-hit-strand {
+  flex-shrink: 0;
+  display: inline-flex;
+  gap: var(--space-1);
+  color: var(--text-secondary);
+}
+
+.find-hit-frame {
+  font-size: var(--text-2xs);
+  font-variant-numeric: tabular-nums;
+  color: var(--text-muted);
+}
+
+.find-hit-feature {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text-secondary);
+}
+
+.find-hit-feature.none {
+  color: var(--text-faint);
+  font-style: italic;
+}
+
+.find-hit-mm {
+  flex-shrink: 0;
+  padding: 0 var(--space-1);
+  font-size: var(--text-2xs);
+  font-weight: 600;
+  color: var(--warning);
+  background: var(--warning-bg);
+  border-radius: var(--radius-xs);
+}
+
+.find-hit-context {
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  letter-spacing: 0.02em;
+}
+
+.find-ctx-flank {
+  color: var(--text-muted);
+}
+
+/* The hit in the same colour the minimap and the map mark hits in. */
+.find-ctx-hit {
+  color: var(--text);
+  font-weight: 700;
+  background: color-mix(in srgb, var(--warning) 22%, transparent);
+  border-radius: var(--radius-xs);
+}
+
+.find-ctx-mm {
+  color: var(--danger);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.find-hits-more {
+  padding: var(--space-1) var(--space-2);
+  font-size: var(--text-2xs);
+  color: var(--text-muted);
+}
+
+/* --- Replace --- */
+
+.find-replace {
   display: flex;
   flex-direction: column;
   gap: var(--space-1-5);
-  margin-top: var(--space-1);
+}
+
+.find-replace-toggle {
+  align-self: flex-start;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  padding: var(--space-0-5) var(--space-1);
+  font-family: inherit;
+  font-size: var(--text-xs);
+  font-weight: 600;
+  color: var(--text-secondary);
+  background: none;
+  border: none;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+}
+
+.find-replace-toggle:hover {
+  color: var(--text);
+  background: var(--bg-hover);
+}
+
+.find-replace-body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1-5);
+}
+
+.find-replace-input {
+  height: 30px;
+  padding: 0 var(--space-2);
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
+  color: var(--text);
+  background: var(--input-bg);
+  border: 1px solid var(--input-border);
+  border-radius: var(--radius-input);
+  outline: none;
+  transition: border-color var(--dur-fast), box-shadow var(--dur-fast);
+}
+
+.find-replace-input::placeholder {
+  color: var(--text-muted);
+  font-family: inherit;
+}
+
+.find-replace-input:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-ring);
+}
+
+.find-replace-input.invalid {
+  border-color: var(--danger);
 }
 
 .find-replace-actions {
@@ -199,7 +445,8 @@
   align-items: center;
   gap: var(--space-1);
   padding: var(--space-1) var(--space-2-5);
-  font-size: var(--text-sm);
+  font-family: inherit;
+  font-size: var(--text-xs);
   font-weight: 600;
   border: 1px solid var(--border);
   border-radius: var(--radius-input);
@@ -208,154 +455,13 @@
   cursor: pointer;
   transition: background var(--dur-fast), color var(--dur-fast);
 }
+
 .find-replace-btn:hover:not(:disabled) {
   background: var(--bg-hover);
   color: var(--text);
 }
+
 .find-replace-btn:disabled {
-  opacity: 0.35;
+  opacity: 0.4;
   cursor: default;
 }
-
-/* Status bar */
-.status-bar {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 0 var(--space-3);
-  height: 24px;
-  box-sizing: border-box;
-  font-size: var(--text-xs);
-  font-family: monospace;
-  color: var(--text-secondary);
-  background: var(--status-bg);
-  border-top: 1px solid var(--border);
-  flex-shrink: 0;
-}
-
-.status-bar-right {
-  display: flex;
-  align-items: center;
-  gap: 0;
-}
-
-.status-sep {
-  width: 1px;
-  height: 12px;
-  background: var(--border);
-  margin: 0 var(--space-2);
-}
-
-.status-lock {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--space-1);
-  background: none;
-  border: 1px solid transparent;
-  border-radius: var(--radius-sm);
-  padding: var(--space-0-5) var(--space-1-5);
-  font-size: var(--text-xs);
-  font-family: inherit;
-  color: var(--text-muted);
-  cursor: pointer;
-  transition: background var(--dur-fast), color var(--dur-fast);
-}
-
-.status-lock:hover {
-  background: var(--bg-hover);
-  color: var(--text);
-}
-
-.status-lock.locked {
-  color: var(--accent);
-  background: color-mix(in srgb, var(--accent) 10%, transparent);
-  border-color: color-mix(in srgb, var(--accent) 25%, transparent);
-}
-
-.status-lock.active {
-  color: var(--text);
-  background: var(--bg-hover);
-}
-
-.status-lock.flash {
-  animation: lock-flash 600ms ease;
-}
-
-@keyframes lock-flash {
-  0%, 100% { background: color-mix(in srgb, var(--accent) 10%, transparent); }
-  20%, 60% { background: color-mix(in srgb, var(--accent) 35%, transparent); color: var(--accent); transform: scale(1.1); }
-}
-
-/* Empty state */
-.empty-state {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  height: 100%;
-  color: var(--text-muted);
-  gap: var(--space-3);
-}
-
-.empty-state-icon { font-size: 3rem; opacity: 0.3; }
-.empty-state-text { font-size: var(--text-md); }
-.empty-state-hint { font-size: var(--text-sm); color: var(--text-faint); }
-
-/* Buttons: use shared .btn from App.css */
-.btn-primary { background: var(--accent); color: var(--on-accent); border-color: var(--accent); }
-.btn-primary:hover { background: var(--accent-hover); box-shadow: var(--shadow-sm); }
-.btn-sm { padding: var(--space-1) var(--space-2-5); font-size: var(--text-sm); }
-
-/* Drop overlay */
-.drop-overlay {
-  position: absolute;
-  inset: 0;
-  background: var(--accent-bg);
-  border: 3px dashed var(--accent);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: var(--text-xl);
-  font-weight: 600;
-  color: var(--accent);
-  z-index: var(--z-popover);
-  pointer-events: none;
-  animation: drop-overlay-in var(--dur-fast) ease;
-}
-
-@keyframes drop-overlay-in {
-  from { opacity: 0; }
-  to   { opacity: 1; }
-}
-
-.drop-overlay.drop-error {
-  background: var(--danger-bg);
-  border-color: var(--danger);
-  color: var(--danger);
-}
-
-/* Right properties panel (inside center) */
-.props-panel {
-  width: 240px;
-  min-width: 240px;
-  border-left: 1px solid var(--border);
-  background: var(--props-bg);
-  overflow-y: auto;
-  padding: var(--space-2-5);
-}
-
-.props-panel h3 {
-  margin: 0.5rem 0 0.4rem;
-  font-size: var(--text-sm);
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-  color: var(--text-muted);
-}
-
-.center-split {
-  display: flex;
-  flex: 1;
-  overflow: hidden;
-}
-

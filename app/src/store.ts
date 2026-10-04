@@ -27,6 +27,11 @@ import {
 } from './models/Document'
 import { newPrimerId, primerOligoFromFeature, type PrimerData, type LibraryOligo, type OligoRole } from './primers/oligo'
 import { reverseComplement } from './models/complement'
+import {
+  findMatches, cleanReplacement, defaultSearchOptions,
+  type SearchOptions, type SearchMatch,
+} from './search/find'
+import { geneticCode } from './codon/genetic-codes'
 import type { ColorSchemeId, ColorTarget } from './utils/base-colors'
 import { loadDisplaySettings, saveDisplaySettings, type DisplaySettings } from './utils/display-settings'
 import type { PlasmidStyleId } from './plasmid/styles'
@@ -132,27 +137,92 @@ export function selectionLength(sel: Selection, topology: string, seqLen: number
   return segs.reduce((sum, [s, e]) => sum + (e - s), 0)
 }
 
-export type SearchMode = 'nucleotide' | 'protein'
-
-export interface SearchOptions {
-  isRegex: boolean
-  mode: SearchMode
-  revComplement: boolean  // also find reverse complement matches
-  ambiguity: boolean      // interpret IUPAC ambiguity codes in query
+/**
+ * The two ends of a selection as the user made it: `fixed` stays put when the
+ * selection is extended, `focus` is the end that moves (where the caret is).
+ * A selection made leftwards has its focus at the start. On a circular
+ * sequence the end of a selection across the origin is past position 0.
+ */
+export function selectionEnds(sel: Selection, topology: string): { fixed: number; focus: number } {
+  if (sel.anchor === sel.caret) return { fixed: sel.caret, focus: sel.caret }
+  const start = isOriginSpanningSelection(sel, topology) ? sel.anchor : Math.min(sel.anchor, sel.caret)
+  const end = isOriginSpanningSelection(sel, topology) ? sel.caret : Math.max(sel.anchor, sel.caret)
+  return selectionIsReverse(sel, topology) ? { fixed: end, focus: start } : { fixed: start, focus: end }
 }
 
-export const defaultSearchOptions: SearchOptions = {
-  isRegex: false,
-  mode: 'nucleotide',
-  revComplement: true,
-  ambiguity: true,
+/**
+ * Extend a selection from its fixed end, as Shift with a key or a click does.
+ *
+ * The result follows the convention a drag uses: ends stored in order, the
+ * direction in `reverse`. Storing the caret before the anchor instead would
+ * read, on a circular sequence, as a selection across the origin, which is
+ * how Shift+Left used to select nearly the whole plasmid.
+ *
+ * `to` moves the focus to a position, and the selection runs between the two
+ * without crossing the origin (Home, End, a click). `by` moves the focus a
+ * number of bases (the arrows); on a circular sequence that may carry it past
+ * the origin, and the selection then spans it.
+ */
+export function extendSelection(
+  sel: Selection,
+  move: { to: number } | { by: number },
+  topology: string,
+  seqLen: number,
+): Selection {
+  const circular = topology === 'circular'
+  const { fixed } = selectionEnds(sel, topology)
+  const span = (from: number, to: number, reverse: boolean): Selection =>
+    from === to ? { anchor: to, caret: to } : { anchor: from, caret: to, reverse }
+
+  if ('to' in move) {
+    const t = Math.max(0, Math.min(seqLen, move.to))
+    return t < fixed ? span(t, fixed, true) : span(fixed, t, false)
+  }
+
+  // Signed length from the fixed end: positive when the focus is after it.
+  const length = selectionLength(sel, topology, seqLen)
+  let extent = (length > 0 && selectionIsReverse(sel, topology) ? -length : length) + move.by
+
+  if (!circular) {
+    extent = Math.max(-fixed, Math.min(seqLen - fixed, extent))
+    if (extent === 0) return span(fixed, fixed, false)
+    return extent > 0 ? span(fixed, fixed + extent, false) : span(fixed + extent, fixed, true)
+  }
+
+  // Circular: positions 0 and seqLen are one point, so work from 0..seqLen-1.
+  const f = fixed % seqLen
+  if (extent === 0) return span(fixed, fixed, false)
+  if (Math.abs(extent) >= seqLen) {
+    // The whole circle: only expressible from the origin.
+    if (f === 0) return span(0, seqLen, extent < 0)
+    extent = Math.sign(extent) * (seqLen - 1)
+  }
+  if (extent > 0) {
+    const end = f + extent
+    return span(f, end <= seqLen ? end : end - seqLen, false)
+  }
+  const start = f + extent
+  if (start >= 0) return span(start, f, true)
+  // Past the origin leftwards. Ending exactly at the origin is the end of
+  // the sequence, not a selection across it.
+  return span(start + seqLen, f === 0 ? seqLen : f, true)
 }
+
+export { defaultSearchOptions, type SearchMode, type SearchOptions, type SearchMatch } from './search/find'
 
 export interface SearchState {
   query: string
   options: SearchOptions
-  matches: [number, number][]
+  /** Sorted by start. See search/find.ts for the coordinates. */
+  matches: SearchMatch[]
   currentMatch: number
+  /** More hits exist than are kept (MAX_MATCHES). */
+  truncated: boolean
+  /** Why the query cannot be searched; null when it can. */
+  error: string | null
+  /** The bases the matches were found in. An edit hands back a different
+   *  string, which is how the store knows to search again. */
+  searchedBases?: string
 }
 
 export type ViewMode = 'linear' | 'circular' | 'split'
@@ -949,9 +1019,14 @@ interface EditorStore {
   setSearch: (query: string, options: SearchOptions) => void
   nextMatch: () => void
   prevMatch: () => void
+  /** Make hit `index` the current one and select it. */
+  goToMatch: (index: number) => void
   clearSearch: () => void
+  /** Replacements are bases; a reverse-strand hit gets their reverse complement. */
   replaceCurrentMatch: (replacement: string) => void
-  replaceAllMatches: (replacement: string) => void
+  /** How many hits were replaced, and how many were skipped for overlapping
+   *  one already replaced. */
+  replaceAllMatches: (replacement: string) => { replaced: number; skipped: number }
 
   // Session restore (bulk-load tabs + folders + sequencing reads + alignments from persistence)
   restoreSession: (
@@ -1133,7 +1208,9 @@ function loadSidebarTab(): SidebarTab {
   }
 }
 
-const emptySearch: SearchState ={ query: '', options: { ...defaultSearchOptions }, matches: [], currentMatch: -1 }
+const emptySearch: SearchState = {
+  query: '', options: { ...defaultSearchOptions }, matches: [], currentMatch: -1, truncated: false, error: null,
+}
 
 const DEFAULT_ZOOM = 14  // default zoom level - shows individual letters
 
@@ -1163,114 +1240,50 @@ function makeTab(doc: DocumentState): DocumentTab {
   }
 }
 
-/** IUPAC ambiguity code → regex character class */
-const IUPAC_MAP: Record<string, string> = {
-  A: 'A', C: 'C', G: 'G', T: '[TU]', U: '[TU]',
-  R: '[AG]', Y: '[CTU]', S: '[GC]', W: '[ATU]',
-  K: '[GTU]', M: '[AC]', B: '[CGTU]', D: '[AGTU]',
-  H: '[ACTU]', V: '[ACG]', N: '[ACGTU]',
+/** Search a tab's bases, with the genetic code the app translates with. */
+function searchTab(tab: DocumentTab, query: string, options: SearchOptions, codeId: number): SearchState {
+  const bases = tab.doc.sequence.bases
+  const circular = tab.doc.sequence.topology === 'circular'
+  const r = findMatches(query, options, bases, circular, geneticCode(codeId))
+  return {
+    query, options, matches: r.matches, currentMatch: -1,
+    truncated: r.truncated, error: r.error, searchedBases: bases,
+  }
 }
 
-/** Convert an IUPAC nucleotide query to a regex pattern. */
-function iupacToRegex(query: string): string {
-  return query.toUpperCase().split('').map(ch => IUPAC_MAP[ch] ?? ch.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('')
+/** The selection covering a hit: origin-spanning when the hit wraps. */
+export function matchSelection(m: SearchMatch, seqLen: number): Selection {
+  return { anchor: m.start, caret: m.end > seqLen ? m.end - seqLen : m.end }
 }
-
-import { translate as translateForSearch } from './utils/codon'
 
 /**
- * Find all protein query matches in a DNA sequence.
- * Searches all 3 reading frames on the forward strand.
- * Returns nucleotide-level [start, end] ranges.
+ * Replace the bases a hit covers. One that spans the origin is two pieces:
+ * both are removed and the replacement goes at the end, where the hit began,
+ * so it reads on across the origin as the hit did.
  */
-function proteinMatches(query: string, bases: string): [number, number][] {
-  const upperQ = query.toUpperCase()
-  const matches: [number, number][] = []
-  for (let frame = 0; frame < 3; frame++) {
-    const protein = translateForSearch(bases.slice(frame))
-    let idx = 0
-    while ((idx = protein.indexOf(upperQ, idx)) !== -1) {
-      const ntStart = frame + idx * 3
-      const ntEnd = ntStart + upperQ.length * 3
-      if (ntEnd <= bases.length) {
-        matches.push([ntStart, ntEnd])
-      }
-      idx++
-    }
-  }
-  return matches.sort((a, b) => a[0] - b[0])
+function replaceMatchInDoc(doc: DocumentState, m: SearchMatch, text: string): DocumentState {
+  const L = doc.sequence.length
+  if (m.end <= L) return replaceBasesInPlace(doc, m.start, m.end, text)
+  let d = deleteBasesInPlace(doc, m.start, L)
+  d = deleteBasesInPlace(d, 0, m.end - L)
+  return text ? insertBasesInPlace(d, d.sequence.length, text) : d
 }
 
-function runRegexMatches(pattern: RegExp, text: string): [number, number][] {
-  const matches: [number, number][] = []
-  let m: RegExpExecArray | null
-  while ((m = pattern.exec(text)) !== null) {
-    if (m[0].length === 0) { pattern.lastIndex++; continue }
-    matches.push([m.index, m.index + m[0].length])
+/** Index of the first hit starting at or after `pos`, else the first hit; -1 if none. */
+function firstMatchFrom(matches: SearchMatch[], pos: number): number {
+  if (matches.length === 0) return -1
+  let lo = 0, hi = matches.length
+  while (lo < hi) {
+    const mid = (lo + hi) >>> 1
+    if (matches[mid].start < pos) lo = mid + 1
+    else hi = mid
   }
-  return matches
+  return lo < matches.length ? lo : 0
 }
 
-function computeMatches(query: string, options: SearchOptions, bases: string, circular: boolean = false): [number, number][] {
-  if (!query) return []
-
-  try {
-    // --- Protein mode ---
-    if (options.mode === 'protein') {
-      return proteinMatches(query, bases)
-    }
-
-    // --- Nucleotide mode ---
-    let patternStr: string
-    if (options.isRegex) {
-      patternStr = query
-    } else if (options.ambiguity) {
-      patternStr = iupacToRegex(query)
-    } else {
-      patternStr = query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
-    }
-
-    const pattern = new RegExp(patternStr, 'gi')
-    const matches = runRegexMatches(pattern, bases)
-
-    // Reverse complement search
-    if (options.revComplement && !options.isRegex) {
-      const rcQuery = reverseComplement(query)
-      // Only search if rc differs from the original query
-      if (rcQuery.toUpperCase() !== query.toUpperCase()) {
-        const rcPatternStr = options.ambiguity ? iupacToRegex(rcQuery) : rcQuery.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
-        const rcPattern = new RegExp(rcPatternStr, 'gi')
-        const rcMatches = runRegexMatches(rcPattern, bases)
-        matches.push(...rcMatches)
-        // Sort and deduplicate
-        matches.sort((a, b) => a[0] - b[0] || a[1] - b[1])
-      }
-    }
-
-    // Circular wrap-around search
-    if (circular && bases.length > 0) {
-      const wrapLen = Math.min(bases.length - 1, query.length * 2 + 100)
-      if (wrapLen > 0) {
-        const wrapped = bases + bases.slice(0, wrapLen)
-        const wrapPattern = new RegExp(patternStr, 'gi')
-        wrapPattern.lastIndex = Math.max(0, bases.length - wrapLen)
-        let m: RegExpExecArray | null
-        while ((m = wrapPattern.exec(wrapped)) !== null) {
-          if (m[0].length === 0) { wrapPattern.lastIndex++; continue }
-          const mStart = m.index
-          const mEnd = m.index + m[0].length
-          if (mStart < bases.length && mEnd > bases.length) {
-            matches.push([mStart, mEnd - bases.length])
-          }
-          if (mStart >= bases.length) break
-        }
-      }
-    }
-
-    return matches
-  } catch {
-    return []
-  }
+/** Where a selection starts, reading an origin-spanning one from its anchor. */
+function selectionStart(sel: Selection, topology: string): number {
+  return isOriginSpanningSelection(sel, topology) ? sel.anchor : Math.min(sel.anchor, sel.caret)
 }
 
 /**
@@ -1303,9 +1316,24 @@ export const useEditorStore = create<EditorStore>((set, get) => {
     return tabs.find(t => t.id === activeTabId) ?? null
   }
 
+  /**
+   * Search again if the bases changed under a live search, so the hits never
+   * point at bases that have moved. The selection is left alone (the user is
+   * editing); the current hit stays the one nearest where it was.
+   */
+  function withFreshSearch(tab: DocumentTab, force = false): DocumentTab {
+    const s = tab.search
+    if (!s.query) return tab
+    if (!force && s.searchedBases === tab.doc.sequence.bases) return tab
+    const fresh = searchTab(tab, s.query, s.options, get().translationCodeId)
+    const was = s.matches[s.currentMatch]
+    fresh.currentMatch = was ? firstMatchFrom(fresh.matches, was.start) : (fresh.matches.length ? 0 : -1)
+    return { ...tab, search: fresh }
+  }
+
   function updateActiveTab(patch: Partial<DocumentTab>) {
     const { tabs, activeTabId } = get()
-    const updated = tabs.map(t => t.id === activeTabId ? { ...t, ...patch } : t)
+    const updated = tabs.map(t => t.id === activeTabId ? withFreshSearch({ ...t, ...patch }) : t)
     const active = updated.find(t => t.id === activeTabId)
     set({
       tabs: updated,
@@ -1566,6 +1594,11 @@ export const useEditorStore = create<EditorStore>((set, get) => {
         setTranslationCode: (id: number) => {
           set({ translationCodeId: id })
           persist({ translationCodeId: id })
+          // A protein search reads through this code, so its hits change too.
+          const tab = getActiveTab()
+          if (tab?.search.query && tab.search.options.mode === 'protein') {
+            updateActiveTab({ search: withFreshSearch(tab, true).search })
+          }
         },
         setAminoAcidStyle: (id: AminoAcidStyleId) => {
           set({ aminoAcidStyle: id })
@@ -2791,35 +2824,36 @@ export const useEditorStore = create<EditorStore>((set, get) => {
     setSearch(query, options) {
       const tab = getActiveTab()
       if (!tab) return
-      const bases = tab.doc.sequence.bases
-      const circular = tab.doc.sequence.topology === 'circular'
-      const matches = computeMatches(query, options, bases, circular)
-      let currentMatch = -1
-      if (matches.length > 0) {
-        const caret = tab.selection.caret
-        currentMatch = matches.findIndex(([s]) => s >= caret)
-        if (currentMatch === -1) currentMatch = 0
-        const [s, e] = matches[currentMatch]
-        updateActiveTab({ search: { query, options, matches, currentMatch }, selection: { anchor: s, caret: e } })
-      } else {
-        updateActiveTab({ search: { query, options, matches, currentMatch } })
-      }
+      const search = searchTab(tab, query, options, get().translationCodeId)
+      // Start from where the selection starts, not from the caret: while a
+      // query is typed the caret sits at the end of the last hit, and
+      // starting there skipped that hit as soon as the query grew by a letter.
+      search.currentMatch = firstMatchFrom(search.matches, selectionStart(tab.selection, tab.doc.sequence.topology))
+      const m = search.matches[search.currentMatch]
+      updateActiveTab(m ? { search, selection: matchSelection(m, tab.doc.sequence.length) } : { search })
     },
 
     nextMatch() {
       const tab = getActiveTab()
       if (!tab || tab.search.matches.length === 0) return
-      const next = (tab.search.currentMatch + 1) % tab.search.matches.length
-      const [s, e] = tab.search.matches[next]
-      updateActiveTab({ search: { ...tab.search, currentMatch: next }, selection: { anchor: s, caret: e } })
+      get().goToMatch((tab.search.currentMatch + 1) % tab.search.matches.length)
     },
 
     prevMatch() {
       const tab = getActiveTab()
       if (!tab || tab.search.matches.length === 0) return
-      const prev = (tab.search.currentMatch - 1 + tab.search.matches.length) % tab.search.matches.length
-      const [s, e] = tab.search.matches[prev]
-      updateActiveTab({ search: { ...tab.search, currentMatch: prev }, selection: { anchor: s, caret: e } })
+      const n = tab.search.matches.length
+      get().goToMatch((tab.search.currentMatch - 1 + n) % n)
+    },
+
+    goToMatch(index) {
+      const tab = getActiveTab()
+      const m = tab?.search.matches[index]
+      if (!tab || !m) return
+      updateActiveTab({
+        search: { ...tab.search, currentMatch: index },
+        selection: matchSelection(m, tab.doc.sequence.length),
+      })
     },
 
     clearSearch() {
@@ -2828,37 +2862,71 @@ export const useEditorStore = create<EditorStore>((set, get) => {
 
     replaceCurrentMatch(replacement) {
       const tab = getActiveTab()
-      if (!tab || tab.readOnly || tab.search.currentMatch < 0 || tab.search.currentMatch >= tab.search.matches.length) return
-      const [s, e] = tab.search.matches[tab.search.currentMatch]
+      const m = tab?.search.matches[tab.search.currentMatch]
+      if (!tab || tab.readOnly || !m) return
+      const { bases, error } = cleanReplacement(replacement, tab.search.options.mode)
+      if (error) return
+      // The hit reads as the query on its own strand, so the replacement
+      // should too: on the reverse strand that is its reverse complement.
+      const text = m.strand === -1 ? reverseComplement(bases) : bases
       pushUndo('Replace match')
-      const newDoc = replaceBasesInPlace(get().doc, s, e, replacement.toUpperCase())
-      const bases = newDoc.sequence.bases
-      const circular = newDoc.sequence.topology === 'circular'
-      const matches = computeMatches(tab.search.query, tab.search.options, bases, circular)
-      const nextIdx = Math.min(tab.search.currentMatch, matches.length - 1)
-      if (matches.length > 0 && nextIdx >= 0) {
-        const [ns, ne] = matches[nextIdx]
-        updateActiveTab({ doc: newDoc, search: { ...tab.search, matches, currentMatch: nextIdx }, selection: { anchor: ns, caret: ne } })
-      } else {
-        updateActiveTab({ doc: newDoc, search: { ...tab.search, matches, currentMatch: -1 } })
-      }
+      const doc = replaceMatchInDoc(get().doc, m, text)
+      const fresh = searchTab({ ...tab, doc }, tab.search.query, tab.search.options, get().translationCodeId)
+      // Carry on after the replacement rather than on it, which would find
+      // the replacement again whenever it matches the query itself.
+      const wrapped = m.end > tab.doc.sequence.length
+      const after = wrapped ? doc.sequence.length : m.start + text.length
+      fresh.currentMatch = firstMatchFrom(fresh.matches, after)
+      const next = fresh.matches[fresh.currentMatch]
+      updateActiveTab({
+        doc,
+        search: fresh,
+        selection: next ? matchSelection(next, doc.sequence.length) : { anchor: after, caret: after },
+      })
     },
 
     replaceAllMatches(replacement) {
+      const none = { replaced: 0, skipped: 0 }
       const tab = getActiveTab()
-      if (!tab || tab.readOnly || tab.search.matches.length === 0) return
-      const n = tab.search.matches.length
-      pushUndo(`Replace ${n.toLocaleString()} match${n === 1 ? '' : 'es'}`)
-      const upper = replacement.toUpperCase()
-      let doc = tab.doc
-      for (let i = tab.search.matches.length - 1; i >= 0; i--) {
-        const [s, e] = tab.search.matches[i]
-        doc = replaceBasesInPlace(doc, s, e, upper)
+      if (!tab || tab.readOnly || tab.search.matches.length === 0) return none
+      const { bases, error } = cleanReplacement(replacement, tab.search.options.mode)
+      if (error) return none
+      const L = tab.doc.sequence.length
+      // Hits can overlap (the two strands, mismatches, a repeat). Replacing
+      // two that share bases would splice one replacement into the other, so
+      // take them left to right and skip any that overlaps one already taken.
+      const taken: SearchMatch[] = []
+      let reach = -Infinity
+      for (const m of tab.search.matches) {
+        if (m.start < reach) continue
+        taken.push(m)
+        reach = m.end
       }
-      const bases = doc.sequence.bases
-      const circular = doc.sequence.topology === 'circular'
-      const matches = computeMatches(tab.search.query, tab.search.options, bases, circular)
-      updateActiveTab({ doc, search: { ...tab.search, matches, currentMatch: matches.length > 0 ? 0 : -1 } })
+      // A hit across the origin also reaches round to the first ones.
+      let wrap = taken.length > 1 && taken[taken.length - 1].end > L ? taken[taken.length - 1] : null
+      if (wrap && taken[0].start < wrap.end - L) { taken.pop(); wrap = null }
+      if (!wrap && taken.length === 1 && taken[0].end > L) wrap = taken[0]
+      const linear = wrap ? taken.slice(0, -1) : taken
+      const textFor = (m: SearchMatch) => (m.strand === -1 ? reverseComplement(bases) : bases)
+
+      const n = taken.length
+      pushUndo(`Replace ${n.toLocaleString()} match${n === 1 ? '' : 'es'}`)
+      let doc = get().doc
+      // Right to left, so the positions still to come do not move.
+      let shift = 0
+      for (let i = linear.length - 1; i >= 0; i--) {
+        const m = linear[i]
+        const text = textFor(m)
+        doc = replaceBasesInPlace(doc, m.start, m.end, text)
+        shift += text.length - (m.end - m.start)
+      }
+      if (wrap) doc = replaceMatchInDoc(doc, { ...wrap, start: wrap.start + shift, end: wrap.end + shift }, textFor(wrap))
+
+      const fresh = searchTab({ ...tab, doc }, tab.search.query, tab.search.options, get().translationCodeId)
+      fresh.currentMatch = fresh.matches.length > 0 ? 0 : -1
+      const caret = Math.min(taken[0].start, doc.sequence.length)
+      updateActiveTab({ doc, search: fresh, selection: { anchor: caret, caret } })
+      return { replaced: n, skipped: tab.search.matches.length - n }
     },
 
     // ---- Sequencing reads ----

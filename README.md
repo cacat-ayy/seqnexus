@@ -72,7 +72,9 @@ of each build.
 - **FASTA, SnapGene (.dna), Geneious (.geneious), GFF3 import/export**
 - **Sanger chromatogram viewer** (AB1, SCF) with quality scores and base editing
 - **Annotation editing** - inline feature table, context menu, drag-and-drop
-- **Find/replace** with regex support
+- **Find/replace** on both strands, with IUPAC codes, up to 3 mismatches,
+  protein search in all six frames, regex, and a list of hits with their
+  strand, feature and context
 - **ORF finder** - 6-frame, configurable, Web Worker
 - **Restriction enzyme analysis** - 546 enzymes from REBASE, gel simulation
 - **Primers** - primers and probes as oligos with 5'/3' overhangs and
@@ -186,6 +188,83 @@ matching tab are deleted. This prevents storage leaks when tabs are closed.
 Session state is saved automatically with a 1-second debounce after any
 state change. If the save fails due to quota, a persistent error toast
 warns the user to export their work.
+
+---
+
+## Find
+
+Ctrl+F in the sequence view opens a floating Find panel. A selection of up
+to 1 kb becomes the query. The engine is `search/find.ts`; the store runs it
+on every change of query, options or bases, so hits never point at bases
+that an edit has moved. Coordinates are 0-based and end-exclusive on the
+forward strand. On a circular sequence a hit may run across the origin and
+then keeps `end > length` (unwrapped), so hits still sort by start.
+
+### Nucleotide search
+
+- **Exact and IUPAC.** The query becomes a regular expression, each IUPAC
+  code a character class (N is `[ACGTU]`, R is `[AG]`, and so on; T and U are
+  one base). A sequence N is not a base call, so it matches only a query N
+  when ambiguity codes are off (then the query is literal). Hits may overlap:
+  "AA" in "AAAA" is three sites, because each is a place a primer could sit.
+- **Both strands.** The reverse complement of the query is searched as a
+  second pattern. A window found by both (a palindrome such as GAATTC, or an
+  ambiguous query whose two orientations fit the same bases, such as AN and
+  NT on "AT") is one hit on both strands, not two.
+- **Mismatches (0 to 3).** Every offset is compared directly, base against
+  query code as bitmasks (A 1, C 2, G 4, T 8; a code is the OR of its bases),
+  and a window is abandoned at its (k+1)th difference. That is O(n·m) at worst
+  but a few comparisons per position on real sequence, which is fast enough
+  for primer-length queries on a bacterial genome. An index (k-mer seeds, as
+  primer binding uses) was not needed at these sizes and would not cover a
+  query shorter than its seed.
+- **Regex.** Searched as written, forward strand only: a regex has no
+  general reverse complement. Hits do not overlap, as usual for a regex.
+- **Across the origin.** The sequence is searched with its first m - 1 bases
+  appended (1 kb for a regex), keeping hits that start before the end. One
+  pass covers both strands' wrapped hits.
+
+Pasted spaces and position numbers (as in a GenBank listing) are dropped
+from the query. Any other character that is not a code is reported by name
+rather than matched, so a typo cannot quietly match something else.
+
+### Protein search
+
+All six frames are translated with the genetic code chosen for the
+translation display, and searched as text; hits map back to the codons they
+cover, with their strand and frame (offset 0, 1 or 2 from the 5' end of
+their strand). X matches any residue except a stop, B is D or N, Z is E or
+Q, J is I or L. The six translations are cached until the bases or the code
+change, since translating a genome is most of the cost of each keystroke.
+Mismatches are not offered in protein mode.
+
+### Limits
+
+A search keeps at most 100,000 hits. A one-letter query on a genome has
+millions, which say nothing more in the list or on the map and would cost
+hundreds of megabytes. The kept hits are always every hit up to some
+position, never an uneven sample of the two strands.
+
+### Replace
+
+The replacement is bases in both modes. A reverse-strand hit gets the
+reverse complement of the replacement, so the strand the hit was found on
+reads as typed. In protein mode only A, C, G and T are accepted, since most
+amino acid letters are also IUPAC codes and a peptide typed by mistake would
+otherwise go in as degenerate DNA. Replace all works right to left so the
+positions still to come do not move, and skips a hit that overlaps one
+already replaced (hits on the two strands, or with mismatches, can overlap)
+rather than splicing one replacement into another. A hit across the origin
+is replaced in two pieces, with the new bases placed at the end.
+
+### Display
+
+Hits are drawn on the strand they read on when both strands are shown as
+letters, and over the whole line otherwise. The minimap and the plasmid map
+mark every hit (map marks closer than 3 px are merged), the current one
+stronger. The panel lists the hits with position, strand, frame, the
+smallest feature containing the hit, and a few bases of context read in the
+hit's own orientation, with mismatched bases marked.
 
 ---
 
@@ -871,6 +950,14 @@ faint marks on white. Selection and search highlights are off by default.
 - Nakamura Y, Gojobori T, Ikemura T. (2000) "Codon usage tabulated from
   international DNA sequence databases: status for the year 2000."
   *Nucleic Acids Res* 28:292.
+
+- Cornish-Bowden A. (1985) "Nomenclature for incompletely specified bases in
+  nucleic acid sequences: recommendations 1984."
+  *Nucleic Acids Res* 13:3021-3030.
+
+- IUPAC-IUB Joint Commission on Biochemical Nomenclature. (1984)
+  "Nomenclature and symbolism for amino acids and peptides."
+  *Eur J Biochem* 138:9-37.
 
 - Elzanowski A, Ostell J. "The Genetic Codes." NCBI Taxonomy.
   https://www.ncbi.nlm.nih.gov/Taxonomy/Utils/wprintgc.cgi
