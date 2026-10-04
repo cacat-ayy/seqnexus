@@ -25,8 +25,9 @@ export interface AnnotationData {
    * part lies on one side of the origin; a wrapped feature's list crosses it
    * once. Absent for a feature that is one piece.
    *
-   * Only file import and export and edits read this so far; drawing and
-   * translation still use the overall span. Kept only while it agrees with
+   * Drawn exon by exon with a line across each intron, and translated
+   * through the exons only; hit testing and copying the bases still use the
+   * overall span. Kept only while it agrees with
    * start and end: anything that moves those without moving the segments
    * drops them, so they can be lost but never wrong.
    */

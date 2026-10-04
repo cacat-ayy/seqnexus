@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import {
-  annArcSpan, annotationsOverlap, stackAnnotations, planTicks, posToAngle, angleToPos,
+  annArcSpan, annotationsOverlap, stackAnnotations, planTicks, posToAngle, angleToPos, arcSelection,
 } from './geometry'
 import { displayPosition } from '../models/Document'
 import { Annotation } from '../models/Annotation'
@@ -143,5 +143,31 @@ describe('angleToPos', () => {
     for (const pos of [0, 1, 250, 999]) {
       expect(angleToPos(posToAngle(pos, 1000), 1000)).toBe(pos)
     }
+  })
+})
+
+describe('arcSelection', () => {
+  const L = 100
+  it('runs clockwise from where the drag began', () => {
+    expect(arcSelection(10, 30, 1, true, L)).toEqual({ anchor: 10, caret: 30, reverse: false })
+  })
+
+  it('runs anticlockwise as a leftward selection', () => {
+    expect(arcSelection(30, 10, -1, true, L)).toEqual({ anchor: 10, caret: 30, reverse: true })
+  })
+
+  it('keeps going past the origin instead of taking the short way back', () => {
+    // Clockwise from 90 past the top to 5: a range across the origin.
+    expect(arcSelection(90, 5, 0.9, true, L)).toEqual({ anchor: 90, caret: 5, reverse: false })
+    // Anticlockwise from 5 back past the top to 90: the same bases.
+    expect(arcSelection(5, 90, -0.9, true, L)).toEqual({ anchor: 90, caret: 5, reverse: true })
+  })
+
+  it('stops one base short of a whole turn', () => {
+    expect(arcSelection(10, 10, Math.PI * 2, true, L)).toEqual({ anchor: 10, caret: 9, reverse: false })
+  })
+
+  it('never crosses the ends of a linear sequence', () => {
+    expect(arcSelection(90, 5, 0.9, false, L)).toEqual({ anchor: 5, caret: 90, reverse: true })
   })
 })

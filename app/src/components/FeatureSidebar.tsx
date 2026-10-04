@@ -6,7 +6,7 @@
  */
 
 import { useState, useCallback, useRef, useEffect, useMemo, memo } from 'react'
-import { useEditorStore } from '../store'
+import { useEditorStore, allSelectionsOf, joinedSegments } from '../store'
 import { notify } from '../toast'
 import type { Annotation } from '../models/Annotation'
 import type { Strand } from '../models/Annotation'
@@ -281,6 +281,9 @@ function FeatureSidebar({ open, onClose }: FeatureSidebarProps) {
   const [newType, setNewType] = useState('misc_feature')
   const [newStart, setNewStart] = useState(1)
   const [newEnd, setNewEnd] = useState(100)
+  // The parts of a joined feature, from a selection of several ranges; null
+  // for a feature in one piece, which the Range inputs describe.
+  const [newParts, setNewParts] = useState<[number, number][] | null>(null)
   const [newStrand, setNewStrand] = useState<Strand>(1)
   const [newColor, setNewColor] = useState(() => defaultColorForType('misc_feature'))
   // Update color when type changes (only if user hasn't manually picked a color)
@@ -298,10 +301,20 @@ function FeatureSidebar({ open, onClose }: FeatureSidebarProps) {
   useEffect(() => {
     if (requestAddAnnotation && open) {
       switchTab('features')
-      const sel = useEditorStore.getState().selection
+      const state = useEditorStore.getState()
+      const sel = state.selection
       const a = Math.min(sel.anchor, sel.caret)
       const b = Math.max(sel.anchor, sel.caret)
-      if (b > a) {
+      // Several ranges make one joined feature, its parts in the order the
+      // selection reads them: the same order a GenBank join() is written.
+      const ranges = allSelectionsOf(state)
+      const seq = state.doc.sequence
+      const parts = ranges.length > 1 ? joinedSegments(ranges, seq.topology, seq.length) : null
+      setNewParts(parts)
+      if (parts) {
+        setNewStart(parts[0][0] + 1)
+        setNewEnd(parts[parts.length - 1][1])
+      } else if (b > a) {
         setNewStart(a + 1)
         setNewEnd(b)
       }
@@ -338,8 +351,8 @@ function FeatureSidebar({ open, onClose }: FeatureSidebarProps) {
 
   const handleAdd = useCallback(() => {
     const id = `ann_${Date.now()}`
-    const start = Math.max(0, Math.min(newStart - 1, seqLength - 1))
-    const end = Math.max(1, Math.min(newEnd, seqLength))
+    const start = newParts ? newParts[0][0] : Math.max(0, Math.min(newStart - 1, seqLength - 1))
+    const end = newParts ? newParts[newParts.length - 1][1] : Math.max(1, Math.min(newEnd, seqLength))
     addAnnotation({
       id,
       name: newName.trim() || 'Untitled',
@@ -348,11 +361,13 @@ function FeatureSidebar({ open, onClose }: FeatureSidebarProps) {
       end,
       strand: newStrand,
       color: newColor,
+      ...(newParts ? { segments: newParts } : {}),
     })
     setAdding(false)
+    setNewParts(null)
     setColorManuallySet(false)
     setExpandedId(id)
-  }, [newName, newType, newStart, newEnd, newStrand, newColor, seqLength, addAnnotation])
+  }, [newName, newType, newStart, newEnd, newParts, newStrand, newColor, seqLength, addAnnotation])
 
   const toggleTypeCollapse = useCallback((type: string) => {
     setCollapsedTypes(prev => {
@@ -495,7 +510,7 @@ function FeatureSidebar({ open, onClose }: FeatureSidebarProps) {
             </button>
             <button
               className="fs-icon-btn"
-              onClick={() => setAdding(v => !v)}
+              onClick={() => { setNewParts(null); setAdding(v => !v) }}
               title={adding ? 'Cancel' : 'Add feature'}
             >
               {adding ? <X size={14} /> : <Plus size={14} />}
@@ -598,6 +613,21 @@ function FeatureSidebar({ open, onClose }: FeatureSidebarProps) {
                 {FEATURE_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
               </select>
             </div>
+            {newParts ? (
+              <div className="ft-row">
+                <label>Parts</label>
+                <div className="ft-join">
+                  <span className="ft-join-text" title="Joined parts, in reading order">
+                    {newParts.map(([s, e]) => `${s + 1}..${e}`).join(', ')}
+                  </span>
+                  <button
+                    className="btn btn-sm"
+                    title="Annotate the whole span instead, from the first part to the last"
+                    onClick={() => setNewParts(null)}
+                  >One Span</button>
+                </div>
+              </div>
+            ) : (
             <div className="ft-row">
               <label>Range</label>
               <div className="ft-range-inputs">
@@ -620,6 +650,7 @@ function FeatureSidebar({ open, onClose }: FeatureSidebarProps) {
                 />
               </div>
             </div>
+            )}
             <div className="ft-row">
               <label>Strand</label>
               <select
@@ -656,7 +687,7 @@ function FeatureSidebar({ open, onClose }: FeatureSidebarProps) {
             </div>
             <div className="ft-actions">
               <button className="btn btn-primary btn-sm" onClick={handleAdd}>Add Feature</button>
-              <button className="btn btn-sm" onClick={() => setAdding(false)}>Cancel</button>
+              <button className="btn btn-sm" onClick={() => { setAdding(false); setNewParts(null) }}>Cancel</button>
             </div>
           </div>
         )}

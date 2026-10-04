@@ -209,6 +209,146 @@ export function extendSelection(
   return span(start + seqLen, f === 0 ? seqLen : f, true)
 }
 
+// --- Several ranges at once ---
+//
+// Ctrl+drag (or Ctrl+click on a feature) selects a range beside the ones
+// already selected. The range being made or dragged stays `selection`, the
+// active one: the caret, the keyboard and every single-range tool act on it.
+// The others are kept beside it (see MultiSelection) and never overlap or
+// touch it: ranges that meet merge into one.
+
+/** Two ranges' segments share a base or meet end to end. */
+function segmentsMeet(a: [number, number][], b: [number, number][], circular: boolean, seqLen: number): boolean {
+  for (const [as, ae] of a) {
+    for (const [bs, be] of b) {
+      if (as <= be && bs <= ae) return true
+      // On a circle the end of the sequence and its start are one point.
+      if (circular && ((ae === seqLen && bs === 0) || (be === seqLen && as === 0))) return true
+    }
+  }
+  return false
+}
+
+/**
+ * The active range merged with every other range it overlaps or meets, and
+ * the ranges it did not reach, in order along the sequence.
+ *
+ * Merging repeats until nothing more meets, since a range grown by one merge
+ * can reach the next. The merged range keeps the active one's direction. An
+ * empty active range (a caret) merges with nothing; empty others are dropped.
+ */
+export function mergeSelections(
+  active: Selection,
+  others: Selection[],
+  topology: string,
+  seqLen: number,
+): { active: Selection; others: Selection[] } {
+  const circular = topology === 'circular'
+  let rest = others.filter(o => o.anchor !== o.caret)
+  let segs = selectionSegments(active, topology, seqLen)
+  if (segs.length > 0) {
+    let grown = true
+    while (grown) {
+      grown = false
+      const keep: Selection[] = []
+      for (const o of rest) {
+        const os = selectionSegments(o, topology, seqLen)
+        if (segmentsMeet(segs, os, circular, seqLen)) { segs = unionSegments([...segs, ...os]); grown = true }
+        else keep.push(o)
+      }
+      rest = keep
+    }
+  }
+  if (segs.length > 0 && rest.length < others.length) {
+    const reverse = selectionIsReverse(active, topology)
+    const first = segs[0]
+    const last = segs[segs.length - 1]
+    // Joined into one span, or across the origin as two.
+    if (segs.length === 1) active = { anchor: first[0], caret: first[1], reverse }
+    else if (circular && segs.length === 2 && first[0] === 0 && last[1] === seqLen) {
+      active = { anchor: last[0], caret: first[1], reverse }
+    }
+  }
+  return { active, others: orderSelections(rest, topology) }
+}
+
+/** Overlapping or adjacent [start, end) segments joined, in order. */
+function unionSegments(segs: [number, number][]): [number, number][] {
+  const sorted = [...segs].sort((a, b) => a[0] - b[0])
+  const out: [number, number][] = []
+  for (const [s, e] of sorted) {
+    const last = out[out.length - 1]
+    if (last && s <= last[1]) last[1] = Math.max(last[1], e)
+    else out.push([s, e])
+  }
+  return out
+}
+
+/** Where a range starts reading: an origin-spanning one at its anchor. */
+function rangeStart(sel: Selection, topology: string): number {
+  return isOriginSpanningSelection(sel, topology) ? sel.anchor : Math.min(sel.anchor, sel.caret)
+}
+
+/**
+ * Ranges in reading order: the one across the origin first, if there is
+ * one, then the rest by where they start. That is the order a GenBank join
+ * across the origin is written in, and on a linear sequence it is simply
+ * left to right.
+ */
+export function orderSelections(ranges: Selection[], topology: string): Selection[] {
+  const spans = (s: Selection) => isOriginSpanningSelection(s, topology)
+  return [...ranges].sort((a, b) =>
+    (spans(a) ? 0 : 1) - (spans(b) ? 0 : 1) || rangeStart(a, topology) - rangeStart(b, topology))
+}
+
+/**
+ * Every selected base as [start, end) segments in reading order: the
+ * ranges joined the way exons are, each read 5' to 3'. With one range this
+ * is selectionSegments. Copying and the joined translation read this.
+ */
+export function joinedSegments(ranges: Selection[], topology: string, seqLen: number): [number, number][] {
+  return orderSelections(ranges, topology).flatMap(r => selectionSegments(r, topology, seqLen))
+}
+
+/**
+ * Ranges selected beside the active one, and what they belong to. They are
+ * bound to the tab and to the sequence's edit count, so any edit, undo or
+ * switch of tab drops them without each of those having to: edits change
+ * the bases in place, which would leave the ranges pointing at the wrong
+ * ones.
+ */
+export interface MultiSelection {
+  tabId: string
+  sequence: Sequence
+  version: number
+  ranges: Selection[]
+}
+
+const NO_RANGES: Selection[] = []
+
+/** The ranges selected beside the active one, empty when there are none. */
+export function extraSelectionsOf(s: {
+  multiSelection: MultiSelection | null; activeTabId: string | null; doc: DocumentState
+}): Selection[] {
+  const m = s.multiSelection
+  if (!m || m.tabId !== s.activeTabId || m.sequence !== s.doc.sequence
+      || m.version !== s.doc.sequence.pieceTable.version) return NO_RANGES
+  return m.ranges
+}
+
+/** The active range (unless it is only a caret) and the others, in reading order. */
+export function selectedRanges(selection: Selection, extra: readonly Selection[], topology: string): Selection[] {
+  const active = selection.anchor === selection.caret ? [] : [selection]
+  return extra.length === 0 ? active : orderSelections([...active, ...extra], topology)
+}
+
+/** Every selected range, the active one included, in reading order. */
+export function allSelectionsOf(s: {
+  multiSelection: MultiSelection | null; activeTabId: string | null; doc: DocumentState; selection: Selection
+}): Selection[] {
+  return selectedRanges(s.selection, extraSelectionsOf(s), s.doc.sequence.topology)
+}
+
 export { defaultSearchOptions, type SearchMode, type SearchOptions, type SearchMatch } from './search/find'
 
 export interface SearchState {
@@ -1007,7 +1147,17 @@ interface EditorStore {
    * were converted.
    */
   convertFeaturesToPrimers: (ids: Iterable<string>) => number
+  /** Select one range, dropping any others. */
   setSelection: (sel: Selection) => void
+  /**
+   * Several ranges: `active` is the one being made or dragged, `others` the
+   * ones beside it. Ranges that meet merge into the active one.
+   */
+  setSelections: (active: Selection, others: Selection[]) => void
+  /** Ranges selected beside the active one; read with extraSelectionsOf. */
+  multiSelection: MultiSelection | null
+  /** Delete several [start, end) spans in one undo entry. */
+  deleteSegments: (segments: [number, number][]) => void
   setCaret: (pos: number) => void
   undo: () => void
   redo: () => void
@@ -1341,6 +1491,8 @@ export const useEditorStore = create<EditorStore>((set, get) => {
     const active = updated.find(t => t.id === activeTabId)
     set({
       tabs: updated,
+      // A selection set any other way than setSelections is one range.
+      ...('selection' in patch ? { multiSelection: null } : {}),
       ...(active ? {
         doc: active.doc,
         selection: active.selection,
@@ -1469,6 +1621,7 @@ export const useEditorStore = create<EditorStore>((set, get) => {
     activeTabId: null,
     doc: emptyDoc,
     selection: { anchor: 0, caret: 0 },
+    multiSelection: null,
     search: { ...emptySearch },
     viewMode: 'linear',
     zoomLevel: DEFAULT_ZOOM,
@@ -2803,6 +2956,31 @@ export const useEditorStore = create<EditorStore>((set, get) => {
 
     setSelection(sel) {
       updateActiveTab({ selection: sel })
+    },
+
+    setSelections(active, others) {
+      const tab = getActiveTab()
+      if (!tab) return
+      const seq = tab.doc.sequence
+      const merged = mergeSelections(active, others, seq.topology, seq.length)
+      updateActiveTab({ selection: merged.active })
+      set({
+        multiSelection: merged.others.length === 0 ? null : {
+          tabId: tab.id, sequence: seq, version: seq.pieceTable.version, ranges: merged.others,
+        },
+      })
+    },
+
+    deleteSegments(segments) {
+      const tab = getActiveTab()
+      if (!tab || tab.readOnly || segments.length === 0) return
+      const total = segments.reduce((n, [s, e]) => n + e - s, 0)
+      pushUndo(`Delete ${total.toLocaleString()} bp`)
+      // From the end backwards, so each delete leaves the spans before it
+      // where they were.
+      let doc = tab.doc
+      for (const [s, e] of [...segments].sort((a, b) => b[0] - a[0])) doc = deleteBasesInPlace(doc, s, e)
+      updateActiveTab({ doc })
     },
 
     setCaret(pos) {

@@ -12,7 +12,8 @@ import { Download, Maximize2, Image as ImageIcon, FileCode2 } from 'lucide-react
 import { downloadBlob } from '../utils/download'
 import { notify } from '../toast'
 import {
-  useEditorStore, isOriginSpanningSelection, selectionLength,
+  useEditorStore, isOriginSpanningSelection, selectionLength, extraSelectionsOf, selectedRanges,
+  selectionSegments, type Selection,
 } from '../store'
 import { keyFromAutoId } from '../utils/auto-annotations'
 import { keyFromOrfId } from '../utils/orf-features'
@@ -29,7 +30,7 @@ import { buildPlasmidScene, type PlasmidScene } from '../plasmid/scene'
 import { renderSceneToCanvas, type Viewport } from '../plasmid/renderCanvas'
 import { plasmidToPng, plasmidToSvgBlob } from '../plasmid/exportImage'
 import { resolvePlasmidColors } from '../plasmid/styles'
-import { angleToPos, normalizeAngle } from '../plasmid/geometry'
+import { angleToPos, normalizeAngle, arcSelection } from '../plasmid/geometry'
 import { usePlasmidSceneData } from '../plasmid/usePlasmidSceneData'
 
 /**
@@ -68,6 +69,7 @@ function PlasmidMap(_props: PlasmidMapProps) {
 
   const doc = useEditorStore(s => s.doc)
   const selection = useEditorStore(s => s.selection)
+  const extraSelections = useEditorStore(extraSelectionsOf)
   const search = useEditorStore(s => s.search)
   const setSelection = useEditorStore(s => s.setSelection)
   const setCaret = useEditorStore(s => s.setCaret)
@@ -114,6 +116,14 @@ function PlasmidMap(_props: PlasmidMapProps) {
   const [viewport, setViewport] = useState<Viewport>(FIT)
   useEffect(() => { setViewport(FIT) }, [activeTabId])
   const panRef = useRef<{ x: number; y: number; tx: number; ty: number } | null>(null)
+  // A Ctrl+drag along the backbone: the base it began at, the angle the
+  // pointer last had and how far it has turned (clockwise positive), and the
+  // ranges selected when it began, which the new one merges with.
+  const selDragRef = useRef<{
+    from: number; lastAngle: number; turned: number; moved: boolean; others: Selection[]
+  } | null>(null)
+  // The click event that follows a Ctrl+drag's mouseup is not a click.
+  const suppressClickRef = useRef(false)
 
 
   // --- Scene ---
@@ -158,7 +168,9 @@ function PlasmidMap(_props: PlasmidMapProps) {
       primers: scenePrimers,
       selection,
       selectionSpansOrigin: isOriginSpanningSelection(selection, 'circular'),
-      selectionLength: selectionLength(selection, 'circular', doc.sequence.length),
+      selectionLength: selectedRanges(selection, extraSelections, doc.sequence.topology)
+        .reduce((n, r) => n + selectionLength(r, 'circular', doc.sequence.length), 0),
+      extraSelections,
       searchHits: search.matches,
       currentSearchHit: search.currentMatch,
       methylation,
@@ -169,7 +181,7 @@ function PlasmidMap(_props: PlasmidMapProps) {
   }, [
     canvasSize, doc.sequence.length, doc.sequence.topology, doc.name, doc.metadata,
     style, rings, hoveredAnnotationId, proposalIds, pickedIds, sceneEnzymes,
-    hoveredEnzymeKey, scenePrimers, selection, search, methylation, gcSeries, gcOverall, legend,
+    hoveredEnzymeKey, scenePrimers, selection, extraSelections, search, methylation, gcSeries, gcOverall, legend,
     themeVersion,
   ])
 
@@ -273,9 +285,23 @@ function PlasmidMap(_props: PlasmidMapProps) {
 
   // --- Pointer handlers ---
 
+  /**
+   * Select a range, beside what is selected with Ctrl (Cmd), in its place
+   * without, as the sequence view does.
+   */
+  const pickRange = useCallback((r: Selection, ctrl: boolean) => {
+    const store = useEditorStore.getState()
+    if (!ctrl) { store.setSelection(r); return }
+    store.setSelections(r, selectedRanges(store.selection, extraSelectionsOf(store), store.doc.sequence.topology))
+  }, [])
+
   const handleClick = useCallback((e: MouseEvent) => {
+    // The click that ends a Ctrl+drag (or Ctrl+click) on the backbone has
+    // been handled by the drag.
+    if (suppressClickRef.current) { suppressClickRef.current = false; return }
     setCtxMenu(null)
     setExportOpen(false)
+    const ctrl = e.ctrlKey || e.metaKey
     const p = toSceneXY(e.clientX, e.clientY)
     if (!p) return
     const seqLen = doc.sequence.length
@@ -299,26 +325,26 @@ function PlasmidMap(_props: PlasmidMapProps) {
     if (hit?.type === 'enzyme') {
       const group = enzymeByKey.get(hit.id)
       if (group) {
-        setSelection({ anchor: group.recognitionStart, caret: group.recognitionEnd })
-        if (useEditorStore.getState().viewMode === 'circular') setViewMode('linear')
+        pickRange({ anchor: group.recognitionStart, caret: group.recognitionEnd }, ctrl)
+        if (!ctrl && useEditorStore.getState().viewMode === 'circular') setViewMode('linear')
       }
       return
     }
     if (hit?.type === 'primer') {
       const p2 = scenePrimers.find(sp => sp.id === hit.id)
-      if (p2) setSelection({ anchor: p2.start, caret: p2.end })
+      if (p2) pickRange({ anchor: p2.start, caret: p2.end }, ctrl)
       return
     }
     if (hit?.type === 'feature') {
       const ann = annById.get(hit.id)
       if (!ann) return
-      if (e.ctrlKey || e.metaKey) {
+      if (ctrl) {
         const autoKey = keyFromAutoId(ann.id)
         if (autoKey !== null) { useEditorStore.getState().toggleAutoAnnotationPick(autoKey); return }
         const orfK = keyFromOrfId(ann.id)
         if (orfK !== null) { useEditorStore.getState().toggleOrfPick(orfK); return }
       }
-      setSelection({ anchor: ann.start, caret: ann.end })
+      pickRange({ anchor: ann.start, caret: ann.end }, ctrl)
       return
     }
 
@@ -330,7 +356,7 @@ function PlasmidMap(_props: PlasmidMapProps) {
     else setCaret(pos)
   }, [
     doc.sequence.length, doc.name, toSceneXY, hitTest, enzymeByKey, annById,
-    scenePrimers, selection.anchor, setSelection, setCaret, setViewMode,
+    scenePrimers, selection.anchor, setSelection, setCaret, setViewMode, pickRange,
   ])
 
   const handleMouseMove = useCallback((e: MouseEvent) => {
@@ -340,6 +366,29 @@ function PlasmidMap(_props: PlasmidMapProps) {
     if (panRef.current) {
       const p = panRef.current
       setViewport(v => ({ ...v, tx: p.tx + (e.clientX - p.x), ty: p.ty + (e.clientY - p.y) }))
+      return
+    }
+
+    const drag = selDragRef.current
+    if (drag) {
+      const pt = toSceneXY(e.clientX, e.clientY)
+      const seq = doc.sequence
+      if (!pt || seq.length === 0) return
+      const c = pt.scene.size / 2
+      const angle = Math.atan2(pt.y - c, pt.x - c)
+      // The signed step since the last move, the short way round.
+      let step = normalizeAngle(angle - drag.lastAngle)
+      if (step > Math.PI) step -= Math.PI * 2
+      drag.turned += step
+      drag.lastAngle = angle
+      const pos = angleToPos(angle, seq.length)
+      if (pos === drag.from && Math.abs(drag.turned) < Math.PI) {
+        if (drag.moved) useEditorStore.getState().setSelections({ anchor: pos, caret: pos }, drag.others)
+        return
+      }
+      drag.moved = true
+      const r = arcSelection(drag.from, pos, drag.turned, seq.topology === 'circular', seq.length)
+      useEditorStore.getState().setSelections(r, drag.others)
       return
     }
 
@@ -374,7 +423,7 @@ function PlasmidMap(_props: PlasmidMapProps) {
     else hideAnnTooltip()
     canvas.style.cursor = hit ? 'pointer' : viewportRef.current.scale > 1 ? 'grab' : 'crosshair'
   }, [
-    doc.sequence.length, toSceneXY, hitTest, enzymeByKey, hoveredEnzymeKey,
+    doc.sequence, toSceneXY, hitTest, enzymeByKey, hoveredEnzymeKey,
     setHoveredAnnotation, showAnnTooltip, hideAnnTooltip, showEnzymeTooltip, hideEnzymeTooltip,
   ])
 
@@ -450,16 +499,63 @@ function PlasmidMap(_props: PlasmidMapProps) {
   }, [])
 
   const handleMouseDown = useCallback((e: MouseEvent) => {
-    if (e.button !== 0 || viewportRef.current.scale <= 1) return
+    if (e.button !== 0) return
+    // A release outside the canvas never sent its click: forget it.
+    suppressClickRef.current = false
     const p = toSceneXY(e.clientX, e.clientY)
     if (!p) return
+    const hit = hitTest(p.x, p.y, p.scene)
+    // Ctrl+drag along the backbone selects a range beside the others, as
+    // Ctrl+drag over the bases does in the sequence view. On a feature the
+    // Ctrl+click is the click handler's.
+    const seqLen = doc.sequence.length
+    if ((e.ctrlKey || e.metaKey) && !hit && seqLen > 0) {
+      const c = p.scene.size / 2
+      const dist = Math.hypot(p.x - c, p.y - c)
+      if (dist >= p.scene.baseRadius * 0.5 && dist <= p.scene.baseRadius * 1.8) {
+        const angle = Math.atan2(p.y - c, p.x - c)
+        const store = useEditorStore.getState()
+        selDragRef.current = {
+          from: angleToPos(angle, seqLen), lastAngle: angle, turned: 0, moved: false,
+          others: selectedRanges(store.selection, extraSelectionsOf(store), doc.sequence.topology),
+        }
+        e.preventDefault()
+        return
+      }
+    }
+    if (viewportRef.current.scale <= 1) return
     // Dragging pans only on empty space, so dragging across a feature still
     // behaves like a click on it.
-    if (hitTest(p.x, p.y, p.scene)) return
+    if (hit) return
     panRef.current = { x: e.clientX, y: e.clientY, tx: viewportRef.current.tx, ty: viewportRef.current.ty }
-  }, [toSceneXY, hitTest])
+  }, [toSceneXY, hitTest, doc.sequence])
 
-  const handleMouseUp = useCallback(() => { panRef.current = null }, [])
+  const handleMouseUp = useCallback(() => {
+    panRef.current = null
+    const drag = selDragRef.current
+    if (!drag) return
+    selDragRef.current = null
+    suppressClickRef.current = true
+    const store = useEditorStore.getState()
+    const seq = store.doc.sequence
+    if (!drag.moved) {
+      // A Ctrl+click on a selected range takes it out; elsewhere it changes
+      // nothing. The last range left becomes the active one.
+      const at = drag.from
+      const hit = drag.others.find(r =>
+        selectionSegments(r, seq.topology, seq.length).some(([s, e]) => s <= at && at <= e))
+      if (!hit) return
+      const left = drag.others.filter(r => r !== hit)
+      if (left.length === 0) store.setCaret(at)
+      else store.setSelections(left[left.length - 1], left.slice(0, -1))
+      return
+    }
+    // Dragged back to where it began: no range of its own.
+    const extras = extraSelectionsOf(store)
+    if (extras.length > 0 && store.selection.anchor === store.selection.caret) {
+      store.setSelections(extras[extras.length - 1], extras.slice(0, -1))
+    }
+  }, [])
 
   // Listeners attached once. They used to be removed and re-added on every
   // hover, because the draw callback was in this effect's dependency list.

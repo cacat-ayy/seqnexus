@@ -47,7 +47,7 @@ export function annotationBases(ann: Annotation, sequence: Sequence): string {
  * GenBank `/codon_start` is 1-based: 2 means "skip one base before the first
  * codon". Anything absent or unparseable means no offset.
  */
-function codonStartOffset(ann: Annotation): number {
+export function codonStartOffset(ann: Annotation): number {
   const raw = ann.qualifiers?.codon_start?.[0]
   if (!raw) return 0
   const n = parseInt(raw, 10)

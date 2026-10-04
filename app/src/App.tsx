@@ -22,7 +22,10 @@ import SequenceStatsPopover from './components/SequenceStatsPopover'
 const CodonOptimizeModal = lazy(() => import('./components/CodonOptimizeModal'))
 const GelWorkspace = lazy(() => import('./components/gel/GelWorkspace'))
 const CloneWorkspace = lazy(() => import('./components/cloning/CloneWorkspace'))
-import { useEditorStore, isOriginSpanningSelection, selectionSegments, type SequencingRead } from './store'
+import {
+  useEditorStore, isOriginSpanningSelection, selectionSegments, extraSelectionsOf, selectedRanges, joinedSegments,
+  type SequencingRead,
+} from './store'
 import { editedRead, toFasta, toFastq } from './sanger/edits'
 import { displayPosition, internalPosition, type DocumentState } from './models/Document'
 import { Sequence } from './models/Sequence'
@@ -229,6 +232,7 @@ export default function App() {
 
   const doc = useEditorStore(s => s.doc)
   const selection = useEditorStore(s => s.selection)
+  const extraSelections = useEditorStore(extraSelectionsOf)
   const viewMode = useEditorStore(s => s.viewMode)
   const setViewMode = useEditorStore(s => s.setViewMode)
   const zoomLevel = useEditorStore(s => s.zoomLevel)
@@ -2356,7 +2360,18 @@ export default function App() {
                         }}
                         title="Click to go to position (Ctrl+G)"
                       >
-                        {selection.anchor !== selection.caret
+                        {selectedRanges(selection, extraSelections, doc.sequence.topology).length > 1
+                          ? (() => {
+                              // Several ranges: how many and their joined
+                              // length and GC. A Tm belongs to one oligo.
+                              const topo = doc.sequence.topology
+                              const ranges = selectedRanges(selection, extraSelections, topo)
+                              let selBases = ''
+                              for (const [s, e] of joinedSegments(ranges, topo, seqLength)) selBases += doc.sequence.basesIn(s, e)
+                              const gc = Math.round(gcPercent(selBases))
+                              return `${ranges.length} ranges (${formatBp(selBases.length)}, ${gc}% GC)`
+                            })()
+                          : selection.anchor !== selection.caret
                           ? (() => {
                               const segs = selectionSegments(selection, doc.sequence.topology, seqLength)
                               let selBases = ''

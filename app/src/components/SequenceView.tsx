@@ -18,10 +18,11 @@
 
 import { useRef, useEffect, useCallback, useState, useMemo, memo } from 'react'
 import {
-  useEditorStore, selectionRange, selectionSegments, isOriginSpanningSelection, selectionLength,
+  useEditorStore, selectionRange, selectionSegments, isOriginSpanningSelection,
   selectionIsReverse,
   selectionEnds,
   extendSelection,
+  extraSelectionsOf, allSelectionsOf, selectedRanges, joinedSegments, type Selection,
 } from '../store'
 import { Annotation } from '../models/Annotation'
 import { displayPosition } from '../models/Document'
@@ -389,6 +390,17 @@ function hitTest(
   return bestIdx
 }
 
+/**
+ * Typing or pasting with several ranges selected is refused: which range the
+ * new bases belong in has no answer the user could predict.
+ */
+function refuseMultiEdit(): void {
+  notify.warning("Can't type or paste over several ranges", {
+    detail: 'Select one range to replace it, or delete the selected ranges first.',
+    key: 'multi-range-edit',
+  })
+}
+
 /** How far past the bases a selection handle's knob reaches. */
 const KNOB_SLOP = 7
 
@@ -456,6 +468,15 @@ function SequenceView({ onFindRequest, onFindClose, onAnnotateRequest, onEditFea
   const edgeDrag = useRef<'start' | 'end' | null>(null)
   // Fixed anchor position for the current drag (the end that doesn't move)
   const dragAnchor = useRef<number>(0)
+  // The other ranges while a range is made or dragged beside them (Ctrl+drag,
+  // or a handle of one of several), as they were when the drag began: the
+  // range merges with any it meets, and parts again if dragged back out.
+  const dragOthers = useRef<Selection[]>([])
+  // A Ctrl+click that has not moved yet: where it went down. Released
+  // without a drag inside a range, it takes that range out; anywhere else it
+  // puts back the active range it replaced.
+  const ctrlClickAt = useRef<number | null>(null)
+  const ctrlClickPrev = useRef<Selection | null>(null)
   // Annotation edge drag state
   const annEdgeDrag = useRef<{
     annId: string
@@ -474,6 +495,7 @@ function SequenceView({ onFindRequest, onFindClose, onAnnotateRequest, onEditFea
   const aminoAcidStyle = useEditorStore(s => s.aminoAcidStyle)
   const threeLetterAminoAcids = useEditorStore(s => s.threeLetterAminoAcids)
   const selection = useEditorStore(s => s.selection)
+  const extraSelections = useEditorStore(extraSelectionsOf)
   const search = useEditorStore(s => s.search)
   const zoomLevel = useEditorStore(s => s.zoomLevel)
   const hoveredAnnotationId = useEditorStore(s => s.hoveredAnnotationId)
@@ -559,6 +581,7 @@ function SequenceView({ onFindRequest, onFindClose, onAnnotateRequest, onEditFea
   // while always reading current values at call time.
   const docRef = useRef(doc)
   const selectionRef = useRef(selection)
+  const extraSelectionsRef = useRef(extraSelections)
   const searchRef = useRef(search)
   const annTreeRef = useRef(annTree)
   const zoomLevelRef = useRef(zoomLevel)
@@ -585,6 +608,7 @@ function SequenceView({ onFindRequest, onFindClose, onAnnotateRequest, onEditFea
   // Sync refs on every render (cheap assignments, no effects needed)
   docRef.current = doc
   selectionRef.current = selection
+  extraSelectionsRef.current = extraSelections
   searchRef.current = search
   annTreeRef.current = annTree
   zoomLevelRef.current = zoomLevel
@@ -629,6 +653,7 @@ function SequenceView({ onFindRequest, onFindClose, onAnnotateRequest, onEditFea
     // Read current state from refs (not closure) so draw stays stable
     const doc = docRef.current
     const selection = selectionRef.current
+    const extraSelections = extraSelectionsRef.current
     const search = searchRef.current
     const annTree = annTreeRef.current
     const hoveredAnnotationId = hoveredAnnotationIdRef.current
@@ -659,27 +684,20 @@ function SequenceView({ onFindRequest, onFindClose, onAnnotateRequest, onEditFea
     // below its own sequence, so dragging down grows the pointer's line at its
     // bottom and dragging up grows the line entered without moving its top.
     // Lines growing above the view are held still by scrollFix below.
-    let selTranslation: { start: number; length: number; reverse: boolean } | null = null
+    // Several ranges are translated joined, as exons are, in the direction
+    // the active range was dragged.
+    let selTranslation: { segments: [number, number][]; reverse: boolean } | null = null
     const selRows: [number, number][] = []
     if (perRowTranslations && translateSelectionRef.current && L.maxTranslationRows > 0
         && seqLen > 0) {
-      const length = selectionLength(selection, topology, seqLen)
-      const start = isOriginSpanningSelection(selection, topology)
-        ? selection.anchor
-        : Math.min(selection.anchor, selection.caret)
-      const reverse = selectionIsReverse(selection, topology)
+      const ranges = selectedRanges(selection, extraSelections, topology)
+      const segments = joinedSegments(ranges, topology, seqLen)
       // Every selected base belongs to a codon, whole or still partial, so
-      // the row runs the full length of the selection.
-      if (length > 0) {
-        selTranslation = { start, length, reverse }
-        const first = start
-        const last = start + length - 1
+      // the row runs the full length of each selected span.
+      if (segments.length > 0) {
+        selTranslation = { segments, reverse: selectionIsReverse(selection, topology) }
         const bpr = L.basesPerRow
-        if (last < seqLen) {
-          selRows.push([Math.floor(first / bpr), Math.floor(last / bpr)])
-        } else {
-          selRows.push([Math.floor(first / bpr), totalRows - 1], [0, Math.floor((last - seqLen) / bpr)])
-        }
+        for (const [s, e] of segments) selRows.push([Math.floor(s / bpr), Math.floor((e - 1) / bpr)])
       }
     }
     const rlKey = `${rlCacheKey}|${selRows.map(r => r.join('-')).join(',')}`
@@ -827,6 +845,7 @@ function SequenceView({ onFindRequest, onFindClose, onAnnotateRequest, onEditFea
       fonts: { mono: MONO_FAMILY, sans: SANS_FAMILY },
       measure: measureText,
       selection,
+      extraSelections,
       selectionHandles: true,
       search,
       selTranslation,
@@ -865,18 +884,35 @@ function SequenceView({ onFindRequest, onFindClose, onAnnotateRequest, onEditFea
     // Close any open context menu on left click
     setCtxMenu(null)
 
-    const sel = useEditorStore.getState().selection
+    const store = useEditorStore.getState()
+    const sel = store.selection
     const seqLen = docRef.current.sequence.length
+    const ctrl = e.ctrlKey || e.metaKey
+    ctrlClickAt.current = null
+    dragOthers.current = []
+    // Every range selected now; the active one first.
+    const extras = extraSelectionsOf(store)
+    const ranges = sel.anchor === sel.caret ? [...extras] : [sel, ...extras]
+    /** Ctrl selects beside what is selected; a plain click replaces it. */
+    const pick = (r: Selection) => {
+      if (ctrl) store.setSelections(r, ranges)
+      else store.setSelection(r)
+    }
 
-    // Check if clicking near a selection edge to resize
-    const selRange = selectionRange(sel)
-    if (selRange && !e.shiftKey) {
-      const edge = hitTestSelectionEdge(px, py, seqLen, canvasTopRef.current, selRange[0], selRange[1], layoutRef.current, rowLayoutRef.current)
-      if (edge) {
+    // A handle of any selected range resizes that range, which becomes the
+    // active one while the others stay as they are.
+    if (!e.shiftKey) {
+      for (const r of ranges) {
+        const rr = selectionRange(r)
+        if (!rr) continue
+        const edge = hitTestSelectionEdge(px, py, seqLen, canvasTopRef.current, rr[0], rr[1], layoutRef.current, rowLayoutRef.current)
+        if (!edge) continue
         isDragging.current = true
         edgeDrag.current = edge
         // The fixed end is the opposite edge from the one being dragged
-        dragAnchor.current = edge === 'start' ? selRange[1] : selRange[0]
+        dragAnchor.current = edge === 'start' ? rr[1] : rr[0]
+        dragOthers.current = ranges.filter(o => o !== r)
+        if (r !== sel) store.setSelections(r, dragOthers.current)
         return
       }
     }
@@ -885,12 +921,12 @@ function SequenceView({ onFindRequest, onFindClose, onAnnotateRequest, onEditFea
     const groupedSitesNow = groupedSitesRef.current
     const hitLabel = hitTestEnzymeLabel(px, py + canvasTopRef.current, seqLen, groupedSitesNow, layoutRef.current, rowLayoutRef.current)
     if (hitLabel) {
-      useEditorStore.getState().setSelection({ anchor: hitLabel.recognitionStart, caret: hitLabel.recognitionEnd })
+      pick({ anchor: hitLabel.recognitionStart, caret: hitLabel.recognitionEnd })
       return
     }
 
     // Check annotation edge drag (resize) - only when the annotation is selected
-    if (!useEditorStore.getState().readOnly) {
+    if (!store.readOnly && !ctrl) {
       const annEdge = hitTestAnnotationEdge(px, py + canvasTopRef.current, seqLen, stacksAt, layoutRef.current, rowLayoutRef.current)
       if (annEdge) {
         const sel = useEditorStore.getState().selection
@@ -916,10 +952,9 @@ function SequenceView({ onFindRequest, onFindClose, onAnnotateRequest, onEditFea
 
     const hitAnn = hitTestAnnotation(px, py + canvasTopRef.current, seqLen, stacksAt, layoutRef.current, rowLayoutRef.current)
     if (hitAnn) {
-      // Ctrl/Cmd-click on a suggestion or an ORF picks it for conversion.
-      // Only those respond to the modifier — on a real feature, which is
-      // already in the document, it stays a plain click.
-      if (e.ctrlKey || e.metaKey) {
+      // Ctrl/Cmd-click on a suggestion or an ORF picks it for conversion. On
+      // a real feature or a primer it selects it beside what is selected.
+      if (ctrl) {
         const autoKey = keyFromAutoId(hitAnn.id)
         if (autoKey !== null) {
           useEditorStore.getState().toggleAutoAnnotationPick(autoKey)
@@ -949,17 +984,24 @@ function SequenceView({ onFindRequest, onFindClose, onAnnotateRequest, onEditFea
         }
       }
       if (site) {
-        useEditorStore.getState().setSelection({ anchor: site.start, caret: site.end })
+        pick({ anchor: site.start, caret: site.end })
         return
       }
-      useEditorStore.getState().setSelection({ anchor: hitAnn.start, caret: hitAnn.end })
+      pick({ anchor: hitAnn.start, caret: hitAnn.end })
       return
     }
     const seqPos = hitTest(px, py, seqLen, canvasTopRef.current, layoutRef.current, rowLayoutRef.current)
     if (seqPos === null) return
     isDragging.current = true
     edgeDrag.current = null
-    if (e.shiftKey) {
+    if (ctrl) {
+      // A new range beside the others, starting as a caret here.
+      dragAnchor.current = seqPos
+      dragOthers.current = ranges
+      ctrlClickAt.current = seqPos
+      ctrlClickPrev.current = sel
+      store.setSelections({ anchor: seqPos, caret: seqPos }, ranges)
+    } else if (e.shiftKey) {
       // Extend from the end that stays put, as the drag that follows will.
       const topology = docRef.current.sequence.topology
       dragAnchor.current = selectionEnds(sel, topology).fixed
@@ -1042,7 +1084,10 @@ function SequenceView({ onFindRequest, onFindClose, onAnnotateRequest, onEditFea
     // record the direction separately for the selection translation.
     const lo = Math.min(anchor, seqPos)
     const hi = Math.max(anchor, seqPos)
-    useEditorStore.getState().setSelection({ anchor: lo, caret: hi, reverse: seqPos < anchor })
+    const dragged = { anchor: lo, caret: hi, reverse: seqPos < anchor }
+    if (ctrlClickAt.current !== null && seqPos !== ctrlClickAt.current) ctrlClickAt.current = null
+    if (dragOthers.current.length > 0) useEditorStore.getState().setSelections(dragged, dragOthers.current)
+    else useEditorStore.getState().setSelection(dragged)
     showDragPill(e, lo, hi)
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
@@ -1057,10 +1102,11 @@ function SequenceView({ onFindRequest, onFindClose, onAnnotateRequest, onEditFea
     const py = e.clientY - rect.top
     const seqLen = docRef.current.sequence.length
 
-    // Check selection edge hover for resize cursor
-    const sel = useEditorStore.getState().selection
-    const selR = selectionRange(sel)
-    if (selR) {
+    // Check selection edge hover for resize cursor, on any selected range
+    const hoverStore = useEditorStore.getState()
+    for (const r of [hoverStore.selection, ...extraSelectionsOf(hoverStore)]) {
+      const selR = selectionRange(r)
+      if (!selR) continue
       const edge = hitTestSelectionEdge(px, py, seqLen, canvasTopRef.current, selR[0], selR[1], layoutRef.current, rowLayoutRef.current)
       if (edge) {
         canvas.style.cursor = 'col-resize'
@@ -1141,6 +1187,35 @@ function SequenceView({ onFindRequest, onFindClose, onAnnotateRequest, onEditFea
       }
       annEdgeDrag.current = null
     }
+    // Ctrl+click without a drag on a selected range takes it out of the
+    // selection, as Ctrl+click does in a list; anywhere else it changes
+    // nothing. The last range left becomes the active one.
+    const store = useEditorStore.getState()
+    const at = ctrlClickAt.current
+    if (at !== null) {
+      const seq = docRef.current.sequence
+      const hit = dragOthers.current.find(r =>
+        selectionSegments(r, seq.topology, seq.length).some(([s, e]) => s <= at && at <= e))
+      const prev = ctrlClickPrev.current
+      if (hit) {
+        const left = dragOthers.current.filter(r => r !== hit)
+        if (left.length === 0) store.setCaret(at)
+        else store.setSelections(left[left.length - 1], left.slice(0, -1))
+      } else if (prev && prev.anchor !== prev.caret) {
+        store.setSelections(prev, dragOthers.current.filter(r => r !== prev))
+      }
+    } else {
+      // A Ctrl+drag dragged back to where it began leaves no range of its
+      // own: the last of the others becomes the active one, so a caret is
+      // never left standing in for a range beside the others.
+      const extras = extraSelectionsOf(store)
+      if (extras.length > 0 && store.selection.anchor === store.selection.caret) {
+        store.setSelections(extras[extras.length - 1], extras.slice(0, -1))
+      }
+    }
+    ctrlClickAt.current = null
+    ctrlClickPrev.current = null
+    dragOthers.current = []
     isDragging.current = false
     edgeDrag.current = null
     hideDragPill()
@@ -1225,7 +1300,11 @@ function SequenceView({ onFindRequest, onFindClose, onAnnotateRequest, onEditFea
     const curTopology = curDoc.sequence.topology
     const sel = store.selection
     const range = selectionRange(sel)
-    const segs = selectionSegments(sel, curTopology, seqLen)
+    // Several ranges: copied and deleted joined, in reading order.
+    const multi = extraSelectionsOf(store).length > 0
+    const segs = multi
+      ? joinedSegments(allSelectionsOf(store), curTopology, seqLen)
+      : selectionSegments(sel, curTopology, seqLen)
     const ctrlOrMeta = e.ctrlKey || e.metaKey
     const ro = store.readOnly
     const roBlock = () => { store.notifyReadOnlyBlock() }
@@ -1243,12 +1322,18 @@ function SequenceView({ onFindRequest, onFindClose, onAnnotateRequest, onEditFea
     const extend = (move: { to: number } | { by: number }) => extendSelection(sel, move, curTopology, seqLen)
 
     const isOriginSpan = isOriginSpanningSelection(sel, curTopology)
-    const selLen = selectionLength(sel, curTopology, seqLen)
+    const selLen = segs.reduce((n, [s, e]) => n + e - s, 0)
     const LARGE_DELETE_THRESHOLD = 1000
 
     /** Delete the current selection, handling origin-spanning. */
     const doDelete = () => {
-      if (isOriginSpan && segs.length === 2) {
+      if (multi) {
+        // The first span's start is where the caret lands: nothing before
+        // it was deleted.
+        const first = Math.min(...segs.map(([s]) => s))
+        store.deleteSegments(segs)
+        store.setCaret(first)
+      } else if (isOriginSpan && segs.length === 2) {
         const [tailStart, tailEnd] = segs[0]
         const [headStart, headEnd] = segs[1]
         store.deleteTwo(tailStart, tailEnd, headStart, headEnd)
@@ -1407,11 +1492,12 @@ function SequenceView({ onFindRequest, onFindClose, onAnnotateRequest, onEditFea
         return
       }
     }
+    const rangeNote = multi ? ` from ${allSelectionsOf(store).length} ranges` : ''
     if (ctrlOrMeta && e.key === 'c') {
       if (segs.length > 0) {
         e.preventDefault()
         const bases = getSelectedBases()
-        copyText(bases, `Copied ${bases.length} bp`)
+        copyText(bases, `Copied ${bases.length} bp${rangeNote}`)
       }
       return
     }
@@ -1420,7 +1506,7 @@ function SequenceView({ onFindRequest, onFindClose, onAnnotateRequest, onEditFea
         e.preventDefault()
         const bases = getSelectedBases()
         // Read-only still copies, but says so rather than claiming a cut.
-        copyText(bases, `${ro ? 'Copied' : 'Cut'} ${bases.length} bp`)
+        copyText(bases, `${ro ? 'Copied' : 'Cut'} ${bases.length} bp${rangeNote}`)
         if (ro) roBlock()
         else deleteSelection()
       } else if (ro) {
@@ -1430,6 +1516,7 @@ function SequenceView({ onFindRequest, onFindClose, onAnnotateRequest, onEditFea
     }
     if (ctrlOrMeta && e.key === 'v') {
       if (ro) { roBlock(); e.preventDefault(); return }
+      if (multi) { e.preventDefault(); refuseMultiEdit(); return }
       // Let the native paste event fire — handled by handlePaste listener
       return
     }
@@ -1459,6 +1546,7 @@ function SequenceView({ onFindRequest, onFindClose, onAnnotateRequest, onEditFea
       const validBases = /^[ATGCUatgcuRYSWKMBVDHNryswkmbvdhn]$/
       if (validBases.test(e.key)) {
         e.preventDefault()
+        if (multi) { refuseMultiEdit(); return }
         replaceSelection(e.key.toUpperCase())
       }
     }
@@ -1469,6 +1557,7 @@ function SequenceView({ onFindRequest, onFindClose, onAnnotateRequest, onEditFea
 
     const store = useEditorStore.getState()
     if (store.readOnly) return
+    if (extraSelectionsOf(store).length > 0) { e.preventDefault(); refuseMultiEdit(); return }
 
     const pasted = basesFromPaste(e.clipboardData?.getData('text') ?? '')
     e.preventDefault()
@@ -1714,7 +1803,7 @@ function SequenceView({ onFindRequest, onFindClose, onAnnotateRequest, onEditFea
   // Redraw when any render-affecting state changes
   useEffect(() => {
     draw()
-  }, [doc, selection, search, annTree, zoomLevel, hoveredAnnotationId, enzymeCutSites, hoveredEnzymeGroup, showEnzymes, autoAnnotationPicks, orfPicks, translationFrames, translationRows, translateSelection, translationCode, aminoAcidStyle, threeLetterAminoAcids, draw])
+  }, [doc, selection, extraSelections, search, annTree, zoomLevel, hoveredAnnotationId, enzymeCutSites, hoveredEnzymeGroup, showEnzymes, autoAnnotationPicks, orfPicks, translationFrames, translationRows, translateSelection, translationCode, aminoAcidStyle, threeLetterAminoAcids, draw])
 
   const showMinimap = doc.sequence.length >= MINIMAP_SEQ_THRESHOLD
 

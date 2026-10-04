@@ -313,3 +313,40 @@ describe('curved label direction', () => {
     expect(isFlipped(Math.PI / 2)).toBe(true) // 6 o'clock
   })
 })
+
+describe('spliced features and several selected ranges', () => {
+  const bands = (items: SceneItem[]) => items.filter((i): i is Extract<SceneItem, { kind: 'arcBand' }> => i.kind === 'arcBand')
+
+  it('draws a spliced feature exon by exon, with a thin arc over the intron', () => {
+    const spliced = new Annotation({
+      id: 's', name: 'exons', type: 'CDS', start: 100, end: 900, strand: 1,
+      segments: [[100, 300], [600, 900]],
+    })
+    const b = bands(buildPlasmidScene(input({ rings: stackAnnotations([spliced]) })).items)
+    const exons = b.filter(x => x.width > 2)
+    const intron = b.filter(x => x.width <= 2)
+    expect(exons).toHaveLength(2)
+    expect(intron).toHaveLength(1)
+    // Only the exon the feature ends in carries the arrow.
+    expect(exons.map(x => x.strand)).toEqual([0, 1])
+    expect(intron[0].span).toBeCloseTo((300 / 2686) * Math.PI * 2)
+  })
+
+  it('draws no intron where a join is split only at the origin', () => {
+    const wrapped = new Annotation({
+      id: 'w', name: 'wrap', type: 'CDS', start: 2600, end: 50, strand: 1,
+      segments: [[2600, 2686], [0, 50]],
+    })
+    const b = bands(buildPlasmidScene(input({ rings: stackAnnotations([wrapped]) })).items)
+    expect(b.filter(x => x.width <= 2)).toHaveLength(0)
+  })
+
+  it('draws a band for every selected range', () => {
+    const one = bands(buildPlasmidScene(input({ selection: { anchor: 10, caret: 20 } })).items).length
+    const three = bands(buildPlasmidScene(input({
+      selection: { anchor: 10, caret: 20 },
+      extraSelections: [{ anchor: 40, caret: 50 }, { anchor: 2600, caret: 5 }],
+    })).items).length
+    expect(three - one).toBe(2)
+  })
+})

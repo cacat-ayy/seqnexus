@@ -16,7 +16,10 @@ import {
   ClipboardPaste, Combine, Copy, Crosshair, ExternalLink, MoveLeft, MoveRight, PanelRight, Pencil, Replace,
   SquareDashedMousePointer, Tag, Trash2, TriangleAlert, Undo2,
 } from 'lucide-react'
-import { useEditorStore, selectionRange, selectionSegments } from '../store'
+import {
+  useEditorStore, selectionRange, selectionSegments, extraSelectionsOf, selectedRanges, joinedSegments,
+  type Selection,
+} from '../store'
 import type { Annotation } from '../models/Annotation'
 import { reverseComplement as reverseComplementStr } from '../models/complement'
 import { translate as translateSequenceStr } from '../utils/codon'
@@ -161,6 +164,7 @@ export default function SequenceContextMenu({
 }) {
   const doc = useEditorStore(s => s.doc)
   const selection = useEditorStore(s => s.selection)
+  const extraSelections = useEditorStore(extraSelectionsOf)
   const readOnly = useEditorStore(s => s.readOnly)
   const setSelection = useEditorStore(s => s.setSelection)
 
@@ -188,7 +192,14 @@ export default function SequenceContextMenu({
     }
   }, [onClose])
 
-  const segs = selectionSegments(selection, doc.sequence.topology, doc.sequence.length)
+  // Several ranges are copied joined, in reading order, as Ctrl+C copies
+  // them. What needs one stretch of sequence (a primer, a cloning insert,
+  // an annotation, a paste) is offered only for a single range.
+  const multi = extraSelections.length > 0
+  const ranges = multi ? selectedRanges(selection, extraSelections, doc.sequence.topology) : [selection]
+  const segs = multi
+    ? joinedSegments(ranges, doc.sequence.topology, doc.sequence.length)
+    : selectionSegments(selection, doc.sequence.topology, doc.sequence.length)
   const hasSelection = segs.length > 0
   const primer = target.annId ? primerItemById.get(target.annId) ?? null : null
   const ann = target.annId && !primer ? annotations.find(a => a.id === target.annId) ?? null : null
@@ -200,9 +211,20 @@ export default function SequenceContextMenu({
   const act = (fn: () => void) => () => { fn(); onClose() }
 
   const selectedBases = () => segs.map(([s, e]) => doc.sequence.basesIn(s, e)).join('')
-  const selectionName = () => `${doc.name}_${segs[0][0] + 1}-${segs[segs.length - 1][1]}`
+  /** "name_101-200", one span per range. */
+  const rangeName = (r: Selection) => {
+    const rs = selectionSegments(r, doc.sequence.topology, doc.sequence.length)
+    return `${rs[0][0] + 1}-${rs[rs.length - 1][1]}`
+  }
+  const selectionName = () => `${doc.name}_${ranges.map(rangeName).join('_')}`
+  /** One FASTA record per range, each named for its span. */
+  const fastaPerRange = () => ranges.map(r => fasta(
+    `${doc.name}_${rangeName(r)}`,
+    selectionSegments(r, doc.sequence.topology, doc.sequence.length).map(([s, e]) => doc.sequence.basesIn(s, e)).join(''),
+  )).join('')
   const selectionLen = segs.reduce((n, [s, e]) => n + e - s, 0)
-  const canMakePrimer = !readOnly && selectionLen >= 10 && selectionLen <= 200
+  const canMakePrimer = !readOnly && !multi && selectionLen >= 10 && selectionLen <= 200
+  const rangeNote = multi ? ` from ${ranges.length} ranges` : ''
 
   const pasteRevComp = () => {
     readText().then(text => {
@@ -224,7 +246,7 @@ export default function SequenceContextMenu({
 
   const addAnnotation = () => {
     // With nothing selected, select the clicked base so the form pre-fills it.
-    if (!selectionRange(selection) && target.seqPos !== null) {
+    if (!hasSelection && target.seqPos !== null) {
       setSelection({ anchor: target.seqPos, caret: Math.min(target.seqPos + 1, doc.sequence.length) })
     }
     onAnnotateRequest?.()
@@ -390,11 +412,12 @@ export default function SequenceContextMenu({
   if (hasSelection) {
     sections.push(
       <div key="selection" role="group" aria-label="Selection">
-        <Submenu icon={<Copy size={ICON} />} label={`Copy Selection (${selectionLen} bp)`}>
+        <Submenu icon={<Copy size={ICON} />}
+          label={`Copy Selection (${selectionLen} bp${multi ? `, ${ranges.length} ranges` : ''})`}>
           <MenuItem shortcut="Ctrl+C" onSelect={act(() => {
             const b = selectedBases()
-            copyText(b, `Copied ${b.length} bp`)
-          })}>Bases</MenuItem>
+            copyText(b, `Copied ${b.length} bp${rangeNote}`)
+          })}>{multi ? 'Bases, Joined' : 'Bases'}</MenuItem>
           <MenuItem onSelect={act(() => {
             const t = reverseComplementStr(selectedBases())
             copyText(t, `Copied reverse complement (${t.length} bp)`)
@@ -404,8 +427,13 @@ export default function SequenceContextMenu({
             copyText(p, `Copied protein (${p.length} aa)`)
           })}>Protein Translation</MenuItem>
           <MenuItem onSelect={act(() => copyText(fasta(selectionName(), selectedBases()), 'Copied selection as FASTA'))}>
-            FASTA
+            {multi ? 'FASTA, Joined' : 'FASTA'}
           </MenuItem>
+          {multi && (
+            <MenuItem onSelect={act(() => copyText(fastaPerRange(), `Copied ${ranges.length} ranges as FASTA`))}>
+              FASTA, One Record per Range
+            </MenuItem>
+          )}
         </Submenu>
         {canMakePrimer && (
           <Submenu icon={<MoveRight size={ICON} />} label="New Primer from Selection">
@@ -413,17 +441,19 @@ export default function SequenceContextMenu({
             <MenuItem icon={<MoveLeft size={ICON} />} onSelect={act(() => newPrimer(-1))}>Reverse</MenuItem>
           </Submenu>
         )}
-        <Submenu icon={<Combine size={ICON} />} label="Clone This Selection">
-          {CLONING_METHODS.map((method: CloningMethodId) => (
-            <MenuItem
-              key={method}
-              icon={<Combine size={ICON} />}
-              onSelect={act(() => cloneSelection(method))}
-            >
-              {METHOD_LABEL[method]}
-            </MenuItem>
-          ))}
-        </Submenu>
+        {!multi && (
+          <Submenu icon={<Combine size={ICON} />} label="Clone This Selection">
+            {CLONING_METHODS.map((method: CloningMethodId) => (
+              <MenuItem
+                key={method}
+                icon={<Combine size={ICON} />}
+                onSelect={act(() => cloneSelection(method))}
+              >
+                {METHOD_LABEL[method]}
+              </MenuItem>
+            ))}
+          </Submenu>
+        )}
       </div>,
     )
   }
@@ -432,12 +462,14 @@ export default function SequenceContextMenu({
   if (!readOnly) {
     sections.push(
       <div key="edit" role="group" aria-label="Edit">
-        <MenuItem icon={<ClipboardPaste size={ICON} />} onSelect={act(pasteRevComp)}>
-          Paste Reverse Complement
-        </MenuItem>
+        {!multi && (
+          <MenuItem icon={<ClipboardPaste size={ICON} />} onSelect={act(pasteRevComp)}>
+            Paste Reverse Complement
+          </MenuItem>
+        )}
         {canAnnotate && (
           <MenuItem icon={<Tag size={ICON} />} onSelect={act(addAnnotation)}>
-            {hasSelection ? 'Add Annotation to Selection…' : 'Add Annotation Here…'}
+            {multi ? 'Add Joined Annotation…' : hasSelection ? 'Add Annotation to Selection…' : 'Add Annotation Here…'}
           </MenuItem>
         )}
       </div>,

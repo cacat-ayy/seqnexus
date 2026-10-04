@@ -8,7 +8,7 @@
  */
 
 import { useCallback, useMemo, useRef } from 'react'
-import { useEditorStore, selectionSegments } from '../../store'
+import { useEditorStore, selectionSegments, extraSelectionsOf } from '../../store'
 import { displayPosition } from '../../models/Document'
 import type { IntervalTree } from '../../models/IntervalTree'
 import { enzymeGroupKey, type GroupedCutSite } from '../../enzymes/grouping'
@@ -38,6 +38,7 @@ export default function SequenceMinimap({
   const sequence = useEditorStore(s => s.doc.sequence)
   const displayOrigin = useEditorStore(s => s.doc.metadata?.displayOrigin)
   const selection = useEditorStore(s => s.selection)
+  const extraSelections = useEditorStore(extraSelectionsOf)
   const hoveredAnnotationId = useEditorStore(s => s.hoveredAnnotationId)
   const setHoveredAnnotation = useEditorStore(s => s.setHoveredAnnotation)
 
@@ -84,8 +85,8 @@ export default function SequenceMinimap({
   }, [cutMarks, annTree, formatPosition, formatRange, gcIndex, searchTrack])
 
   const segments = useMemo(
-    () => selectionSegments(selection, sequence.topology, seqLen),
-    [selection, sequence.topology, seqLen],
+    () => [selection, ...extraSelections].flatMap(r => selectionSegments(r, sequence.topology, seqLen)),
+    [selection, extraSelections, sequence.topology, seqLen],
   )
 
   // Route the hovered item to whichever store owns its kind, clearing only

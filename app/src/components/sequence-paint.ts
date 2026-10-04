@@ -20,10 +20,11 @@ import type { GroupedCutSite } from '../enzymes/grouping'
 import { visibleStroke, contrastText } from '../utils/color'
 import type { GeneticCode } from '../codon/genetic-codes'
 import {
-  aminoAcidFill, aminoAcidLabel, selectionCodonsInRow, type AminoAcidStyleId,
+  aminoAcidFill, aminoAcidLabel, selectionCodonsInRow, trimReadingStart, type AminoAcidStyleId, type SelectionCodon,
 } from '../codon/translation-display'
 import type { ReadingFrame } from '../codon/translation-display'
 import { isAutoAnnotationId, keyFromAutoId } from '../utils/auto-annotations'
+import { codonStartOffset } from '../utils/annotation-sequence'
 import { keyFromOrfId } from '../utils/orf-features'
 import { isPrimerItemId, type PrimerItem } from '../primers/display'
 import { drawPrimerItem } from './primer-draw'
@@ -275,10 +276,12 @@ export function assignEnzymeTiers(
   return labels
 }
 
-/** The selection's translation: where it starts, how long, which way it reads. */
+/**
+ * The selection's translation: the selected spans in reading order, read as
+ * one sequence (see joinedSegments), and which way it reads.
+ */
 export interface SelectionTranslation {
-  start: number
-  length: number
+  segments: [number, number][]
   reverse: boolean
 }
 
@@ -314,6 +317,8 @@ export interface SequencePaintScene {
   measure(font: string, text: string): number
   /** Null draws no selection band. */
   selection: Selection | null
+  /** Ranges selected beside `selection`, drawn the same way. */
+  extraSelections?: readonly Selection[]
   /** Drag handles on the selection's ends; a screen affordance only. */
   selectionHandles: boolean
   /** Null draws no search bands. */
@@ -551,7 +556,8 @@ export function paintSequenceRows(
      */
     const paintSelectionBand = (onTop: boolean) => {
       if (!selection) return
-      const segs = selectionSegments(selection, topology, seqLen)
+      const ranges = s.extraSelections?.length ? [selection, ...s.extraSelections] : [selection]
+      const segs = ranges.flatMap(r => selectionSegments(r, topology, seqLen))
       for (const [selStart, selEnd] of segs) {
         const hlStart = Math.max(selStart, rowStart)
         const hlEnd = Math.min(selEnd, rowEnd)
@@ -812,12 +818,57 @@ export function paintSequenceRows(
 
     // Batch annotation rendering: group by color to minimize state changes.
     // First pass: collect geometry. Second pass: fill then stroke by color.
-    const annBatch: { ann: Annotation; x1: number; x2: number; cy: number; isStart: boolean; isEnd: boolean }[] = []
+    // `cutStart`/`cutEnd`: the edge is an exon's, at an intron, and drawn
+    // square. `label`: false for all but the widest exon of a spliced
+    // feature in the row, so its name is written once.
+    const annBatch: {
+      ann: Annotation; x1: number; x2: number; cy: number; isStart: boolean; isEnd: boolean
+      cutStart?: boolean; cutEnd?: boolean; label?: boolean
+    }[] = []
+    // Thin lines across a spliced feature's introns, drawn under the bars.
+    const intronLines: { x1: number; x2: number; y: number; color: string }[] = []
     let annCy = cy
     for (const annRow of annRows) {
       for (const ann of annRow) {
         const visRange = annVisibleRange(ann, rowStart, rowEnd)
         if (!visRange) continue
+        if (ann.segments) {
+          const segs = ann.segments
+          const pieces: typeof annBatch = []
+          for (let k = 0; k < segs.length; k++) {
+            const [s0, e0] = segs[k]
+            const from = Math.max(s0, rowStart)
+            const to = Math.min(e0, rowEnd)
+            if (from < to) {
+              const last = k === segs.length - 1
+              pieces.push({
+                ann, cy: annCy,
+                x1: baseX(from, rowStart, L), x2: baseX(to - 1, rowStart, L) + L.bpWidth,
+                isStart: k === 0 && s0 >= rowStart, isEnd: last && e0 <= rowEnd,
+                cutStart: k > 0 && s0 >= rowStart, cutEnd: !last && e0 <= rowEnd, label: false,
+              })
+            }
+            if (k === segs.length - 1) continue
+            // The intron to the next exon; one across the origin is two pieces.
+            const gapFrom = e0
+            const gapTo = segs[k + 1][0]
+            const gaps: [number, number][] = gapTo >= gapFrom ? [[gapFrom, gapTo]] : [[gapFrom, seqLen], [0, gapTo]]
+            for (const [g0, g1] of gaps) {
+              const a = Math.max(g0, rowStart)
+              const b = Math.min(g1, rowEnd)
+              if (a < b) {
+                intronLines.push({
+                  x1: baseX(a, rowStart, L), x2: baseX(b - 1, rowStart, L) + L.bpWidth,
+                  y: annCy + L.annotationRowH / 2, color: ann.color,
+                })
+              }
+            }
+          }
+          const widest = pieces.reduce<typeof pieces[0] | null>((w, p) => !w || p.x2 - p.x1 > w.x2 - w.x1 ? p : w, null)
+          if (widest) widest.label = true
+          annBatch.push(...pieces.filter(p => p.x2 - p.x1 >= 0.5))
+          continue
+        }
         const [aStart, aEnd] = visRange
         const x1 = baseX(aStart, rowStart, L)
         const x2 = baseX(aEnd - 1, rowStart, L) + L.bpWidth
@@ -836,7 +887,7 @@ export function paintSequenceRows(
 
     // Helper to build annotation path
     const buildAnnPath = (a: typeof annBatch[0]) => {
-      const { ann, x1, x2, cy: ay, isStart, isEnd } = a
+      const { ann, x1, x2, cy: ay, isStart, isEnd, cutStart, cutEnd } = a
       const barW = x2 - x1
       const h = L.annotationRowH
       const midY = ay + h / 2
@@ -851,12 +902,14 @@ export function paintSequenceRows(
 
       ctx.moveTo(x1, ay)
       if (ann.strand === 1) {
-        if (!isStart && barW > cw * 2) {
+        if (!isStart && !cutStart && barW > cw * 2) {
           ctx.moveTo(x1, ay); ctx.lineTo(x1 + cw, midY); ctx.lineTo(x1, ay + h)
         } else {
           ctx.moveTo(x1, ay); ctx.lineTo(x1, ay + h)
         }
-        if (isEnd && barW > arrowW * 2) {
+        if (cutEnd) {
+          ctx.lineTo(x2, ay + h); ctx.lineTo(x2, ay)
+        } else if (isEnd && barW > arrowW * 2) {
           ctx.lineTo(x2 - arrowW, ay + h); ctx.lineTo(x2, midY); ctx.lineTo(x2 - arrowW, ay)
         } else if (!isEnd && barW > cw * 2) {
           ctx.lineTo(x2 - cw, ay + h); ctx.lineTo(x2, midY); ctx.lineTo(x2 - cw, ay)
@@ -864,14 +917,16 @@ export function paintSequenceRows(
           ctx.lineTo(x2, ay + h); ctx.lineTo(x2, ay)
         }
       } else if (ann.strand === -1) {
-        if (isStart && barW > arrowW * 2) {
+        if (cutStart) {
+          ctx.moveTo(x1, ay); ctx.lineTo(x1, ay + h)
+        } else if (isStart && barW > arrowW * 2) {
           ctx.moveTo(x1 + arrowW, ay); ctx.lineTo(x1, midY); ctx.lineTo(x1 + arrowW, ay + h)
         } else if (!isStart && barW > cw * 2) {
           ctx.moveTo(x1 + cw, ay); ctx.lineTo(x1, midY); ctx.lineTo(x1 + cw, ay + h)
         } else {
           ctx.moveTo(x1, ay); ctx.lineTo(x1, ay + h)
         }
-        if (!isEnd && barW > cw * 2) {
+        if (!isEnd && !cutEnd && barW > cw * 2) {
           ctx.lineTo(x2, ay + h); ctx.lineTo(x2 - cw, midY); ctx.lineTo(x2, ay)
         } else {
           ctx.lineTo(x2, ay + h); ctx.lineTo(x2, ay)
@@ -905,6 +960,15 @@ export function paintSequenceRows(
       const c = a.ann.color
       if (!colorGroups.has(c)) colorGroups.set(c, [])
       colorGroups.get(c)!.push(a)
+    }
+
+    for (const line of intronLines) {
+      ctx.strokeStyle = visibleStroke(line.color)
+      ctx.lineWidth = 1
+      ctx.beginPath()
+      ctx.moveTo(line.x1, line.y)
+      ctx.lineTo(line.x2, line.y)
+      ctx.stroke()
     }
 
     for (const [color, group] of colorGroups) {
@@ -999,20 +1063,22 @@ export function paintSequenceRows(
     ctx.textAlign = 'center'
     for (const a of annBatch) {
       const barW = a.x2 - a.x1
-      if (barW <= 20 || isPrimerItemId(a.ann.id)) continue
+      if (barW <= 20 || isPrimerItemId(a.ann.id) || a.label === false) continue
       const h = L.annotationRowH
       const arrowW = Math.min(6, barW / 3)
       const cw = Math.min(5, barW / 4)
       let clipLeft = a.x1
       let clipRight = a.x2
       if (a.ann.strand === 1) {
-        if (!a.isStart) clipLeft += cw
-        if (a.isEnd) clipRight -= arrowW
+        if (!a.isStart && !a.cutStart) clipLeft += cw
+        if (a.cutEnd) { /* square edge */ }
+        else if (a.isEnd) clipRight -= arrowW
         else clipRight -= cw
       } else if (a.ann.strand === -1) {
-        if (a.isStart) clipLeft += arrowW
+        if (a.cutStart) { /* square edge */ }
+        else if (a.isStart) clipLeft += arrowW
         else clipLeft += cw
-        if (!a.isEnd) clipRight -= cw
+        if (!a.isEnd && !a.cutEnd) clipRight -= cw
       }
       const availW = clipRight - clipLeft
       const textW = s.measure(featureLabelFont, a.ann.name)
@@ -1142,63 +1208,81 @@ export function paintSequenceRows(
       // The selection's translation first, nearest the sequence it was read
       // from, then the features'. The layout reserved its row wherever the
       // selection has a whole codon, which is where this finds codons.
+      /**
+       * One translation row of codons read through joined spans: the
+       * selection's, or a spliced feature's exons. A codon's bases in this
+       * row are drawn in runs of neighbours, one run usually, two where the
+       * codon spans the gap between two spans. `partial` codons (fewer than
+       * three bases) get a smaller blank chip when `showPartial` is set and
+       * are left out otherwise.
+       */
+      const paintJoinedCodons = (
+        codons: SelectionCodon[], reverse: boolean,
+        fillFor: (aa: string) => string | null, showPartial: boolean,
+      ) => {
+        const code = s.translationCode
+        const threeLetter = s.threeLetter
+        ctx.font = monoFont(threeLetter ? '9px' : '10px')
+        ctx.textBaseline = 'middle'
+        ctx.textAlign = 'center'
+        for (const { index, bases, partial } of codons) {
+          if (partial && !showPartial) continue
+          const inRow = bases.filter(p => p >= rowStart && p < rowEnd).sort((a, b) => a - b)
+          const runs: [number, number][] = []
+          for (const p of inRow) {
+            const last = runs[runs.length - 1]
+            if (last && p === last[1] + 1) last[1] = p
+            else runs.push([p, p])
+          }
+          // The tip goes on the codon's last base in reading order, so a
+          // codon split across lines or spans points only where it ends.
+          const end = bases[bases.length - 1]
+          const pointOf = ([a, b]: [number, number]) => end >= a && end <= b ? (reverse ? -1 : 1) : 0
+          const blocks = (y: number, h: number, color: string, strong: boolean) => {
+            for (const run of runs) {
+              paintCodonBlock(
+                ctx, baseX(run[0], rowStart, L), baseX(run[1], rowStart, L) + L.bpWidth,
+                y, h, color, strong, pointOf(run),
+              )
+            }
+          }
+          if (partial) {
+            // The codon still being selected: a smaller blank chip over the
+            // bases it has so far, the next residue taking shape. It
+            // becomes a full chip with its letter on the third base. Always
+            // full strength: at half, the plain tone all but disappears.
+            blocks(cy + 2, L.translationRowH - 4, COLORS.codon, true)
+            continue
+          }
+          // Top-strand bases in reading order. Read leftwards, that order
+          // runs 5' to 3' along the bottom strand, so the codon is their
+          // complement: the reverse complement of the reversed string.
+          const top = bases.map(p => doc.sequence.basesIn(p, p + 1)).join('').toUpperCase()
+          const codon = reverse ? reverseComplementStr([...top].reverse().join('')) : top
+          const aa = code.table[codon] ?? '?'
+          const fill = fillFor(aa)
+          blocks(cy, L.translationRowH, fill ?? COLORS.codon, fill !== null || index % 2 === 0)
+          const middle = bases[1]
+          if (middle < rowStart || middle >= rowEnd) continue
+          ctx.fillStyle = fill ? contrastText(fill) : COLORS.text
+          ctx.fillText(
+            aminoAcidLabel(aa, threeLetter),
+            baseX(middle, rowStart, L) + L.bpWidth / 2,
+            cy + L.translationRowH / 2,
+          )
+        }
+        ctx.textAlign = 'left'
+        ctx.textBaseline = 'top'
+        cy += L.translationRowH + L.translationGap
+      }
+
       let selRowUsed = 0
       if (selTranslation) {
-        const codons = selectionCodonsInRow(
-          selTranslation.start, selTranslation.length, seqLen, selTranslation.reverse,
-          rowStart, rowEnd,
-        )
+        const codons = selectionCodonsInRow(selTranslation.segments, selTranslation.reverse, rowStart, rowEnd)
         if (codons.length > 0) {
-          const code = s.translationCode
-          const aaStyle = s.aminoAcidStyle
-          const threeLetter = s.threeLetter
-          ctx.font = monoFont(threeLetter ? '9px' : '10px')
-          ctx.textBaseline = 'middle'
-          ctx.textAlign = 'center'
-          for (const { index, bases, partial } of codons) {
-            const inRow = bases.filter(p => p >= rowStart && p < rowEnd)
-            const x1 = baseX(Math.min(...inRow), rowStart, L)
-            const x2 = baseX(Math.max(...inRow), rowStart, L) + L.bpWidth
-            // The tip goes on the codon's last base in reading order, so a
-            // codon split across lines points only where it ends.
-            const end = bases[bases.length - 1]
-            const point = end >= rowStart && end < rowEnd ? (selTranslation.reverse ? -1 : 1) : 0
-            if (partial) {
-              // The codon still being selected: a smaller blank chip over the
-              // bases it has so far, the next residue taking shape. It
-              // becomes a full chip with its letter on the third base. Always
-              // full strength: at half, the plain tone all but disappears.
-              paintCodonBlock(
-                ctx, x1, x2, cy + 2, L.translationRowH - 4,
-                COLORS.codon, true, point,
-              )
-              continue
-            }
-            // Top-strand bases in reading order. Read leftwards, that order
-            // runs 5' to 3' along the bottom strand, so the codon is their
-            // complement: the reverse complement of the reversed string.
-            const top = bases.map(p => doc.sequence.basesIn(p, p + 1)).join('').toUpperCase()
-            const codon = selTranslation.reverse ? reverseComplementStr([...top].reverse().join('')) : top
-            const aa = code.table[codon] ?? '?'
-            // A selection has no feature colour, so "By annotation" leaves
-            // it plain apart from stops.
-            const fill = aminoAcidFill(aaStyle, aa)
-            paintCodonBlock(
-              ctx, x1, x2, cy, L.translationRowH,
-              fill ?? COLORS.codon, fill !== null || index % 2 === 0, point,
-            )
-            const middle = bases[1]
-            if (middle < rowStart || middle >= rowEnd) continue
-            ctx.fillStyle = fill ? contrastText(fill) : COLORS.text
-            ctx.fillText(
-              aminoAcidLabel(aa, threeLetter),
-              baseX(middle, rowStart, L) + L.bpWidth / 2,
-              cy + L.translationRowH / 2,
-            )
-          }
-          ctx.textAlign = 'left'
-          ctx.textBaseline = 'top'
-          cy += L.translationRowH + L.translationGap
+          // A selection has no feature colour, so "By annotation" leaves it
+          // plain apart from stops.
+          paintJoinedCodons(codons, selTranslation.reverse, aa => aminoAcidFill(s.aminoAcidStyle, aa), true)
           selRowUsed = 1
         }
       }
@@ -1243,6 +1327,9 @@ export function paintSequenceRows(
         const data = cdsVisData.get(ann)
         if (!data) continue
         const { aStart, aEnd, seqForTranslation } = data
+        // A spliced feature's codons are not where the span's frame puts
+        // them, so it is never taken for a duplicate.
+        if (ann.segments) { uniqueCds.push(ann); continue }
         let key = `${ann.strand}:`
         for (let pos = aStart; pos < aEnd; pos++) {
           const fOffset = fullAnnOffset(ann, pos)
@@ -1272,6 +1359,19 @@ export function paintSequenceRows(
         const fillFor = (aa: string) => aaStyle === 'annotation' && aa !== '*'
           ? ann.color
           : aminoAcidFill(aaStyle, aa)
+
+        // A spliced feature is read through its exons only, joined as the
+        // selection's ranges are, from /codon_start on. Rows inside an
+        // intron have no codons and leave the row to the next feature.
+        if (ann.segments) {
+          const reverse = ann.strand === -1
+          const codons = selectionCodonsInRow(
+            trimReadingStart(ann.segments, codonStartOffset(ann), reverse), reverse, rowStart, rowEnd)
+          if (codons.length === 0) continue
+          paintJoinedCodons(codons, reverse, fillFor, false)
+          translationCount++
+          continue
+        }
 
         // A codon is found by its first base in reading order, which for one
         // split by the line break can sit up to two bases outside this row:

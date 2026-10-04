@@ -18,7 +18,7 @@ import { displayPosition } from '../models/Document'
 import type { Annotation } from '../models/Annotation'
 import type { IntervalTree } from '../models/IntervalTree'
 import type { Selection, SearchState } from '../store'
-import { selectionLength, isOriginSpanningSelection, selectionIsReverse } from '../store'
+import { selectionSegments, selectionIsReverse } from '../store'
 import { getLayout, getRenderMode, letterCellWidth, RowLayoutMap, type ZoomLayout } from '../components/zoom-layout'
 import {
   paintSequenceRows, stackAnnotations, type RowStack, type SequenceColors,
@@ -184,18 +184,15 @@ function annotationInRange(ann: Annotation, segs: [number, number][], seqLen: nu
   return parts.some(([a, b]) => segs.some(([s, e]) => overlaps(a, b, s, e)))
 }
 
-/** Where the selection's translation starts and which way it reads; null without one. */
+/** The bases the selection's translation reads and which way; null without any. */
 function selectionTranslationOf(sel: Selection, topology: string, seqLen: number): SelectionTranslation | null {
-  const length = selectionLength(sel, topology, seqLen)
-  if (length <= 0) return null
-  const start = isOriginSpanningSelection(sel, topology) ? sel.anchor : Math.min(sel.anchor, sel.caret)
-  return { start, length, reverse: selectionIsReverse(sel, topology) }
+  const segments = selectionSegments(sel, topology, seqLen)
+  if (segments.length === 0) return null
+  return { segments, reverse: selectionIsReverse(sel, topology) }
 }
 
-function selectionTouches(t: SelectionTranslation, seqLen: number, rs: number, re: number): boolean {
-  const end = t.start + t.length
-  if (end <= seqLen) return overlaps(t.start, end, rs, re)
-  return overlaps(t.start, seqLen, rs, re) || overlaps(0, end - seqLen, rs, re)
+function selectionTouches(t: SelectionTranslation, rs: number, re: number): boolean {
+  return t.segments.some(([s, e]) => overlaps(s, e, rs, re))
 }
 
 /** "1..120" in display positions, joined for split features. */
@@ -359,7 +356,7 @@ export function planSequencePdf(src: SequencePdfSource, opts: SequencePdfOptions
       const cds = L.maxAnnotationRows > 0
         ? stack.rows.reduce((n, lane) => n + lane.filter(a => a.type === 'CDS' && a.strand !== 0).length, 0)
         : 0
-      const sel = selTranslation && selectionTouches(selTranslation, seqLen, rs, re) ? 1 : 0
+      const sel = selTranslation && selectionTouches(selTranslation, rs, re) ? 1 : 0
       rl.translations[i] = Math.min(cds + sel, 6)
     }
     return stack

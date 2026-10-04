@@ -120,34 +120,70 @@ export interface SelectionCodon {
  * or two bases at the far end, the end the drag is on; it is returned too, so
  * the view can show the next codon taking shape before its third base.
  *
- * `start` and `length` are in genomic coordinates and may run past the end
- * of a circular sequence; positions wrap at `seqLen`. The walk is over the
+ * `segments` are the selected [start, end) spans in reading order, as
+ * joinedSegments gives them: one, two for a range across the origin, more
+ * for several ranges. They are read as one sequence, joined the way exons
+ * are, so a codon can take bases from two of them. The walk is over the
  * row, not the selection, so the cost is one row's width however long the
  * selection is.
  */
 export function selectionCodonsInRow(
-  start: number, length: number, seqLen: number, reverse: boolean,
+  segments: [number, number][], reverse: boolean,
   rowStart: number, rowEnd: number,
 ): SelectionCodon[] {
-  if (length <= 0 || seqLen === 0) return []
+  // Where each segment begins in the joined sequence.
+  const offsets: number[] = []
+  let length = 0
+  for (const [s, e] of segments) { offsets.push(length); length += e - s }
+  if (length <= 0) return []
   const whole = Math.floor(length / 3)
   // u counts bases from the end reading starts at; a codon is three of them.
-  const posAt = (u: number) => (start + (reverse ? length - 1 - u : u)) % seqLen
+  const posAt = (u: number) => {
+    const t = reverse ? length - 1 - u : u
+    let i = segments.length - 1
+    while (offsets[i] > t) i--
+    return segments[i][0] + t - offsets[i]
+  }
+  // The segments in the row, left to right, so codons come out in row order.
+  const inRow = segments
+    .map(([s, e], i) => [Math.max(s, rowStart), Math.min(e, rowEnd), offsets[i] - s] as const)
+    .filter(([from, to]) => from < to)
+    .sort((a, b) => a[0] - b[0])
   const out: SelectionCodon[] = []
-  // A set, not a check against the previous codon: on a circular sequence
-  // short enough to fit one row, the row meets the selection's wrapped tail
-  // before its start, so a codon's bases need not arrive together.
+  // A set, not a check against the previous codon: the row can meet the
+  // selection's later bases before its earlier ones (a range across the
+  // origin, or ranges joined out of position order), so a codon's bases
+  // need not arrive together.
   const seen = new Set<number>()
-  for (let p = rowStart; p < rowEnd; p++) {
-    const t = (p - start + seqLen) % seqLen
-    if (t >= length) continue
-    const k = Math.floor((reverse ? length - 1 - t : t) / 3)
-    if (seen.has(k)) continue
-    seen.add(k)
-    const count = k < whole ? 3 : length - 3 * k
-    const bases: number[] = []
-    for (let i = 0; i < count; i++) bases.push(posAt(3 * k + i))
-    out.push({ index: k, bases, partial: count < 3 })
+  for (const [from, to, shift] of inRow) {
+    for (let p = from; p < to; p++) {
+      const t = p + shift
+      const k = Math.floor((reverse ? length - 1 - t : t) / 3)
+      if (seen.has(k)) continue
+      seen.add(k)
+      const count = k < whole ? 3 : length - 3 * k
+      const bases: number[] = []
+      for (let i = 0; i < count; i++) bases.push(posAt(3 * k + i))
+      out.push({ index: k, bases, partial: count < 3 })
+    }
+  }
+  return out
+}
+
+/**
+ * Joined spans less `n` bases at the end reading starts from: the first
+ * span's start read forwards, the last span's end read backwards. For a
+ * feature's /codon_start, which skips bases before the first codon.
+ */
+export function trimReadingStart(segments: [number, number][], n: number, reverse: boolean): [number, number][] {
+  const out = segments.map(([s, e]) => [s, e] as [number, number])
+  while (n > 0 && out.length > 0) {
+    const i = reverse ? out.length - 1 : 0
+    const [s, e] = out[i]
+    const take = Math.min(n, e - s)
+    n -= take
+    if (take === e - s) out.splice(i, 1)
+    else out[i] = reverse ? [s, e - take] : [s + take, e]
   }
   return out
 }

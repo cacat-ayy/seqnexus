@@ -9,7 +9,7 @@ import {
   TRANSLATION_FRAMES, DEFAULT_TRANSLATION_FRAME, framesFor, followsAnnotations,
   frameLabel, translationRowCount, AMINO_ACID_STYLES, DEFAULT_AMINO_ACID_STYLE,
   aminoAcidColor, aminoAcidFill, aminoAcidLabel, AA_THREE_LETTER,
-  translatesSelection, selectionCodonsInRow,
+  translatesSelection, selectionCodonsInRow, trimReadingStart,
 } from './translation-display'
 
 describe('frame options', () => {
@@ -139,7 +139,7 @@ describe('translating a selection', () => {
   it('reads a left-to-right selection from its first base', () => {
     // 7 bases from position 2: two codons, then base 8 as the codon still
     // being selected at the far end.
-    const codons = selectionCodonsInRow(2, 7, 20, false, 0, 20)
+    const codons = selectionCodonsInRow([[2, 9]], false, 0, 20)
     expect(codons.map(c => c.index)).toEqual([0, 1, 2])
     expect(bases(codons)).toEqual([[2, 3, 4], [5, 6, 7], [8]])
     expect(codons.map(c => c.partial)).toEqual([false, false, true])
@@ -149,31 +149,51 @@ describe('translating a selection', () => {
     // The same bases dragged the other way: the protein starts at base 8 and
     // base 2 is the partial codon. Returned in row order, left to right, so
     // the first codon read is last.
-    const codons = selectionCodonsInRow(2, 7, 20, true, 0, 20)
+    const codons = selectionCodonsInRow([[2, 9]], true, 0, 20)
     expect(codons.map(c => c.index)).toEqual([2, 1, 0])
     expect(bases(codons)).toEqual([[2], [5, 4, 3], [8, 7, 6]])
     expect(codons.map(c => c.partial)).toEqual([true, false, false])
   })
 
   it('returns only the codons with a base in the row', () => {
-    expect(bases(selectionCodonsInRow(2, 7, 20, false, 0, 5))).toEqual([[2, 3, 4]])
-    expect(bases(selectionCodonsInRow(2, 7, 20, false, 5, 10))).toEqual([[5, 6, 7], [8]])
+    expect(bases(selectionCodonsInRow([[2, 9]], false, 0, 5))).toEqual([[2, 3, 4]])
+    expect(bases(selectionCodonsInRow([[2, 9]], false, 5, 10))).toEqual([[5, 6, 7], [8]])
     // A codon split across rows shows up in both.
-    expect(bases(selectionCodonsInRow(2, 7, 20, false, 0, 4))).toEqual([[2, 3, 4]])
-    expect(bases(selectionCodonsInRow(2, 7, 20, false, 4, 8))).toEqual([[2, 3, 4], [5, 6, 7]])
+    expect(bases(selectionCodonsInRow([[2, 9]], false, 0, 4))).toEqual([[2, 3, 4]])
+    expect(bases(selectionCodonsInRow([[2, 9]], false, 4, 8))).toEqual([[2, 3, 4], [5, 6, 7]])
   })
 
   it('wraps across the origin of a circular sequence', () => {
     // 10 bp circle, 6 bases from position 8: 8 9 0 | 1 2 3.
-    const codons = selectionCodonsInRow(8, 6, 10, false, 0, 10)
+    const codons = selectionCodonsInRow([[8, 10], [0, 4]], false, 0, 10)
     expect(codons.map(c => c.index).sort()).toEqual([0, 1])
     expect(codons.find(c => c.index === 0)!.bases).toEqual([8, 9, 0])
     expect(codons.find(c => c.index === 1)!.bases).toEqual([1, 2, 3])
   })
 
   it('shows one or two bases as a partial codon, and nothing for none', () => {
-    expect(selectionCodonsInRow(2, 1, 20, false, 0, 20)).toEqual([{ index: 0, bases: [2], partial: true }])
-    expect(selectionCodonsInRow(2, 2, 20, true, 0, 20)).toEqual([{ index: 0, bases: [3, 2], partial: true }])
-    expect(selectionCodonsInRow(2, 0, 20, false, 0, 20)).toEqual([])
+    expect(selectionCodonsInRow([[2, 3]], false, 0, 20)).toEqual([{ index: 0, bases: [2], partial: true }])
+    expect(selectionCodonsInRow([[2, 4]], true, 0, 20)).toEqual([{ index: 0, bases: [3, 2], partial: true }])
+    expect(selectionCodonsInRow([], false, 0, 20)).toEqual([])
+  })
+
+  it('joins several ranges, so a codon can span the gap between two', () => {
+    // 2 3 | 6 7 8 9 | 12: the first codon takes two bases from the first
+    // range and one from the second, as a codon across an intron does.
+    const segs: [number, number][] = [[2, 4], [6, 10], [12, 13]]
+    expect(bases(selectionCodonsInRow(segs, false, 0, 20))).toEqual([[2, 3, 6], [7, 8, 9], [12]])
+    // Read leftwards, the joined sequence is read from its last base.
+    expect(bases(selectionCodonsInRow(segs, true, 0, 20))).toEqual([[2], [7, 6, 3], [12, 9, 8]])
+    // A row holding only the second range still finds the codon it shares.
+    expect(bases(selectionCodonsInRow(segs, false, 5, 10))).toEqual([[2, 3, 6], [7, 8, 9]])
+  })
+})
+
+describe('trimReadingStart', () => {
+  it('skips bases at the end reading starts from, across parts if need be', () => {
+    expect(trimReadingStart([[0, 10], [20, 30]], 2, false)).toEqual([[2, 10], [20, 30]])
+    expect(trimReadingStart([[0, 10], [20, 30]], 2, true)).toEqual([[0, 10], [20, 28]])
+    expect(trimReadingStart([[0, 1], [20, 30]], 2, false)).toEqual([[21, 30]])
+    expect(trimReadingStart([[0, 10]], 0, false)).toEqual([[0, 10]])
   })
 })

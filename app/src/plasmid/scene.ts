@@ -144,6 +144,9 @@ export interface PlasmidSceneInput {
 
   selection: { anchor: number; caret: number }
   selectionSpansOrigin: boolean
+  /** Ranges selected beside `selection`; one across the origin has anchor > caret. */
+  extraSelections?: readonly { anchor: number; caret: number }[]
+  /** Selected bases, every range counted. */
   selectionLength: number
 
   /** Find hits, sorted by start; `end` may run past the origin (> seqLen). */
@@ -301,9 +304,16 @@ export function buildPlasmidScene(input: PlasmidSceneInput): PlasmidScene {
   // A slim band sitting on the backbone. This used to be three arc widths
   // (48px) centred on the backbone, which swallowed the enzyme ticks and the
   // inner edge of the first feature ring whenever anything was selected.
+  const selectionArcs: [number, number][] = []
   if (hasSelection) {
-    const arcStart = selectionSpansOrigin ? selection.anchor : Math.min(selection.anchor, selection.caret)
-    const arcEnd = selectionSpansOrigin ? selection.caret : Math.max(selection.anchor, selection.caret)
+    selectionArcs.push(selectionSpansOrigin
+      ? [selection.anchor, selection.caret]
+      : [Math.min(selection.anchor, selection.caret), Math.max(selection.anchor, selection.caret)])
+  }
+  for (const r of input.extraSelections ?? []) {
+    if (r.anchor !== r.caret) selectionArcs.push([r.anchor, r.caret])
+  }
+  for (const [arcStart, arcEnd] of selectionArcs) {
     const startAngle = posToAngle(arcStart, seqLen)
     const span = annArcSpan(arcStart, arcEnd, seqLen)
     items.push({
@@ -584,19 +594,38 @@ export function buildPlasmidScene(input: PlasmidSceneInput): PlasmidScene {
         ? (isPicked ? 0.6 : 0.28)
         : style.featureAlpha
 
-      items.push({
-        kind: 'arcBand', cx, cy, radius, startAngle, span, width,
-        strand: ann.strand,
-        fill: ann.color,
-        // A picked suggestion is outlined in the accent so the pick reads;
-        // a print style forces one ink; otherwise darken the fill just enough
-        // to stay visible against a light background.
-        stroke: style.outlineWidth > 0
-          ? (isPicked ? colors.accent : style.outlineColor ?? visibleStroke(ann.color))
-          : undefined,
-        strokeWidth: style.outlineWidth > 0 ? (isPicked ? 2 : style.outlineWidth) : 0,
-        dash: isProposal && !isPicked,
-        alpha,
+      // A spliced feature is drawn exon by exon with a thin arc across each
+      // intron, the arrow on the exon the feature ends in (its last on the
+      // forward strand, its first on the reverse).
+      const parts: [number, number][] = ann.segments ?? [[ann.start, ann.end]]
+      parts.forEach(([s0, e0], k) => {
+        const terminal = ann.strand === 1 ? k === parts.length - 1 : ann.strand === -1 ? k === 0 : false
+        items.push({
+          kind: 'arcBand', cx, cy, radius,
+          startAngle: posToAngle(s0, seqLen), span: annArcSpan(s0, e0, seqLen), width,
+          strand: parts.length === 1 || terminal ? ann.strand : 0,
+          fill: ann.color,
+          // A picked suggestion is outlined in the accent so the pick reads;
+          // a print style forces one ink; otherwise darken the fill just enough
+          // to stay visible against a light background.
+          stroke: style.outlineWidth > 0
+            ? (isPicked ? colors.accent : style.outlineColor ?? visibleStroke(ann.color))
+            : undefined,
+          strokeWidth: style.outlineWidth > 0 ? (isPicked ? 2 : style.outlineWidth) : 0,
+          dash: isProposal && !isPicked,
+          alpha,
+        })
+        if (k === parts.length - 1) return
+        const gapFrom = e0 % seqLen
+        const gapTo = parts[k + 1][0]
+        // Parts that meet (a join split only at the origin) have no intron;
+        // a zero span would read as the whole circle.
+        if (gapTo === gapFrom) return
+        items.push({
+          kind: 'arcBand', cx, cy, radius,
+          startAngle: posToAngle(gapFrom, seqLen), span: annArcSpan(gapFrom, gapTo, seqLen), width: 1.5,
+          strand: 0, fill: style.outlineColor ?? visibleStroke(ann.color), alpha: 1,
+        })
       })
 
       hitRegions.push({
@@ -673,10 +702,14 @@ export function buildPlasmidScene(input: PlasmidSceneInput): PlasmidScene {
       align: 'center', baseline: 'middle',
     })
 
-    if (hasSelection) {
+    // With several ranges, their total and how many.
+    const rangeCount = selectionArcs.length
+    if (rangeCount > 0) {
       items.push({
         kind: 'text', x: cx, y: cy + 26,
-        text: `${selectionLength} bp selected`,
+        text: rangeCount > 1
+          ? `${selectionLength} bp selected in ${rangeCount} ranges`
+          : `${selectionLength} bp selected`,
         font: font(style.centreMetaSize), fill: colors.accent,
         align: 'center', baseline: 'middle',
       })

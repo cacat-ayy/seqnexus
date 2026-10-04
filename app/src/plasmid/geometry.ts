@@ -21,6 +21,27 @@ export function posToAngle(pos: number, seqLen: number): number {
   return (pos / seqLen) * TWO_PI - Math.PI / 2
 }
 
+/**
+ * The range a drag round the map has swept: from where it began to where the
+ * pointer is, in the direction it turned. `turned` is the signed angle
+ * travelled, clockwise positive, so a drag that goes past the origin keeps
+ * going rather than flipping to the short way round. On a circular sequence
+ * a range past the origin has anchor > caret, as everywhere else; a linear
+ * one is drawn as a circle but cannot be selected across its ends.
+ */
+export function arcSelection(
+  from: number, to: number, turned: number, circular: boolean, seqLen: number,
+): { anchor: number; caret: number; reverse: boolean } {
+  const reverse = turned < 0
+  if (!circular) return { anchor: Math.min(from, to), caret: Math.max(from, to), reverse: to < from }
+  // A whole turn or more stops one base short of the whole circle: a range
+  // from a base back to itself would be empty.
+  if (Math.abs(turned) >= TWO_PI - TWO_PI / seqLen) {
+    to = reverse ? (from + 1) % seqLen : (from - 1 + seqLen) % seqLen
+  }
+  return reverse ? { anchor: to, caret: from, reverse } : { anchor: from, caret: to, reverse }
+}
+
 /** Inverse of posToAngle: screen angle back to a base position. */
 export function angleToPos(angle: number, seqLen: number): number {
   const a = normalizeAngle(angle + Math.PI / 2)

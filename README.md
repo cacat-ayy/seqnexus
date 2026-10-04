@@ -72,6 +72,9 @@ of each build.
 - **FASTA, SnapGene (.dna), Geneious (.geneious), GFF3 import/export**
 - **Sanger chromatogram viewer** (AB1, SCF) with quality scores and base editing
 - **Annotation editing** - inline feature table, context menu, drag-and-drop
+- **Several ranges at once** - Ctrl+drag or Ctrl+click on features, in the
+  sequence view and on the map; touching ranges merge; copied, deleted,
+  translated and annotated joined, as exons are
 - **Find/replace** on both strands, with IUPAC codes, up to 3 mismatches,
   protein search in all six frames, regex, and a list of hits with their
   strand, feature and context
@@ -188,6 +191,87 @@ matching tab are deleted. This prevents storage leaks when tabs are closed.
 Session state is saved automatically with a 1-second debounce after any
 state change. If the save fails due to quota, a persistent error toast
 warns the user to export their work.
+
+---
+
+## Selections
+
+A selection is a range of bases. On a circular sequence it may run across the
+origin. Dragging leftwards records that direction, and the selection's
+translation reads the bottom strand from the last base.
+
+### Several ranges
+
+Ctrl+drag (Cmd on a Mac) selects another range next to the ones already
+selected, and Ctrl+click on a feature, a primer or an enzyme label adds that
+item's bases. On an auto-annotation suggestion or an ORF, Ctrl+click still
+picks the item for conversion to a feature. A Ctrl+click inside a selected
+range, without dragging, removes that range. Without Ctrl, a click or a drag
+replaces the whole selection. Every range has its own drag handles.
+
+The circular map works the same way: Ctrl+drag along the backbone selects a
+range, following the direction the pointer turns, so a drag that carries on
+past the top of the map selects across the origin rather than going back the
+short way. A whole turn stops one base short of the whole circle. A plain
+drag on the map still pans it when zoomed in.
+
+- **Merging.** Ranges that overlap or touch become one range. On a circular
+  sequence, a range ending at the last base touches one starting at the first.
+  A drag is merged against the ranges as they were when it began. A handle
+  dragged into another range joins the two, and dragging it back out
+  separates them again until the button is released.
+- **The active range** is the one last made or dragged. The caret, the arrow
+  keys and every tool that needs one stretch of sequence (primer design, the
+  Clone This Selection submenu, PDF export) act on it alone. While several
+  ranges are selected, the context menu leaves out New Primer, Clone This
+  Selection and Paste Reverse Complement.
+- **Reading order** is left to right along the sequence, each range read 5'
+  to 3'. A range across the origin of a circular sequence is read first, the
+  order in which a GenBank `join()` across the origin is written.
+
+### Joined translation
+
+With several ranges selected, the selection's translation reads them as one
+sequence, the way a spliced CDS reads its exons. A codon can take bases from
+two ranges, and its chip is then drawn in two parts, one over each range.
+The direction is that of the active range: if it was dragged leftwards, the
+whole joined sequence is read as its reverse complement, starting from the
+last base of the last range. The ranges are not translated separately,
+because a split coding sequence is the common reason to select several
+ranges at once.
+
+### Copying, deleting, typing
+
+- **Copy** (Ctrl+C) puts the joined bases on the clipboard in reading order.
+  The context menu also offers the reverse complement, the protein, FASTA as
+  one joined record, and FASTA with one record per range.
+- **Delete, Backspace and Cut** remove every range in one undo step. The
+  spans are deleted from the end of the sequence backwards, so each deletion
+  leaves the earlier spans where they were.
+- **Typing and pasting** are refused while several ranges are selected. It
+  would not be clear which range the new bases replace, or whether all of
+  them do.
+- **Add Joined Annotation** makes one feature with a part per range, in
+  reading order, which a GenBank file writes as `join()`. The form shows the
+  parts in place of the start and end, and its One Span button annotates the
+  whole stretch from the first part to the last instead.
+
+### Joined features
+
+A feature with parts (the exons of a spliced CDS, or one made from several
+ranges) is drawn part by part, with a thin line across each intron in the
+sequence view and a thin arc on the map. Edges at an intron are square, and
+the arrow is only on the part the feature ends in. Its translation reads the
+exons only, joined as the selection's ranges are, from `/codon_start` on, so
+a codon split by an intron is drawn in two pieces with one residue. Copying
+the feature's protein reads the exons too; copying its bases gives the whole
+span, introns included. Clicking anywhere on the feature's span, introns
+included, selects the whole span.
+
+The extra ranges are tied to the tab and to the sequence's edit count. Any
+change to the bases, including undo and redo, drops them. Base edits rewrite
+the sequence in place, so ranges kept across an edit could point at the
+wrong bases.
 
 ---
 
