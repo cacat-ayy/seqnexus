@@ -1,4 +1,5 @@
 import { create } from 'zustand'
+import { notify } from './toast'
 import { Sequence } from './models/Sequence'
 import type { AnnotationData } from './models/Annotation'
 import {
@@ -1311,6 +1312,9 @@ function displaySnapshot(s: EditorStore): DisplaySettings {
 }
 
 export const useEditorStore = create<EditorStore>((set, get) => {
+  /** The toast a blocked edit raised, so unlocking can take it down. */
+  let readOnlyToastId: string | null = null
+
   function getActiveTab(): DocumentTab | null {
     const { tabs, activeTabId } = get()
     return tabs.find(t => t.id === activeTabId) ?? null
@@ -1472,6 +1476,26 @@ export const useEditorStore = create<EditorStore>((set, get) => {
     readOnlyBlockCount: 0,
     notifyReadOnlyBlock: () => {
       set(s => ({ readOnlyBlockCount: s.readOnlyBlockCount + 1 }))
+      // The status-bar flash alone is easy to miss while looking at the caret,
+      // so say what happened where messages appear and offer the way out. The
+      // key replaces the toast in place, so held-down keys do not stack them.
+      const tab = getActiveTab()
+      if (!tab) return
+      readOnlyToastId = notify.info(`${tab.doc.name} is read-only`, {
+        key: 'read-only-block',
+        action: {
+          label: 'Unlock',
+          onClick: () => {
+            readOnlyToastId = null
+            // The tab that was blocked, not whichever is active by now.
+            const { tabs, activeTabId } = get()
+            set({
+              tabs: tabs.map(t => t.id === tab.id ? { ...t, readOnly: false } : t),
+              ...(activeTabId === tab.id ? { readOnly: false } : {}),
+            })
+          },
+        },
+      })
     },
     explorerSelectedIds: new Set<string>(),
     setExplorerSelectedIds: (ids) => {
@@ -2421,6 +2445,11 @@ export const useEditorStore = create<EditorStore>((set, get) => {
       const tab = getActiveTab()
       if (!tab) return
       updateActiveTab({ readOnly: !tab.readOnly })
+      // Unlocked from the status bar: the toast saying it is locked is now wrong.
+      if (tab.readOnly && readOnlyToastId) {
+        notify.dismiss(readOnlyToastId)
+        readOnlyToastId = null
+      }
     },
 
     restoreSession(restoredTabs, restoredActiveId, restoredFolders, seqReads, activeSeqReadIds, savedAlignments, savedContigs, restoredActiveAlignmentId, restoredActiveContigId, restoredItemMeta, restoredTagColors, restoredOligos) {

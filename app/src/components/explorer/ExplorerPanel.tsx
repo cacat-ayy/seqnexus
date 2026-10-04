@@ -32,7 +32,7 @@ import ExplorerRail from './ExplorerRail'
 import ExplorerHoverCard from './ExplorerHoverCard'
 import { useExplorerItems } from '../../explorer/useExplorerItems'
 import { useItemActions } from '../../explorer/useItemActions'
-import { buildNodes } from '../../explorer/buildNodes'
+import { buildNodes, collapsedGroupHolding } from '../../explorer/buildNodes'
 import { gelsUsingSequences } from '../../gel/workspace'
 import { groupSelection } from '../../explorer/selection'
 import { ITEM_KINDS, parseUid, type ExplorerItem, type Density, type ItemKind } from '../../explorer/types'
@@ -192,8 +192,8 @@ function ExplorerPanel({
     [filters, tagsByUid, starred],
   )
 
-  const { nodes, itemUids, matchCount } = useMemo(
-    () => buildNodes({
+  const nodeInput = useMemo(
+    () => ({
       byKind, folders, starred, tagsByUid, collapsedGroups, query,
       groupBy: settings.groupBy, sortBy: settings.sortBy, sortDir: settings.sortDir,
       nestDerived: settings.nestDerived,
@@ -205,12 +205,38 @@ function ExplorerPanel({
       searchText, itemFilter,
     ],
   )
+  const { nodes, itemUids, matchCount } = useMemo(() => buildNodes(nodeInput), [nodeInput])
+
+  // Something just created and opened (a gel from the toolbar, an import)
+  // should not land out of sight in a group the user collapsed earlier. Only
+  // new items: opening an existing one leaves the collapse choice alone.
+  // The store may list the item a render before or after opening it, so new
+  // uids are held as fresh until the open item next changes.
+  const knownUids = useRef<ReadonlySet<string> | null>(null)
+  const freshUids = useRef(new Set<string>())
+  const lastOpenUid = useRef<string | null>(null)
+  const openUid = openTarget.id ? `${openTarget.kind}:${openTarget.id}` : null
+  useEffect(() => {
+    const before = knownUids.current
+    const now = new Set(items.map(i => i.uid))
+    knownUids.current = now
+    // Nothing is new on the first render: that is the session being restored.
+    if (before) for (const uid of now) if (!before.has(uid)) freshUids.current.add(uid)
+    const openChanged = openUid !== lastOpenUid.current
+    lastOpenUid.current = openUid
+    if (openUid && freshUids.current.has(openUid) && now.has(openUid)) {
+      freshUids.current.clear()
+      const group = collapsedGroupHolding(nodeInput, openUid)
+      if (group) patchSettings({ collapsedGroups: settings.collapsedGroups.filter(k => k !== group) })
+    } else if (openChanged) {
+      freshUids.current.clear()
+    }
+  }, [items, openUid, nodeInput, patchSettings, settings.collapsedGroups])
 
   // --- Selection ---
   // The open item counts as selected for the first ctrl-click, so ctrl-
   // clicking a second row selects both rather than only the second. With one
   // uid namespace this no longer needs a per-section lookup.
-  const openUid = openTarget.id ? `${openTarget.kind}:${openTarget.id}` : null
   const resolveActivePeer = useCallback(() => openUid, [openUid])
   const { handleItemClick } = useListMultiSelect(itemUids, {
     selected: selectedIds,

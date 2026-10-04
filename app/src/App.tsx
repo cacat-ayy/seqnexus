@@ -78,7 +78,8 @@ import { exportSessionToJson, importSessionFromJson, remapSessionIds, type Sessi
 import FilenamePrompt from './components/ExportDialog'
 import SequencePdfDialog from './components/SequencePdfDialog'
 import { isFocusTrapActive } from './hooks/useFocusTrap'
-import { CITATION_TEXT } from './citation'
+import { BUILD_DATE, CITATION_BIBTEX, CITATION_TEXT } from './citation'
+import { copyText } from './utils/clipboard'
 import FetchModal from './components/FetchModal'
 const AlignmentModal = lazy(() => import('./components/AlignmentModal'))
 const AlignmentWorkspace = lazy(() => import('./components/alignment/AlignmentWorkspace'))
@@ -243,9 +244,15 @@ export default function App() {
   const toggleReadOnly = useEditorStore(s => s.toggleReadOnly)
   const readOnlyBlockCount = useEditorStore(s => s.readOnlyBlockCount)
   const [lockFlash, setLockFlash] = useState(false)
+  const lockBtnRef = useRef<HTMLButtonElement>(null)
   useEffect(() => {
     if (readOnlyBlockCount === 0) return
     setLockFlash(true)
+    // A block during the flash leaves the class on, which would not replay the
+    // animation, so rewind it. Optional call: jsdom has no getAnimations.
+    for (const a of lockBtnRef.current?.getAnimations?.() ?? []) {
+      if (a instanceof CSSAnimation && a.animationName === 'lock-flash') a.currentTime = 0
+    }
     const t = setTimeout(() => setLockFlash(false), 600)
     return () => clearTimeout(t)
   }, [readOnlyBlockCount])
@@ -274,6 +281,7 @@ export default function App() {
   const [editingViewName, setEditingViewName] = useState(false)
   const [viewNameValue, setViewNameValue] = useState('')
   const viewNameInputRef = useRef<HTMLInputElement>(null)
+  const viewTabsRef = useRef<HTMLDivElement>(null)
 
   // The trace view's zoom is shared with the read workspace's own slider.
   const traceZoom = useSyncExternalStore(subscribeTraceView, () => getTraceView().zoom, () => getTraceView().zoom)
@@ -653,7 +661,6 @@ export default function App() {
   // Theme & info popovers
   const [themeOpen, setThemeOpen] = useState(false)
   const [infoOpen, setInfoOpen] = useState(false)
-  const [shortcutsOpen, setShortcutsOpen] = useState(false)
   const themePopRef = useRef<HTMLDivElement>(null)
   const infoPopRef = useRef<HTMLDivElement>(null)
   const themeBtnRef = useRef<HTMLButtonElement>(null)
@@ -1893,63 +1900,36 @@ export default function App() {
             <div className="info-body">
               <div className="info-logo"><Dna size={28} /></div>
               <div className="info-title">SeqNexus</div>
-              <div className="info-version">v1.0.0</div>
+              <div className="info-version">Version {BUILD_DATE}</div>
+              {/* No feature list: one fell behind the app, and any would again. */}
               <div className="info-desc">
-                Browser-based molecular biology sequence editor. View, edit, and annotate DNA sequences with plasmid maps, restriction analysis, ORF finding, primer design, sequence alignment, Sanger trace viewing, and in-silico cloning.
+                A sequence editor for molecular cloning that runs entirely in your browser.
               </div>
               <hr />
-              <div className="info-row"><span className="info-label">Author</span><span><a href="mailto:contact@seqnexus.app">Christopher Acatay</a></span></div>
+              <div className="info-row"><span className="info-label">Contact</span><span><a href="mailto:contact@seqnexus.app">Christopher Acatay</a></span></div>
               <div className="info-row"><span className="info-label">License</span><span><a href="https://www.gnu.org/licenses/agpl-3.0.html" target="_blank" rel="noopener noreferrer">GNU AGPL v3</a></span></div>
               {/* The AGPL obliges anyone running a modified copy to offer its
                   source to the people using it; a link here is how this copy
                   does that, and one a fork keeps by default. */}
               <div className="info-row"><span className="info-label">Source</span><span><a href="https://github.com/cacat-ayy/seqnexus" target="_blank" rel="noopener noreferrer">github.com/cacat-ayy/seqnexus</a></span></div>
               <hr />
+              {/* The two questions users actually have. Only BLAST sends a
+                  sequence anywhere (blast/client.ts); NCBI fetch only sends
+                  an accession. Keep this true if that changes. */}
               <div className="info-notice">
-                <strong>Free to use.</strong> SeqNexus is open-source under the GNU AGPL v3: you may use, modify and share it, and modified versions you distribute or host must publish their source under the same license. All generated figures may be used freely in publications, presentations, theses, and commercial work.
+                <p><strong>Your data stays here.</strong> Sequences are kept in this browser and never uploaded, except to NCBI when you run a BLAST search.</p>
+                <p>Figures you make may be used freely in publications, theses and commercial work.</p>
               </div>
               <hr />
               <div className="info-section-title">How to Cite</div>
-              <div className="info-cite">
-                Acatay, C. (2026). SeqNexus: a browser-based molecular biology sequence editor. Available at <a href="https://seqnexus.app" target="_blank" rel="noopener noreferrer">seqnexus.app</a>
-              </div>
-              <button
-                className="info-copy-cite"
-                onClick={(e) => {
-                  const btn = e.currentTarget
-                  navigator.clipboard.writeText(CITATION_TEXT).then(() => {
-                    btn.textContent = 'Copied!'
-                    setTimeout(() => { btn.textContent = 'Copy citation' }, 1500)
-                  })
-                }}
-              >
-                Copy citation
-              </button>
-              <hr />
-              <div
-                className={`info-section-title info-collapsible${shortcutsOpen ? '' : ' collapsed'}`}
-                onClick={() => setShortcutsOpen(v => !v)}
-              >
-                Keyboard Shortcuts
-                <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
-              </div>
-              <div className={`info-shortcuts-body${shortcutsOpen ? '' : ' collapsed'}`}>
-                <div className="info-shortcut"><span className="shortcut-keys"><kbd>Ctrl</kbd>+<kbd>Z</kbd></span><span className="shortcut-desc">Undo</span></div>
-                <div className="info-shortcut"><span className="shortcut-keys"><kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>Z</kbd> / <kbd>Ctrl</kbd>+<kbd>Y</kbd></span><span className="shortcut-desc">Redo</span></div>
-                <div className="info-shortcut"><span className="shortcut-keys"><kbd>Ctrl</kbd>+<kbd>C</kbd></span><span className="shortcut-desc">Copy selection</span></div>
-                <div className="info-shortcut"><span className="shortcut-keys"><kbd>Ctrl</kbd>+<kbd>X</kbd></span><span className="shortcut-desc">Cut selection</span></div>
-                <div className="info-shortcut"><span className="shortcut-keys"><kbd>Ctrl</kbd>+<kbd>V</kbd></span><span className="shortcut-desc">Paste</span></div>
-                <div className="info-shortcut"><span className="shortcut-keys"><kbd>Ctrl</kbd>+<kbd>A</kbd></span><span className="shortcut-desc">Select all</span></div>
-                <div className="info-shortcut"><span className="shortcut-keys"><kbd>Ctrl</kbd>+<kbd>F</kbd></span><span className="shortcut-desc">Find / Replace</span></div>
-                <div className="info-shortcut"><span className="shortcut-keys"><kbd>Ctrl</kbd>+<kbd>G</kbd></span><span className="shortcut-desc">Go to position</span></div>
-                <div className="info-shortcut"><span className="shortcut-keys"><kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>S</kbd></span><span className="shortcut-desc">Export sequence</span></div>
-                <div className="info-shortcut"><span className="shortcut-keys"><kbd>Ctrl</kbd>+<kbd>P</kbd></span><span className="shortcut-desc">Export PDF</span></div>
-                <div className="info-shortcut"><span className="shortcut-keys"><kbd>Shift</kbd>+<kbd>Arrow</kbd></span><span className="shortcut-desc">Extend selection</span></div>
-                <div className="info-shortcut"><span className="shortcut-keys"><kbd>Home</kbd> / <kbd>End</kbd></span><span className="shortcut-desc">Jump to start / end</span></div>
-                <div className="info-shortcut"><span className="shortcut-keys"><kbd>Delete</kbd> / <kbd>Backspace</kbd></span><span className="shortcut-desc">Delete base(s)</span></div>
-                <div className="info-shortcut"><span className="shortcut-keys"><kbd>A</kbd><kbd>T</kbd><kbd>G</kbd><kbd>C</kbd></span><span className="shortcut-desc">Type / insert base</span></div>
-                <div className="info-shortcut"><span className="shortcut-keys"><kbd>Ctrl</kbd>+<kbd>Scroll</kbd></span><span className="shortcut-desc">Zoom in / out</span></div>
-                <div className="info-shortcut"><span className="shortcut-keys"><kbd>Esc</kbd></span><span className="shortcut-desc">Clear selection</span></div>
+              <div className="info-cite">{CITATION_TEXT}</div>
+              <div className="info-cite-actions">
+                <button className="info-copy-cite" onClick={() => { void copyText(CITATION_TEXT, 'Citation copied') }}>
+                  Copy citation
+                </button>
+                <button className="info-copy-cite" onClick={() => { void copyText(CITATION_BIBTEX, 'BibTeX copied') }}>
+                  Copy BibTeX
+                </button>
               </div>
               <hr />
               <div className="info-legal">
@@ -2061,7 +2041,7 @@ export default function App() {
           ) : (
             <>
               {/* View mode tabs */}
-              <div className="view-tabs">
+              <div className="view-tabs" ref={viewTabsRef}>
                 <button
                   className={`view-tab ${viewMode === 'linear' ? 'active' : ''}`}
                   onClick={() => setViewMode('linear')}
@@ -2081,6 +2061,18 @@ export default function App() {
                   Split
                 </button>
                 <span className="view-info">
+                  {/* Beside the name, where you look to see which sequence is
+                      open; the status-bar button is easy to miss. Shown only
+                      when locked: an open padlock on every sequence is noise. */}
+                  {readOnly && (
+                    <button
+                      className="view-lock"
+                      onClick={toggleReadOnly}
+                      {...tip({ label: 'Read-only', desc: 'Editing is off for this sequence. Click to unlock it.' })}
+                    >
+                      <Lock size={12} />
+                    </button>
+                  )}
                   {editingViewName ? (
                     <input
                       ref={viewNameInputRef}
@@ -2120,6 +2112,8 @@ export default function App() {
                   )}
                 </span>
               </div>
+              {/* Mounted with the bar so it finds the ref on its first effect. */}
+              <ToolbarTooltip container={viewTabsRef} />
 
               {/* Panel bar */}
               <div className="panel-bar">
@@ -2317,6 +2311,7 @@ export default function App() {
                   </button>
                   <span className="status-sep" />
                   <button
+                    ref={lockBtnRef}
                     className={`status-lock ${readOnly ? 'locked' : ''}${lockFlash ? ' flash' : ''}`}
                     onClick={toggleReadOnly}
                     title={readOnly ? 'Editing disabled - click to enable' : 'Editing enabled - click to lock'}

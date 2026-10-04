@@ -949,7 +949,7 @@
 .info-version {
   text-align: center;
   font-size: var(--text-xs);
-  font-family: 'SF Mono', 'Fira Code', 'Cascadia Code', 'Consolas', monospace;
+  font-family: var(--font-mono);
   color: var(--text-muted);
   margin-bottom: var(--space-2);
 }
@@ -971,6 +971,9 @@
 .info-label {
   color: var(--text-muted);
 }
+.info-row a {
+  color: var(--accent);
+}
 
 .info-notice {
   font-size: var(--text-sm);
@@ -980,6 +983,8 @@
   border-radius: var(--radius-sm);
   padding: var(--space-2-5) var(--space-3);
 }
+.info-notice p { margin: 0; }
+.info-notice p + p { margin-top: var(--space-2); }
 
 .info-section-title {
   font-size: var(--text-xs);
@@ -999,6 +1004,9 @@
   border-radius: var(--radius-input);
   padding: var(--space-2-5) var(--space-3);
   margin-bottom: var(--space-2);
+  /* One click selects the whole citation, ready to copy. */
+  user-select: all;
+  cursor: text;
 }
 .info-cite a {
   color: var(--accent);
@@ -1025,60 +1033,10 @@
 .info-copy-cite:hover {
   background: var(--accent-bg);
 }
-
-.info-collapsible {
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  user-select: none;
-  padding: var(--space-1) 0;
-  margin-bottom: 0;
-  transition: margin-bottom .15s;
-}
-.info-collapsible svg {
-  transition: transform var(--dur-fast);
-}
-.info-collapsible.collapsed svg {
-  transform: rotate(-90deg);
-}
-.info-shortcuts-body {
-  overflow: hidden;
-  transition: max-height .25s ease, opacity .2s;
-}
-.info-shortcuts-body.collapsed {
-  max-height: 0;
-  opacity: 0;
-  margin: 0;
-}
-
-.info-shortcut {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: var(--space-1) 0;
-  font-size: var(--text-sm);
-}
-
-.shortcut-keys {
-  display: flex;
-  gap: var(--space-0-5);
-  align-items: center;
-}
-
-.shortcut-keys kbd {
-  display: inline-block;
-  padding: var(--space-0-5) var(--space-1);
-  font-size: var(--text-xs);
-  font-family: inherit;
-  background: var(--bg-hover);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-  color: var(--text-secondary);
-}
-
-.shortcut-desc {
-  color: var(--text-secondary);
+.info-cite-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--space-2);
 }
 
 .info-legal {
@@ -1258,6 +1216,21 @@
 }
 .view-info-name {
   cursor: default;
+}
+.view-lock {
+  display: inline-flex;
+  align-items: center;
+  vertical-align: middle;
+  margin-right: var(--space-1-5);
+  padding: var(--space-0-5);
+  background: none;
+  border: none;
+  border-radius: var(--radius-xs);
+  color: var(--accent);
+  cursor: pointer;
+}
+.view-lock:hover {
+  background: var(--accent-bg);
 }
 .view-info-name:hover {
   color: var(--text);

@@ -360,3 +360,26 @@ export function buildNodes(input: BuildNodesInput, now = Date.now()): BuildNodes
 
   return { nodes, itemUids, matchCount }
 }
+
+/**
+ * The collapsed group to open so `uid` is on screen, or null when nothing
+ * needs opening: it is already in an open group, or not in any group.
+ *
+ * Asks buildNodes where the item lands rather than repeating its rules, so it
+ * stays right in every grouping mode, including an item nested under the
+ * sequence it came from. Favorites are skipped: they are a shortcut, not the
+ * item's home.
+ */
+export function collapsedGroupHolding(input: BuildNodesInput, uid: string): string | null {
+  const { nodes } = buildNodes({ ...input, collapsedGroups: new Set() })
+  const holding: string[] = []
+  let group: string | null = null
+  for (const node of nodes) {
+    if (node.type === 'group') group = node.key
+    else if (node.type === 'item' && node.item.uid === uid && group && group !== FAVORITES_KEY) {
+      if (!input.collapsedGroups.has(group)) return null
+      if (!holding.includes(group)) holding.push(group)
+    }
+  }
+  return holding[0] ?? null
+}

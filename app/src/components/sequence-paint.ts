@@ -1093,7 +1093,11 @@ export function paintSequenceRows(
         // Codon boundaries in genomic coordinates. A reverse frame counts
         // its offset from the 3' end, which is where its ribosome starts.
         const anchor = frame.strand === 1 ? frame.offset : (seqLen - frame.offset) % 3
-        const first = rowStart + ((anchor - rowStart) % 3 + 3) % 3
+        let first = rowStart + ((anchor - rowStart) % 3 + 3) % 3
+        // Start from a codon begun on the line above, so its last one or two
+        // bases still get their chip here. The letter sits on the middle base,
+        // so it lands on whichever side of the break holds two of the three.
+        if (first > rowStart && first - 3 >= 0) first -= 3
 
         for (let pos = first; pos + 2 < Math.min(rowEnd + 2, seqLen); pos += 3) {
           const bases = doc.sequence.basesIn(pos, Math.min(pos + 3, seqLen)).toUpperCase()
@@ -1269,10 +1273,20 @@ export function paintSequenceRows(
           ? ann.color
           : aminoAcidFill(aaStyle, aa)
 
+        // A codon is found by its first base in reading order, which for one
+        // split by the line break can sit up to two bases outside this row:
+        // before it on the forward strand, after it on the reverse. Look that
+        // far out so the piece in this row still gets its chip, and its letter
+        // when the middle base is here. Kept inside the feature, and not for
+        // one across the origin, whose offsets do not run past the row.
+        const reach = ann.spansOrigin() ? 0 : 2
+        const scanFrom = Math.max(aStart - reach, ann.start)
+        const scanTo = Math.min(aEnd + reach, ann.end)
+
         // Draw codon backgrounds spanning the 3 nucleotide columns:
         // alternating plain blocks, or chips filled with the residue's
         // colour, as in the frame translations above.
-        for (let pos = aStart; pos < aEnd; pos++) {
+        for (let pos = scanFrom; pos < scanTo; pos++) {
           const fOffset = fullAnnOffset(ann, pos)
           if (fOffset % 3 !== 0) continue
           const lOffset = localOffset(ann, pos, data)
@@ -1296,7 +1310,7 @@ export function paintSequenceRows(
         ctx.textBaseline = 'middle'
         ctx.textAlign = 'center'
         const aaHalfBp = L.bpWidth / 2
-        for (let pos = aStart; pos < aEnd; pos++) {
+        for (let pos = scanFrom; pos < scanTo; pos++) {
           const fOffset = fullAnnOffset(ann, pos)
           if (fOffset % 3 !== 0) continue
           const lOffset = localOffset(ann, pos, data)

@@ -122,6 +122,12 @@ export default defineConfig({
   esbuild: {
     legalComments: 'none',
   },
+  // The build date is the version shown in About and in the citation. Not a
+  // commit hash: app.html is built before the commit that contains it, so it
+  // could only ever name the commit before its own.
+  define: {
+    __BUILD_DATE__: JSON.stringify(new Date().toISOString().slice(0, 10)),
+  },
   test: {
     globals: true,
     environment: 'jsdom',

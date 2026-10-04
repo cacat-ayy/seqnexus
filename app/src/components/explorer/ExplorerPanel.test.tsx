@@ -286,3 +286,38 @@ describe('a cloning design in the explorer', () => {
     expect(store().clones).toHaveLength(0)
   })
 })
+
+describe('ExplorerPanel reveals what was just created', () => {
+  const rowNames = () => rows().map(r => r.textContent ?? '')
+  beforeEach(() => {
+    for (const t of store().tabs) store().closeTab(t.id)
+    useEditorStore.setState({ itemMeta: {}, folders: [], gels: [], activeGelId: null })
+    localStorage.setItem('seqnexus:explorer-settings', JSON.stringify({ collapsedGroups: ['gel'] }))
+  })
+  afterEach(() => {
+    cleanup()
+    localStorage.removeItem('seqnexus:explorer-settings')
+  })
+
+  it('opens the collapsed group a new gel lands in', () => {
+    act(() => { store().createGel({ name: 'Old gel', activate: false }) })
+    renderPanel()
+    expect(rowNames().some(n => n.includes('Old gel'))).toBe(false)
+    act(() => { store().createGel({ name: 'New gel' }) })
+    expect(rowNames().some(n => n.includes('New gel'))).toBe(true)
+  })
+
+  it('leaves the group collapsed when an existing gel is opened', () => {
+    let id = ''
+    act(() => { id = store().createGel({ name: 'Old gel', activate: false }) })
+    renderPanel()
+    act(() => { store().setActiveGel(id) })
+    expect(rowNames().some(n => n.includes('Old gel'))).toBe(false)
+  })
+
+  it('leaves the group collapsed for a gel made but not opened', () => {
+    renderPanel()
+    act(() => { store().createGel({ name: 'Quiet gel', activate: false }) })
+    expect(rowNames().some(n => n.includes('Quiet gel'))).toBe(false)
+  })
+})

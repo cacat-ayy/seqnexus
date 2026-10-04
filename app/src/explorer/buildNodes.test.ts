@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import type { ExplorerFolder } from '../store'
 import {
-  buildNodes, FAVORITES_KEY, UNGROUPED_KEY, UNTAGGED_KEY, type ExplorerNode,
+  buildNodes, collapsedGroupHolding, FAVORITES_KEY, UNGROUPED_KEY, UNTAGGED_KEY, type ExplorerNode,
 } from './buildNodes'
 import type { ExplorerItem, GroupBy, ItemKind, SortBy, SortDir } from './types'
 import { toUid } from './types'
@@ -452,5 +452,51 @@ describe('buildNodes keys', () => {
   it('still draws a folder under each kind it holds', () => {
     const { nodes } = build(shared)
     expect(nodes.filter(n => n.type === 'folder' && n.folder.id === 'f1')).toHaveLength(2)
+  })
+})
+
+describe('collapsedGroupHolding', () => {
+  const seq = item('sequence', 't1', 'pUC19')
+  const gel = item('gel', 'g1', 'Gel 1', { createdAt: 1 })
+  const input = (over: { collapsed?: string[]; groupBy?: GroupBy; tags?: Record<string, string[]>; starred?: string[]; nestDerived?: boolean; byKind?: Partial<Record<ItemKind, ExplorerItem[]>> }) => ({
+    byKind: { ...empty, sequence: [seq], gel: [gel], ...over.byKind },
+    folders: [],
+    starred: new Set(over.starred ?? []),
+    tagsByUid: over.tags ?? {},
+    collapsedGroups: new Set(over.collapsed ?? []),
+    query: '',
+    groupBy: over.groupBy ?? 'type',
+    sortBy: 'name' as SortBy,
+    sortDir: 'asc' as SortDir,
+    nestDerived: over.nestDerived,
+  })
+
+  it('names the collapsed kind group an item sits in', () => {
+    expect(collapsedGroupHolding(input({ collapsed: ['gel'] }), gel.uid)).toBe('gel')
+  })
+
+  it('needs nothing when the group is already open', () => {
+    expect(collapsedGroupHolding(input({ collapsed: ['sequence'] }), gel.uid)).toBeNull()
+  })
+
+  it('finds the group of the parent an item is nested under', () => {
+    const align = item('alignment', 'a1', 'MSA', { derivedFrom: [seq.uid] })
+    const i = input({ collapsed: ['sequence', 'alignment'], nestDerived: true, byKind: { alignment: [align] } })
+    expect(collapsedGroupHolding(i, align.uid)).toBe('sequence')
+  })
+
+  it('needs nothing when one of several tag groups holding it is open', () => {
+    const tags = { [gel.uid]: ['a', 'b'] }
+    expect(collapsedGroupHolding(input({ groupBy: 'tag', tags, collapsed: ['tag:a'] }), gel.uid)).toBeNull()
+    expect(collapsedGroupHolding(input({ groupBy: 'tag', tags, collapsed: ['tag:a', 'tag:b'] }), gel.uid)).toBe('tag:a')
+  })
+
+  it('ignores Favorites, which is not the item\'s home', () => {
+    const i = input({ starred: [gel.uid], collapsed: [FAVORITES_KEY, 'gel'] })
+    expect(collapsedGroupHolding(i, gel.uid)).toBe('gel')
+  })
+
+  it('has nothing to open in the flat list', () => {
+    expect(collapsedGroupHolding(input({ groupBy: 'flat' }), gel.uid)).toBeNull()
   })
 })
