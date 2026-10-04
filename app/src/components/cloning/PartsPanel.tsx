@@ -1,15 +1,15 @@
 /**
  * The parts going into a design, and what to do with each.
  *
- * A part is a sequence, or a stretch of one. Which role it plays decides what
- * the engine makes of it — the vector is the backbone a product is named
- * after and reads from — and the rest of the controls are the handful of
- * things that genuinely change the outcome: which way round it may go, which
- * fragment of its digest is being used, and whether its ends were
- * dephosphorylated.
+ * A part is a sequence, or a stretch of one. Each sits on one line — its
+ * colour, name, size and role — with a second line saying what it goes into
+ * the reaction as, and anything set away from the default. The settings that
+ * are rarely touched (which way round it may go, which fragment of its digest
+ * is used, whether its ends were dephosphorylated) open beneath it on click.
  */
 
-import { ArrowLeftRight, Crosshair, Trash2, TriangleAlert } from 'lucide-react'
+import { useState } from 'react'
+import { ChevronRight, Crosshair, Trash2, TriangleAlert } from 'lucide-react'
 import type { Fragment } from '../../cloning/fragment'
 import { endLabel } from '../../cloning/ends'
 import {
@@ -45,6 +45,12 @@ function fragmentsOf(part: DesignPart, fragments: Fragment[]): Fragment[] {
     .sort((a, b) => b.top.length - a.top.length)
 }
 
+const ORIENTATION_NOTE: Record<PartOrientation, string | null> = {
+  auto: null,
+  forward: 'only as given',
+  reverse: 'reverse complement',
+}
+
 export default function PartsPanel({
   design,
   fragments,
@@ -56,7 +62,15 @@ export default function PartsPanel({
   onRefresh,
   onReveal,
 }: Props) {
+  const [expanded, setExpanded] = useState<ReadonlySet<string>>(new Set())
   const cut = design.method === 'restriction' || design.method === 'golden-gate'
+
+  const toggle = (id: string) => setExpanded(current => {
+    const next = new Set(current)
+    if (next.has(id)) next.delete(id)
+    else next.add(id)
+    return next
+  })
 
   return (
     <div className="cw-parts">
@@ -73,11 +87,19 @@ export default function PartsPanel({
         const chosen = part.keep
           ? options.find(f => f.source.start === part.keep!.start && f.source.end === part.keep!.end)
           : options[0]
+        const open = expanded.has(part.id)
+
+        const summary = [
+          cut && chosen ? `${formatBp(chosen.top.length)} piece, ends ${endLabel(chosen.left!)} · ${endLabel(chosen.right!)}` : null,
+          ORIENTATION_NOTE[part.orientation],
+          part.region ? 'selection only' : null,
+          design.method === 'restriction' && part.dephosphorylated ? 'dephosphorylated' : null,
+        ].filter((s): s is string => !!s)
 
         return (
           <div
             key={part.id}
-            className={`cw-part ${hovered === part.id ? 'hovered' : ''}`}
+            className={`cw-part ${hovered === part.id ? 'hovered' : ''} ${open ? 'open' : ''}`}
             onMouseEnter={() => onHover(part.id)}
             onMouseLeave={() => onHover(null)}
           >
@@ -85,12 +107,18 @@ export default function PartsPanel({
 
             <div className="cw-part-main">
               <div className="cw-part-top">
-                <input
-                  className="cw-part-name"
-                  value={part.name}
-                  aria-label="Part name"
-                  onChange={e => onChange(part.id, { name: e.target.value }, `name-${part.id}`)}
-                />
+                <button
+                  className="cw-part-toggle"
+                  onClick={() => toggle(part.id)}
+                  aria-expanded={open}
+                  title={open ? 'Hide settings' : 'Show settings'}
+                >
+                  <ChevronRight size={14} className="cw-chevron" />
+                  <span className="cw-part-title">{part.name}</span>
+                </button>
+                <span className="cw-part-size">
+                  {formatBp(partLength(part))}{partTopology(part) === 'circular' ? ' circular' : ''}
+                </span>
                 <select
                   className="select cw-part-role"
                   value={part.role}
@@ -100,90 +128,91 @@ export default function PartsPanel({
                   <option value="vector">Vector</option>
                   <option value="insert">Insert</option>
                 </select>
+                <span className="cw-part-actions">
+                  {part.source && sources.has(part.source.id) && (
+                    <button
+                      className="cw-icon-btn"
+                      onClick={() => onReveal(part)}
+                      title="Show this part on its sequence"
+                      aria-label="Show this part on its sequence"
+                    >
+                      <Crosshair size={14} />
+                    </button>
+                  )}
+                  <button
+                    className="cw-icon-btn"
+                    onClick={() => onRemove(part.id)}
+                    title="Remove this part"
+                    aria-label="Remove this part"
+                  >
+                    <Trash2 size={14} />
+                  </button>
+                </span>
               </div>
 
-              <div className="cw-part-meta">
-                <span>{formatBp(partLength(part))}</span>
-                <span>{partTopology(part) === 'circular' ? 'circular' : 'linear'}</span>
-                {part.region && <span className="cw-part-region">region</span>}
-                {source && <span className="cw-part-source">from {source.name}</span>}
-              </div>
+              {summary.length > 0 && <p className="cw-part-summary">{summary.join(' · ')}</p>}
 
               {stale && (
                 <button className="cw-part-stale" onClick={() => onRefresh(part.id)}>
-                  <TriangleAlert size={12} />
+                  <TriangleAlert size={13} />
                   {source?.name} has been edited since. Use the current sequence?
                 </button>
               )}
 
-              <div className="cw-part-controls">
-                <label className="cw-part-field">
-                  <ArrowLeftRight size={12} />
-                  <select
-                    className="select"
-                    value={part.orientation}
-                    aria-label="Orientation"
-                    onChange={e => onChange(part.id, { orientation: e.target.value as PartOrientation })}
-                  >
-                    <option value="auto">Either way round</option>
-                    <option value="forward">As given</option>
-                    <option value="reverse">Reverse complement</option>
-                  </select>
-                </label>
-
-                {cut && options.length > 1 && (
-                  <label className="cw-part-field">
-                    <span className="cw-part-label">Use</span>
+              {open && (
+                <div className="cw-part-details">
+                  <label className="cw-detail">
+                    <span>Name</span>
+                    <input
+                      className="input"
+                      value={part.name}
+                      onChange={e => onChange(part.id, { name: e.target.value }, `name-${part.id}`)}
+                    />
+                  </label>
+                  <label className="cw-detail">
+                    <span>Goes in</span>
                     <select
                       className="select"
-                      value={chosen ? `${chosen.source.start}:${chosen.source.end}` : ''}
-                      aria-label="Which fragment to use"
-                      onChange={e => {
-                        const [start, end] = e.target.value.split(':').map(Number)
-                        onChange(part.id, { keep: { start, end } })
-                      }}
+                      value={part.orientation}
+                      onChange={e => onChange(part.id, { orientation: e.target.value as PartOrientation })}
                     >
-                      {options.map(f => (
-                        <option key={f.id} value={`${f.source.start}:${f.source.end}`}>
-                          {formatBp(f.top.length)} · {endLabel(f.left!)} – {endLabel(f.right!)}
-                        </option>
-                      ))}
+                      <option value="auto">Either way round</option>
+                      <option value="forward">As given</option>
+                      <option value="reverse">Reverse complement</option>
                     </select>
                   </label>
-                )}
-
-                {design.method === 'restriction' && (
-                  <label className="cw-part-check" title="Stops this part closing on itself">
-                    <input
-                      type="checkbox"
-                      checked={part.dephosphorylated ?? false}
-                      onChange={e => onChange(part.id, { dephosphorylated: e.target.checked })}
-                    />
-                    Dephosphorylated
-                  </label>
-                )}
-              </div>
-
-              {cut && chosen && (
-                <p className="cw-part-ends">
-                  Ends: {endLabel(chosen.left!)} and {endLabel(chosen.right!)}
-                </p>
+                  {cut && options.length > 1 && (
+                    <label className="cw-detail">
+                      <span>Fragment</span>
+                      <select
+                        className="select"
+                        value={chosen ? `${chosen.source.start}:${chosen.source.end}` : ''}
+                        onChange={e => {
+                          const [start, end] = e.target.value.split(':').map(Number)
+                          onChange(part.id, { keep: { start, end } })
+                        }}
+                      >
+                        {options.map(f => (
+                          <option key={f.id} value={`${f.source.start}:${f.source.end}`}>
+                            {formatBp(f.top.length)} · {endLabel(f.left!)} – {endLabel(f.right!)}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                  )}
+                  {design.method === 'restriction' && (
+                    <label className="cw-detail-check" title="Stops this part closing on itself">
+                      <input
+                        type="checkbox"
+                        checked={part.dephosphorylated ?? false}
+                        onChange={e => onChange(part.id, { dephosphorylated: e.target.checked })}
+                      />
+                      Dephosphorylated
+                    </label>
+                  )}
+                  {source && <p className="cw-detail-note">From {source.name}{part.region ? ', the selected stretch' : ''}</p>}
+                </div>
               )}
-            </div>
-
-            <div className="cw-part-actions">
-              {part.source && sources.has(part.source.id) && (
-                <button
-                  className="cw-icon-btn"
-                  onClick={() => onReveal(part)}
-                  title="Show this part on its sequence"
-                >
-                  <Crosshair size={13} />
-                </button>
-              )}
-              <button className="cw-icon-btn" onClick={() => onRemove(part.id)} title="Remove this part">
-                <Trash2 size={13} />
-              </button>
             </div>
           </div>
         )

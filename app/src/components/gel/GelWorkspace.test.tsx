@@ -56,7 +56,7 @@ describe('GelWorkspace', () => {
     const user = userEvent.setup()
     render(<Harness />)
     await user.type(screen.getByRole('combobox', { name: 'Enzymes' }), 'EcoRI+')
-    expect(screen.getByText('EcoRI', { selector: '.gw-enzyme-chip' })).toBeInTheDocument()
+    expect(screen.getByText('EcoRI', { selector: '.ef-chip' })).toBeInTheDocument()
     expect(screen.getByText('4.0 kb', { selector: 'td' })).toBeInTheDocument()
     expect(screen.getByText('EcoRI / EcoRI')).toBeInTheDocument()
   })

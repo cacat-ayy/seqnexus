@@ -1,0 +1,187 @@
+/**
+ * What a run of a design means to the person designing it.
+ *
+ * The engines report products; this says which one is the construct, what
+ * each of the others is in plain words ("pUC19 closed on itself" rather than
+ * a second "pUC19::pUC19"), and — when the construct does not form — what
+ * single change to the design would make it form. Every fix offered has been
+ * tried: the design is re-run with it, and only changes that give the
+ * construct are suggested.
+ */
+
+import { ENZYME_GROUPS, getEnzyme } from '../enzymes/db'
+import { cuttingSites, findCutSites } from '../enzymes/finder'
+import type { Assembly } from './product'
+import { chosenFragment, runDesign, type RunResult } from './run'
+import type { Fragment } from './fragment'
+import {
+  partBases,
+  partTopology,
+  vectorsFirst,
+  type CloningDesign,
+  type DesignPart,
+} from './design'
+
+/** Every part, once each, closed into a circle that the enzymes leave alone. */
+export function isIntended(product: Assembly): boolean {
+  return product.usesAll && product.topology === 'circular' && product.recut.length === 0
+}
+
+/**
+ * The design part a product's piece came from. Seamless assembly keeps the
+ * part's own id; a digest names its fragments `partId:index`.
+ */
+export function designPartFor(fragmentId: string, parts: readonly DesignPart[]): DesignPart | undefined {
+  return parts.find(p => fragmentId === p.id || fragmentId.startsWith(`${p.id}:`))
+}
+
+/** The fragment of its digest a part goes into the reaction as. */
+export function keptFragment(part: DesignPart, fragments: readonly Fragment[]): Fragment | null {
+  return chosenFragment(part, fragments.filter(f => f.id.startsWith(`${part.id}:`)))
+}
+
+/** What a product is, in the words someone would use at the bench. */
+export function productLabel(product: Assembly, design: CloningDesign): string {
+  if (isIntended(product)) return 'The construct'
+
+  const pieces = product.parts.map(p => ({ piece: p, part: designPartFor(p.fragmentId, design.parts) }))
+  const names = [...new Set(pieces.map(({ piece, part }) => part?.name ?? piece.sourceName))]
+  const counts = new Map<string, number>()
+  for (const { part } of pieces) if (part) counts.set(part.id, (counts.get(part.id) ?? 0) + 1)
+  const repeated = design.parts.find(p => (counts.get(p.id) ?? 0) > 1)
+  const allVector = pieces.length > 0 && pieces.every(({ part }) => part?.role === 'vector')
+  const allInsert = pieces.length > 0 && pieces.every(({ part }) => part?.role === 'insert')
+
+  if (product.topology === 'linear') {
+    const base = names.length === 1 ? `${names[0]}, linear` : `Linear ${names.join(' + ')}`
+    const flippedInsert = pieces.find(({ piece, part }) => piece.reversed && part?.role !== 'vector')
+    return flippedInsert ? `${base}, ${flippedInsert.part?.name ?? flippedInsert.piece.sourceName} flipped` : base
+  }
+  if (allVector) {
+    return pieces.length === 1 ? `${names[0]} closed on itself` : `${names[0]} put back together`
+  }
+  if (allInsert && names.length === 1) return `${names[0]} on its own, in a circle`
+  if (repeated) return `Two copies of ${repeated.name}`
+  if (product.recut.length > 0) return `Cut again by ${product.recut.join(', ')}`
+  const flipped = pieces.find(({ piece, part }) => piece.reversed && part?.role === 'insert')
+  if (flipped) return `${flipped.part!.name} in backwards`
+  if (!product.usesAll) {
+    const missing = design.parts.filter(p => !counts.has(p.id)).map(p => p.name)
+    if (missing.length > 0) return `Without ${missing.join(' or ')}`
+  }
+  return names.join(' + ')
+}
+
+export interface DesignFix {
+  label: string
+  /** A change to the design that gives the construct, or a panel to open. */
+  apply: ((design: CloningDesign) => CloningDesign) | 'oligos'
+}
+
+/** The enzymes people clone with, for suggesting a different digest. */
+const CLONING_ENZYMES = [
+  ...new Set([
+    ...(ENZYME_GROUPS['Common (6-cutters)'] ?? []),
+    ...(ENZYME_GROUPS['Rare (8-cutters)'] ?? []),
+  ]),
+].sort()
+
+const TYPE_IIS = ENZYME_GROUPS['Golden Gate (Type IIS)'] ?? []
+
+const withPart = (id: string, changes: Partial<DesignPart>) => (d: CloningDesign): CloningDesign =>
+  ({ ...d, parts: d.parts.map(p => (p.id === id ? { ...p, ...changes } : p)) })
+
+const formatBp = (n: number) => (n >= 1000 ? `${(n / 1000).toFixed(n >= 10000 ? 0 : 1)} kb` : `${n} bp`)
+
+/**
+ * Enzymes that open the vector once and cut every other part: the ones worth
+ * trying when the chosen digest leaves nothing that fits.
+ */
+function usefulEnzymes(design: CloningDesign): string[] {
+  const parts = vectorsFirst(design.parts)
+  return CLONING_ENZYMES.filter(name => {
+    const enzyme = getEnzyme(name)
+    if (!enzyme) return false
+    return parts.every((part, i) => {
+      const n = cuttingSites(findCutSites(partBases(part), enzyme, partTopology(part))).length
+      return i === 0 && part.role === 'vector' ? n === 1 : n > 0
+    })
+  })
+}
+
+/**
+ * Up to `max` single changes that would make the construct form, tried in
+ * order of how small a change they are. Empty when the construct already
+ * forms, or when there is too little in the design to say what is meant.
+ */
+export function findFixes(design: CloningDesign, max = 3, result: RunResult = runDesign(design)): DesignFix[] {
+  if (design.parts.length < 2) return []
+  if (result.products.some(isIntended)) return []
+
+  if (design.method === 'homology') {
+    return result.products.length === 0
+      ? [{ label: 'Design primers that add the overlaps', apply: 'oligos' }]
+      : []
+  }
+  if (design.method !== 'restriction' && design.method !== 'golden-gate') return []
+
+  const fixes: DesignFix[] = []
+  const tried = new Set<string>()
+  const attempt = (label: string, apply: (d: CloningDesign) => CloningDesign) => {
+    if (fixes.length >= max || tried.has(label)) return
+    tried.add(label)
+    if (runDesign(apply(design)).products.some(isIntended)) fixes.push({ label, apply })
+  }
+
+  for (const part of design.parts) {
+    if (part.orientation !== 'auto') attempt(`Let ${part.name} go in either way round`, withPart(part.id, { orientation: 'auto' }))
+  }
+  if (design.method === 'restriction') {
+    for (const part of design.parts) {
+      if (part.dephosphorylated) attempt(`Leave ${part.name} phosphorylated`, withPart(part.id, { dephosphorylated: false }))
+    }
+  }
+
+  // Another fragment of the same digest: the band a part contributes.
+  for (const part of design.parts) {
+    const fragments = result.fragments
+      .filter(f => f.id.startsWith(`${part.id}:`) && f.topology === 'linear')
+      .sort((a, b) => b.top.length - a.top.length)
+    if (fragments.length < 2) continue
+    const chosen = part.keep
+      ? fragments.find(f => f.source.start === part.keep!.start && f.source.end === part.keep!.end)
+      : fragments[0]
+    for (const f of fragments.slice(0, 4)) {
+      if (f === chosen) continue
+      attempt(`Use the ${formatBp(f.top.length)} fragment of ${part.name}`,
+        withPart(part.id, { keep: { start: f.source.start, end: f.source.end } }))
+    }
+  }
+
+  if (design.method === 'golden-gate') {
+    for (const name of TYPE_IIS) {
+      if (name !== design.typeIIS) attempt(`Use ${name} instead`, d => ({ ...d, typeIIS: name }))
+    }
+    return fixes
+  }
+
+  if (design.enzymes.length > 1) {
+    for (const name of design.enzymes) {
+      attempt(`Leave out ${name}`, d => ({ ...d, enzymes: d.enzymes.filter(e => e !== name) }))
+    }
+  }
+  const useful = usefulEnzymes(design)
+  for (const name of useful) {
+    if (!design.enzymes.includes(name)) attempt(`Add ${name}`, d => ({ ...d, enzymes: [...d.enzymes, name] }))
+  }
+  // Two enzymes clone directionally, so a pair is worth more than one.
+  const pairs = useful.slice(0, 8)
+  for (let i = 0; i < pairs.length; i++) {
+    for (let j = i + 1; j < pairs.length; j++) {
+      attempt(`Cut with ${pairs[i]} + ${pairs[j]} instead`, d => ({ ...d, enzymes: [pairs[i], pairs[j]] }))
+    }
+  }
+  for (const name of useful) attempt(`Cut with ${name} instead`, d => ({ ...d, enzymes: [name] }))
+  if (design.purify) attempt('Don’t gel-purify the fragments', d => ({ ...d, purify: false }))
+  return fixes
+}

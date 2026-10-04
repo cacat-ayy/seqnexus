@@ -134,7 +134,7 @@ export function useExplorerItems(): ExplorerItems {
 
     const items = [
       ...byKind['sequence'], ...byKind['read'], ...byKind['alignment'],
-      ...byKind['contig'], ...byKind['gel'], ...byKind['oligo'],
+      ...byKind['contig'], ...byKind['gel'], ...byKind['clone'], ...byKind['oligo'],
     ]
 
     return { items, byKind, byUid: new Map(items.map(i => [i.uid, i])), open }

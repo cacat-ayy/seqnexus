@@ -24,14 +24,20 @@ import {
   METHOD_BLURB,
   METHOD_LABEL,
   needsOligos,
+  partBases,
   partFromDoc,
+  partTopology,
   sequenceHash,
+  vectorsFirst,
   type CloningDesign,
   type CloningMethodId,
   type DesignPart,
 } from '../../cloning/design'
-import { productDocument, productKey, runDesign, selectedProduct } from '../../cloning/run'
+import { productDocument, runDesign, selectedProduct } from '../../cloning/run'
+import { findFixes, type DesignFix } from '../../cloning/outcome'
 import { binsFromDesign, type BulkRow, type DesignBin } from '../../cloning/bulk'
+import EnzymeField, { type CutTarget } from '../EnzymeField'
+import { partColor } from './colors'
 import AssemblyDiagram from './AssemblyDiagram'
 import LibraryPanel from './LibraryPanel'
 import OligosPanel from './OligosPanel'
@@ -45,14 +51,6 @@ interface Props {
 }
 
 const METHODS: CloningMethodId[] = ['restriction', 'golden-gate', 'homology', 'gateway', 'topo']
-
-/** The enzymes offered for a plain digest: the ones people cut with. */
-const COMMON_ENZYMES = [
-  ...new Set([
-    ...(ENZYME_GROUPS['Common (6-cutters)'] ?? []),
-    ...(ENZYME_GROUPS['Rare (8-cutters)'] ?? []),
-  ]),
-].sort()
 
 const TYPE_IIS_ENZYMES = [...(ENZYME_GROUPS['Golden Gate (Type IIS)'] ?? [])].sort()
 
@@ -99,11 +97,44 @@ export default function CloneWorkspace({ clone, onClose }: Props) {
   // what the engines say now rather than what they said when it was saved.
   const result = useMemo(() => runDesign(design), [design])
   const chosen = selectedProduct(design, result.products)
-  const chosenKey = chosen ? productKey(chosen) : null
+  // What to try when the construct does not form; each is re-run first, so
+  // this only costs anything while the design is broken.
+  const fixes = useMemo(() => findFixes(design, 3, result), [design, result])
+
+  // The parts as the enzyme field counts cuts on them, vector first so its
+  // suggestions are the enzymes that open the vector once. Each keeps the
+  // colour it has in the parts list.
+  const cutTargets = useMemo((): CutTarget[] => {
+    const colorOf = new Map(design.parts.map((p, i) => [p.id, partColor(i)]))
+    return vectorsFirst(design.parts).map(part => ({
+      source: {
+        name: part.name,
+        bases: partBases(part),
+        topology: partTopology(part),
+        ...(part.damMethylated ? { damMethylated: true } : {}),
+        ...(part.dcmMethylated ? { dcmMethylated: true } : {}),
+      },
+      color: colorOf.get(part.id)!,
+    }))
+  }, [design.parts])
 
   const patch = useCallback(
     (changes: Partial<CloningDesign>, coalesceKey?: string) => {
       updateClone(clone.id, d => ({ ...d, ...changes }), coalesceKey)
+    },
+    [clone.id, updateClone],
+  )
+
+  const applyFix = useCallback(
+    (fix: DesignFix) => {
+      if (fix.apply === 'oligos') {
+        setAside('oligos')
+        return
+      }
+      // The construct is what the fix was chosen for, so it is what to show.
+      const apply = fix.apply
+      updateClone(clone.id, d => ({ ...apply(d), selected: undefined }))
+      notify.success(fix.label)
     },
     [clone.id, updateClone],
   )
@@ -216,16 +247,6 @@ export default function CloneWorkspace({ clone, onClose }: Props) {
     [clone.id, updateClone],
   )
 
-  const toggleEnzyme = useCallback(
-    (name: string) => {
-      updateClone(clone.id, d => ({
-        ...d,
-        enzymes: d.enzymes.includes(name) ? d.enzymes.filter(e => e !== name) : [...d.enzymes, name],
-      }))
-    },
-    [clone.id, updateClone],
-  )
-
   return (
     <div className="cw">
       <div className="cw-header">
@@ -304,34 +325,31 @@ export default function CloneWorkspace({ clone, onClose }: Props) {
         <div className="cw-left">
           <div className="cw-section">
             <h3 className="cw-section-title">Method</h3>
-            <div className="cw-methods">
+            <select
+              className="select cw-method-select"
+              value={design.method}
+              aria-label="Method"
+              onChange={e => patch({ method: e.target.value as CloningMethodId })}
+            >
               {METHODS.map(method => (
-                <button
-                  key={method}
-                  className={`cw-method ${design.method === method ? 'active' : ''}`}
-                  onClick={() => patch({ method })}
-                  title={METHOD_BLURB[method]}
-                >
-                  {METHOD_LABEL[method]}
-                </button>
+                <option key={method} value={method}>{METHOD_LABEL[method]}</option>
               ))}
-            </div>
+            </select>
             <p className="cw-blurb">{METHOD_BLURB[design.method]}</p>
 
             {design.method === 'restriction' && (
               <div className="cw-options">
-                <div className="cw-enzymes">
-                  {COMMON_ENZYMES.map(name => (
-                    <button
-                      key={name}
-                      className={`cw-enzyme ${design.enzymes.includes(name) ? 'on' : ''}`}
-                      onClick={() => toggleEnzyme(name)}
-                    >
-                      {name}
-                    </button>
-                  ))}
+                <div className="cw-field">
+                  Enzymes
+                  <EnzymeField
+                    value={design.enzymes}
+                    onChange={enzymes => patch({ enzymes })}
+                    targets={cutTargets}
+                    placeholder="Type e.g. EcoRI+PstI"
+                    suggestTitle={design.parts.length > 1 ? 'Recent, then vector once + inserts' : 'Recent and single cutters'}
+                  />
                 </div>
-                <label className="cw-part-check">
+                <label className="cw-check">
                   <input
                     type="checkbox"
                     checked={design.purify}
@@ -475,33 +493,39 @@ export default function CloneWorkspace({ clone, onClose }: Props) {
               onSaveRows={saveRows}
             />
           ) : (
-            <AssemblyDiagram
-              design={design}
-              product={chosen}
-              hovered={hovered}
-              onHover={setHovered}
-              onPick={id => setHovered(id)}
-            />
+            <div className="cw-stage">
+              <div className="cw-map">
+                <AssemblyDiagram
+                  design={design}
+                  product={chosen}
+                  fragments={result.fragments}
+                  hovered={hovered}
+                  onHover={setHovered}
+                  onPick={id => setHovered(id)}
+                />
+              </div>
+              {design.parts.length > 0 && (
+                <div className="cw-result">
+                  <ProductsPanel
+                    design={design}
+                    products={result.products}
+                    selected={chosen}
+                    problems={result.problems}
+                    warnings={result.warnings}
+                    fixes={fixes}
+                    {...(result.fidelity ? { fidelity: result.fidelity } : {})}
+                    onSelect={key => patch({ selected: key })}
+                    onOpen={product => {
+                      openDocumentState(productDocument(design, product))
+                      notify.success(`${product.name} opened as a sequence`)
+                    }}
+                    onFix={applyFix}
+                  />
+                </div>
+              )}
+            </div>
           )}
         </div>
-
-        {mode === 'one' && (
-          <div className="cw-right">
-            <h3 className="cw-section-title">Products</h3>
-            <ProductsPanel
-              products={result.products}
-              selectedKey={chosenKey}
-              problems={result.problems}
-              warnings={result.warnings}
-              {...(result.fidelity ? { fidelity: result.fidelity } : {})}
-              onSelect={key => patch({ selected: key })}
-              onOpen={product => {
-                openDocumentState(productDocument(design, product))
-                notify.success(`${product.name} opened as a sequence`)
-              }}
-            />
-          </div>
-        )}
       </div>
     </div>
   )

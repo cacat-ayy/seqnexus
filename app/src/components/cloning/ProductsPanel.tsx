@@ -1,128 +1,201 @@
 /**
- * What the reaction gives, and what to do with it.
+ * What the reaction gives, under the map.
  *
- * The product the design is for comes first and is marked as such; everything
- * else a real tube would also contain follows, because knowing that the
- * vector will mostly religate is worth as much as knowing the construct can
- * form. When nothing forms at all, this panel says why instead of showing an
- * empty list — that is the question people actually have.
+ * The product in front of you comes first, as one card that says what it is.
+ * Everything else a real tube would also contain is folded away beneath it,
+ * each named for what it is ("pUC19 closed on itself") rather than by a
+ * second copy of the same "pUC19::pUC19". Knowing the vector will mostly
+ * religate is worth something, but it should not crowd out the construct.
+ *
+ * When the construct does not form, this says why and offers the changes
+ * that would make it form, each tried before it is offered.
  */
 
-import { CircleCheck, CircleSlash, Info, TriangleAlert } from 'lucide-react'
+import { useState } from 'react'
+import { ChevronRight, CircleCheck, CircleSlash, Info, TriangleAlert, Wand2 } from 'lucide-react'
 import type { Assembly } from '../../cloning/product'
+import type { CloningDesign } from '../../cloning/design'
 import { productKey } from '../../cloning/run'
+import { isIntended, productLabel, type DesignFix } from '../../cloning/outcome'
 
 interface Props {
+  design: CloningDesign
   products: Assembly[]
-  selectedKey: string | null
+  selected: Assembly | null
   problems: string[]
   warnings: string[]
+  fixes: DesignFix[]
   fidelity?: { score: number; notes: string[] }
   onSelect: (key: string) => void
   onOpen: (product: Assembly) => void
+  onFix: (fix: DesignFix) => void
 }
 
 function formatBp(n: number): string {
   return n >= 1000 ? `${(n / 1000).toFixed(n >= 10000 ? 0 : 1)} kb` : `${n} bp`
 }
 
-/** What marks a product out, in the order worth saying it. */
-function tagsOf(product: Assembly): { text: string; tone: 'good' | 'warn' | 'plain' }[] {
-  const tags: { text: string; tone: 'good' | 'warn' | 'plain' }[] = []
-  if (product.usesAll && product.topology === 'circular' && product.recut.length === 0) {
-    tags.push({ text: 'the one you want', tone: 'good' })
-  }
+/** What marks a product out, beyond what its label already says. */
+function tagsOf(product: Assembly): { text: string; tone: 'warn' | 'plain' }[] {
+  const tags: { text: string; tone: 'warn' | 'plain' }[] = []
   if (product.recut.length > 0) tags.push({ text: `cut again by ${product.recut.join(', ')}`, tone: 'warn' })
-  if (product.topology === 'linear') tags.push({ text: 'linear', tone: 'plain' })
   if (product.nicked) tags.push({ text: 'nicked', tone: 'plain' })
   if (product.parts.some(p => p.reversed)) tags.push({ text: 'a part is flipped', tone: 'plain' })
   return tags
 }
 
+function Diagnosis({ title, problems, fixes, onFix }: {
+  title: string
+  problems: string[]
+  fixes: DesignFix[]
+  onFix: (fix: DesignFix) => void
+}) {
+  return (
+    <div className="cw-diagnosis" role="status">
+      <h4><CircleSlash size={15} />{title}</h4>
+      {problems.length > 0 && <ul>{problems.map((p, i) => <li key={i}>{p}</li>)}</ul>}
+      {fixes.length > 0 && (
+        <div className="cw-fixes">
+          <span className="cw-fixes-label">Try</span>
+          {fixes.map(fix => (
+            <button key={fix.label} className="cw-fix" onClick={() => onFix(fix)}>
+              <Wand2 size={12} />{fix.label}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
 export default function ProductsPanel({
+  design,
   products,
-  selectedKey,
+  selected,
   problems,
   warnings,
+  fixes,
   fidelity,
   onSelect,
   onOpen,
+  onFix,
 }: Props) {
-  if (products.length === 0) {
+  const [showOthers, setShowOthers] = useState(false)
+  const hasIntended = products.some(isIntended)
+
+  const warningList = warnings.length > 0 && (
+    <ul className="cw-warnings">
+      {warnings.map((w, i) => <li key={i}><Info size={13} />{w}</li>)}
+    </ul>
+  )
+
+  if (products.length === 0 || !selected) {
+    const onePart = design.parts.length === 1 && design.method !== 'gateway' && design.method !== 'topo'
     return (
-      <div className="cw-products">
-        <div className="cw-nothing">
-          <CircleSlash size={16} />
-          <h4>Nothing assembles yet</h4>
-          {problems.length > 0
-            ? <ul>{problems.map((p, i) => <li key={i}>{p}</li>)}</ul>
-            : <p>Add the parts and choose how they should be joined.</p>}
-        </div>
-        {warnings.length > 0 && (
-          <ul className="cw-warnings">
-            {warnings.map((w, i) => <li key={i}><TriangleAlert size={12} />{w}</li>)}
-          </ul>
-        )}
+      <div className="cw-outcome">
+        <Diagnosis
+          title="Nothing assembles yet"
+          problems={onePart ? [...problems, 'There is only one part so far. Add the insert under Parts.'] : problems}
+          fixes={fixes}
+          onFix={onFix}
+        />
+        {warningList}
       </div>
     )
   }
 
+  const selectedKey = productKey(selected)
+  const others = products.filter(p => productKey(p) !== selectedKey)
+  // Two molecules can share a description (the same pieces with different
+  // ends meeting), so a repeat is numbered rather than shown twice alike.
+  const otherLabels = (() => {
+    const seen = new Map<string, number>([[productLabel(selected, design), 1]])
+    return others.map(p => {
+      const label = productLabel(p, design)
+      const n = (seen.get(label) ?? 0) + 1
+      seen.set(label, n)
+      return n > 1 ? `${label} (${n})` : label
+    })
+  })()
+  const intended = isIntended(selected)
+  const tags = tagsOf(selected)
+
   return (
-    <div className="cw-products">
+    <div className="cw-outcome">
       {fidelity && (
         <div className={`cw-fidelity ${fidelity.score < 0.95 ? 'poor' : ''}`}>
           <span className="cw-fidelity-score">{(fidelity.score * 100).toFixed(0)}%</span>
           <span className="cw-fidelity-text">
-            of ligations should join the intended parts
-            {fidelity.notes.length > 0 ? ':' : '.'}
+            of ligations should join the intended parts{fidelity.notes.length > 0 ? ':' : '.'}
           </span>
-          {fidelity.notes.length > 0 && (
-            <ul>{fidelity.notes.map((n, i) => <li key={i}>{n}</li>)}</ul>
+          {fidelity.notes.length > 0 && <ul>{fidelity.notes.map((n, i) => <li key={i}>{n}</li>)}</ul>}
+        </div>
+      )}
+
+      {!hasIntended && (
+        <Diagnosis
+          title="The construct does not form"
+          problems={['None of these has every part once, closed into a circle.']}
+          fixes={fixes}
+          onFix={onFix}
+        />
+      )}
+
+      <div
+        className={`cw-result-card ${intended ? 'intended' : ''}`}
+        onDoubleClick={() => onOpen(selected)}
+        title="Double-click to open as a sequence"
+      >
+        <div className="cw-result-head">
+          {intended ? <CircleCheck size={16} className="cw-result-icon" /> : null}
+          <span className="cw-result-label">{productLabel(selected, design)}</span>
+          <span className="cw-result-size">{formatBp(selected.size)} {selected.topology}</span>
+        </div>
+        <div className="cw-result-name">{selected.name}</div>
+        {tags.length > 0 && (
+          <div className="cw-product-tags">
+            {tags.map(tag => <span key={tag.text} className={`cw-tag ${tag.tone}`}>{tag.text}</span>)}
+          </div>
+        )}
+        {selected.warnings.length > 0 && (
+          <ul className="cw-product-warnings">
+            {selected.warnings.map((w, i) => <li key={i}><TriangleAlert size={12} />{w}</li>)}
+          </ul>
+        )}
+      </div>
+
+      {others.length > 0 && (
+        <div className="cw-others">
+          <button
+            className="cw-others-toggle"
+            onClick={() => setShowOthers(s => !s)}
+            aria-expanded={showOthers}
+          >
+            <ChevronRight size={14} className="cw-chevron" />
+            {others.length} other product{others.length === 1 ? '' : 's'} in the tube
+          </button>
+          {showOthers && (
+            <ul className="cw-others-list">
+              {others.map((product, i) => (
+                <li key={productKey(product)}>
+                  <button
+                    className="cw-other"
+                    onClick={() => onSelect(productKey(product))}
+                    onDoubleClick={() => onOpen(product)}
+                    title="Click to look at it, double-click to open as a sequence"
+                  >
+                    {isIntended(product) && <CircleCheck size={13} className="cw-result-icon" />}
+                    <span className="cw-other-label">{otherLabels[i]}</span>
+                    <span className="cw-other-size">{formatBp(product.size)} {product.topology}</span>
+                  </button>
+                </li>
+              ))}
+            </ul>
           )}
         </div>
       )}
 
-      <ul className="cw-product-list">
-        {products.map(product => {
-          const key = productKey(product)
-          const tags = tagsOf(product)
-          return (
-            <li key={key}>
-              <button
-                className={`cw-product ${key === selectedKey ? 'selected' : ''}`}
-                onClick={() => onSelect(key)}
-                onDoubleClick={() => onOpen(product)}
-              >
-                <span className="cw-product-head">
-                  <span className="cw-product-name">{product.name}</span>
-                  <span className="cw-product-size">{formatBp(product.size)}</span>
-                </span>
-                <span className="cw-product-tags">
-                  {tags.map(tag => (
-                    <span key={tag.text} className={`cw-tag ${tag.tone}`}>
-                      {tag.tone === 'good' && <CircleCheck size={11} />}
-                      {tag.text}
-                    </span>
-                  ))}
-                </span>
-                {product.warnings.length > 0 && (
-                  <span className="cw-product-warnings">
-                    {product.warnings.map((w, i) => (
-                      <span key={i}><TriangleAlert size={11} />{w}</span>
-                    ))}
-                  </span>
-                )}
-              </button>
-            </li>
-          )
-        })}
-      </ul>
-
-      {warnings.length > 0 && (
-        <ul className="cw-warnings">
-          {warnings.map((w, i) => <li key={i}><Info size={12} />{w}</li>)}
-        </ul>
-      )}
+      {warningList}
     </div>
   )
 }

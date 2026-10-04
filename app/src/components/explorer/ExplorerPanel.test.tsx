@@ -248,3 +248,41 @@ describe('deleting a sequence a gel uses', () => {
     expect(store().tabs).toHaveLength(0)
   })
 })
+
+describe('a cloning design in the explorer', () => {
+  beforeEach(() => {
+    act(() => {
+      useEditorStore.setState({
+        tabs: [], activeTabId: null, sequencingReads: [], alignments: [], recentlyDeleted: [],
+        contigs: [], oligos: [], gels: [], activeGelId: null, folders: [], itemMeta: {},
+        clones: [], activeCloneId: null,
+      })
+    })
+  })
+  afterEach(cleanup)
+
+  it('opens its menu and deletes from it', () => {
+    let id = ''
+    act(() => { id = store().createClone({ name: 'My design', activate: false }) })
+    const { container } = renderPanel()
+    const row = container.querySelector<HTMLElement>(`[data-uid="${toUid('clone', id)}"]`)!
+    act(() => { fireEvent.click(row.querySelector('button[title="More actions"]')!) })
+    const items = [...document.querySelectorAll<HTMLElement>('.ctx-menu-item')]
+    expect(items.map(b => b.textContent?.trim())).toContain('Delete')
+    act(() => { fireEvent.click(items.find(b => b.textContent?.trim() === 'Delete')!) })
+    expect(store().clones).toHaveLength(0)
+  })
+
+  it('deletes with the Delete key', () => {
+    let id = ''
+    act(() => { id = store().createClone({ name: 'My design', activate: false }) })
+    const { container } = renderPanel()
+    const tree = container.querySelector<HTMLElement>('[role="tree"]')!
+    act(() => { tree.focus() })
+    // The design is the last row.
+    act(() => { fireEvent.keyDown(tree, { key: 'End' }) })
+    expect(document.activeElement?.getAttribute('data-uid')).toBe(toUid('clone', id))
+    act(() => { fireEvent.keyDown(document.activeElement!, { key: 'Delete' }) })
+    expect(store().clones).toHaveLength(0)
+  })
+})

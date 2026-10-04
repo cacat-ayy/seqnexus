@@ -3,35 +3,42 @@
  *
  * With a product, the parts are laid out in the order they were joined — round
  * a ring when the product is circular, along a line when it is not — each arc
- * sized by how much of the construct it contributes, with a mark at every
- * junction saying what holds it together.
+ * sized by how much of the construct it contributes and named where there is
+ * room, with a mark at every junction saying what holds it together.
  *
  * Without a product, the same parts are drawn as separate blocks with their
- * ends shown, which is the useful picture when nothing fits: you can see that
- * one end is blunt and its neighbour sticky, or that an arm is missing.
+ * ends written beside them, which is the useful picture when nothing fits:
+ * you can see that one end is blunt and its neighbour sticky.
+ *
+ * Colours follow the parts list, so a part is the same colour everywhere.
  */
 
-import { useMemo } from 'react'
 import type { Assembly } from '../../cloning/product'
+import type { Fragment } from '../../cloning/fragment'
 import { endLabel } from '../../cloning/ends'
 import type { CloningDesign, DesignPart } from '../../cloning/design'
 import { partLength, partTopology, vectorsFirst } from '../../cloning/design'
+import { designPartFor, keptFragment } from '../../cloning/outcome'
 import { partColor } from './colors'
 
 interface Props {
   design: CloningDesign
   product: Assembly | null
+  /** The digest's fragments, for the ends of parts that did not join. */
+  fragments: Fragment[]
   hovered: string | null
   onHover: (partId: string | null) => void
   onPick?: (partId: string) => void
 }
 
-const SIZE = 320
+const SIZE = 340
 const CENTRE = SIZE / 2
 const RADIUS = 112
 const RING = 26
 /** Two junction labels closer together than this would overlap. */
 const MIN_LABEL_GAP = 0.28
+/** An arc shorter than this has no room for its name. */
+const MIN_NAME_SPAN = 0.55
 
 function polar(angle: number, radius: number): [number, number] {
   const a = angle - Math.PI / 2
@@ -60,15 +67,12 @@ function formatBp(n: number): string {
   return n >= 1000 ? `${(n / 1000).toFixed(n >= 10000 ? 0 : 1)} kb` : `${n} bp`
 }
 
-export default function AssemblyDiagram({ design, product, hovered, onHover, onPick }: Props) {
-  const parts = useMemo(() => vectorsFirst(design.parts), [design.parts])
-  const indexOfPart = useMemo(() => {
-    const map = new Map<string, number>()
-    parts.forEach((p, i) => map.set(p.id, i))
-    return map
-  }, [parts])
+const anchorFor = (x: number) => (x < CENTRE - 2 ? 'end' : x > CENTRE + 2 ? 'start' : 'middle')
+/** Inside the ring a label grows towards the centre, away from the arc. */
+const insideAnchorFor = (x: number) => (x < CENTRE - 2 ? 'start' : x > CENTRE + 2 ? 'end' : 'middle')
 
-  if (parts.length === 0) {
+export default function AssemblyDiagram({ design, product, fragments, hovered, onHover, onPick }: Props) {
+  if (design.parts.length === 0) {
     return (
       <div className="cw-diagram cw-diagram-empty">
         <p>Add the sequences you are cloning and the design will be drawn here.</p>
@@ -76,18 +80,24 @@ export default function AssemblyDiagram({ design, product, hovered, onHover, onP
     )
   }
 
-  if (product && product.parts.length > 0) {
-    return product.topology === 'circular'
-      ? <Ring product={product} indexOfPart={indexOfPart} hovered={hovered} onHover={onHover} onPick={onPick} />
-      : <Line product={product} indexOfPart={indexOfPart} hovered={hovered} onHover={onHover} onPick={onPick} />
+  /** The design part behind a piece of the product: its id and colour. */
+  const look = (fragmentId: string, fallback: number) => {
+    const part = designPartFor(fragmentId, design.parts)
+    const index = part ? design.parts.indexOf(part) : fallback
+    return { id: part?.id ?? fragmentId, color: partColor(index), label: part?.name }
   }
 
-  return <Loose parts={parts} design={design} hovered={hovered} onHover={onHover} onPick={onPick} />
+  if (product && product.parts.length > 0) {
+    const props = { product, look, hovered, onHover, onPick }
+    return product.topology === 'circular' ? <Ring {...props} /> : <Line {...props} />
+  }
+
+  return <Loose design={design} fragments={fragments} hovered={hovered} onHover={onHover} onPick={onPick} />
 }
 
 interface BuiltProps {
   product: Assembly
-  indexOfPart: ReadonlyMap<string, number>
+  look: (fragmentId: string, fallback: number) => { id: string; color: string; label: string | undefined }
   hovered: string | null
   onHover: (partId: string | null) => void
   onPick?: (partId: string) => void
@@ -101,7 +111,7 @@ function junctionText(product: Assembly, index: number): string {
   return ''
 }
 
-function Ring({ product, indexOfPart, hovered, onHover, onPick }: BuiltProps) {
+function Ring({ product, look, hovered, onHover, onPick }: BuiltProps) {
   const total = product.size || 1
   let angle = 0
   const arcs = product.parts.map((part, i) => {
@@ -109,27 +119,42 @@ function Ring({ product, indexOfPart, hovered, onHover, onPick }: BuiltProps) {
     const from = angle
     const to = angle + (span / total) * Math.PI * 2
     angle = to
-    return { part, i, from, to, span }
+    return { part, i, from, to, ...look(part.fragmentId, i) }
   })
 
   return (
-    <div className="cw-diagram">
+    <div className="cw-diagram cw-diagram-ring">
       <svg viewBox={`0 0 ${SIZE} ${SIZE}`} role="img" aria-label={`${product.name}, ${formatBp(product.size)} circular`}>
-        {arcs.map(({ part, i, from, to }) => {
-          const colorIndex = indexOfPart.get(part.fragmentId) ?? i
-          const isHover = hovered === part.fragmentId
+        {arcs.map(({ part, i, from, to, id, color }) => (
+          <path
+            key={`${part.fragmentId}-${i}`}
+            d={arcPath(from, to)}
+            fill={color}
+            className={`cw-arc ${hovered === id ? 'hovered' : ''}`}
+            onMouseEnter={() => onHover(id)}
+            onMouseLeave={() => onHover(null)}
+            onClick={() => onPick?.(id)}
+          >
+            <title>{`${part.name}${part.reversed ? ' (flipped)' : ''} — ${formatBp(part.end - part.start)}`}</title>
+          </path>
+        ))}
+
+        {/* Each part's name inside the ring, where its arc is long enough. */}
+        {arcs.map(({ part, i, from, to, color, label }) => {
+          if (to - from < MIN_NAME_SPAN) return null
+          const [x, y] = polar((from + to) / 2, RADIUS - RING / 2 - 12)
           return (
-            <path
-              key={`${part.fragmentId}-${i}`}
-              d={arcPath(from, to)}
-              fill={partColor(colorIndex)}
-              className={`cw-arc ${isHover ? 'hovered' : ''}`}
-              onMouseEnter={() => onHover(part.fragmentId)}
-              onMouseLeave={() => onHover(null)}
-              onClick={() => onPick?.(part.fragmentId)}
+            <text
+              key={`n${i}`}
+              x={x}
+              y={y}
+              className="cw-arc-name"
+              style={{ fill: color }}
+              textAnchor={insideAnchorFor(x)}
+              dominantBaseline="middle"
             >
-              <title>{`${part.name}${part.reversed ? ' (flipped)' : ''} — ${formatBp(part.end - part.start)}`}</title>
-            </path>
+              {label ?? part.name}{part.reversed ? ' ↩' : ''}
+            </text>
           )
         })}
 
@@ -147,22 +172,20 @@ function Ring({ product, indexOfPart, hovered, onHover, onPick }: BuiltProps) {
             lastAngle = from
             const [x1, y1] = polar(from, RADIUS - RING / 2 - 3)
             const [x2, y2] = polar(from, RADIUS + RING / 2 + 3)
-            const [lx, ly] = polar(from, RADIUS + RING / 2 + 14 + tier * 12)
+            const [lx, ly] = polar(from, RADIUS + RING / 2 + 14 + tier * 13)
             return (
               <g key={`j${i}`} className="cw-junction">
                 <line x1={x1} y1={y1} x2={x2} y2={y2} />
                 {text && (
-                  <text x={lx} y={ly} textAnchor={lx < CENTRE - 2 ? 'end' : lx > CENTRE + 2 ? 'start' : 'middle'} dominantBaseline="middle">
-                    {text}
-                  </text>
+                  <text x={lx} y={ly} textAnchor={anchorFor(lx)} dominantBaseline="middle">{text}</text>
                 )}
               </g>
             )
           })
         })()}
 
-        <text x={CENTRE} y={CENTRE - 6} className="cw-ring-name" textAnchor="middle">{product.name}</text>
-        <text x={CENTRE} y={CENTRE + 12} className="cw-ring-size" textAnchor="middle">
+        <text x={CENTRE} y={CENTRE - 7} className="cw-ring-name" textAnchor="middle">{product.name}</text>
+        <text x={CENTRE} y={CENTRE + 13} className="cw-ring-size" textAnchor="middle">
           {formatBp(product.size)} circular
         </text>
       </svg>
@@ -170,25 +193,25 @@ function Ring({ product, indexOfPart, hovered, onHover, onPick }: BuiltProps) {
   )
 }
 
-function Line({ product, indexOfPart, hovered, onHover, onPick }: BuiltProps) {
+function Line({ product, look, hovered, onHover, onPick }: BuiltProps) {
   return (
     <div className="cw-diagram">
       <div className="cw-line" role="img" aria-label={`${product.name}, ${formatBp(product.size)} linear`}>
         {product.parts.map((part, i) => {
           const span = Math.max(part.end - part.start, 1)
-          const colorIndex = indexOfPart.get(part.fragmentId) ?? i
+          const { id, color, label } = look(part.fragmentId, i)
           const text = junctionText(product, i)
           return (
             <div
               key={`${part.fragmentId}-${i}`}
-              className={`cw-block ${hovered === part.fragmentId ? 'hovered' : ''}`}
-              style={{ flexGrow: span, background: partColor(colorIndex) }}
-              onMouseEnter={() => onHover(part.fragmentId)}
+              className={`cw-block ${hovered === id ? 'hovered' : ''}`}
+              style={{ flexGrow: span, background: color }}
+              onMouseEnter={() => onHover(id)}
               onMouseLeave={() => onHover(null)}
-              onClick={() => onPick?.(part.fragmentId)}
+              onClick={() => onPick?.(id)}
               title={`${part.name}${part.reversed ? ' (flipped)' : ''} — ${formatBp(span)}`}
             >
-              <span className="cw-block-name">{part.name}{part.reversed ? ' ↩' : ''}</span>
+              <span className="cw-block-name">{label ?? part.name}{part.reversed ? ' ↩' : ''}</span>
               {text && i > 0 && <span className="cw-block-junction">{text}</span>}
             </div>
           )
@@ -200,54 +223,57 @@ function Line({ product, indexOfPart, hovered, onHover, onPick }: BuiltProps) {
 }
 
 /**
- * The parts on their own, with the shape of each end.
+ * The parts on their own, with the end each one is left with.
  *
- * This is what shows when nothing assembles, so the ends are the point: a tab
- * for a protruding strand, a flat edge for a blunt one, a dashed edge for an
- * end that homology is supposed to cover.
+ * This is what shows when nothing assembles, so the ends are the point: two
+ * neighbours whose ends do not pair are the reason, written out.
  */
 function Loose({
-  parts,
   design,
+  fragments,
   hovered,
   onHover,
   onPick,
 }: {
-  parts: DesignPart[]
   design: CloningDesign
+  fragments: Fragment[]
   hovered: string | null
   onHover: (partId: string | null) => void
   onPick?: (partId: string) => void
 }) {
   const seamless = design.method === 'homology'
+  const cut = design.method === 'restriction' || design.method === 'golden-gate'
+  const parts: DesignPart[] = vectorsFirst(design.parts)
   return (
     <div className="cw-diagram">
       <div className="cw-loose">
-        {parts.map((part, i) => (
-          <div
-            key={part.id}
-            className={`cw-loose-part ${hovered === part.id ? 'hovered' : ''}`}
-            onMouseEnter={() => onHover(part.id)}
-            onMouseLeave={() => onHover(null)}
-            onClick={() => onPick?.(part.id)}
-          >
-            <span className={`cw-end ${seamless ? 'homology' : 'unknown'}`} aria-hidden="true" />
-            <span
-              className={`cw-loose-body ${partTopology(part) === 'circular' ? 'circular' : ''}`}
-              style={{ borderColor: partColor(i) }}
+        {parts.map(part => {
+          const kept = cut ? keptFragment(part, fragments) : null
+          const left = kept?.left ? endLabel(kept.left) : seamless ? 'needs overlap' : ''
+          const right = kept?.right ? endLabel(kept.right) : seamless ? 'needs overlap' : ''
+          return (
+            <div
+              key={part.id}
+              className={`cw-loose-part ${hovered === part.id ? 'hovered' : ''}`}
+              onMouseEnter={() => onHover(part.id)}
+              onMouseLeave={() => onHover(null)}
+              onClick={() => onPick?.(part.id)}
             >
-              <span className="cw-loose-name">{part.name}</span>
-              <span className="cw-loose-size">{formatBp(partLength(part))}</span>
-            </span>
-            <span className={`cw-end ${seamless ? 'homology' : 'unknown'}`} aria-hidden="true" />
-          </div>
-        ))}
+              <span className="cw-loose-end left">{left}</span>
+              <span
+                className={`cw-loose-body ${partTopology(part) === 'circular' && !kept ? 'circular' : ''}`}
+                style={{ borderColor: partColor(design.parts.indexOf(part)) }}
+              >
+                <span className="cw-loose-name">{part.name}</span>
+                <span className="cw-loose-size">
+                  {kept ? `${formatBp(kept.top.length)} of ${formatBp(partLength(part))}` : formatBp(partLength(part))}
+                </span>
+              </span>
+              <span className="cw-loose-end right">{right}</span>
+            </div>
+          )
+        })}
       </div>
-      <p className="cw-line-caption">
-        {seamless
-          ? 'Parts need matching ends to join. Nothing has assembled yet.'
-          : 'Nothing has assembled yet.'}
-      </p>
     </div>
   )
 }

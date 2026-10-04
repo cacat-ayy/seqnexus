@@ -1,0 +1,111 @@
+/* Enzyme field: chips for the chosen enzymes and an autocompleting box. */
+
+.ef { position: relative; min-width: 0; }
+
+.ef-box {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-1);
+  min-height: 30px;
+  padding: var(--space-0-5) var(--space-1);
+  box-sizing: border-box;
+  background: var(--input-bg, var(--bg));
+  border: 1px solid var(--input-border, var(--border));
+  border-radius: var(--radius-input, var(--radius-sm));
+  cursor: text;
+}
+.ef-box:focus-within { border-color: var(--accent); }
+
+.ef-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 1px var(--space-1) 1px var(--space-1-5);
+  font-size: var(--text-xs);
+  font-weight: 600;
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--accent) 15%, transparent);
+  color: var(--accent);
+}
+
+.ef-chip-warn {
+  font-size: 10px;
+  color: var(--warning);
+  margin-left: 2px;
+}
+
+.ef-chip-x {
+  display: inline-flex;
+  padding: 1px;
+  background: none;
+  border: none;
+  color: inherit;
+  opacity: 0.6;
+  cursor: pointer;
+}
+.ef-chip-x:hover { opacity: 1; }
+
+.ef-input {
+  flex: 1;
+  min-width: 90px;
+  padding: var(--space-1) var(--space-0-5);
+  font-size: var(--text-sm);
+  background: transparent;
+  border: none;
+  outline: none;
+  color: var(--text);
+}
+
+.ef-hint { font-size: var(--text-xs); color: var(--warning); margin-top: var(--space-1); }
+
+.ef-options {
+  position: absolute;
+  top: calc(100% + 3px);
+  left: 0;
+  right: 0;
+  z-index: var(--z-dropdown);
+  max-height: 260px;
+  overflow-y: auto;
+  padding: var(--space-1) 0;
+  background: var(--bg-alt);
+  border: 1px solid var(--border-hover);
+  border-radius: var(--radius-popover);
+  box-shadow: var(--shadow-popover);
+}
+
+.ef-options-head {
+  padding: var(--space-1) var(--space-2-5);
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-muted);
+}
+
+.ef-option {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-1) var(--space-2-5);
+  font-size: var(--text-sm);
+  cursor: pointer;
+}
+.ef-option.active { background: var(--bg-hover); }
+.ef-name { font-weight: 600; color: var(--text); min-width: 64px; }
+.ef-site { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; font-family: var(--font-mono, monospace); font-size: var(--text-xs); color: var(--text-muted); }
+.ef-blocked { font-size: 10px; color: var(--warning); }
+.ef-counts { display: inline-flex; gap: var(--space-1-5); }
+.ef-cuts {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  font-size: var(--text-xs);
+  font-variant-numeric: tabular-nums;
+  color: var(--text-secondary);
+  min-width: 26px;
+  justify-content: flex-end;
+}
+.ef-cuts.zero { color: var(--text-faint, var(--text-muted)); }
+.ef-cuts.one { color: var(--accent); font-weight: 600; }
+.ef-swatch { width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; }

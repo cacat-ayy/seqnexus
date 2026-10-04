@@ -5,7 +5,7 @@
  * A digest fragment can be found in its sequence or cut out as a new one.
  */
 
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { Copy, Trash2, AlertTriangle, TextSelect, Scissors, FileOutput } from 'lucide-react'
 import { LADDERS, DEFAULT_LADDER_ID, getLadder } from '../../gel/ladders'
 import {
@@ -16,7 +16,7 @@ import type { SequenceSource } from '../../gel/simulate'
 import { FORM_PRESETS, formPresetId, autoLaneLabel } from '../../gel/workspace'
 import { formatNg, fragmentEnds, fragmentPosition, FORM_LABEL } from '../../gel/report'
 import { formatBp } from '../../gel/render/scene'
-import EnzymeField from './EnzymeField'
+import EnzymeField from '../EnzymeField'
 import { parseSizes } from '../../gel/parse'
 
 export interface SourceOption { id: string; name: string; length: number; topology: 'linear' | 'circular' }
@@ -96,6 +96,7 @@ export default function LaneInspector({
   }
   const source = sample.kind === 'sequence' ? resolveSource(sample.sourceId) : null
   const sourceInfo = sample.kind === 'sequence' ? sources.find(s => s.id === sample.sourceId) : undefined
+  const cutTargets = useMemo(() => (source ? [{ source }] : []), [source])
 
   const setSample = (s: LaneSample, coalesceKey?: string) => onChange({ ...lane, sample: s }, coalesceKey)
   const ngKey = `ng:${lane.id}`
@@ -239,7 +240,12 @@ export default function LaneInspector({
           {sequenceSelect(sample.sourceId, id => setSample({ ...sample, sourceId: id }), 'Sequence')}
           <div className="gw-field">
             <span className="gw-field-label">Enzymes</span>
-            <EnzymeField value={sample.enzymes} onChange={enzymes => setSample({ ...sample, enzymes })} source={source} />
+            <EnzymeField
+              value={sample.enzymes}
+              onChange={enzymes => setSample({ ...sample, enzymes })}
+              targets={cutTargets}
+              placeholder="Uncut. Type e.g. EcoRI+BamHI"
+            />
           </div>
           {amountField(sample.ng, ng => setSample({ ...sample, ng }, ngKey))}
           {sample.enzymes.length === 0 && sourceInfo?.topology === 'circular' && (

@@ -76,7 +76,7 @@ function toHomologyPart(part: DesignPart): HomologyPart {
  * you would cut out of a gel — and for a vector cut twice that is the
  * backbone, which is what people mean.
  */
-function chosenFragment(part: DesignPart, fragments: Fragment[]): Fragment | null {
+export function chosenFragment(part: DesignPart, fragments: Fragment[]): Fragment | null {
   const cut = fragments.filter(f => f.topology === 'linear')
   if (cut.length === 0) return null
   if (part.keep) {
