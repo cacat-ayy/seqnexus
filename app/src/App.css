@@ -22,6 +22,8 @@
   --shadow-sm: 0 1px 4px rgba(0,0,0,.06);
   --shadow-card: 0 4px 24px rgba(0,0,0,.06), 0 1px 4px rgba(0,0,0,.04);
   --shadow-popover: 0 8px 24px rgba(0,0,0,.1);
+  /* Dims the app behind a dialog or a blocking overlay. */
+  --backdrop: rgba(0,0,0,.35);
   --danger: #ef4444;
   --danger-bg: #fef2f2;
   --warning: #b45309;
@@ -939,7 +941,7 @@
 }
 
 .info-title {
-  font-size: 1.1rem;
+  font-size: var(--text-xl);
   font-weight: 800;
   text-align: center;
 }
@@ -1100,7 +1102,7 @@
   opacity: .4;
 }
 
-.tb-icon { font-size: 1rem; line-height: 1; }
+.tb-icon { font-size: var(--text-lg); line-height: 1; }
 .tb-text { pointer-events: none; }
 
 .tb-badge {
@@ -1556,7 +1558,7 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  background: rgba(0, 0, 0, 0.35);
+  background: var(--backdrop);
 }
 
 .parse-progress-box {
@@ -1630,7 +1632,7 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  background: rgba(0, 0, 0, 0.35);
+  background: var(--backdrop);
   backdrop-filter: blur(4px);
   -webkit-backdrop-filter: blur(4px);
   animation: modal-fade-in var(--dur-normal) ease;
@@ -1997,7 +1999,7 @@
   top: 0;
   left: 0;
   width: 2px;
-  border-radius: 1px;
+  border-radius: var(--radius-pill);
   background: var(--accent);
   pointer-events: none;
   will-change: transform;

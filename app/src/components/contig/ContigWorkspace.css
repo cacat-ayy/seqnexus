@@ -31,7 +31,7 @@
 }
 .cw-read:hover { background: var(--bg-hover); }
 .cw-read.active { background: color-mix(in srgb, var(--accent) 14%, transparent); color: var(--text); }
-.cw-dir { color: var(--success); font-size: 9px; }
+.cw-dir { color: var(--success); font-size: var(--text-2xs); }
 .cw-dir.rev { color: var(--warning); }
 .cw-read-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .cw-read-id { font-variant-numeric: tabular-nums; color: var(--text-muted); }
@@ -51,7 +51,7 @@
 .cw-assemble-reads { flex: 1; min-width: 0; overflow: auto; background: var(--bg); }
 .cw-assemble-reads .rs-table tbody tr { cursor: pointer; }
 .cw-assemble .aw-figure-options { width: 320px; }
-.cw-progress { height: 4px; border-radius: 2px; background: var(--border); overflow: hidden; }
+.cw-progress { height: 4px; border-radius: var(--radius-pill); background: var(--border); overflow: hidden; }
 .cw-progress > div { height: 100%; background: var(--accent); transition: width 0.1s; }
 
 /* ---- Variants ---- */

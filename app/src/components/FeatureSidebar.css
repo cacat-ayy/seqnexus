@@ -208,6 +208,7 @@
   font-weight: 700;
   line-height: 1;
   color: var(--on-accent);
+  /* Sits on the chosen feature colour, which can be any colour. */
   text-shadow: 0 0 2px rgba(0,0,0,.5);
   pointer-events: none;
 }
@@ -248,7 +249,7 @@
 
 .ft-tooltip {
   z-index: var(--z-popover);
-  background: rgba(var(--bg-alt-rgb), .95);
+  background: color-mix(in srgb, var(--bg-alt) 95%, transparent);
   border: 1px solid var(--border-hover);
   border-radius: var(--radius-popover);
   padding: 0;
@@ -518,7 +519,7 @@
   padding: 0 var(--space-2-5);
   border-bottom: 1px solid var(--border);
   flex-shrink: 0;
-  height: var(--panel-header-h, 32px);
+  height: var(--panel-header-h);
   box-sizing: border-box;
 }
 
@@ -570,7 +571,7 @@
   align-items: center;
   gap: var(--space-1);
   padding: 0 var(--space-2-5);
-  height: var(--panel-header-h, 32px);
+  height: var(--panel-header-h);
   box-sizing: border-box;
   border-bottom: 1px solid var(--border);
   flex-shrink: 0;

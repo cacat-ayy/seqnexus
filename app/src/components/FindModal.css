@@ -42,7 +42,7 @@
 }
 
 .find-modal.dragging {
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.25);
+  box-shadow: var(--shadow-popover);
   user-select: none;
 }
 
@@ -315,7 +315,7 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 1.2rem;
+  font-size: var(--text-xl);
   font-weight: 600;
   color: var(--accent);
   z-index: var(--z-popover);

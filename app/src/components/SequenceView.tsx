@@ -2541,8 +2541,12 @@ function SequenceView({ onFindRequest, onAnnotateRequest, onEditFeature }: Seque
       if (segs.length > 0) {
         e.preventDefault()
         const bases = getSelectedBases()
-        copyText(bases, `Cut ${bases.length} bp`)
-        if (!ro) deleteSelection()
+        // Read-only still copies, but says so rather than claiming a cut.
+        copyText(bases, `${ro ? 'Copied' : 'Cut'} ${bases.length} bp`)
+        if (ro) roBlock()
+        else deleteSelection()
+      } else if (ro) {
+        roBlock()
       }
       return
     }

@@ -108,12 +108,25 @@ export class Sequence {
     if (fragment.length > 0) this._pt.insert(start, fragment)
   }
 
+  /**
+   * Bases [start, end). On a circular sequence the range may run past the
+   * origin and start anywhere, but covers at most one full turn.
+   */
   subseq(start: number, end: number): string {
-    if (this.topology === 'circular' && end > this.length) {
-      return this._pt.substring(start, this.length) + this._pt.substring(0, end % this.length)
+    const len = this.length
+    if (this.topology !== 'circular' || (end <= len && start <= end)) {
+      this._assertRange(start, end)
+      return this._pt.substring(start, end)
     }
-    this._assertRange(start, end)
-    return this._pt.substring(start, end)
+    if (start < 0 || start > end || end - start > len) {
+      throw new RangeError(
+        `Range [${start}, ${end}) out of bounds for circular length ${len}`,
+      )
+    }
+    const s = start % len
+    const e = s + (end - start)
+    if (e <= len) return this._pt.substring(s, e)
+    return this._pt.substring(s, len) + this._pt.substring(0, e - len)
   }
 
   complement(): Sequence {

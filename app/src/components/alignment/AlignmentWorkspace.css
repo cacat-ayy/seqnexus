@@ -18,7 +18,7 @@
   border-bottom: 1px solid var(--border);
   background: var(--bg-toolbar);
   flex-shrink: 0;
-  min-height: var(--panel-header-h, 36px);
+  min-height: var(--panel-header-h);
 }
 .aw-header-icon { color: var(--accent); flex-shrink: 0; }
 
@@ -276,7 +276,7 @@
   align-items: center;
   gap: var(--space-1);
   padding: 0 var(--space-2);
-  font-size: 10px;
+  font-size: var(--text-2xs);
   font-weight: 600;
   letter-spacing: 0.04em;
   text-transform: uppercase;
@@ -346,7 +346,7 @@
   font: inherit;
   padding: 0 var(--space-1);
   border: 1px solid var(--accent);
-  border-radius: 3px;
+  border-radius: var(--radius-xs);
   background: var(--bg);
   color: var(--text);
 }
@@ -361,11 +361,11 @@
 
 .aw-ref-badge {
   flex-shrink: 0;
-  font-size: 9px;
+  font-size: var(--text-2xs);
   font-weight: 700;
   letter-spacing: 0.04em;
   padding: 0 4px;
-  border-radius: 3px;
+  border-radius: var(--radius-xs);
   background: var(--accent);
   color: var(--bg);
   line-height: 14px;
@@ -474,14 +474,14 @@
   background: var(--bg);
   min-width: 0;
 }
-.aw-stat dt { font-size: 10px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.04em; }
+.aw-stat dt { font-size: var(--text-2xs); color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.04em; }
 .aw-stat dd { margin: 2px 0 0; font-size: var(--text-sm); font-weight: 600; color: var(--text); font-variant-numeric: tabular-nums; }
 .aw-stat.strong { grid-column: span 2; border-color: color-mix(in srgb, var(--accent) 40%, var(--border)); }
-.aw-stat.strong dd { font-size: var(--text-lg, 16px); color: var(--accent); }
+.aw-stat.strong dd { font-size: var(--text-lg); color: var(--accent); }
 
 .aw-section-label {
   margin-top: var(--space-2);
-  font-size: 10px;
+  font-size: var(--text-2xs);
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.06em;
@@ -492,17 +492,17 @@
 .aw-comp-bar {
   display: flex;
   height: 10px;
-  border-radius: 3px;
+  border-radius: var(--radius-xs);
   overflow: hidden;
   border: 1px solid var(--border);
 }
 .aw-comp-bar span { min-width: 1px; }
 .aw-comp-legend { display: flex; flex-wrap: wrap; gap: var(--space-1) var(--space-2-5); font-size: var(--text-xs); color: var(--text-secondary); font-variant-numeric: tabular-nums; }
 .aw-comp-legend span { display: inline-flex; align-items: center; gap: 4px; }
-.aw-comp-legend i { display: inline-block; width: 8px; height: 8px; border-radius: 2px; }
+.aw-comp-legend i { display: inline-block; width: 8px; height: 8px; border-radius: var(--radius-xs); }
 
 .aw-matrix-wrap { overflow-x: auto; }
-.aw-matrix { border-collapse: collapse; font-size: 10px; font-variant-numeric: tabular-nums; }
+.aw-matrix { border-collapse: collapse; font-size: var(--text-2xs); font-variant-numeric: tabular-nums; }
 .aw-matrix th {
   max-width: 86px;
   overflow: hidden;
@@ -566,7 +566,7 @@
   font-size: var(--text-xs);
   padding: 1px var(--space-1);
   border: 1px solid var(--border);
-  border-radius: 3px;
+  border-radius: var(--radius-xs);
   background: var(--bg-alt);
   color: var(--text);
 }
@@ -605,7 +605,7 @@
 .aw-error { margin: 0; font-size: var(--text-xs); color: var(--danger); }
 .aw-running { display: flex; flex-direction: column; gap: var(--space-2); padding: var(--space-3); }
 .aw-running-line { display: flex; align-items: center; gap: var(--space-1-5); font-size: var(--text-sm); color: var(--text); }
-.aw-progress { height: 4px; border-radius: 2px; background: var(--border); overflow: hidden; }
+.aw-progress { height: 4px; border-radius: var(--radius-pill); background: var(--border); overflow: hidden; }
 .aw-progress span { display: block; height: 100%; background: var(--accent); transition: width 250ms linear; }
 
 .aw-spin { animation: aw-spin 0.9s linear infinite; color: var(--accent); }
@@ -662,11 +662,11 @@
 .aw-figure-backdrop {
   position: fixed;
   inset: 0;
-  z-index: var(--z-modal, 1000);
+  z-index: var(--z-modal);
   display: flex;
   align-items: center;
   justify-content: center;
-  background: rgba(0, 0, 0, 0.45);
+  background: var(--backdrop);
 }
 .aw-figure {
   display: flex;
@@ -691,7 +691,7 @@
   display: block;
   max-width: 100%;
   height: auto;
-  box-shadow: 0 1px 6px rgba(0, 0, 0, 0.25);
+  box-shadow: var(--shadow-sm);
 }
 .aw-figure-options {
   width: 260px;

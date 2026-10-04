@@ -127,9 +127,9 @@
   margin-top: var(--space-1);
 }
 
-.cod-warn { color: var(--warning, #b7791f); }
-.cod-error { color: var(--danger, #e03131); }
-.cod-ok { color: var(--success, #2f9e44); }
+.cod-warn { color: var(--warning); }
+.cod-error { color: var(--danger); }
+.cod-ok { color: var(--success); }
 
 .cod-check-grid {
   display: grid;
@@ -325,8 +325,8 @@
 
 /* Direction of travel, not a verdict: a lower GC is not better in itself, so
    only the metrics with an agreed direction are coloured. */
-.cod-num.better { color: var(--success, #2f9e44); font-weight: 600; }
-.cod-num.worse { color: var(--warning, #b7791f); }
+.cod-num.better { color: var(--success); font-weight: 600; }
+.cod-num.worse { color: var(--warning); }
 
 .cod-summary {
   font-size: var(--text-sm);

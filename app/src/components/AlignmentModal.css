@@ -198,7 +198,7 @@
 .align-add-menu {
   position: fixed;
   z-index: var(--z-dropdown);
-  background: rgba(var(--bg-alt-rgb), .95);
+  background: color-mix(in srgb, var(--bg-alt) 95%, transparent);
   border: 1px solid var(--border-hover);
   border-radius: var(--radius-popover);
   padding: var(--space-1) 0;
@@ -501,7 +501,7 @@
 .align-progress {
   width: 260px;
   height: 4px;
-  border-radius: 2px;
+  border-radius: var(--radius-pill);
   background: var(--border);
   overflow: hidden;
 }

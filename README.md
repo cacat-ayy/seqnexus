@@ -15,7 +15,7 @@ self-contained HTML file.
 ├── *.worker-<hash>.js       the editor's Web Workers — generated, commit them
 ├── impressum.html / datenschutz.html
 ├── assets/                  favicons, screenshots
-├── wasm/                    vendored tbfast build (not currently wired up)
+├── wasm/                    MAFFT, MUSCLE and Kalign (biowasm), run by the alignment tool
 └── app/                     Vite + React source for the editor
     ├── app.html                 Vite entry — builds to ../app.html
     └── src/
@@ -27,7 +27,7 @@ self-contained HTML file.
 cd app
 npm install
 npm run dev           # dev server on :8000
-npm test              # 900+ tests
+npm test              # 2,000+ tests
 npx tsc -b --noEmit   # type check
 npm run build         # tsc -b && vite build
 ```
@@ -37,11 +37,13 @@ The dev server mirrors the deployed site: `/` serves the landing page and
 
 ## Publishing
 
-`npm run build` writes straight into the repo root — `app.html` plus the six
-hashed `*.worker-*.js` chunks — so publishing is just committing the result.
-Both are build output and both must be committed: `app.html` loads the workers
-by relative URL, so a missing chunk silently breaks ORF finding, enzyme
-scanning, primer design, alignment, annotation matching, and GenBank parsing.
+`npm run build` writes straight into the repo root (`app.html` plus one
+hashed `*.worker-*.js` chunk per worker), so publishing is just committing the
+result. Both are build output and both must be committed: `app.html` loads the
+workers by relative URL, so a missing chunk silently breaks ORF finding, enzyme
+scanning, primer design, alignment, annotation matching, GenBank parsing,
+cloning libraries or Sanger assembly. `wasm/` is not built but is loaded the
+same way, so it must be published too.
 
 Stale worker chunks from a previous build are pruned automatically at the start
 of each build.
@@ -54,7 +56,9 @@ of each build.
 - Vite 5 + React 18 + TypeScript 5.6
 - Zustand for state management (multi-document with tabs)
 - Canvas 2D rendering with virtualized rows
-- Web Workers for ORF finding, enzyme scanning, primer design, annotation matching
+- Web Workers for ORF finding, enzyme scanning, primer design, annotation
+  matching, alignment, cloning and Sanger assembly
+- MAFFT, MUSCLE and Kalign as WebAssembly (biowasm) for multiple alignment
 - lucide-react for icons
 - vite-plugin-singlefile for single HTML builds
 - vitest for testing
@@ -139,7 +143,10 @@ Compute-intensive operations run off the main thread:
 - `primer-design.worker` - primer candidate enumeration, scoring and pairing (long-lived)
 - `genbank-parser.worker` - streaming GenBank parser for large files
 - `annotate-list.worker` - annotation matching with k-mer pre-filter
-- `alignment.worker` - pairwise and multiple sequence alignment
+- `alignment.worker` - built-in pairwise and multiple sequence alignment
+- `aligner.worker` - one MAFFT, MUSCLE or Kalign job (WebAssembly from `wasm/`)
+- `cloning.worker` - combinatorial cloning libraries
+- `assembly.worker` - Sanger read assembly
 
 ---
 
@@ -185,8 +192,13 @@ warns the user to export their work.
 
 ### Algorithms
 
-SeqNexus implements three alignment algorithms, all in pure TypeScript with
-no external dependencies:
+Multiple alignment normally runs MAFFT 7.520, MUSCLE 5 or Kalign 3: the
+biowasm WebAssembly builds kept in `wasm/` (see `wasm/README.md`), one job per
+worker so a job can be cancelled. "Automatic" picks MAFFT L-INS-i where it is
+quick enough, Kalign for large sets, and the built-in pairwise aligner for two
+sequences.
+
+The built-in algorithms are pure TypeScript with no external dependencies:
 
 #### Needleman-Wunsch (global pairwise)
 

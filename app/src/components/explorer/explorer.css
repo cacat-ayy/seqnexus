@@ -129,7 +129,7 @@
   align-items: center;
   gap: var(--space-0-5);
   padding: 0 var(--space-1) 0 var(--space-3);
-  height: var(--panel-header-h, 32px);
+  height: var(--panel-header-h);
   box-sizing: border-box;
   flex-shrink: 0;
 }
@@ -621,7 +621,7 @@
   z-index: var(--z-popover);
   width: 164px;
   padding: var(--space-2);
-  background: rgba(var(--bg-alt-rgb), .97);
+  background: color-mix(in srgb, var(--bg-alt) 97%, transparent);
   border: 1px solid var(--border-hover);
   border-radius: var(--radius-input);
   box-shadow: var(--shadow-popover);

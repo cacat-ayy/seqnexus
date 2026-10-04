@@ -75,7 +75,7 @@
 }
 
 .ann-source-remove:hover {
-  color: var(--danger, #e03131);
+  color: var(--danger);
   background: var(--bg-hover);
 }
 
@@ -86,13 +86,13 @@
 }
 
 .ann-source-msg.error {
-  color: var(--danger, #e03131);
+  color: var(--danger);
 }
 
 /* Marks a hit that came from an imported database rather than the built-in
    library — worth knowing before trusting it. */
 .ann-source-badge {
-  font-size: var(--text-2xs, 10px);
+  font-size: var(--text-2xs);
   color: var(--text-muted);
   border: 1px solid var(--border);
   border-radius: var(--radius-pill);

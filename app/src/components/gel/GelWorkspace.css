@@ -18,7 +18,7 @@
   border-bottom: 1px solid var(--border);
   background: var(--bg-toolbar);
   flex-shrink: 0;
-  min-height: var(--panel-header-h, 36px);
+  min-height: var(--panel-header-h);
 }
 
 .gw-header-icon { color: var(--accent); flex-shrink: 0; }
@@ -143,7 +143,7 @@
   display: block;
   outline: none;
 }
-.gw-canvas-wrap canvas:focus-visible { box-shadow: inset 0 0 0 2px var(--accent-ring, var(--accent)); }
+.gw-canvas-wrap canvas:focus-visible { box-shadow: inset 0 0 0 2px var(--accent-ring); }
 
 .gw-tooltip {
   position: absolute;
@@ -169,7 +169,7 @@
   flex-direction: column;
   min-height: 0;
   border-left: 1px solid var(--border);
-  background: var(--bg-sidebar, var(--bg-alt));
+  background: var(--bg-sidebar);
 }
 
 .gw-tabs {
@@ -258,9 +258,9 @@
   box-sizing: border-box;
   padding: var(--space-1) var(--space-1-5);
   font-size: var(--text-sm);
-  background: var(--input-bg, var(--bg));
-  border: 1px solid var(--input-border, var(--border));
-  border-radius: var(--radius-input, var(--radius-sm));
+  background: var(--input-bg);
+  border: 1px solid var(--input-border);
+  border-radius: var(--radius-input);
   color: var(--text);
 }
 .gw-input:focus { outline: none; border-color: var(--accent); }
@@ -295,7 +295,7 @@
   align-items: center;
   gap: var(--space-1-5);
   margin-top: var(--space-1-5);
-  font-size: var(--text-2xs, 10px);
+  font-size: var(--text-2xs);
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.06em;
@@ -306,7 +306,7 @@
 .gw-count {
   font-weight: 600;
   padding: 0 var(--space-1-5);
-  border-radius: 8px;
+  border-radius: var(--radius-pill);
   background: var(--bg-hover);
   color: var(--text-secondary);
 }
@@ -320,7 +320,7 @@
   gap: var(--space-1);
   font-size: var(--text-xs);
   color: var(--warning);
-  background: var(--warning-bg, transparent);
+  background: var(--warning-bg);
   border-radius: var(--radius-sm);
 }
 .gw-warnings li { display: flex; gap: var(--space-1-5); align-items: flex-start; }
@@ -356,7 +356,7 @@
 .gw-frag-table td {
   padding: var(--space-1) var(--space-1-5);
   color: var(--text-secondary);
-  border-bottom: 1px solid var(--border-light, var(--border));
+  border-bottom: 1px solid var(--border-light);
   white-space: nowrap;
 }
 .gw-frag-table tr:last-child td { border-bottom: none; }
@@ -366,23 +366,23 @@
 .gw-frag-table tr.faint td,
 .gw-frag-table tr.ran-off td { color: var(--text-muted); }
 .gw-frag-table .num { text-align: right; font-variant-numeric: tabular-nums; }
-.gw-frag-table .mono { font-family: var(--font-mono, monospace); }
+.gw-frag-table .mono { font-family: var(--font-mono); }
 .gw-frag-table .size { font-weight: 600; color: var(--text); }
 
 .gw-pill {
   display: inline-block;
   margin-left: var(--space-1);
   padding: 0 4px;
-  font-size: 9px;
+  font-size: var(--text-2xs);
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.04em;
-  border-radius: 3px;
+  border-radius: var(--radius-xs);
   background: var(--bg-hover);
   color: var(--text-muted);
   vertical-align: 1px;
 }
-.gw-pill.warn { color: var(--warning); background: var(--warning-bg, var(--bg-hover)); }
+.gw-pill.warn { color: var(--warning); background: var(--warning-bg); }
 
 /* ---- Gel name in the header ---- */
 .gw-name {
@@ -398,7 +398,7 @@
   text-overflow: ellipsis;
 }
 .gw-name:hover { border-color: var(--border); }
-.gw-name:focus { outline: none; border-color: var(--accent); background: var(--input-bg, var(--bg)); }
+.gw-name:focus { outline: none; border-color: var(--accent); background: var(--input-bg); }
 
 /* ---- Sample kind picker ---- */
 .gw-kinds {
@@ -458,7 +458,7 @@
 }
 .gw-row-btn:hover { color: var(--accent); border-color: var(--accent); background: var(--bg-alt); }
 
-.gw-btn.active { border-color: var(--accent); color: var(--accent); background: var(--accent-bg, transparent); }
+.gw-btn.active { border-color: var(--accent); color: var(--accent); background: var(--accent-bg); }
 
 /* ---- Digest designer ---- */
 .gw-dd-help {
@@ -486,7 +486,7 @@
   font-size: var(--text-sm);
   color: var(--text-secondary);
   cursor: pointer;
-  border-bottom: 1px solid var(--border-light, var(--border));
+  border-bottom: 1px solid var(--border-light);
 }
 .gw-dd-cand:last-child { border-bottom: none; }
 .gw-dd-cand:hover { background: var(--bg-hover); }
@@ -529,22 +529,24 @@
 .gw-dd-verdict {
   margin-left: auto;
   padding: 0 var(--space-1-5);
-  font-size: 10px;
+  font-size: var(--text-2xs);
   font-weight: 600;
-  border-radius: 8px;
+  border-radius: var(--radius-pill);
   white-space: nowrap;
 }
-.gw-dd-verdict.good { color: #16a34a; background: color-mix(in srgb, #16a34a 14%, transparent); }
+.gw-dd-verdict.good { color: var(--success); background: color-mix(in srgb, var(--success) 14%, transparent); }
 .gw-dd-verdict.ok { color: var(--accent); background: color-mix(in srgb, var(--accent) 14%, transparent); }
-.gw-dd-verdict.weak { color: var(--warning); background: var(--warning-bg, transparent); }
+.gw-dd-verdict.weak { color: var(--warning); background: var(--warning-bg); }
 
 .gw-dd-result-body { display: flex; gap: var(--space-2-5); align-items: flex-start; }
 
 .gw-dd-mini { flex-shrink: 0; }
+/* A picture of a stained gel, so it keeps the photo look in every theme,
+   like the main gel renderer (gel/render/looks.ts). */
 .gw-dd-mini-gel { fill: #111214; }
 .gw-dd-mini-well { fill: #000; opacity: 0.6; }
 .gw-dd-mini-band { fill: #f4f4f5; }
-.gw-dd-mini-label { font-size: 9px; font-weight: 700; fill: var(--text-muted); }
+.gw-dd-mini-label { font-size: var(--text-2xs); font-weight: 700; fill: var(--text-muted); }
 
 .gw-dd-patterns { display: flex; flex-direction: column; gap: var(--space-1); min-width: 0; font-size: var(--text-xs); }
 .gw-dd-pattern { display: grid; grid-template-columns: 12px auto; column-gap: var(--space-1-5); }

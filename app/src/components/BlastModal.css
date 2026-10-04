@@ -497,7 +497,8 @@
   flex-shrink: 0;
   background: var(--bg-alt);
   position: relative;
-  /* Fade edges when scrollable */
+  /* Fade edges when scrollable. A mask uses only alpha, so the colour of
+     #000 here is irrelevant: it means "fully shown". */
   mask-image: linear-gradient(to right, transparent 0, #000 16px, #000 calc(100% - 16px), transparent 100%);
   -webkit-mask-image: linear-gradient(to right, transparent 0, #000 16px, #000 calc(100% - 16px), transparent 100%);
 }
@@ -512,7 +513,7 @@
   gap: var(--space-1-5);
   padding: var(--space-1) var(--space-2);
   border: 1px solid var(--border);
-  border-radius: var(--radius);
+  border-radius: var(--radius-sm);
   background: var(--bg);
   cursor: pointer;
   font-size: var(--text-xs);
@@ -528,12 +529,12 @@
 
 .blast-history-chip.active {
   border-color: var(--accent);
-  background: rgba(59, 130, 246, 0.08);
+  background: color-mix(in srgb, var(--accent) 8%, transparent);
 }
 
 .blast-history-chip.confirming {
   border-color: var(--danger);
-  background: rgba(229, 62, 62, 0.05);
+  background: color-mix(in srgb, var(--danger) 5%, transparent);
 }
 
 .blast-chip-name {
@@ -560,7 +561,7 @@
 
 .blast-chip-close:hover {
   color: var(--danger);
-  background: rgba(229, 62, 62, 0.1);
+  background: color-mix(in srgb, var(--danger) 10%, transparent);
 }
 
 .blast-chip-close-confirm {
@@ -568,5 +569,5 @@
   font-size: var(--text-2xs);
   font-weight: 600;
   padding: var(--space-0-5) var(--space-1);
-  background: rgba(229, 62, 62, 0.1);
+  background: color-mix(in srgb, var(--danger) 10%, transparent);
 }

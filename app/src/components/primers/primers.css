@@ -13,7 +13,7 @@
   background: color-mix(in srgb, var(--danger) 22%, transparent);
   color: var(--danger);
   font-weight: 700;
-  border-radius: 2px;
+  border-radius: var(--radius-xs);
 }
 
 .oligo-unbound {
@@ -38,7 +38,7 @@
   display: inline-flex;
   align-items: center;
   gap: 3px;
-  color: var(--warning, #d97706);
+  color: var(--warning);
   font-family: inherit;
 }
 
@@ -113,7 +113,7 @@
 
 .pl-site-note {
   color: var(--text-muted);
-  font-family: var(--font-sans, inherit);
+  font-family: inherit;
 }
 
 .pl-site-note.pl-mm {

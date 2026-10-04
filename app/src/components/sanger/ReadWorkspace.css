@@ -2,13 +2,14 @@
    file adds what is particular to traces. */
 
 .tw, .rs {
-  /* Trace colours for the chips and readouts. Mixed with the theme's text
-     colour, so they lighten on dark themes and deepen on light ones, as
-     the canvas palette does. */
-  --tw-a: color-mix(in srgb, #22c55e 78%, var(--text));
-  --tw-c: color-mix(in srgb, #3b82f6 78%, var(--text));
+  /* Trace colours for the chips and readouts. The base tokens already
+     lighten on dark themes, as the canvas palette does. G follows the text
+     colour (black on light, light grey on dark) rather than --base-g, which
+     is amber on dark themes, so the chips match the drawn traces. */
+  --tw-a: var(--base-a);
+  --tw-c: var(--base-c);
   --tw-g: var(--text);
-  --tw-t: color-mix(in srgb, #ef4444 78%, var(--text));
+  --tw-t: var(--base-t);
 }
 .tw-ch-A { color: var(--tw-a); }
 .tw-ch-C { color: var(--tw-c); }
@@ -119,8 +120,8 @@
   user-select: none;
 }
 .rs-table th.num, .rs-table td.num { text-align: right; font-variant-numeric: tabular-nums; }
-.rs-table th[aria-sort='ascending']::after { content: ' ▲'; font-size: 8px; }
-.rs-table th[aria-sort='descending']::after { content: ' ▼'; font-size: 8px; }
+.rs-table th[aria-sort='ascending']::after { content: ' ▲'; font-size: var(--text-2xs); }
+.rs-table th[aria-sort='descending']::after { content: ' ▼'; font-size: var(--text-2xs); }
 .rs-table td {
   padding: var(--space-1) var(--space-2);
   border-bottom: 1px solid var(--border);

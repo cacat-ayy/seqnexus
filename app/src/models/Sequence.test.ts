@@ -67,6 +67,32 @@ describe('Sequence', () => {
     expect(circ.subseq(4, 8)).toBe('GAAT')
   })
 
+  it('circular subseq reads one full turn from any start', () => {
+    const circ = new Sequence('ATGCGA', 'circular')
+    expect(circ.subseq(0, 6)).toBe('ATGCGA')
+    expect(circ.subseq(3, 9)).toBe('CGAATG')
+    expect(circ.subseq(6, 12)).toBe('ATGCGA')
+  })
+
+  it('circular subseq takes a start past the length', () => {
+    const circ = new Sequence('ATGCGA', 'circular')
+    expect(circ.subseq(7, 9)).toBe('TG')
+    expect(circ.subseq(10, 13)).toBe('GAA')
+  })
+
+  it('circular subseq rejects more than one turn or a reversed range', () => {
+    const circ = new Sequence('ATGCGA', 'circular')
+    expect(() => circ.subseq(0, 7)).toThrow(RangeError)
+    expect(() => circ.subseq(2, 14)).toThrow(RangeError)
+    expect(() => circ.subseq(-1, 3)).toThrow(RangeError)
+    expect(() => circ.subseq(4, 2)).toThrow(RangeError)
+    expect(() => new Sequence('', 'circular').subseq(0, 1)).toThrow(RangeError)
+  })
+
+  it('linear subseq still rejects out-of-range reads', () => {
+    expect(() => seq.subseq(0, seq.length + 1)).toThrow(RangeError)
+  })
+
   // --- complement ---
   it('computes complement', () => {
     const s = new Sequence('ATGC')

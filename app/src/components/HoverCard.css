@@ -22,7 +22,7 @@
 }
 .hc-pinned .ft-tooltip-name,
 .hc-pinned .enzyme-tooltip-title {
-  padding-right: var(--space-6, 24px);
+  padding-right: var(--space-6);
 }
 
 .hc-close {
@@ -68,7 +68,7 @@
   letter-spacing: .04em;
   text-transform: none;
 }
-.hc-pinned .hc-chip { margin-right: var(--space-4, 16px); }
+.hc-pinned .hc-chip { margin-right: var(--space-4); }
 
 .hc-sub {
   padding: var(--space-1-5) var(--space-3) 0;
