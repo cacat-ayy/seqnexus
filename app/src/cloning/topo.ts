@@ -48,11 +48,21 @@ export interface TopoResult {
 /** TOPO recognition motif (vaccinia topoisomerase I). */
 const TOPO_MOTIF = 'CCCTT'
 
-/** Directional TOPO overhang on the vector (anneals to CACC on the insert). */
-const DIRECTIONAL_VECTOR_OVERHANG = 'GTGG'
-
-/** Required 5' overhang on the insert for Directional TOPO. */
+/** Required 5' clamp on the insert for Directional TOPO. */
 const DIRECTIONAL_INSERT_OVERHANG = 'CACC'
+
+/**
+ * How the insert's clamp can read on the vector beside the cut.
+ *
+ * The vector's four-base overhang and the insert's CACC are two strands of
+ * the same four base pairs, not two stretches to be put end to end — so in
+ * the product those bases appear once. Depending on which strand the vector
+ * is stored on, they read either as the clamp itself or as its complement.
+ */
+const DIRECTIONAL_VECTOR_CLAMPS = [
+  DIRECTIONAL_INSERT_OVERHANG,
+  reverseComplement(DIRECTIONAL_INSERT_OVERHANG),
+]
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -177,43 +187,39 @@ function buildTopoProduct(
 ): CloningProduct {
   const vectorBases = vectorDoc.sequence.bases
   const vectorCircular = vectorDoc.sequence.topology === 'circular'
-  let insertBases = insertDoc.sequence.bases
+  const insertBases = insertDoc.sequence.bases
 
-  // For Directional TOPO, trim the CACC overhang from the insert
-  // (it anneals to the vector's GTGG, not incorporated as extra bases)
-  let insertStart = 0
-  let insertEnd = insertBases.length
-  if (variant === 'Directional' && !reverse) {
-    insertStart = DIRECTIONAL_INSERT_OVERHANG.length
-  }
+  const insertStart = 0
+  const insertEnd = insertBases.length
 
   let insertSeq = insertBases.slice(insertStart, insertEnd)
   if (reverse) {
     insertSeq = reverseComplement(insertSeq)
   }
 
-  // The TOPO site is where the vector is cut. The insert goes between
-  // the cut position (end of CCCTT motif).
+  // The TOPO site is where the vector is cut. The insert goes in at the end
+  // of the CCCTT motif.
   const cutPos = topoSite.end
 
-  let productSeq: string
-  let vectorLeftEnd: number
-  let vectorRightStart: number
-
-  if (vectorCircular) {
-    // For circular vector: linearize at the TOPO site, insert, re-circularize
-    const vectorLeft = vectorBases.slice(0, cutPos)
-    const vectorRight = vectorBases.slice(cutPos)
-    productSeq = vectorLeft + insertSeq + vectorRight
-    vectorLeftEnd = cutPos
-    vectorRightStart = cutPos
-  } else {
-    const vectorLeft = vectorBases.slice(0, cutPos)
-    const vectorRight = vectorBases.slice(cutPos)
-    productSeq = vectorLeft + insertSeq + vectorRight
-    vectorLeftEnd = cutPos
-    vectorRightStart = cutPos
+  // Directional TOPO: the insert's CACC pairs with the vector's four-base
+  // overhang, so those bases belong to both and must appear once. The clamp
+  // is kept — it is part of the finished construct, and the translation
+  // context downstream of it depends on being there — and the vector's
+  // matching bases are consumed instead of being written out again.
+  let clampConsumed = 0
+  if (variant === 'Directional' && !reverse) {
+    const beside = vectorBases.slice(cutPos, cutPos + DIRECTIONAL_INSERT_OVERHANG.length).toUpperCase()
+    if (DIRECTIONAL_VECTOR_CLAMPS.includes(beside)) {
+      clampConsumed = DIRECTIONAL_INSERT_OVERHANG.length
+    }
   }
+
+  // A circular vector is opened at the TOPO site, takes the insert, and
+  // closes again; a linear one is already open there. Either way the insert
+  // goes in at the cut, and the stored origin stays at position 1.
+  const vectorLeftEnd = cutPos
+  const vectorRightStart = cutPos + clampConsumed
+  const productSeq = vectorBases.slice(0, vectorLeftEnd) + insertSeq + vectorBases.slice(vectorRightStart)
 
   // Transfer annotations
   const annotations: AnnotationData[] = []
@@ -367,11 +373,12 @@ function findActiveSite(
     return { site: bestSite, info }
   }
 
-  // For Directional TOPO, prefer a site followed by GTGG
+  // For Directional TOPO, prefer a site whose next bases are the clamp the
+  // insert's CACC pairs with, on whichever strand the vector is stored.
   if (variant === 'Directional') {
     const dirSite = sites.find(s => {
-      const after = vectorBases.slice(s.end, s.end + DIRECTIONAL_VECTOR_OVERHANG.length).toUpperCase()
-      return after === DIRECTIONAL_VECTOR_OVERHANG
+      const after = vectorBases.slice(s.end, s.end + DIRECTIONAL_INSERT_OVERHANG.length).toUpperCase()
+      return DIRECTIONAL_VECTOR_CLAMPS.includes(after)
     })
     if (dirSite) {
       info.push(`Multiple CCCTT sites found (${sites.length}). Using the site at position ${dirSite.start} (followed by GTGG directional overhang). In a real TOPO reaction, only the manufacturer-activated site is used.`)
@@ -410,11 +417,20 @@ export function topoClone(input: TopoInput): TopoResult {
     }
   }
 
-  // For Directional TOPO on circular vectors, verify the GTGG overhang
-  if (variant === 'Directional' && vectorTopology === 'circular') {
-    const afterSite = vectorBases.slice(topoSite.end, topoSite.end + DIRECTIONAL_VECTOR_OVERHANG.length).toUpperCase()
-    if (afterSite !== DIRECTIONAL_VECTOR_OVERHANG) {
-      warnings.push(`Directional TOPO vector lacks ${DIRECTIONAL_VECTOR_OVERHANG} overhang after TOPO site (found: ${afterSite || 'nothing'})`)
+  // Directional TOPO: the bases beside the cut should be the ones the
+  // insert's clamp pairs with. Without them the clamp has nothing to hold on
+  // to, and the product is written out with the clamp left in place rather
+  // than quietly shifted by four bases.
+  if (variant === 'Directional') {
+    const afterSite = vectorBases
+      .slice(topoSite.end, topoSite.end + DIRECTIONAL_INSERT_OVERHANG.length)
+      .toUpperCase()
+    if (!DIRECTIONAL_VECTOR_CLAMPS.includes(afterSite)) {
+      warnings.push(
+        `This vector does not carry the ${DIRECTIONAL_VECTOR_CLAMPS.join(' or ')} overhang beside its TOPO ` +
+        `site (found ${afterSite || 'nothing'}), so there is nothing for the insert's ` +
+        `${DIRECTIONAL_INSERT_OVERHANG} to pair with: the insert could go in either way round.`,
+      )
     }
   }
 

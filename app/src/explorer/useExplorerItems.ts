@@ -10,7 +10,7 @@ import { useMemo } from 'react'
 import { useEditorStore } from '../store'
 import type { ExplorerItem, ItemKind } from './types'
 import {
-  sequenceToItem, readToItem, alignmentToItem, contigToItem, oligoToItem, gelToItem,
+  sequenceToItem, readToItem, alignmentToItem, contigToItem, oligoToItem, gelToItem, cloneToItem,
   type AdapterContext, type OpenTarget,
 } from './adapters'
 import { findBindingSites } from '../primers/binding'
@@ -34,6 +34,7 @@ export interface ExplorerItems {
  */
 function resolveOpen(s: {
   gels: { id: string }[]; activeGelId: string | null
+  clones: { id: string }[]; activeCloneId: string | null
   contigs: { id: string }[]; activeContigId: string | null
 
   activeSequencingReadIds: string[]
@@ -42,6 +43,9 @@ function resolveOpen(s: {
 }): OpenTarget {
   if (s.activeGelId && s.gels.some(g => g.id === s.activeGelId)) {
     return { kind: 'gel', id: s.activeGelId }
+  }
+  if (s.activeCloneId && s.clones.some(c => c.id === s.activeCloneId)) {
+    return { kind: 'clone', id: s.activeCloneId }
   }
   if (s.activeContigId && s.contigs.some(c => c.id === s.activeContigId)) {
     return { kind: 'contig', id: s.activeContigId }
@@ -67,6 +71,26 @@ export function useExplorerItems(): ExplorerItems {
   const oligos = useEditorStore(s => s.oligos)
   const gels = useEditorStore(s => s.gels)
   const activeGelId = useEditorStore(s => s.activeGelId)
+  const clones = useEditorStore(s => s.clones)
+  const activeCloneId = useEditorStore(s => s.activeCloneId)
+
+  // The sequence behind each open tab a cloning design draws on, so a design
+  // can say when one of its parts has moved on. Only the sequences a design
+  // actually uses are looked up, and the strings are passed by reference.
+  const liveDoc = useEditorStore(s => s.doc)
+  const tabSequenceById = useMemo(() => {
+    const map = new Map<string, { bases: string; topology: 'linear' | 'circular' }>()
+    if (clones.length === 0) return map
+    const needed = new Set(
+      clones.flatMap(c => c.design.parts.map(part => part.source?.id).filter((id): id is string => !!id)),
+    )
+    for (const tab of tabs) {
+      if (!needed.has(tab.id)) continue
+      const doc = tab.id === activeTabId ? liveDoc : tab.doc
+      map.set(tab.id, { bases: doc.sequence.bases, topology: doc.sequence.topology })
+    }
+    return map
+  }, [clones, tabs, activeTabId, liveDoc])
 
   // Which library oligos bind the open sequence. Its own memo, keyed on the
   // bases, so a rename or a star does not re-run the binding search.
@@ -82,6 +106,7 @@ export function useExplorerItems(): ExplorerItems {
   return useMemo(() => {
     const open = resolveOpen({
       gels, activeGelId,
+      clones, activeCloneId,
       contigs, activeContigId,
       activeSequencingReadIds,
       alignments, activeAlignmentId,
@@ -93,6 +118,7 @@ export function useExplorerItems(): ExplorerItems {
       includedReadIds: activeSequencingReadIds,
       tabNameById: new Map(tabs.map(t => [t.id, t.doc.name])),
       oligosBindingOpen,
+      tabSequenceById,
       openSequenceName: tabs.find(t => t.id === activeTabId)?.doc.name,
     }
 
@@ -102,6 +128,7 @@ export function useExplorerItems(): ExplorerItems {
       'alignment': alignments.map(a => alignmentToItem(a, ctx)),
       'contig': contigs.map(c => contigToItem(c, ctx)),
       'gel': gels.map(g => gelToItem(g, ctx)),
+      'clone': clones.map(c => cloneToItem(c, ctx)),
       'oligo': oligos.map(o => oligoToItem(o, ctx)),
     }
 
@@ -114,6 +141,7 @@ export function useExplorerItems(): ExplorerItems {
   }, [
     tabs, activeTabId, sequencingReads, activeSequencingReadIds,
     alignments, activeAlignmentId,
-    contigs, activeContigId, gels, activeGelId, oligos, oligosBindingOpen,
+    contigs, activeContigId, gels, activeGelId, clones, activeCloneId, oligos, oligosBindingOpen,
+    tabSequenceById,
   ])
 }

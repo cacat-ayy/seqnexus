@@ -10,13 +10,14 @@ import { Lock, TriangleAlert, Globe, FlaskConical, Wand2, Activity, TestTube, Li
 import type { LibraryOligo } from '../primers/oligo'
 import { oligoTm } from '../primers/display'
 import type {
-  DocumentTab, SequencingRead, SavedAlignment, Contig, GelDoc,
+  DocumentTab, SequencingRead, SavedAlignment, Contig, GelDoc, CloneDoc,
 } from '../store'
 import type { DocumentOrigin } from '../models/Document'
 import type { ExplorerItem, ItemBadge, ItemKind } from './types'
 import { toUid } from './types'
 import { formatBases, formatPercent, formatCount, meanQuality } from './format'
 import { readQc } from '../sanger/qc'
+import { METHOD_LABEL, partMatchesSource } from '../cloning/design'
 import { originLabel } from '../msa/model'
 import { summarize } from '../msa/stats'
 
@@ -41,6 +42,11 @@ export interface AdapterContext {
   tabNameById: ReadonlyMap<string, string>
   /** Library oligos that bind the open sequence, and its name. */
   oligosBindingOpen?: ReadonlySet<string>
+  /**
+   * The sequence behind each open tab, for telling whether a cloning
+   * design's copy of a part still matches the sequence it came from.
+   */
+  tabSequenceById?: ReadonlyMap<string, { bases: string; topology: 'linear' | 'circular' }>
   openSequenceName?: string
 }
 
@@ -258,5 +264,62 @@ export function gelToItem(gel: GelDoc, ctx: AdapterContext): ExplorerItem {
     badges: [],
     // A gel draws on any number of sequences, so it is not nested under one.
     derivedFrom: [],
+  }
+}
+
+/**
+ * A cloning design as a row.
+ *
+ * The parts it uses are named as what it is derived from, so a design sits
+ * under its sources in the tree the way a contig sits under its reads. Its
+ * products are not: they only exist once the design is run, and whichever one
+ * the user keeps becomes a sequence of its own.
+ */
+export function cloneToItem(clone: CloneDoc, ctx: AdapterContext): ExplorerItem {
+  const { design } = clone
+  const parts = design.parts.length
+  const stats = [
+    METHOD_LABEL[design.method],
+    formatCount(parts, 'part'),
+  ]
+  const badges: ItemBadge[] = []
+  // A part whose source has been edited since is worth knowing about before
+  // trusting the product.
+  // Only when the source is open and demonstrably different. A source that
+  // is not open says nothing either way.
+  const stale = design.parts.some(p => {
+    if (!p.source) return false
+    const current = ctx.tabSequenceById?.get(p.source.id)
+    return current !== undefined && !partMatchesSource(p, current.bases, current.topology)
+  })
+  if (stale) {
+    badges.push({
+      key: 'stale-source',
+      label: 'A sequence this design uses has been edited since',
+      icon: TriangleAlert,
+      tone: 'warn',
+    })
+  }
+
+  return {
+    uid: toUid('clone', clone.id),
+    kind: 'clone',
+    id: clone.id,
+    name: clone.name,
+    createdAt: clone.createdAt,
+    modifiedAt: clone.modifiedAt,
+    size: parts,
+    isOpen: isOpen(ctx, 'clone', clone.id),
+    isIncluded: false,
+    isDirty: false,
+    isReadOnly: false,
+    isCircular: false,
+    canDuplicate: true,
+    stats,
+    badges,
+    derivedFrom: design.parts
+      .map(p => p.source?.id)
+      .filter((id): id is string => !!id && ctx.tabNameById.has(id))
+      .map(id => toUid('sequence', id)),
   }
 }

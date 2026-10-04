@@ -154,24 +154,37 @@ describe('topoClone Directional', () => {
     expect(badResult.warnings.some(w => w.includes('CACC'))).toBe(true)
   })
 
-  it('warns when vector lacks GTGG overhang', () => {
+  it('warns when the vector has nothing for the clamp to pair with', () => {
     const insert = makeDoc('pcr', 'CACCATGCCCGGG')
-    const vector = makeTopoVector() // has CCCTT but no GTGG after it
+    const vector = makeTopoVector() // has CCCTT, but no clamp after it
 
     const result = topoClone({ variant: 'Directional', insert: { doc: insert }, vector: { doc: vector } })
 
-    expect(result.warnings.some(w => w.includes('GTGG'))).toBe(true)
+    expect(result.warnings.some(w => w.includes('pair with'))).toBe(true)
   })
 
-  it('trims CACC from insert in forward product', () => {
+  it('keeps the CACC clamp in the product', () => {
+    // The clamp and the vector's overhang are two strands of the same four
+    // base pairs, so they appear once — and they do appear. Deleting them
+    // would shorten the construct and move everything downstream of it.
     const insert = makeDoc('pcr', 'CACCATG')
-    const vector = makeDoc('vec', 'GGGG' + 'CCCTT' + 'GTGG' + 'CCCC', 'circular')
+    const vector = makeDoc('vec', 'GGGG' + 'CCCTT' + 'GGTG' + 'CCCC', 'circular')
 
     const result = topoClone({ variant: 'Directional', insert: { doc: insert }, vector: { doc: vector } })
 
     const product = result.products[0]
-    // CACC should be trimmed from the insert
-    expect(product.sequence).toContain('ATG')
-    expect(product.sequence).not.toContain('CACCATG')
+    expect(product.sequence).toBe('GGGG' + 'CCCTT' + 'CACCATG' + 'CCCC')
+    expect(product.size).toBe(vector.sequence.length + insert.sequence.length - 4)
+  })
+
+  it('does not quietly shift the insert when the vector carries no clamp', () => {
+    const insert = makeDoc('pcr', 'CACCATG')
+    const vector = makeDoc('vec', 'GGGG' + 'CCCTT' + 'TTTT' + 'CCCC', 'circular')
+
+    const result = topoClone({ variant: 'Directional', insert: { doc: insert }, vector: { doc: vector } })
+
+    const product = result.products[0]
+    expect(product.sequence).toBe('GGGG' + 'CCCTT' + 'CACCATG' + 'TTTT' + 'CCCC')
+    expect(product.size).toBe(vector.sequence.length + insert.sequence.length)
   })
 })

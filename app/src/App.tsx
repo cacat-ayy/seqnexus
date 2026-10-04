@@ -18,9 +18,9 @@ import ExplorerPanel from './components/explorer/ExplorerPanel'
 import { groupSelection, countSelectable } from './explorer/selection'
 import SequencePropertiesModal from './components/SequencePropertiesModal'
 import SequenceStatsPopover from './components/SequenceStatsPopover'
-const CloningModal = lazy(() => import('./components/CloningModal'))
 const CodonOptimizeModal = lazy(() => import('./components/CodonOptimizeModal'))
 const GelWorkspace = lazy(() => import('./components/gel/GelWorkspace'))
+const CloneWorkspace = lazy(() => import('./components/cloning/CloneWorkspace'))
 import { useEditorStore, isOriginSpanningSelection, selectionSegments, type SequencingRead } from './store'
 import { editedRead, toFasta, toFastq } from './sanger/edits'
 import { displayPosition, internalPosition, type DocumentState } from './models/Document'
@@ -40,6 +40,7 @@ import { parseFastq, meanQuality } from './io/fastq'
 import { libraryMatches } from './primers/library'
 import { notify } from './toast'
 import { loadStoredWorkspace, clearStoredWorkspace } from './gel/workspace'
+import { METHOD_BLURB, METHOD_LABEL, type CloningMethodId } from './cloning/design'
 import { useSessionPersistence } from './hooks/useSessionPersistence'
 import { useBackupReminder } from './hooks/useBackupReminder'
 import { useBackupStore } from './backup/backup'
@@ -59,10 +60,11 @@ import { getEnzyme, type RestrictionEnzyme } from './enzymes/db'
 import { findEnzymeSitesAsync } from './workers/enzyme-finder'
 import {
   File, Dna, FolderPlus, FileUp, FolderUp, ClipboardPaste, Save,
-  Undo2, Redo2, Search, TextSearch, Scissors, FlaskConical, TestTube,
+  Undo2, Redo2, Search, TextSearch, Scissors, FlaskConical,
   BarChart3, ZoomOut, ZoomIn, Scan, PanelLeftOpen,
   X, ChevronDown as ChevronDownSmall,
   SunMoon, Info, List, Lock, LockOpen, Tag, Globe, GalleryVertical, AlignLeft, ArrowLeft, Wand2,
+  Combine,
   SlidersHorizontal,
 } from 'lucide-react'
 const BlastModal = lazy(() => import('./components/BlastModal'))
@@ -327,8 +329,6 @@ export default function App() {
   const [annotateModalOpen, setAnnotateModalOpen] = useState(false)
   const [codonModalOpen, setCodonModalOpen] = useState(false)
   const [propertiesModalOpen, setPropertiesModalOpen] = useState(false)
-  const [cloningModalOpen, setCloningModalOpen] = useState(false)
-  const [cloningInitialMethod, setCloningInitialMethod] = useState<import('./components/CloningModal').CloningMethod | undefined>(undefined)
   const [cloningDropdownOpen, setCloningDropdownOpen] = useState(false)
   const cloningBtnRef = useRef<HTMLDivElement>(null)
   const [blastModalOpen, setBlastModalOpen] = useState(false)
@@ -391,6 +391,7 @@ export default function App() {
   }, [])
 
   const activeGel = useEditorStore(s => s.gels.find(g => g.id === s.activeGelId) ?? null)
+  const activeClone = useEditorStore(s => s.clones.find(c => c.id === s.activeCloneId) ?? null)
   const activeAln = useEditorStore(s => (s.activeAlignmentId ? s.alignments.find(a => a.id === s.activeAlignmentId) ?? null : null))
   const activeContig = useEditorStore(s => (s.activeContigId ? s.contigs.find(c => c.id === s.activeContigId) ?? null : null))
   // One read open on its own has an undo history of its own; several at once are a table.
@@ -399,6 +400,7 @@ export default function App() {
   const redoAlignment = useEditorStore(s => s.redoAlignment)
   const gelOpen = activeGel !== null
   const setActiveGel = useEditorStore(s => s.setActiveGel)
+  const setActiveClone = useEditorStore(s => s.setActiveClone)
   const undoGel = useEditorStore(s => s.undoGel)
   const redoGel = useEditorStore(s => s.redoGel)
 
@@ -417,6 +419,16 @@ export default function App() {
     const stored = loadStoredWorkspace()
     s.createGel(stored ? { state: stored, name: 'Gel 1' } : undefined)
     if (stored) clearStoredWorkspace()
+  }, [])
+
+  const openCloning = useCallback(() => {
+    const s = useEditorStore.getState()
+    if (s.clones.length > 0) {
+      const latest = s.clones.reduce((a, b) => (b.modifiedAt > a.modifiedAt ? b : a))
+      s.setActiveClone(latest.id)
+      return
+    }
+    s.createClone()
   }, [])
 
   // Opening any other item closes the gel. The setActive* actions do this
@@ -1080,6 +1092,7 @@ export default function App() {
       session.oligos,
     )
     useEditorStore.getState().restoreGels(session.gels, session.activeGelId ?? null)
+    useEditorStore.getState().restoreClones(session.clones, session.activeCloneId ?? null)
     setSessionImportOpen(false)
     setSessionImportData(null)
     sessionImportParsedRef.current = null
@@ -1100,6 +1113,7 @@ export default function App() {
       session.oligos,
     )
     useEditorStore.getState().mergeGels(session.gels)
+    useEditorStore.getState().mergeClones(session.clones)
     setSessionImportOpen(false)
     setSessionImportData(null)
     sessionImportParsedRef.current = null
@@ -1373,23 +1387,26 @@ export default function App() {
   const undoDesc = activeGel ? undefined : historyOf ? historyOf.undoStack[historyOf.undoStack.length - 1]?.label : undoTop || undefined
   const redoDesc = activeGel ? undefined : historyOf ? historyOf.redoStack[historyOf.redoStack.length - 1]?.label : redoTop || undefined
   const activeGelId = activeGel?.id
+  const activeCloneId = activeClone?.id
   const activeAlnId = activeAln?.id
   const activeReadId = activeRead?.id
   const activeContigIdForHistory = activeContig?.id
   const runUndo = useCallback(() => {
-    if (activeGelId) undoGel(activeGelId)
+    if (activeCloneId) useEditorStore.getState().undoClone(activeCloneId)
+    else if (activeGelId) undoGel(activeGelId)
     else if (activeAlnId) undoAlignment(activeAlnId)
     else if (activeContigIdForHistory) useEditorStore.getState().undoContig(activeContigIdForHistory)
     else if (activeReadId) useEditorStore.getState().undoSequencing(activeReadId)
     else undo()
-  }, [activeGelId, activeAlnId, activeContigIdForHistory, activeReadId, undoGel, undoAlignment, undo])
+  }, [activeCloneId, activeGelId, activeAlnId, activeContigIdForHistory, activeReadId, undoGel, undoAlignment, undo])
   const runRedo = useCallback(() => {
-    if (activeGelId) redoGel(activeGelId)
+    if (activeCloneId) useEditorStore.getState().redoClone(activeCloneId)
+    else if (activeGelId) redoGel(activeGelId)
     else if (activeAlnId) redoAlignment(activeAlnId)
     else if (activeContigIdForHistory) useEditorStore.getState().redoContig(activeContigIdForHistory)
     else if (activeReadId) useEditorStore.getState().redoSequencing(activeReadId)
     else redo()
-  }, [activeGelId, activeAlnId, activeContigIdForHistory, activeReadId, redoGel, redoAlignment, redo])
+  }, [activeCloneId, activeGelId, activeAlnId, activeContigIdForHistory, activeReadId, redoGel, redoAlignment, redo])
   const stepWhy = (verb: 'undo' | 'redo') =>
     !ownHistory && noDoc ? `Open a sequence to ${verb} its edits`
       : !ownHistory && readOnly ? 'This sequence is read-only. Unlock it to edit'
@@ -1430,17 +1447,15 @@ export default function App() {
     { id: 'properties', label: 'Sequence Properties', group: 'Analyse', icon: BarChart3, disabled: noDoc, run: () => setPropertiesModalOpen(true) },
 
     // --- Cloning ---
-    ...(['digest', 'gibson', 'golden-gate', 'infusion', 'gateway', 'topo'] as const).map(method => ({
+    { id: 'clone', label: 'Cloning', group: 'Cloning', icon: Combine, keywords: 'assemble construct vector insert ligate', run: openCloning },
+    { id: 'new-clone', label: 'New Cloning Design', group: 'Cloning', icon: Combine, keywords: 'assemble construct', run: () => useEditorStore.getState().createClone() },
+    ...(['restriction', 'golden-gate', 'homology', 'gateway', 'topo'] as CloningMethodId[]).map(method => ({
       id: `cloning-${method}`,
-      label: {
-        digest: 'Digest + Ligation', gibson: 'Gibson Assembly', 'golden-gate': 'Golden Gate',
-        infusion: 'In-Fusion', gateway: 'Gateway', topo: 'TOPO',
-      }[method],
+      label: METHOD_LABEL[method],
       group: 'Cloning',
-      icon: TestTube,
-      keywords: 'clone assembly',
-      disabled: noDoc,
-      run: () => { setCloningInitialMethod(method); setCloningModalOpen(true) },
+      icon: Combine,
+      keywords: `clone assembly ${METHOD_BLURB[method]}`,
+      run: () => useEditorStore.getState().createClone({ method }),
     })),
 
     // --- View ---
@@ -1454,7 +1469,7 @@ export default function App() {
     { id: 'theme', label: 'Change Theme', group: 'View', icon: SunMoon, keywords: 'dark light appearance', run: () => setThemeOpen(true) },
     { id: 'about', label: 'About SeqNexus', group: 'View', icon: Info, keywords: 'help version', run: () => setInfoOpen(true) },
   ], [
-    mod, redoKey, noDoc, undoDisabled, redoDisabled, handleOpenFind, handleNewSequence, handleNewFolder, openGel, runUndo, runRedo,
+    mod, redoKey, noDoc, undoDisabled, redoDisabled, handleOpenFind, handleNewSequence, handleNewFolder, openGel, openCloning, runUndo, runRedo,
     handleImportClipboard, toggleOrfs, toggleEnzymes, openSidebar, openPrimerDesign, toggleAutoAnnotations,
     viewMode,
   ])
@@ -1618,39 +1633,31 @@ export default function App() {
             <span className="tb-icon"><FlaskConical size={14} /></span><span className="tb-text">Primers</span>
           </button>
           <div className="tb-split" ref={cloningBtnRef}>
-            <button className="tb" onClick={() => { setCloningInitialMethod(undefined); setCloningModalOpen(true) }} disabled={!activeTabId} {...tip({ label: 'Cloning', desc: 'Simulate restriction, Gibson, Golden Gate and other assemblies', why: needsSequence })}>
-              <span className="tb-icon"><TestTube size={14} /></span><span className="tb-text">Cloning</span>
+            <button className={`tb ${activeClone ? 'active' : ''}`} onClick={openCloning} {...tip({ label: 'Cloning', desc: 'Design a construct and see what the reaction gives' })}>
+              <span className="tb-icon"><Combine size={14} /></span><span className="tb-text">Cloning</span>
             </button>
             <button
               className="tb tb-split-caret"
-              disabled={!activeTabId}
               onClick={() => setCloningDropdownOpen(v => !v)}
               aria-haspopup="menu"
               aria-expanded={cloningDropdownOpen}
-              {...tip({ label: 'More cloning methods', why: needsSequence })}
+              {...tip({ label: 'Start a design with one method' })}
             >
               <ChevronDownSmall size={12} />
             </button>
-            {cloningDropdownOpen && activeTabId && (
+            {cloningDropdownOpen && (
               <div className="tb-dropdown" role="menu">
-                <button className="tb-dropdown-item" role="menuitem" onClick={() => { setCloningInitialMethod('digest'); setCloningModalOpen(true); setCloningDropdownOpen(false) }}>
-                  Digest + Ligation
-                </button>
-                <button className="tb-dropdown-item" role="menuitem" onClick={() => { setCloningInitialMethod('gibson'); setCloningModalOpen(true); setCloningDropdownOpen(false) }}>
-                  Gibson Assembly
-                </button>
-                <button className="tb-dropdown-item" role="menuitem" onClick={() => { setCloningInitialMethod('golden-gate'); setCloningModalOpen(true); setCloningDropdownOpen(false) }}>
-                  Golden Gate
-                </button>
-                <button className="tb-dropdown-item" role="menuitem" onClick={() => { setCloningInitialMethod('infusion'); setCloningModalOpen(true); setCloningDropdownOpen(false) }}>
-                  In-Fusion
-                </button>
-                <button className="tb-dropdown-item" role="menuitem" onClick={() => { setCloningInitialMethod('gateway'); setCloningModalOpen(true); setCloningDropdownOpen(false) }}>
-                  Gateway
-                </button>
-                <button className="tb-dropdown-item" role="menuitem" onClick={() => { setCloningInitialMethod('topo'); setCloningModalOpen(true); setCloningDropdownOpen(false) }}>
-                  TOPO
-                </button>
+                {(['restriction', 'golden-gate', 'homology', 'gateway', 'topo'] as CloningMethodId[]).map(method => (
+                  <button
+                    key={method}
+                    className="tb-dropdown-item"
+                    role="menuitem"
+                    title={METHOD_BLURB[method]}
+                    onClick={() => { useEditorStore.getState().createClone({ method }); setCloningDropdownOpen(false) }}
+                  >
+                    {METHOD_LABEL[method]}
+                  </button>
+                ))}
               </div>
             )}
           </div>
@@ -1929,7 +1936,19 @@ export default function App() {
 
         {/* Center Panel */}
         <div className="center-panel">
-          {activeGel ? (
+          {activeClone ? (
+            <>
+              <Suspense fallback={null}>
+                <CloneWorkspace key={activeClone.id} clone={activeClone} onClose={() => setActiveClone(null)} />
+              </Suspense>
+              <div className="status-bar">
+                <span style={{ flex: 1 }} />
+                <span className="status-bar-right">
+                  <StorageIndicator refreshKey={storageRefreshKey} onBackup={openSessionExport} />
+                </span>
+              </div>
+            </>
+          ) : activeGel ? (
             <>
               <Suspense fallback={null}>
                 <GelWorkspace key={activeGel.id} gel={activeGel} onClose={() => setActiveGel(null)} onExportPrompt={handleFilenamePrompt} />
@@ -2390,11 +2409,6 @@ export default function App() {
       <SequencePropertiesModal
         open={propertiesModalOpen}
         onClose={() => setPropertiesModalOpen(false)}
-      />
-      <CloningModal
-        open={cloningModalOpen}
-        onClose={() => setCloningModalOpen(false)}
-        initialMethod={cloningInitialMethod}
       />
       <BlastModal
         open={blastModalOpen}

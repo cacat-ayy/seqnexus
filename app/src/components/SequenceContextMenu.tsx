@@ -13,7 +13,7 @@
 
 import { useEffect, type ReactNode } from 'react'
 import {
-  ClipboardPaste, Copy, Crosshair, ExternalLink, MoveLeft, MoveRight, PanelRight, Pencil, Replace,
+  ClipboardPaste, Combine, Copy, Crosshair, ExternalLink, MoveLeft, MoveRight, PanelRight, Pencil, Replace,
   SquareDashedMousePointer, Tag, Trash2, TriangleAlert, Undo2,
 } from 'lucide-react'
 import { useEditorStore, selectionRange, selectionSegments } from '../store'
@@ -30,6 +30,10 @@ import { structureGrade } from '../primers/secondary'
 import { DESIGN_ROLES, designOligoId } from '../primers/usePrimerSites'
 import { newPrimerId } from '../primers/oligo'
 import { notify } from '../toast'
+import { emptyDesign, METHOD_LABEL, partFromDoc, type CloningMethodId } from '../cloning/design'
+
+/** The methods offered straight from a selection. */
+const CLONING_METHODS: CloningMethodId[] = ['homology', 'restriction', 'golden-gate']
 import ContextMenuPopup, { MenuItem, MenuSeparator, Submenu } from './ContextMenuPopup'
 import type { GroupedCutSite } from '../enzymes/grouping'
 
@@ -237,6 +241,27 @@ export default function SequenceContextMenu({
     s.setFocusedPrimer(id)
   }
 
+  /**
+   * Start a cloning design from the selected stretch, as the insert, with
+   * the sequence it came from as the vector when that sequence is a plasmid.
+   */
+  const cloneSelection = (method: CloningMethodId) => {
+    const store = useEditorStore.getState()
+    const doc = store.doc
+    const from = Math.min(selection.anchor, selection.caret)
+    const to = Math.max(selection.anchor, selection.caret)
+    const insert = partFromDoc(doc, {
+      ...(store.activeTabId ? { sourceId: store.activeTabId } : {}),
+      role: 'insert',
+      region: { start: from, end: to },
+    })
+    const parts = [insert]
+    if (doc.sequence.topology === 'circular' && store.activeTabId) {
+      parts.unshift(partFromDoc(doc, { sourceId: store.activeTabId, role: 'vector' }))
+    }
+    store.createClone({ design: { ...emptyDesign(method), parts }, name: `${doc.name} cloning` })
+  }
+
   const deletePrimer = (item: PrimerItem) => {
     useEditorStore.getState().removePrimers([item.primer.id])
     notify.success(`Deleted primer "${item.primer.name}"`, {
@@ -388,6 +413,17 @@ export default function SequenceContextMenu({
             <MenuItem icon={<MoveLeft size={ICON} />} onSelect={act(() => newPrimer(-1))}>Reverse</MenuItem>
           </Submenu>
         )}
+        <Submenu icon={<Combine size={ICON} />} label="Clone This Selection">
+          {CLONING_METHODS.map((method: CloningMethodId) => (
+            <MenuItem
+              key={method}
+              icon={<Combine size={ICON} />}
+              onSelect={act(() => cloneSelection(method))}
+            >
+              {METHOD_LABEL[method]}
+            </MenuItem>
+          ))}
+        </Submenu>
       </div>,
     )
   }

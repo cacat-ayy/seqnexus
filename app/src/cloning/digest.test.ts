@@ -457,6 +457,44 @@ describe('methylation', () => {
   it('does wrap them around the origin of circular DNA', () => {
     const doc = methylated('TCTAGA' + pad(40) + 'GA', 'circular')
     // GA|TCTAGA across the origin is a GATC overlapping the site: no cut.
-    expect(digestFragments(doc, [XbaI]).fragments[0].name).toContain('uncut')
+    // An uncut circle stays a circle, so it has no ends to ligate to.
+    const { fragments } = digestFragments(doc, [XbaI])
+    expect(fragments).toHaveLength(1)
+    expect(fragments[0].overhang5Type).toBe('blunt')
+    expect(fragments[0].sequence).toBe(doc.sequence.bases)
+  })
+})
+
+describe('which product a digest and ligation was meant to give', () => {
+  const pad = (n: number) => 'AT'.repeat(Math.ceil(n / 2)).slice(0, n)
+  const core = 'AAAT'.repeat(50)
+
+  const vector = makeDoc('pVec', pad(300) + 'GAATTC' + pad(20) + 'GGATCC' + pad(300), 'circular')
+  const insert = makeDoc('ins', pad(8) + 'GAATTC' + core + 'GGATCC' + pad(8))
+
+  const fragments = [
+    ...digestFragments(vector, [EcoRI, BamHI]).fragments,
+    ...digestFragments(insert, [EcoRI, BamHI]).fragments,
+  ]
+
+  it('calls the backbone-plus-insert circle the expected one, and nothing else', () => {
+    const products = ligateFragments(fragments)
+    const flagged = products.filter(p => p.isExpected)
+    expect(flagged).toHaveLength(1)
+    expect(flagged[0].topology).toBe('circular')
+    expect(flagged[0].sequence).toContain(core)
+  })
+
+  it('puts it first, ahead of the off-target circles', () => {
+    expect(ligateFragments(fragments)[0].isExpected).toBe(true)
+  })
+
+  it('lets the caller say which parts the design uses', () => {
+    const backbone = fragments.indexOf(
+      fragments.reduce((a, b) => (a.sequence.length > b.sequence.length ? a : b)),
+    )
+    const stub = fragments.findIndex(f => f.sequence.length < 12)
+    const products = ligateFragments(fragments, { required: new Set([backbone, stub]) })
+    expect(products.filter(p => p.isExpected).every(p => !p.sequence.includes(core))).toBe(true)
   })
 })

@@ -40,6 +40,7 @@ export function useItemActions(): ItemActions {
       case 'alignment': return s.setActiveAlignment(item.id)
       case 'contig': return s.setActiveContig(item.id)
       case 'gel': return s.setActiveGel(item.id)
+      case 'clone': return s.setActiveClone(item.id)
       // An oligo has no view of its own; opening it shows where it binds.
       case 'oligo': {
         const o = s.oligos.find(x => x.id === item.id)
@@ -64,6 +65,7 @@ export function useItemActions(): ItemActions {
       case 'alignment': return s.renameAlignment(item.id, trimmed)
       case 'contig': return s.renameContig(item.id, trimmed)
       case 'gel': return s.renameGel(item.id, trimmed)
+      case 'clone': return s.renameClone(item.id, trimmed)
       case 'oligo': return s.updateLibraryOligo(item.id, { name: trimmed })
     }
   }, [])
@@ -76,6 +78,7 @@ export function useItemActions(): ItemActions {
       case 'alignment': return s.removeAlignment(item.id)
       case 'contig': return s.removeContig(item.id)
       case 'gel': return s.removeGel(item.id)
+      case 'clone': return s.removeClone(item.id)
       case 'oligo': return s.removeLibraryOligo(item.id)
     }
   }, [])
@@ -91,6 +94,7 @@ export function useItemActions(): ItemActions {
     if (!item.canDuplicate) return
     const s = useEditorStore.getState()
     if (item.kind === 'gel') s.duplicateGel(item.id)
+    if (item.kind === 'clone') s.duplicateClone(item.id)
     else if (item.kind === 'alignment') s.duplicateAlignment(item.id)
     else s.duplicateTab(item.id)
   }, [])

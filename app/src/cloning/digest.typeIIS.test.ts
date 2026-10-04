@@ -33,7 +33,9 @@ describe('Type IIS cuts on a circular sequence', () => {
     expect(fragments[0].sequence).toHaveLength(200)
     expect(fragments[0].overhang5).toBe('ACGG')
     expect(fragments[0].overhang5Type).toBe('five_prime')
-    expect(fragments[0].overhang3).toBe('ACGG')
+    // Each end reads along the strand that protrudes, so the two ends of one
+    // cut read as complements. That is what lets them anneal again.
+    expect(fragments[0].overhang3).toBe('CCGT')
   })
 
   it('handles a reverse-strand site just after the origin', () => {

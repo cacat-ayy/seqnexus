@@ -55,6 +55,7 @@ import {
   deleteUsageTable as idbDeleteUsageTable,
 } from './storage/idb'
 import { DEFAULT_CODON_SETTINGS, type CodonSettings } from './codon/settings'
+import { emptyDesign, partFromDoc, type CloningDesign, type CloningMethodId } from './cloning/design'
 import type {
   AminoAcidStyleId, TranslationFrameId,
 } from './codon/translation-display'
@@ -234,6 +235,7 @@ export type DeletedItem =
   | { kind: 'contig'; index: number; folderId: string | null; contig: Contig }
   | { kind: 'oligo'; index: number; folderId: string | null; oligo: LibraryOligo }
   | { kind: 'gel'; index: number; folderId: string | null; gel: GelDoc; wasActive: boolean }
+  | { kind: 'clone'; index: number; folderId: string | null; clone: CloneDoc; wasActive: boolean }
 
 /** A gel lane taken out because the sequence it was made from was deleted. */
 export interface RemovedGelLane {
@@ -364,11 +366,17 @@ const alignIds = makeIdGenerator('align')
 const contigIds = makeIdGenerator('contig')
 const oligoIds = makeIdGenerator('libo')
 const gelIds = makeIdGenerator('gel')
+const cloneIds = makeIdGenerator('clone')
 
 /** Edits to one gel with the same key within this window make one undo step. */
 const GEL_COALESCE_MS = 1000
 const MAX_GEL_UNDO = 100
 let gelCoalesce: { id: string; key: string; at: number } | null = null
+
+/** The same, for a cloning design: typing in a field is one step, not ten. */
+const CLONE_COALESCE_MS = 1000
+const MAX_CLONE_UNDO = 100
+let cloneCoalesce: { id: string; key: string; at: number } | null = null
 
 /** Same idea for alignment edits: typing a run of residues is one step. */
 const ALN_COALESCE_MS = 1000
@@ -547,6 +555,24 @@ export interface Contig {
   /** Earlier documents, newest last. Not persisted. */
   undoStack: ContigHistoryEntry[]
   redoStack: ContigHistoryEntry[]
+}
+
+/**
+ * A cloning design the user owns: the parts, the method, and its history.
+ *
+ * Only the design is kept. Products are worked out from it whenever it is
+ * opened (cloning/run), so a saved design always shows what the engines say
+ * now rather than what they said when it was saved.
+ */
+export interface CloneDoc {
+  id: string
+  name: string
+  createdAt: number
+  modifiedAt: number
+  design: CloningDesign
+  /** Earlier designs, newest last. Not persisted. */
+  undoStack: CloningDesign[]
+  redoStack: CloningDesign[]
 }
 
 /** A virtual gel: what is on it, how it was run and imaged, and its history. */
@@ -1013,6 +1039,33 @@ interface EditorStore {
   setActiveContig: (id: string | null) => void
   /** Change how a contig is shown. Not an undo step. */
   setContigView: (id: string, patch: Partial<ContigView>) => void
+
+  // Cloning designs
+  clones: CloneDoc[]
+  /** The design in the centre panel. Activating any other item clears it. */
+  activeCloneId: string | null
+  /** The sequence to go back to when the design closes. */
+  cloneReturnTabId: string | null
+  /**
+   * Start a design and, unless told otherwise, open it. Without a design of
+   * its own it begins from the sequence in view, taken as the vector when it
+   * is circular and as the insert when it is not.
+   */
+  createClone: (opts?: { name?: string; design?: CloningDesign; method?: CloningMethodId; activate?: boolean }) => string
+  setActiveClone: (id: string | null) => void
+  /**
+   * Change a design, recording an undo step. Calls sharing a `coalesceKey` in
+   * quick succession (typing in a field) make one step.
+   */
+  updateClone: (id: string, fn: (d: CloningDesign) => CloningDesign, coalesceKey?: string) => void
+  undoClone: (id: string) => void
+  redoClone: (id: string) => void
+  renameClone: (id: string, name: string) => void
+  duplicateClone: (id: string) => string | null
+  removeClone: (id: string) => void
+  /** Bring in designs from a saved or imported session. */
+  restoreClones: (clones: CloneDoc[], activeCloneId: string | null) => void
+  mergeClones: (clones: CloneDoc[]) => void
 
   // Virtual gels
   gels: GelDoc[]
@@ -1930,7 +1983,7 @@ export const useEditorStore = create<EditorStore>((set, get) => {
 
       // The whole subtree goes, and so does everything filed anywhere in it.
       const doomedFolders = folderSubtree(state.folders, folderId)
-      const doomed = { sequence: new Set<string>(), read: new Set<string>(), alignment: new Set<string>(), contig: new Set<string>(), oligo: new Set<string>(), gel: new Set<string>() }
+      const doomed = { sequence: new Set<string>(), read: new Set<string>(), alignment: new Set<string>(), contig: new Set<string>(), oligo: new Set<string>(), gel: new Set<string>(), clone: new Set<string>() }
       for (const f of state.folders) {
         if (!doomedFolders.has(f.id)) continue
         for (const uid of f.itemUids) {
@@ -1978,6 +2031,8 @@ export const useEditorStore = create<EditorStore>((set, get) => {
         oligos: state.oligos.filter(o => !doomed.oligo.has(o.id)),
         gels,
         activeGelId: doomed.gel.has(state.activeGelId ?? '') ? null : state.activeGelId,
+        clones: state.clones.filter(c => !doomed.clone.has(c.id)),
+        activeCloneId: doomed.clone.has(state.activeCloneId ?? '') ? null : state.activeCloneId,
         folders: state.folders.filter(f => !doomedFolders.has(f.id)),
       })
     },
@@ -2030,6 +2085,7 @@ export const useEditorStore = create<EditorStore>((set, get) => {
         tabs: [...state.tabs, tab],
         activeTabId: tab.id,
         activeGelId: null,
+        activeCloneId: null,
         doc: tab.doc,
         selection: tab.selection,
         search: tab.search,
@@ -2055,6 +2111,7 @@ export const useEditorStore = create<EditorStore>((set, get) => {
         tabs: [...s.tabs, tab],
         activeTabId: tab.id,
         activeGelId: null,
+        activeCloneId: null,
         doc: tab.doc,
         selection: tab.selection,
         search: tab.search,
@@ -2189,6 +2246,15 @@ export const useEditorStore = create<EditorStore>((set, get) => {
           get().setActiveGel(last.gel.id)
           return
         }
+        case 'clone': {
+          set({
+            clones: insertAt(state.clones, last.index, last.clone),
+            folders: withItem(state.folders, toUid('clone', last.clone.id), last.folderId),
+            recentlyDeleted: rest,
+          })
+          get().setActiveClone(last.clone.id)
+          return
+        }
       }
     },
 
@@ -2219,6 +2285,7 @@ export const useEditorStore = create<EditorStore>((set, get) => {
         tabs,
         activeTabId: tabId,
         activeGelId: null,
+        activeCloneId: null,
         activeSequencingReadIds: [],
         activeAlignmentId: null,
         activeContigId: null,
@@ -2268,6 +2335,7 @@ export const useEditorStore = create<EditorStore>((set, get) => {
         tabs: [...state.tabs, newTab],
         activeTabId: newTab.id,
         activeGelId: null,
+        activeCloneId: null,
         doc: newTab.doc,
         selection: newTab.selection,
         search: newTab.search,
@@ -2820,6 +2888,7 @@ export const useEditorStore = create<EditorStore>((set, get) => {
         activeAlignmentId: null,
         activeContigId: null,
         activeGelId: null,
+        activeCloneId: null,
       }))
       return reads.map(r => r.id)
     },
@@ -2847,6 +2916,7 @@ export const useEditorStore = create<EditorStore>((set, get) => {
       set({
         activeSequencingReadIds: id ? [id] : [],
         activeGelId: id ? null : get().activeGelId,
+        activeCloneId: id ? null : get().activeCloneId,
         activeTabId: id ? null : get().activeTabId,
         activeAlignmentId: id ? null : get().activeAlignmentId,
         activeContigId: id ? null : get().activeContigId,
@@ -3101,6 +3171,7 @@ export const useEditorStore = create<EditorStore>((set, get) => {
         activeAlignmentId: id,
         activeTabId: id ? null : get().activeTabId,
         activeGelId: id ? null : get().activeGelId,
+        activeCloneId: id ? null : get().activeCloneId,
         activeSequencingReadIds: id ? [] : get().activeSequencingReadIds,
         activeContigId: id ? null : get().activeContigId,
       })
@@ -3114,7 +3185,6 @@ export const useEditorStore = create<EditorStore>((set, get) => {
       }))
     },
 
-    // ---- Virtual gel ----
     // ---- Virtual gels ----
     gels: [],
     activeGelId: null,
@@ -3143,6 +3213,187 @@ export const useEditorStore = create<EditorStore>((set, get) => {
       set({ gels: [...s.gels, { id, name, createdAt: now, modifiedAt: now, state, undoStack: [], redoStack: [] }] })
       if (opts.activate !== false) get().setActiveGel(id)
       return id
+    },
+
+    // ---- Cloning designs ----
+    clones: [],
+    activeCloneId: null,
+    cloneReturnTabId: null,
+
+    createClone(opts = {}) {
+      const s = get()
+      let design = opts.design
+      if (!design) {
+        design = emptyDesign(opts.method)
+        // Start from the sequence in view, if there is one: a circular one is
+        // almost always the backbone, a linear one the thing going into it.
+        const srcId = s.activeTabId ?? s.cloneReturnTabId
+        const tab = s.tabs.find(t => t.id === srcId)
+        const doc = s.activeTabId === tab?.id ? s.doc : tab?.doc
+        if (tab && doc) {
+          design = { ...design, parts: [partFromDoc(doc, { sourceId: tab.id })] }
+        }
+      }
+      const id = cloneIds.next()
+      const now = Date.now()
+      const first = design.parts[0]
+      const name = opts.name ?? (first ? `${first.name} cloning` : `Cloning ${s.clones.length + 1}`)
+      set({ clones: [...s.clones, { id, name, createdAt: now, modifiedAt: now, design, undoStack: [], redoStack: [] }] })
+      if (opts.activate !== false) get().setActiveClone(id)
+      return id
+    },
+
+    setActiveClone(id) {
+      const s = get()
+      if (id) {
+        if (!s.clones.some(c => c.id === id)) return
+        // Keep the outgoing tab's analysis results with it, as switching tabs
+        // does, so coming back to it restores them.
+        const outgoing = s.activeTabId
+        const tabs = outgoing ? s.tabs.map(t => t.id === outgoing ? {
+          ...t,
+          orfResults: s.orfResults,
+          enzymeCutSites: s.enzymeCutSites,
+          enzymeNames: s.enzymeNames,
+          primerDesign: s.primerDesign,
+          autoAnnotations: s.autoAnnotations,
+        } : t) : s.tabs
+        set({
+          tabs,
+          activeCloneId: id,
+          cloneReturnTabId: outgoing ?? s.cloneReturnTabId,
+          activeTabId: null,
+          activeSequencingReadIds: [],
+          activeAlignmentId: null,
+          activeContigId: null,
+          activeGelId: null,
+        })
+        return
+      }
+      set({ activeCloneId: null })
+      const back = s.cloneReturnTabId
+      const nothingElseOpen = !s.activeTabId && !s.activeAlignmentId && !s.activeContigId
+        && !s.activeGelId && s.activeSequencingReadIds.length === 0
+      if (nothingElseOpen && back && s.tabs.some(t => t.id === back)) get().setActiveTab(back)
+    },
+
+    updateClone(id, fn, coalesceKey) {
+      set(s => {
+        const idx = s.clones.findIndex(c => c.id === id)
+        if (idx === -1) return {}
+        const clone = s.clones[idx]
+        const next = fn(clone.design)
+        if (next === clone.design) return {}
+        const now = Date.now()
+        const merge = !!coalesceKey && cloneCoalesce !== null && cloneCoalesce.id === id
+          && cloneCoalesce.key === coalesceKey && now - cloneCoalesce.at < CLONE_COALESCE_MS
+        cloneCoalesce = coalesceKey ? { id, key: coalesceKey, at: now } : null
+        const clones = [...s.clones]
+        clones[idx] = {
+          ...clone,
+          design: next,
+          modifiedAt: now,
+          undoStack: merge ? clone.undoStack : [...clone.undoStack, clone.design].slice(-MAX_CLONE_UNDO),
+          redoStack: [],
+        }
+        return { clones }
+      })
+    },
+
+    undoClone(id) {
+      cloneCoalesce = null
+      set(s => {
+        const idx = s.clones.findIndex(c => c.id === id)
+        const clone = s.clones[idx]
+        if (!clone || clone.undoStack.length === 0) return {}
+        const clones = [...s.clones]
+        clones[idx] = {
+          ...clone,
+          design: clone.undoStack[clone.undoStack.length - 1],
+          undoStack: clone.undoStack.slice(0, -1),
+          redoStack: [...clone.redoStack, clone.design],
+          modifiedAt: Date.now(),
+        }
+        return { clones }
+      })
+    },
+
+    redoClone(id) {
+      cloneCoalesce = null
+      set(s => {
+        const idx = s.clones.findIndex(c => c.id === id)
+        const clone = s.clones[idx]
+        if (!clone || clone.redoStack.length === 0) return {}
+        const clones = [...s.clones]
+        clones[idx] = {
+          ...clone,
+          design: clone.redoStack[clone.redoStack.length - 1],
+          redoStack: clone.redoStack.slice(0, -1),
+          undoStack: [...clone.undoStack, clone.design],
+          modifiedAt: Date.now(),
+        }
+        return { clones }
+      })
+    },
+
+    renameClone(id, name) {
+      set(s => ({ clones: s.clones.map(c => (c.id === id ? { ...c, name, modifiedAt: Date.now() } : c)) }))
+    },
+
+    duplicateClone(id) {
+      const s = get()
+      const index = s.clones.findIndex(c => c.id === id)
+      if (index === -1) return null
+      const src = s.clones[index]
+      const copyId = cloneIds.next()
+      const now = Date.now()
+      const copy: CloneDoc = {
+        ...src, id: copyId, name: `${src.name} copy`,
+        createdAt: now, modifiedAt: now, undoStack: [], redoStack: [],
+      }
+      const folderId = folderOf(s.folders, toUid('clone', id))
+      set({
+        clones: insertAt(s.clones, index + 1, copy),
+        folders: folderId ? withItem(s.folders, toUid('clone', copyId), folderId) : s.folders,
+      })
+      get().setActiveClone(copyId)
+      return copyId
+    },
+
+    removeClone(id) {
+      const s = get()
+      const index = s.clones.findIndex(c => c.id === id)
+      if (index === -1) return
+      const wasActive = s.activeCloneId === id
+      set({
+        clones: s.clones.filter(c => c.id !== id),
+        folders: withoutItem(s.folders, toUid('clone', id)),
+        recentlyDeleted: pushDeleted(s.recentlyDeleted, {
+          kind: 'clone', index,
+          folderId: folderOf(s.folders, toUid('clone', id)),
+          clone: s.clones[index],
+          wasActive,
+        }),
+      })
+      if (wasActive) get().setActiveClone(null)
+    },
+
+    restoreClones(clones, activeCloneId) {
+      for (const c of clones) {
+        const m = c.id.match(/^clone_(\d+)$/)
+        if (m) cloneIds.syncTo(parseInt(m[1], 10))
+      }
+      set({ clones, activeCloneId: null })
+      if (activeCloneId && clones.some(c => c.id === activeCloneId)) get().setActiveClone(activeCloneId)
+    },
+
+    mergeClones(clones) {
+      if (clones.length === 0) return
+      for (const c of clones) {
+        const m = c.id.match(/^clone_(\d+)$/)
+        if (m) cloneIds.syncTo(parseInt(m[1], 10))
+      }
+      set(s => ({ clones: [...s.clones, ...clones] }))
     },
 
     setActiveGel(id) {
@@ -3316,6 +3567,7 @@ export const useEditorStore = create<EditorStore>((set, get) => {
         activeSequencingReadIds: [],
         activeAlignmentId: null,
         activeGelId: null,
+        activeCloneId: null,
       }))
       return made.map(c => c.id)
     },
@@ -3438,6 +3690,7 @@ export const useEditorStore = create<EditorStore>((set, get) => {
         activeContigId: id,
         activeTabId: id ? null : get().activeTabId,
         activeGelId: id ? null : get().activeGelId,
+        activeCloneId: id ? null : get().activeCloneId,
         activeSequencingReadIds: id ? [] : get().activeSequencingReadIds,
         activeAlignmentId: id ? null : get().activeAlignmentId,
       })

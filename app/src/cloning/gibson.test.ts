@@ -90,7 +90,7 @@ describe('gibsonAssemble', () => {
     })
 
     expect(result.products).toHaveLength(0)
-    expect(result.warnings.some(w => w.includes('Insufficient homology'))).toBe(true)
+    expect(result.warnings.some(w => w.includes('No homology of at least 15 bp'))).toBe(true)
   })
 
   it('warns on internal homology between non-adjacent fragments', () => {
@@ -121,7 +121,7 @@ describe('gibsonAssemble', () => {
     })
 
     expect(result.products).toHaveLength(0)
-    expect(result.warnings.some(w => w.includes('Single fragment'))).toBe(true)
+    expect(result.warnings.some(w => w.includes('No homology'))).toBe(true)
   })
 
   it('transfers annotations from source fragments', () => {
@@ -171,7 +171,7 @@ describe('gibsonAssemble', () => {
       minOverlap: 15,
     })
 
-    expect(result.warnings.some(w => w.includes('Tm') && w.includes('assembly may fail'))).toBe(true)
+    expect(result.warnings.some(w => w.includes('°C') && w.includes('Lengthen it'))).toBe(true)
   })
 
   it('auto-orders fragments to find valid assembly', () => {
@@ -186,23 +186,19 @@ describe('gibsonAssemble', () => {
     const fragC = makeDoc('C', oh2 + 'CCCCCCCCCCCCCCC' + oh3)
     const fragD = makeDoc('D', oh3 + 'DDDDDDDDDDDDDDD')
 
-    // Given in wrong order: C, A, D, B
-    // C→A: no overlap, A→D: no overlap, D→B: no overlap → 0 adjacent overlaps
-    const wrongOrder = gibsonAssemble({
-      fragments: [{ doc: fragC }, { doc: fragA }, { doc: fragD }, { doc: fragB }],
-      minOverlap: 15,
-      autoOrder: false,
-    })
-    expect(wrongOrder.products).toHaveLength(0)
-
-    // With auto-order: should find A→B→C→D (score 3 adjacent overlaps)
-    const autoOrdered = gibsonAssemble({
-      fragments: [{ doc: fragC }, { doc: fragA }, { doc: fragD }, { doc: fragB }],
-      minOverlap: 15,
-      autoOrder: true,
-    })
-    expect(autoOrdered.products.length).toBeGreaterThanOrEqual(1)
-    expect(autoOrdered.warnings.some(w => w.includes('automatically reordered'))).toBe(true)
+    // Listed in an order that is not the assembly order. There is no flag to
+    // set: the chain comes out of which overlaps exist, so A→B→C→D is found
+    // either way and the whole 120 bp chain is among the products.
+    for (const order of [
+      [fragA, fragB, fragC, fragD],
+      [fragC, fragA, fragD, fragB],
+    ]) {
+      const result = gibsonAssemble({
+        fragments: order.map(doc => ({ doc })),
+        minOverlap: 15,
+      })
+      expect(result.products.some(p => p.topology === 'linear' && p.size === 120)).toBe(true)
+    }
   })
 
   it('truncates annotations that span beyond fragment region', () => {

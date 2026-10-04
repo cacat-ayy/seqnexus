@@ -6,8 +6,9 @@
  * search parameters) is stored in localStorage.
  */
 
-import { useEditorStore, type ExplorerFolder, type ViewMode, type BaseEdit, type SavedAlignment, type Contig, type GelDoc } from './store'
+import { useEditorStore, type ExplorerFolder, type ViewMode, type BaseEdit, type SavedAlignment, type Contig, type GelDoc, type CloneDoc } from './store'
 import { sanitizeWorkspace, type GelWorkspaceState } from './gel/workspace'
+import { sanitizeDesign, type CloningDesign } from './cloning/design'
 import type { Ab1Data } from './io/ab1'
 import type { AlignmentResult } from './alignment/types'
 import type { ContigDoc } from './assembly/types'
@@ -156,6 +157,44 @@ function serializeGels(gels: GelDoc[]): SerializedGel[] | undefined {
   return gels.map(g => ({ id: g.id, name: g.name, createdAt: g.createdAt, modifiedAt: g.modifiedAt, state: g.state }))
 }
 
+/** A cloning design is plain data; its undo history is not kept. */
+interface SerializedClone {
+  id: string
+  name: string
+  createdAt: number
+  modifiedAt: number
+  design: CloningDesign
+}
+
+function serializeClones(clones: CloneDoc[]): SerializedClone[] | undefined {
+  if (clones.length === 0) return undefined
+  return clones.map(c => ({
+    id: c.id, name: c.name, createdAt: c.createdAt, modifiedAt: c.modifiedAt, design: c.design,
+  }))
+}
+
+/** Stored designs, repaired; ones too damaged to read are dropped with a warning. */
+function deserializeClones(raw: SerializedClone[] | undefined): CloneDoc[] {
+  const out: CloneDoc[] = []
+  for (const c of raw ?? []) {
+    const design = c && typeof c.id === 'string' ? sanitizeDesign(c.design) : null
+    if (!design) {
+      loadWarnings.push('A saved cloning design could not be read and was skipped')
+      continue
+    }
+    out.push({
+      id: c.id,
+      name: typeof c.name === 'string' && c.name ? c.name : 'Cloning',
+      createdAt: typeof c.createdAt === 'number' ? c.createdAt : 0,
+      modifiedAt: typeof c.modifiedAt === 'number' ? c.modifiedAt : 0,
+      design,
+      undoStack: [],
+      redoStack: [],
+    })
+  }
+  return out
+}
+
 /** Stored gels, repaired; ones too damaged to read are dropped with a warning. */
 function deserializeGels(raw: SerializedGel[] | undefined): GelDoc[] {
   const out: GelDoc[] = []
@@ -199,7 +238,10 @@ interface SerializedSessionV2 {
   oligos?: LibraryOligo[]
   /** Virtual gels. Optional so older sessions still load. */
   gels?: SerializedGel[]
+  /** Cloning designs. Optional so older sessions still load. */
+  clones?: SerializedClone[]
   activeGelId?: string | null
+  activeCloneId?: string | null
   activeAlignmentId?: string | null
   activeContigId?: string | null
   // ORF/enzyme panel params (re-run searches on restore)
@@ -265,6 +307,7 @@ function liveItemMeta(state: ReturnType<typeof useEditorStore.getState>): Record
     ...state.contigs.map(c => toUid('contig', c.id)),
     ...state.oligos.map(o => toUid('oligo', o.id)),
     ...state.gels.map(g => toUid('gel', g.id)),
+    ...state.clones.map(c => toUid('clone', c.id)),
   ])
   const out: Record<string, ItemMeta> = {}
   let any = false
@@ -370,7 +413,9 @@ function buildSessionData(theme: string): {
       contigs: serializedContigs.length > 0 ? serializedContigs : undefined,
       oligos: state.oligos.length > 0 ? state.oligos : undefined,
       gels: serializeGels(state.gels),
+      clones: serializeClones(state.clones),
       activeGelId: state.activeGelId,
+      activeCloneId: state.activeCloneId,
       orfParams: {
         minCodons: state.orfMinCodons,
         startCodons: state.orfStartCodons,
@@ -548,6 +593,7 @@ export function savedStateChanged(state: EditorState, prev: EditorState): boolea
   const keys: (keyof EditorState)[] = [
     'activeTabId', 'folders', 'itemMeta', 'tagColors', 'sequencingReads', 'activeSequencingReadIds',
     'alignments', 'contigs', 'oligos', 'gels', 'activeGelId', 'activeAlignmentId', 'activeContigId',
+    'clones', 'activeCloneId',
     'orfMinCodons', 'orfStartCodons', 'orfAllowInterior',
     'enzymeSubset', 'enzymeSearchQuery', 'enzymeFilterByCount', 'enzymeMinCuts', 'enzymeMaxCuts',
   ]
@@ -719,7 +765,9 @@ export interface RestoredSession {
   contigs: Contig[]
   oligos: LibraryOligo[]
   gels: GelDoc[]
+  clones: CloneDoc[]
   activeGelId?: string | null
+  activeCloneId?: string | null
   activeAlignmentId?: string | null
   activeContigId?: string | null
   orfParams?: { minCodons: number; startCodons: string[]; allowInterior: boolean }
@@ -1017,7 +1065,9 @@ async function loadV2(data: SerializedSessionV2): Promise<RestoredSession | null
     contigs,
     oligos: data.oligos ?? [],
     gels: deserializeGels(data.gels),
+    clones: deserializeClones(data.clones),
     activeGelId: data.activeGelId ?? null,
+    activeCloneId: data.activeCloneId ?? null,
     activeAlignmentId: data.activeAlignmentId ?? null,
     activeContigId: data.activeContigId ?? null,
     orfParams: data.orfParams,
@@ -1124,6 +1174,7 @@ export function estimateExportSize(opts: SessionExportOptions): number {
   }
   // Gels are small and always included
   size += JSON.stringify(serializeGels(state.gels) ?? []).length
+  size += JSON.stringify(serializeClones(state.clones) ?? []).length
   return size
 }
 
@@ -1161,6 +1212,7 @@ export function exportSessionToJson(theme: string, opts: SessionExportOptions): 
       ...(meta.contigs ?? []).map(c => toUid('contig', c.id)),
       ...(meta.oligos ?? []).map(o => toUid('oligo', o.id)),
       ...(meta.gels ?? []).map(g => toUid('gel', g.id)),
+      ...(meta.clones ?? []).map(c => toUid('clone', c.id)),
     ])
     const filtered = Object.fromEntries(
       Object.entries(meta.itemMeta).filter(([uid]) => kept.has(uid)),
@@ -1316,7 +1368,9 @@ export function importSessionFromJson(json: string): RestoredSession {
     contigs,
     oligos: data.oligos ?? [],
     gels: deserializeGels(data.gels),
+    clones: deserializeClones(data.clones),
     activeGelId: data.activeGelId ?? null,
+    activeCloneId: data.activeCloneId ?? null,
     activeAlignmentId: data.activeAlignmentId ?? null,
     activeContigId: data.activeContigId ?? null,
     orfParams: data.orfParams,
@@ -1363,6 +1417,8 @@ export function remapSessionIds(session: RestoredSession): RestoredSession {
   }
   const gelIdMap = new Map<string, string>()
   for (const g of session.gels) gelIdMap.set(g.id, newId())
+  const cloneIdMap = new Map<string, string>()
+  for (const c of session.clones) cloneIdMap.set(c.id, newId())
   for (const f of session.folders) {
     folderIdMap.set(f.id, newId())
   }
@@ -1376,6 +1432,7 @@ export function remapSessionIds(session: RestoredSession): RestoredSession {
     'alignment': alignIdMap,
     'contig': contigIdMap,
     'gel': gelIdMap,
+    'clone': cloneIdMap,
     'oligo': oligoIdMap,
   }
 
@@ -1447,6 +1504,19 @@ export function remapSessionIds(session: RestoredSession): RestoredSession {
       state: { ...g.state, lanes: g.state.lanes.map(l => ({ ...l, sample: remapSample(l.sample) })) },
     })),
     activeGelId: session.activeGelId ? (gelIdMap.get(session.activeGelId) ?? null) : null,
+    clones: session.clones.map(c => ({
+      ...c,
+      id: cloneIdMap.get(c.id) || c.id,
+      // A part's own copy of its sequence travels with it; only the pointer
+      // back to the sequence it came from has to follow the remap.
+      design: {
+        ...c.design,
+        parts: c.design.parts.map(part => (part.source
+          ? { ...part, source: { ...part.source, id: tabIdMap.get(part.source.id) ?? part.source.id } }
+          : part)),
+      },
+    })),
+    activeCloneId: session.activeCloneId ? (cloneIdMap.get(session.activeCloneId) ?? null) : null,
     activeAlignmentId: session.activeAlignmentId ? (alignIdMap.get(session.activeAlignmentId) ?? session.activeAlignmentId) : null,
     activeContigId: session.activeContigId ? (contigIdMap.get(session.activeContigId) ?? session.activeContigId) : null,
     orfParams: session.orfParams,

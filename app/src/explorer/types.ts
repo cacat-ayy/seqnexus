@@ -12,10 +12,10 @@
 
 import type { LucideIcon } from 'lucide-react'
 
-export type ItemKind = 'sequence' | 'read' | 'alignment' | 'contig' | 'gel' | 'oligo'
+export type ItemKind = 'sequence' | 'read' | 'alignment' | 'contig' | 'gel' | 'clone' | 'oligo'
 
 export const ITEM_KINDS: readonly ItemKind[] = [
-  'sequence', 'read', 'alignment', 'contig', 'gel', 'oligo',
+  'sequence', 'read', 'alignment', 'contig', 'gel', 'clone', 'oligo',
 ] as const
 
 /**

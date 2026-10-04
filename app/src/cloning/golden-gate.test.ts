@@ -167,8 +167,9 @@ describe('goldenGateAssemble', () => {
   })
 
   it('warns about low-fidelity overhangs', () => {
-    // Create two sources that produce inserts with overhangs known to cross-react.
-    // AATG and AACG are in the LOW_FIDELITY_PAIRS list.
+    // AATG and AACG cross-react, and the model works out why rather than
+    // having been told: AATG's partner CATT differs from AACG's partner CGTT
+    // by one inner base, where a T sits opposite a G as a wobble.
     // BsaI: GGTCTC, fwd_cut=7, rev_cut=11 → 4bp 5' overhang
     // Source 1: backbone-GGTCTC-N-[AATG]-insert1
     // Source 2: backbone-GGTCTC-N-[AACG]-insert2
@@ -179,9 +180,8 @@ describe('goldenGateAssemble', () => {
       enzyme: BsaI,
     })
 
-    // Should have a fidelity warning about AATG/AACG cross-reactivity
     const hasFidelityWarning = result.warnings.some(
-      w => w.includes('fidelity')
+      w => w.includes('AATG') && w.includes('AACG') && w.includes('cross-react'),
     )
     expect(hasFidelityWarning).toBe(true)
   })

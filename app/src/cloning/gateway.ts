@@ -17,6 +17,7 @@ import {
   findAttSites,
   type AttSiteMatch,
 } from './gateway-sites'
+import { betweenSites, outsideSites, sitesAgree } from './gateway-segments'
 
 // ---------------------------------------------------------------------------
 // Types
@@ -46,41 +47,6 @@ function formatSize(bp: number): string {
   return `${bp} bp`
 }
 
-/**
- * Transfer annotations from a source document region [start, end) to a
- * product at the given offset. Annotations partially overlapping the region
- * are truncated and marked.
- */
-function transferAnnotations(
-  doc: DocumentState,
-  start: number,
-  end: number,
-  outputOffset: number,
-): AnnotationData[] {
-  const result: AnnotationData[] = []
-
-  for (const ann of doc.annotations) {
-    const data = ann.toData()
-    if (data.start > data.end) continue // skip origin-spanning
-
-    if (data.end > start && data.start < end) {
-      const clampStart = Math.max(data.start, start)
-      const clampEnd = Math.min(data.end, end)
-      const truncated = clampStart !== data.start || clampEnd !== data.end
-      if (clampEnd > clampStart) {
-        result.push({
-          ...data,
-          id: `${data.id}_gw_${outputOffset}`,
-          start: clampStart - start + outputOffset,
-          end: clampEnd - start + outputOffset,
-          ...(truncated ? { truncated: true } : {}),
-        })
-      }
-    }
-  }
-
-  return result
-}
 
 /**
  * Look up the core sequence for a product att site by name (e.g., 'attL1').
@@ -188,51 +154,60 @@ function runBP(sources: { doc: DocumentState }[]): GatewayResult {
   const insertDoc = attB1.doc
   const vectorDoc = attP1.doc
   const insertBases = insertDoc.sequence.bases
-  const vectorBases = vectorDoc.sequence.bases
-  const vectorCircular = vectorDoc.sequence.topology === 'circular'
 
-  // Insert region: between attB1 end and attB2 start
   const b1 = attB1.match
   const b2 = attB2.match
-  const insertStart = Math.min(b1.end, b2.end)
-  const insertEnd = Math.max(b1.start, b2.start)
-  const insertSeq = insertBases.slice(insertStart, insertEnd)
-
-  // Vector backbone: outside attP sites
   const p1 = attP1.match
   const p2 = attP2.match
-  const pLeft = Math.min(p1.start, p2.start)
-  const pRight = Math.max(p1.end, p2.end)
 
-  // Product att site cores (attL = recombination product of attB × attP)
+  if (!sitesAgree(b1, b2)) {
+    warnings.push(
+      `The attB sites on ${insertDoc.name} face opposite ways, so the stretch between them is inverted.`,
+    )
+  }
+  if (!sitesAgree(p1, p2)) {
+    warnings.push(`The attP sites on ${vectorDoc.name} face opposite ways.`)
+  }
+
+  // The insert as it will read in the entry clone, and the donor backbone
+  // running from attP2 round to attP1. Both cope with sites on the bottom
+  // strand and with a stretch that crosses the origin.
+  const cassette = betweenSites(insertDoc, b1, b2)
+  const backbone = outsideSites(vectorDoc, p1, p2)
+  const insertSeq = cassette.bases
+
+  // attL is what attB × attP leaves behind; its sequence comes from the site
+  // table, since the arms that cross over lie outside the cores stored here.
   const attL1Core = productAttCore('attL1', insertBases.slice(b1.start, b1.end))
   const attL2Core = productAttCore('attL2', insertBases.slice(b2.start, b2.end))
 
-  // Entry clone: left-backbone + attL1 + insert + attL2 + right-backbone
-  // Splitting the backbone preserves the vector origin at position 0
-  const leftBb = vectorBases.slice(0, pLeft)
-  const rightBb = vectorBases.slice(pRight)
-  const entrySeq = vectorCircular
-    ? leftBb + attL1Core + insertSeq + attL2Core + rightBb
-    : leftBb + attL1Core + insertSeq + attL2Core + rightBb
+  const entrySeq = attL1Core + insertSeq + attL2Core + backbone.bases
   const entryAnnotations: AnnotationData[] = []
 
-  // Transfer left-backbone annotations (0..pLeft at offset 0)
-  entryAnnotations.push(...transferAnnotations(vectorDoc, 0, pLeft, 0))
+  entryAnnotations.push(attSiteAnnotation('attL1', 0, attL1Core.length))
 
-  // att site + insert region offset
-  const attInsertOffset = leftBb.length
-  entryAnnotations.push(attSiteAnnotation('attL1', attInsertOffset, attInsertOffset + attL1Core.length))
-
-  const insertOffset = attInsertOffset + attL1Core.length
-  entryAnnotations.push(...transferAnnotations(insertDoc, insertStart, insertEnd, insertOffset))
+  const insertOffset = attL1Core.length
+  entryAnnotations.push(
+    ...cassette.annotations.map(ann => ({
+      ...ann,
+      id: `${ann.id}_gw`,
+      start: ann.start + insertOffset,
+      end: ann.end + insertOffset,
+    })),
+  )
 
   const attL2Start = insertOffset + insertSeq.length
   entryAnnotations.push(attSiteAnnotation('attL2', attL2Start, attL2Start + attL2Core.length))
 
-  // Transfer right-backbone annotations (pRight..end at offset after attL2)
-  const rightBbOffset = attL2Start + attL2Core.length
-  entryAnnotations.push(...transferAnnotations(vectorDoc, pRight, vectorBases.length, rightBbOffset))
+  const backboneOffset = attL2Start + attL2Core.length
+  entryAnnotations.push(
+    ...backbone.annotations.map(ann => ({
+      ...ann,
+      id: `${ann.id}_bb`,
+      start: ann.start + backboneOffset,
+      end: ann.end + backboneOffset,
+    })),
+  )
 
   const entryClone: CloningProduct = {
     name: `${vectorDoc.name}::${insertDoc.name}`,
@@ -244,15 +219,15 @@ function runBP(sources: { doc: DocumentState }[]): GatewayResult {
     description: `BP reaction: ${insertDoc.name} (attB) × ${vectorDoc.name} (attP)`,
   }
 
-  // Byproduct: attR-flanked ccdB cassette (the segment between attP sites + attR sites)
-  const byproductInsert = vectorBases.slice(pLeft, pRight)
-  const byproductSeq = byproductInsert
+  // The byproduct carries off what the donor gave up: the attR-flanked ccdB
+  // cassette, whose loss is what lets the entry clone grow.
+  const discarded = betweenSites(vectorDoc, p1, p2)
   const byproduct: CloningProduct = {
-    name: `Byproduct (${formatSize(byproductSeq.length)}, circular)`,
-    sequence: byproductSeq,
+    name: `Byproduct (${formatSize(discarded.bases.length)}, circular)`,
+    sequence: discarded.bases,
     topology: 'circular',
-    annotations: transferAnnotations(vectorDoc, pLeft, pRight, 0),
-    size: byproductSeq.length,
+    annotations: discarded.annotations,
+    size: discarded.bases.length,
     isExpected: false,
     description: `BP reaction byproduct (attR-flanked cassette)`,
   }
@@ -328,48 +303,65 @@ function runLR(sources: { doc: DocumentState }[]): GatewayResult {
   const entryDoc = attL1.doc
   const destDoc = attR1.doc
   const entryBases = entryDoc.sequence.bases
-  const destBases = destDoc.sequence.bases
 
-  // Insert: between attL sites on entry clone
   const l1 = attL1.match
   const l2 = attL2.match
-  const insertStart = Math.min(l1.end, l2.end)
-  const insertEnd = Math.max(l1.start, l2.start)
-  const insertSeq = entryBases.slice(insertStart, insertEnd)
-
-  // Destination backbone: outside attR sites
   const r1 = attR1.match
   const r2 = attR2.match
-  const rLeft = Math.min(r1.start, r2.start)
-  const rRight = Math.max(r1.end, r2.end)
 
-  // Product att sites (attB = recombination product of attL × attR)
+  if (!sitesAgree(l1, l2)) {
+    warnings.push(
+      `The attL sites on ${entryDoc.name} face opposite ways, so the cassette between them is inverted: ` +
+      'the entry clone will not recombine as it stands.',
+    )
+  }
+  if (!sitesAgree(r1, r2)) {
+    warnings.push(
+      `The attR sites on ${destDoc.name} face opposite ways: the destination vector will not accept a cassette.`,
+    )
+  }
+
+  // The cassette as it will read in the product, and the backbone running
+  // from attR2 round to attR1. Both handle sites on the bottom strand and a
+  // stretch that crosses the origin of a circular source.
+  const cassette = betweenSites(entryDoc, l1, l2)
+  const backbone = outsideSites(destDoc, r1, r2)
+  const insertSeq = cassette.bases
+
+  // Product att sites. attB is what attL × attR leaves behind; its sequence
+  // is taken from the site table rather than rebuilt from the two parents,
+  // because the arms that actually cross over lie outside the cores stored
+  // here. The flanks on either side are the real parents' sequence.
   const attB1Core = productAttCore('attB1', entryBases.slice(l1.start, l1.end))
   const attB2Core = productAttCore('attB2', entryBases.slice(l2.start, l2.end))
 
-  // Expression clone: leftBb + attB1 + insert + attB2 + rightBb
-  // Splitting the backbone preserves the destination vector origin at position 0
-  const leftBb = destBases.slice(0, rLeft)
-  const rightBb = destBases.slice(rRight)
-  const exprSeq = leftBb + attB1Core + insertSeq + attB2Core + rightBb
+  const exprSeq = attB1Core + insertSeq + attB2Core + backbone.bases
   const exprAnnotations: AnnotationData[] = []
 
-  // Transfer left-backbone annotations (0..rLeft at offset 0)
-  exprAnnotations.push(...transferAnnotations(destDoc, 0, rLeft, 0))
+  exprAnnotations.push(attSiteAnnotation('attB1', 0, attB1Core.length))
 
-  // att site + insert region
-  const attInsertOffset = leftBb.length
-  exprAnnotations.push(attSiteAnnotation('attB1', attInsertOffset, attInsertOffset + attB1Core.length))
-
-  const insertOffset = attInsertOffset + attB1Core.length
-  exprAnnotations.push(...transferAnnotations(entryDoc, insertStart, insertEnd, insertOffset))
+  const insertOffset = attB1Core.length
+  exprAnnotations.push(
+    ...cassette.annotations.map(ann => ({
+      ...ann,
+      id: `${ann.id}_gw`,
+      start: ann.start + insertOffset,
+      end: ann.end + insertOffset,
+    })),
+  )
 
   const attB2Start = insertOffset + insertSeq.length
   exprAnnotations.push(attSiteAnnotation('attB2', attB2Start, attB2Start + attB2Core.length))
 
-  // Transfer right-backbone annotations (rRight..end)
-  const rightBbOffset = attB2Start + attB2Core.length
-  exprAnnotations.push(...transferAnnotations(destDoc, rRight, destBases.length, rightBbOffset))
+  const backboneOffset = attB2Start + attB2Core.length
+  exprAnnotations.push(
+    ...backbone.annotations.map(ann => ({
+      ...ann,
+      id: `${ann.id}_bb`,
+      start: ann.start + backboneOffset,
+      end: ann.end + backboneOffset,
+    })),
+  )
 
   const exprClone: CloningProduct = {
     name: `${destDoc.name}::${entryDoc.name}`,
@@ -381,14 +373,15 @@ function runLR(sources: { doc: DocumentState }[]): GatewayResult {
     description: `LR reaction: ${entryDoc.name} (attL) × ${destDoc.name} (attR)`,
   }
 
-  // Byproduct
-  const byproductInsert = destBases.slice(rLeft, rRight)
+  // The byproduct carries off the cassette the destination vector gave up —
+  // the ccdB counter-selection marker, which is why only the product grows.
+  const discarded = betweenSites(destDoc, r1, r2)
   const byproduct: CloningProduct = {
-    name: `Byproduct (${formatSize(byproductInsert.length)}, circular)`,
-    sequence: byproductInsert,
+    name: `Byproduct (${formatSize(discarded.bases.length)}, circular)`,
+    sequence: discarded.bases,
     topology: 'circular',
-    annotations: transferAnnotations(destDoc, rLeft, rRight, 0),
-    size: byproductInsert.length,
+    annotations: discarded.annotations,
+    size: discarded.bases.length,
     isExpected: false,
     description: `LR reaction byproduct (attP-flanked cassette)`,
   }
@@ -530,24 +523,20 @@ function runMultiSite(sources: { doc: DocumentState }[]): GatewayResult {
 
   // Build the multi-fragment product
   const destDoc = attR1.doc
-  const destBases = destDoc.sequence.bases
 
-  // Destination backbone: outside attR sites
   const r1 = attR1.match
   const r2 = attR2.match
-  const rLeft = Math.min(r1.start, r2.start)
-  const rRight = Math.max(r1.end, r2.end)
+  if (!sitesAgree(r1, r2)) {
+    warnings.push(`The attR sites on ${destDoc.name} face opposite ways.`)
+  }
 
-  // Assemble: leftBb + attB1 + insert1 + ... + attBn + rightBb
-  // Splitting the backbone preserves the destination vector origin at position 0
-  const leftBb = destBases.slice(0, rLeft)
-  const rightBb = destBases.slice(rRight)
+  // The backbone, running from attR2 round to attR1 — across the origin if
+  // that is where it falls, and read on the bottom strand if the sites are.
+  const backbone = outsideSites(destDoc, r1, r2)
 
-  let assembled = leftBb
+  // attB1 + insert1 + ... + attBn + backbone
+  let assembled = ''
   const allAnnotations: AnnotationData[] = []
-
-  // Transfer left-backbone annotations (0..rLeft at offset 0)
-  allAnnotations.push(...transferAnnotations(destDoc, 0, rLeft, 0))
 
   for (let i = 0; i < validEntries.length; i++) {
     const entry = validEntries[i]
@@ -560,13 +549,22 @@ function runMultiSite(sources: { doc: DocumentState }[]): GatewayResult {
     assembled += leftSiteSeq
     allAnnotations.push(attSiteAnnotation(leftName, siteStart, assembled.length))
 
-    // Insert between att sites
-    const insertStart = Math.min(entry.left.end, entry.right.end)
-    const insertEnd = Math.max(entry.left.start, entry.right.start)
-    const insertSeq = entryBases.slice(insertStart, insertEnd)
+    // The cassette, read in the direction its own att sites point.
+    if (!sitesAgree(entry.left, entry.right)) {
+      warnings.push(`The att sites on ${entry.doc.name} face opposite ways: its cassette is inverted.`)
+    }
+    const cassette = betweenSites(entry.doc, entry.left, entry.right)
+    const insertSeq = cassette.bases
     const insertOffset = assembled.length
     assembled += insertSeq
-    allAnnotations.push(...transferAnnotations(entry.doc, insertStart, insertEnd, insertOffset))
+    allAnnotations.push(
+      ...cassette.annotations.map(ann => ({
+        ...ann,
+        id: `${ann.id}_gw${i}`,
+        start: ann.start + insertOffset,
+        end: ann.end + insertOffset,
+      })),
+    )
 
     // Last entry: add right att site
     if (i === validEntries.length - 1) {
@@ -578,10 +576,16 @@ function runMultiSite(sources: { doc: DocumentState }[]): GatewayResult {
     }
   }
 
-  // Append right-backbone and transfer its annotations
-  const rightBbOffset = assembled.length
-  assembled += rightBb
-  allAnnotations.push(...transferAnnotations(destDoc, rRight, destBases.length, rightBbOffset))
+  const backboneOffset = assembled.length
+  assembled += backbone.bases
+  allAnnotations.push(
+    ...backbone.annotations.map(ann => ({
+      ...ann,
+      id: `${ann.id}_bb`,
+      start: ann.start + backboneOffset,
+      end: ann.end + backboneOffset,
+    })),
+  )
 
   const product: CloningProduct = {
     name: `${destDoc.name}::${validEntries.map(e => e.doc.name).join('-')}`,
@@ -593,14 +597,14 @@ function runMultiSite(sources: { doc: DocumentState }[]): GatewayResult {
     description: `MultiSite Gateway: ${validEntries.map(e => e.doc.name).join(' + ')} into ${destDoc.name}`,
   }
 
-  // Byproduct: segment between attR sites on destination
-  const byproductSeq = destBases.slice(rLeft, rRight)
+  // The cassette the destination vector gave up.
+  const discarded = betweenSites(destDoc, r1, r2)
   const byproduct: CloningProduct = {
-    name: `Byproduct (${formatSize(byproductSeq.length)}, circular)`,
-    sequence: byproductSeq,
+    name: `Byproduct (${formatSize(discarded.bases.length)}, circular)`,
+    sequence: discarded.bases,
     topology: 'circular',
-    annotations: transferAnnotations(destDoc, rLeft, rRight, 0),
-    size: byproductSeq.length,
+    annotations: discarded.annotations,
+    size: discarded.bases.length,
     isExpected: false,
     description: 'MultiSite Gateway byproduct',
   }

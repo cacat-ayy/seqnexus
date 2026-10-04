@@ -67,7 +67,7 @@ describe('infusionAssemble', () => {
       minOverlap: 10, // allow finding the shorter overlap
     })
 
-    expect(result.warnings.some(w => w.includes('In-Fusion requires ≥ 15 bp'))).toBe(true)
+    expect(result.warnings.some(w => w.includes('below the 15 bp In-Fusion requires'))).toBe(true)
   })
 
   it('supports auto-ordering', () => {
@@ -83,11 +83,11 @@ describe('infusionAssemble', () => {
     const result = infusionAssemble({
       fragments: [{ doc: fragC }, { doc: fragA }, { doc: fragD }, { doc: fragB }],
       maxOverlap: 25,
-      autoOrder: true,
     })
 
-    expect(result.products.length).toBeGreaterThanOrEqual(1)
-    expect(result.warnings.some(w => w.includes('automatically reordered'))).toBe(true)
+    // The order always comes out of the overlaps now, so there is no flag to
+    // set and nothing to say about having reordered anything.
+    expect(result.products.some(p => p.topology === 'linear' && p.size === 120)).toBe(true)
   })
 
   it('renames products from Gibson to In-Fusion', () => {

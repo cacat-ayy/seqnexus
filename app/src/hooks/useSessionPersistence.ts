@@ -76,6 +76,7 @@ export function useSessionPersistence(
           saved.oligos,
         )
         useEditorStore.getState().restoreGels(saved.gels, saved.activeGelId ?? null)
+        useEditorStore.getState().restoreClones(saved.clones, saved.activeCloneId ?? null)
         // Restore ORF/enzyme panel params so searches re-run on panel open
         const store = useEditorStore.getState()
         if (saved.orfParams) {

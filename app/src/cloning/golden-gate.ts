@@ -13,6 +13,7 @@ import type { DocumentState } from '../models/Document'
 import type { CloningFragment, CloningProduct } from './types'
 import { digestFragments, areOverhangsCompatible, type Overhang } from './digest'
 import { productName, productDescription } from './naming'
+import { fidelityWarnings, isPalindromic, pairRisk } from './fidelity'
 
 export interface GoldenGateInput {
   sources: { doc: DocumentState }[]
@@ -40,99 +41,28 @@ function isBackboneFragment(fragment: CloningFragment, enzyme: RestrictionEnzyme
   return rcPattern.test(fragment.sequence)
 }
 
-/**
- * Check if a 4bp overhang is palindromic (self-complementary).
- */
-function isPalindromicOverhang(seq: string): boolean {
-  return seq.toUpperCase() === reverseComplement(seq.toUpperCase())
-}
-
-// ---------------------------------------------------------------------------
-// Overhang fidelity scoring
-// ---------------------------------------------------------------------------
 
 /**
- * Known low-fidelity 4bp overhang pairs that frequently cross-react in
- * T4 ligase-based Golden Gate assemblies. Based on published NEB ligase
- * fidelity data (Potapov et al., 2018, ACS Synth Biol).
- *
- * Each entry is a pair of overhangs known to mis-ligate at >1% frequency.
- * Overhangs are stored as uppercase sense-strand sequences.
- */
-const LOW_FIDELITY_PAIRS: [string, string][] = [
-  ['AACG', 'AACG'], // self-misligation
-  ['AAGT', 'AAGT'],
-  ['ATAG', 'ATAC'],
-  ['GGAG', 'GGAC'],
-  ['TACA', 'TACT'],
-  ['TTAC', 'TTAG'],
-  ['AATG', 'AACG'],
-  ['GATA', 'GACA'],
-  ['GAGC', 'GACC'],
-  ['TGTG', 'TGCG'],
-  ['ACTC', 'ACCC'],
-  ['GCAA', 'GCGA'],
-]
-
-/**
- * Score an overhang for fidelity. Returns 'high', 'medium', or 'low'.
- * - 'low': the overhang is palindromic or appears in the low-fidelity pair list
- * - 'medium': the overhang has low GC content or repeated bases
- * - 'high': no known issues
- */
-export function scoreOverhangFidelity(
-  overhang: string,
-  allOverhangs: string[],
-): 'high' | 'medium' | 'low' {
-  const oh = overhang.toUpperCase()
-
-  // Palindromic overhangs are always low fidelity
-  if (isPalindromicOverhang(oh)) return 'low'
-
-  // Check against known low-fidelity pairs
-  for (const other of allOverhangs) {
-    const oth = other.toUpperCase()
-    if (oh === oth) continue // same overhang is fine (it's the intended match)
-    for (const [a, b] of LOW_FIDELITY_PAIRS) {
-      if ((oh === a && oth === b) || (oh === b && oth === a)) return 'low'
-      // Also check reverse complements
-      const rcOh = reverseComplement(oh)
-      const rcOth = reverseComplement(oth)
-      if ((rcOh === a && rcOth === b) || (rcOh === b && rcOth === a)) return 'low'
-    }
-  }
-
-  // Medium: all-same base (AAAA, TTTT, etc.) or only 1 unique base type
-  const unique = new Set(oh.split('')).size
-  if (unique === 1) return 'medium'
-
-  // Medium: 3+ of the same base (e.g., AAAG)
-  const counts = new Map<string, number>()
-  for (const c of oh) counts.set(c, (counts.get(c) ?? 0) + 1)
-  for (const count of counts.values()) {
-    if (count >= 3) return 'medium'
-  }
-
-  return 'high'
-}
-
-/**
- * Check all overhangs in a Golden Gate assembly for fidelity issues.
+ * Fidelity of the overhangs in play, from ./fidelity: which pairs will
+ * cross-react, which read the same on both strands, and whether the set as
+ * a whole is clean enough to assemble in one pot. That replaces a short list
+ * of known-bad pairs, which could only catch the cases somebody had typed in.
  */
 function checkOverhangFidelity(overhangs: string[]): string[] {
-  const warnings: string[] = []
-  const unique = [...new Set(overhangs.map(o => o.toUpperCase()))]
+  return fidelityWarnings(overhangs)
+}
 
-  for (const oh of unique) {
-    const score = scoreOverhangFidelity(oh, unique)
-    if (score === 'low') {
-      warnings.push(`Overhang ${oh} has low ligation fidelity: may cause mis-assembly`)
-    } else if (score === 'medium') {
-      warnings.push(`Overhang ${oh} has moderate ligation fidelity: consider alternatives`)
-    }
+/** How safe one overhang is among the others, for ranking a single end. */
+export function scoreOverhangFidelity(overhang: string, allOverhangs: string[]): 'high' | 'medium' | 'low' {
+  if (isPalindromic(overhang)) return 'low'
+  let worst = 0
+  for (const other of allOverhangs) {
+    if (other.toUpperCase() === overhang.toUpperCase()) continue
+    worst = Math.max(worst, pairRisk(overhang, other))
   }
-
-  return warnings
+  if (worst > 0.1) return 'low'
+  if (worst > 0.02) return 'medium'
+  return 'high'
 }
 
 /**
@@ -187,7 +117,7 @@ export function goldenGateAssemble(input: GoldenGateInput): GoldenGateResult {
 
   // Check for palindromic overhangs
   for (const [seq] of overhangMap) {
-    if (isPalindromicOverhang(seq)) {
+    if (isPalindromic(seq)) {
       warnings.push(`Palindromic overhang ${seq}: may cause self-ligation or ambiguous assembly`)
     }
   }
