@@ -49,11 +49,12 @@ export const KIND_ORDER: readonly ItemKind[] = [
 /**
  * Kinds whose group is drawn even when empty.
  *
- * Sequences and Sequencing are where work starts, so their headers double as
- * a place to drop files. The derived kinds only appear once something has
- * produced one, which is what the old explorer did too.
+ * Sequences are where work starts, so that header doubles as a place to drop
+ * files. Every other kind, sequencing reads included, appears only once there
+ * is something in it: an empty Sequencing group in every workspace is noise
+ * for anyone not doing Sanger work.
  */
-export const ALWAYS_SHOWN_KINDS: ReadonlySet<ItemKind> = new Set<ItemKind>(['sequence', 'read'])
+export const ALWAYS_SHOWN_KINDS: ReadonlySet<ItemKind> = new Set<ItemKind>(['sequence'])
 
 /** Mean Phred below this marks a read as low quality. */
 export const LOW_QUALITY_THRESHOLD = 20

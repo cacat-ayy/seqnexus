@@ -58,10 +58,10 @@ describe('ExplorerPanel', () => {
   })
   afterEach(cleanup)
 
-  it('shows the always-on groups when there is nothing but sequences', () => {
+  it('shows only Sequences when there is nothing but sequences', () => {
     store().openDocument('pTest', 'ATGC')
     renderPanel()
-    expect(groupLabels()).toEqual(['Sequences', 'Sequencing'])
+    expect(groupLabels()).toEqual(['Sequences'])
   })
 
   it('adds a group per kind as items of that kind appear', () => {

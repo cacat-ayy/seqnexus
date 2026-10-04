@@ -58,15 +58,20 @@ const groups = (nodes: ExplorerNode[]) => nodes.filter(n => n.type === 'group').
 const uids = (nodes: ExplorerNode[]) => nodes.filter(n => n.type === 'item').map(n => n.type === 'item' ? n.item.uid : '')
 
 describe('buildNodes group order and visibility', () => {
-  // Sequences and Sequencing are where work starts, so their headers stay as
-  // a place to drop things. The derived kinds only appear once they exist.
-  it('always shows sequences and sequencing, even when empty', () => {
-    expect(groups(build().nodes)).toEqual(['sequence', 'read'])
+  // Sequences are where work starts, so that header stays as a place to drop
+  // things. Every other kind, reads included, appears only once it exists.
+  it('always shows sequences, even when empty, and nothing else', () => {
+    expect(groups(build().nodes)).toEqual(['sequence'])
+  })
+
+  it('shows sequencing only when there are reads', () => {
+    const { nodes } = build({ byKind: { read: [item('read', 'r1', 'M13F')] } })
+    expect(groups(nodes)).toEqual(['sequence', 'read'])
   })
 
   it('shows a derived kind only when it has items', () => {
     const { nodes } = build({ byKind: { contig: [item('contig', 'c1', 'Assembly')] } })
-    expect(groups(nodes)).toEqual(['sequence', 'read', 'contig'])
+    expect(groups(nodes)).toEqual(['sequence', 'contig'])
   })
 
   it('orders groups by kind, not by insertion', () => {
@@ -77,13 +82,13 @@ describe('buildNodes group order and visibility', () => {
         sequence: [item('sequence', 't1', 's')],
       },
     })
-    expect(groups(nodes)).toEqual(['sequence', 'read', 'alignment', 'contig'])
+    expect(groups(nodes)).toEqual(['sequence', 'alignment', 'contig'])
   })
 
   it('puts an empty-state row under an empty group', () => {
     const { nodes } = build()
     const messages = nodes.filter(n => n.type === 'empty').map(n => n.type === 'empty' ? n.message : '')
-    expect(messages).toEqual(['No sequences open', 'No sequencing reads imported'])
+    expect(messages).toEqual(['No sequences open'])
   })
 
   it('hides a collapsed group\'s children but keeps its header and count', () => {

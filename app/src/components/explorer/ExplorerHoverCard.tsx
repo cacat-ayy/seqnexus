@@ -11,7 +11,7 @@ import { useEditorStore } from '../../store'
 import { useClampedPosition } from '../../hooks/useClampedPosition'
 import { KIND_LABEL } from '../../explorer/kinds'
 import type { ExplorerItem } from '../../explorer/types'
-import { PlasmidThumbnail, QualitySparkline } from './ExplorerPreview'
+import { LinearThumbnail, PlasmidThumbnail, QualitySparkline } from './ExplorerPreview'
 import OligoSequence from '../primers/OligoSequence'
 import { findBindingSites, type BindingSite } from '../../primers/binding'
 import { summarize } from '../../msa/stats'
@@ -73,7 +73,11 @@ export default function ExplorerHoverCard({ item, x, y, note, tags, tagColors }:
       <div className="ex-hovercard-kind">{KIND_LABEL[item.kind]}</div>
 
       {tab && tab.doc.sequence.length > 0 && (
-        <div className="ex-hovercard-figure"><PlasmidThumbnail doc={tab.doc} /></div>
+        <div className="ex-hovercard-figure">
+          {tab.doc.sequence.topology === 'circular'
+            ? <PlasmidThumbnail doc={tab.doc} />
+            : <LinearThumbnail doc={tab.doc} />}
+        </div>
       )}
       {read && (
         <div className="ex-hovercard-figure">

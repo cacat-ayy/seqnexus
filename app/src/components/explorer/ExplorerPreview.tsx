@@ -10,7 +10,7 @@
  * needs a `ReadMapping` from a contig and so is not usable standalone.
  */
 
-import { memo, useEffect, useRef } from 'react'
+import { memo, useEffect, useMemo, useRef } from 'react'
 import type { DocumentState } from '../../models/Document'
 import type { Ab1Data } from '../../io/ab1'
 import { buildPlasmidScene } from '../../plasmid/scene'
@@ -85,6 +85,86 @@ export const PlasmidThumbnail = memo(function PlasmidThumbnail({ doc }: { doc: D
   }, [doc])
 
   return <canvas ref={ref} className="ex-preview-canvas" style={{ width: SIZE, height: SIZE }} />
+})
+
+/** Lanes drawn before the rest are dropped: past this the bars are slivers. */
+const LINEAR_MAX_LANES = 6
+const LINEAR_BAR = 6
+const LINEAR_GAP = 2
+
+/**
+ * A linear sequence as a backbone with its features stacked under it.
+ *
+ * The plasmid scene draws every sequence as a ring, which tells the reader a
+ * linear fragment is circular. This is the same picture unrolled: one bar per
+ * feature, pointed on its strand, in the lanes the map would use as rings.
+ */
+export const LinearThumbnail = memo(function LinearThumbnail({ doc }: { doc: DocumentState }) {
+  const ref = useRef<HTMLCanvasElement>(null)
+  const lanes = useMemo(() => stackAnnotations(doc.annotations).slice(0, LINEAR_MAX_LANES), [doc.annotations])
+  const top = 6
+  const height = top + 4 + lanes.length * (LINEAR_BAR + LINEAR_GAP) + 2
+
+  useEffect(() => {
+    const canvas = ref.current
+    const ctx = canvas?.getContext('2d')
+    if (!canvas || !ctx) return
+
+    const dpr = window.devicePixelRatio || 1
+    canvas.width = SIZE * dpr
+    canvas.height = height * dpr
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
+    ctx.clearRect(0, 0, SIZE, height)
+
+    const colors = resolvePlasmidColors(getPlasmidStyle(undefined), canvas)
+    const len = doc.sequence.length
+    const pad = 2
+    const span = SIZE - pad * 2
+    const xOf = (bp: number) => pad + (Math.min(Math.max(bp, 0), len) / len) * span
+
+    // Backbone, with end caps so it reads as a fragment and not a rule.
+    ctx.strokeStyle = colors.backbone
+    ctx.lineWidth = 2
+    ctx.beginPath()
+    ctx.moveTo(pad, top)
+    ctx.lineTo(SIZE - pad, top)
+    ctx.moveTo(pad, top - 3)
+    ctx.lineTo(pad, top + 3)
+    ctx.moveTo(SIZE - pad, top - 3)
+    ctx.lineTo(SIZE - pad, top + 3)
+    ctx.stroke()
+
+    lanes.forEach((lane, i) => {
+      const y = top + 4 + i * (LINEAR_BAR + LINEAR_GAP)
+      for (const ann of lane) {
+        // A linear sequence has no origin to span; an imported feature that
+        // claims to is drawn to the end rather than not at all.
+        const x0 = xOf(ann.start)
+        const x1 = xOf(ann.end > ann.start ? ann.end : len)
+        const w = Math.max(x1 - x0, 1.5)
+        const tip = ann.strand === 0 ? 0 : Math.min(3, w / 2)
+        ctx.fillStyle = ann.color
+        ctx.beginPath()
+        if (ann.strand === -1) {
+          ctx.moveTo(x0, y + LINEAR_BAR / 2)
+          ctx.lineTo(x0 + tip, y)
+          ctx.lineTo(x0 + w, y)
+          ctx.lineTo(x0 + w, y + LINEAR_BAR)
+          ctx.lineTo(x0 + tip, y + LINEAR_BAR)
+        } else {
+          ctx.moveTo(x0, y)
+          ctx.lineTo(x0 + w - tip, y)
+          ctx.lineTo(x0 + w, y + LINEAR_BAR / 2)
+          ctx.lineTo(x0 + w - tip, y + LINEAR_BAR)
+          ctx.lineTo(x0, y + LINEAR_BAR)
+        }
+        ctx.closePath()
+        ctx.fill()
+      }
+    })
+  }, [doc, lanes, height])
+
+  return <canvas ref={ref} className="ex-preview-canvas" style={{ width: SIZE, height }} />
 })
 
 /**
