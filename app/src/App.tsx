@@ -267,6 +267,7 @@ export default function App() {
 
   // The trace view's zoom is shared with the read workspace's own slider.
   const traceZoom = useSyncExternalStore(subscribeTraceView, () => getTraceView().zoom, () => getTraceView().zoom)
+  const traceReadSet = useSyncExternalStore(subscribeTraceView, () => getTraceView().readSet, () => getTraceView().readSet)
 
   const [dragOver, setDragOver] = useState(false)
   const [dropError, setDropError] = useState<string | null>(null)
@@ -1717,11 +1718,11 @@ export default function App() {
             if (activeSequencingReadIds.length > 0) {
               return (
                 <>
-                  <button className="tb" onClick={() => updateTraceView({ zoom: Math.max(0, traceZoom - 1) })} disabled={traceZoom <= 0 || activeSequencingReadIds.length > 1} {...tip({ label: 'Zoom out' })}>
+                  <button className="tb" onClick={() => updateTraceView({ zoom: Math.max(0, traceZoom - 1) })} disabled={traceZoom <= 0 || (activeSequencingReadIds.length > 1 && traceReadSet === 'table')} {...tip({ label: 'Zoom out' })}>
                     <span className="tb-icon"><ZoomOut size={14} /></span>
                   </button>
                   <span className="tb zoom-label" title={`${ZOOM_WIDTHS[traceZoom]} px per base`}>{Math.round(traceZoom / (ZOOM_WIDTHS.length - 1) * 100)}%</span>
-                  <button className="tb" onClick={() => updateTraceView({ zoom: Math.min(ZOOM_WIDTHS.length - 1, traceZoom + 1) })} disabled={traceZoom >= ZOOM_WIDTHS.length - 1 || activeSequencingReadIds.length > 1} {...tip({ label: 'Zoom in' })}>
+                  <button className="tb" onClick={() => updateTraceView({ zoom: Math.min(ZOOM_WIDTHS.length - 1, traceZoom + 1) })} disabled={traceZoom >= ZOOM_WIDTHS.length - 1 || (activeSequencingReadIds.length > 1 && traceReadSet === 'table')} {...tip({ label: 'Zoom in' })}>
                     <span className="tb-icon"><ZoomIn size={14} /></span>
                   </button>
                 </>

@@ -112,3 +112,37 @@ describe('ExplorerPanel multi-selection', () => {
     expect(store().explorerSelectedIds.has(picked[0])).toBe(false)
   })
 })
+
+describe('ExplorerPanel picking reads', () => {
+  const trace = (name: string) => ({
+    name, bases: 'ACGT', peakLocations: [5, 15, 25, 35], qualityScores: [40, 40, 40, 40],
+    traces: { A: new Array(40).fill(0), C: new Array(40).fill(0), G: new Array(40).fill(0), T: new Array(40).fill(0) },
+    metadata: {},
+  })
+  const readRow = (name: string) => rows().find(r => r.textContent?.includes(name))!
+  let ids: string[] = []
+
+  beforeEach(() => {
+    for (const tab of store().tabs) store().closeTab(tab.id)
+    useEditorStore.setState({ sequencingReads: [], activeSequencingReadIds: [], recentlyDeleted: [], itemMeta: {} })
+    store().setExplorerSelectedIds(new Set())
+    ids = store().addSequencingReads(['R1_read', 'R2_read', 'R3_read'].map(n => ({ data: trace(n), trimStart: 0, trimEnd: 4 })))
+    store().setActiveSequencingRead(null)
+  })
+
+  it('shows shift-clicked reads stacked, in list order', () => {
+    renderExplorer()
+    clickRow(readRow('R1_read'))
+    clickRow(readRow('R3_read'), { shiftKey: true })
+    expect(store().activeSequencingReadIds).toEqual(ids)
+  })
+
+  it('adds a ctrl-clicked read to the open one, and drops it again', () => {
+    renderExplorer()
+    clickRow(readRow('R1_read'))
+    clickRow(readRow('R2_read'), { ctrlKey: true })
+    expect(store().activeSequencingReadIds).toEqual([ids[0], ids[1]])
+    clickRow(readRow('R2_read'), { ctrlKey: true })
+    expect(store().activeSequencingReadIds).toEqual([ids[0]])
+  })
+})

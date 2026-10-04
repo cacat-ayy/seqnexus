@@ -97,6 +97,8 @@
   background: var(--bg);
 }
 .rs-scroll { flex: 1; min-height: 0; overflow: auto; }
+/* Stacked traces scroll both ways: down the reads, along them. */
+.tw-canvas-scroller.rs-stack { overflow: auto; cursor: default; touch-action: auto; }
 .rs-table {
   width: 100%;
   border-collapse: collapse;

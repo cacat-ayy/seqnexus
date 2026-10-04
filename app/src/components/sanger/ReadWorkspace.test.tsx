@@ -1,11 +1,12 @@
 import { describe, it, expect, beforeEach } from 'vitest'
-import { render, screen, fireEvent } from '@testing-library/react'
+import { act, render, screen, fireEvent } from '@testing-library/react'
 import { useEditorStore } from '../../store'
 import { useToastStore } from '../../toast'
 import type { TraceData } from '../../io/trace'
 import { buildLayout } from '../../sanger/layout'
 import ReadWorkspace from './ReadWorkspace'
 import ReadSetView from './ReadSetView'
+import { updateTraceView } from '../../sanger/view'
 
 function trace(name: string, bases: string, quality = 40, meta: TraceData['metadata'] = {}): TraceData {
   const spacing = 10
@@ -117,20 +118,53 @@ describe('Trim and call dialog', () => {
 })
 
 describe('ReadSetView', () => {
-  it('lists reads with their QC and opens one on click', () => {
+  function twoReads() {
     localStorage.clear()
     useEditorStore.setState({ sequencingReads: [], activeSequencingReadIds: [], folders: [] })
     const good = trace('B_good', 'ACGT'.repeat(150), 40)
     const bad = trace('A_bad', 'ACGT'.repeat(150), 8)
-    const ids = useEditorStore.getState().addSequencingReads([
+    return useEditorStore.getState().addSequencingReads([
       { data: good, trimStart: 0, trimEnd: 600 },
       { data: bad, trimStart: 0, trimEnd: 600 },
     ])
+  }
+
+  it('stacks the traces by default and remembers a switch to the table', () => {
+    act(() => updateTraceView({ readSet: 'traces' }))
+    const ids = twoReads()
+    const { unmount } = render(<ReadSetView readIds={ids} onClose={() => {}} />)
+    expect(screen.getByRole('application', { name: /one read per row/ })).toBeInTheDocument()
+    expect(screen.queryByRole('table')).toBeNull()
+    fireEvent.click(screen.getByRole('radio', { name: 'QC table' }))
+    expect(screen.getByRole('table')).toBeInTheDocument()
+    unmount()
+    render(<ReadSetView readIds={ids} onClose={() => {}} />)
+    expect(screen.getByRole('table')).toBeInTheDocument()
+    act(() => updateTraceView({ readSet: 'traces' }))
+  })
+
+  it('lists reads with their QC and opens one on click', () => {
+    act(() => updateTraceView({ readSet: 'table' }))
+    const ids = twoReads()
     render(<ReadSetView readIds={ids} onClose={() => {}} />)
     expect(screen.getByText(/1 good · 1 failed/)).toBeInTheDocument()
     const rows = screen.getAllByRole('row').slice(1)
     expect(rows[0]).toHaveTextContent('A_bad')
     fireEvent.click(screen.getByText('B_good'))
     expect(useEditorStore.getState().activeSequencingReadIds).toEqual([ids[0]])
+    act(() => updateTraceView({ readSet: 'traces' }))
+  })
+
+  it('opens a stacked read on its own with Enter, dropping the explorer pick', () => {
+    act(() => updateTraceView({ readSet: 'traces' }))
+    const ids = twoReads()
+    useEditorStore.getState().setExplorerSelectedIds(new Set(ids.map(id => `read:${id}`)))
+    render(<ReadSetView readIds={ids} onClose={() => {}} />)
+    const stack = screen.getByRole('application', { name: /one read per row/ })
+    fireEvent.keyDown(stack, { key: 'ArrowDown' })
+    fireEvent.keyDown(stack, { key: 'ArrowDown' })
+    fireEvent.keyDown(stack, { key: 'Enter' })
+    expect(useEditorStore.getState().activeSequencingReadIds).toEqual([ids[1]])
+    expect(useEditorStore.getState().explorerSelectedIds.size).toBe(0)
   })
 })

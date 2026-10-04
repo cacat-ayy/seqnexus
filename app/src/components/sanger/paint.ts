@@ -239,7 +239,7 @@ export function paintRow(
   ctx.restore()
 }
 
-function paintRuler(ctx: CanvasRenderingContext2D, theme: AlnTheme, tracks: TrackLayout, g: RowGeom, xOf: (d: number) => number) {
+export function paintRuler(ctx: CanvasRenderingContext2D, theme: AlnTheme, tracks: Pick<TrackLayout, 'ruler'>, g: RowGeom, xOf: (d: number) => number) {
   const [y0, y1] = tracks.ruler
   const step = rulerStep(g.cellW)
   ctx.fillStyle = theme.grid
@@ -272,13 +272,13 @@ export function rulerStep(cellW: number): number {
   return 10000
 }
 
-function paintTraces(
+export function paintTraces(
   ctx: CanvasRenderingContext2D,
   m: TraceModel,
   view: TraceView,
   theme: AlnTheme,
   pal: TracePalette,
-  tracks: TrackLayout,
+  tracks: Pick<TrackLayout, 'traces'>,
   g: RowGeom,
 ) {
   const [ty0, ty1] = tracks.traces

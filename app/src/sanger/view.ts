@@ -36,7 +36,16 @@ export interface TraceView {
   frame: 0 | 1 | 2
   /** Rows that wrap to the window instead of one long scrolling row. */
   wrap: boolean
+  /** Several reads open at once: stacked traces, or the QC table. */
+  readSet: 'traces' | 'table'
+  /** Stacked traces line up at base 1 of each read, or at the start of what trimming kept. */
+  stackAlign: 'start' | 'trim'
+  /** Height of each stacked trace, in pixels. */
+  stackHeight: number
 }
+
+export const STACK_HEIGHT_MIN = 32
+export const STACK_HEIGHT_MAX = 240
 
 export const DEFAULT_TRACE_VIEW: TraceView = {
   zoom: DEFAULT_ZOOM,
@@ -50,6 +59,9 @@ export const DEFAULT_TRACE_VIEW: TraceView = {
   translate: false,
   frame: 0,
   wrap: false,
+  readSet: 'traces',
+  stackAlign: 'start',
+  stackHeight: 64,
 }
 
 const KEY = 'seqnexus_trace_view'
@@ -87,6 +99,9 @@ function sanitize(v: Partial<TraceView> | null): TraceView {
     translate: bool(v.translate, d.translate),
     frame: v.frame === 1 || v.frame === 2 ? v.frame : 0,
     wrap: bool(v.wrap, d.wrap),
+    readSet: v.readSet === 'table' ? 'table' : 'traces',
+    stackAlign: v.stackAlign === 'trim' ? 'trim' : 'start',
+    stackHeight: Math.round(num(v.stackHeight, STACK_HEIGHT_MIN, STACK_HEIGHT_MAX, d.stackHeight)),
   }
 }
 

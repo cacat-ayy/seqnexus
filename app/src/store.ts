@@ -976,6 +976,8 @@ interface EditorStore {
   addSequencingReads: (reads: { data: Ab1Data; trimStart: number; trimEnd: number }[], folderName?: string) => string[]
   removeSequencingRead: (id: string) => void
   setActiveSequencingRead: (id: string | null) => void
+  /** Show several reads at once, stacked; a single id opens that read on its own. */
+  setActiveSequencingReads: (ids: string[]) => void
   toggleSequencingRead: (id: string) => void
   setSequencingTrim: (id: string, start: number, end: number) => void
   renameSequencingRead: (id: string, name: string) => void
@@ -2920,6 +2922,19 @@ export const useEditorStore = create<EditorStore>((set, get) => {
         activeTabId: id ? null : get().activeTabId,
         activeAlignmentId: id ? null : get().activeAlignmentId,
         activeContigId: id ? null : get().activeContigId,
+      })
+    },
+
+    setActiveSequencingReads(ids) {
+      const next = [...new Set(ids)]
+      if (next.length <= 1) { get().setActiveSequencingRead(next[0] ?? null); return }
+      set({
+        activeSequencingReadIds: next,
+        activeGelId: null,
+        activeCloneId: null,
+        activeTabId: null,
+        activeAlignmentId: null,
+        activeContigId: null,
       })
     },
 

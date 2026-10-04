@@ -451,15 +451,20 @@ function ExplorerPanel({
 
   const tree: TreeHandlers = useMemo(() => ({
     onItemClick: (e, item) => {
-      // Ctrl-click on a read adds it to the multi-trace view rather than
-      // extending the selection: comparing traces is what that gesture is
-      // for here, and it predates the shared selection hook.
-      if ((e.ctrlKey || e.metaKey) && item.kind === 'read') {
-        e.preventDefault()
-        actions.toggleInMultiView(item)
-        return
-      }
       handleItemClick(e, item.uid, () => actions.open(item))
+      // Ctrl- or Shift-clicking reads selects them like any other rows, and
+      // the selected reads are shown stacked, so comparing traces is just a
+      // matter of picking them. Shrinking the pick back to one read shows
+      // that read alone; a pick with no reads leaves the view as it was.
+      if (item.kind === 'read' && (e.ctrlKey || e.metaKey || e.shiftKey)) {
+        e.preventDefault()
+        const store = useEditorStore.getState()
+        const picked = store.explorerSelectedIds
+        const reads = itemUids.filter(uid => picked.has(uid)).map(uid => parseUid(uid)).filter(p => p?.kind === 'read').map(p => p!.id)
+        if (reads.length > 1 || (reads.length === 1 && store.activeSequencingReadIds.length > 1)) {
+          store.setActiveSequencingReads(reads)
+        }
+      }
     },
     onItemContextMenu: (e, item) => {
       e.preventDefault()
@@ -518,7 +523,7 @@ function ExplorerPanel({
     },
     onHoverEnd: () => hideHover(),
   }), [
-    actions, handleItemClick, selectedIds, settings.collapsedGroups, patchSettings,
+    actions, handleItemClick, itemUids, selectedIds, settings.collapsedGroups, patchSettings,
     toggleFolder, renameFolder, moveItemToFolder, setFolderParent, draggingUids, draggingFolderId,
     showHover, hideHover,
   ])

@@ -16,8 +16,6 @@ import { KIND_LABEL } from './kinds'
 export interface ItemActions {
   /** Show it in the centre panel. */
   open: (item: ExplorerItem) => void
-  /** Reads only: add or remove from the multi-trace view. */
-  toggleInMultiView: (item: ExplorerItem) => void
   rename: (item: ExplorerItem, name: string) => void
   /**
    * Delete it and offer an undo. No confirmation: every kind now lands in the
@@ -48,11 +46,6 @@ export function useItemActions(): ItemActions {
         return
       }
     }
-  }, [])
-
-  const toggleInMultiView = useCallback((item: ExplorerItem) => {
-    if (item.kind !== 'read') return
-    useEditorStore.getState().toggleSequencingRead(item.id)
   }, [])
 
   const rename = useCallback((item: ExplorerItem, name: string) => {
@@ -104,8 +97,8 @@ export function useItemActions(): ItemActions {
   }, [])
 
   return useMemo(
-    () => ({ open, toggleInMultiView, rename, remove, removeQuiet, duplicate, toggleStar }),
-    [open, toggleInMultiView, rename, remove, removeQuiet, duplicate, toggleStar],
+    () => ({ open, rename, remove, removeQuiet, duplicate, toggleStar }),
+    [open, rename, remove, removeQuiet, duplicate, toggleStar],
   )
 }
 
