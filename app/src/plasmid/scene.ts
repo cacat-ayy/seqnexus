@@ -676,9 +676,18 @@ export function buildPlasmidScene(input: PlasmidSceneInput): PlasmidScene {
 
 // ---- Helpers ----
 
-function isFlipped(midAngle: number): boolean {
+/**
+ * Whether a label along an arc must run counter-clockwise to stay upright.
+ *
+ * Screen angles grow clockwise from 3 o'clock (y points down). A label set
+ * clockwise turns each glyph by angle + 90°, which is upright over the top
+ * half (angles π..2π) and upside down over the bottom half (0..π), so the
+ * bottom half is the one to flip. This used to test the left half instead,
+ * which turned labels upside down in the top-left and bottom-right quarters.
+ */
+export function isFlipped(midAngle: number): boolean {
   const n = normalizeAngle(midAngle)
-  return n > Math.PI / 2 && n < Math.PI * 1.5
+  return n > 0 && n < Math.PI
 }
 
 function formatBpShort(n: number): string {

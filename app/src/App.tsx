@@ -59,7 +59,7 @@ import { selectionTm } from './utils/selection-tm'
 import { getEnzyme, type RestrictionEnzyme } from './enzymes/db'
 import { findEnzymeSitesAsync } from './workers/enzyme-finder'
 import {
-  File, Dna, FolderPlus, FileUp, FolderUp, ClipboardPaste, Save,
+  File, Dna, FolderPlus, FileUp, FolderUp, ClipboardPaste, Save, FileText,
   Undo2, Redo2, Search, TextSearch, Scissors, FlaskConical,
   BarChart3, ZoomOut, ZoomIn, Scan, PanelLeftOpen,
   X, ChevronDown as ChevronDownSmall,
@@ -75,6 +75,9 @@ import SessionExportModal from './components/SessionExportModal'
 import SessionImportModal from './components/SessionImportModal'
 import { exportSessionToJson, importSessionFromJson, remapSessionIds, type SessionExportOptions } from './persistence'
 import FilenamePrompt from './components/ExportDialog'
+import SequencePdfDialog from './components/SequencePdfDialog'
+import { isFocusTrapActive } from './hooks/useFocusTrap'
+import { CITATION_TEXT } from './citation'
 import FetchModal from './components/FetchModal'
 const AlignmentModal = lazy(() => import('./components/AlignmentModal'))
 const AlignmentWorkspace = lazy(() => import('./components/alignment/AlignmentWorkspace'))
@@ -168,6 +171,12 @@ function reportGenBankWarnings(source: string, warnings: string[]): void {
     `${warnings.length} ${warnings.length === 1 ? 'feature' : 'features'} in "${source}" could not be read exactly as written`,
     { detail: shown + more },
   )
+}
+
+/** A sequence fills the workspace: no alignment, read, contig, gel or clone is open over it. */
+function sequenceOnScreen(s: ReturnType<typeof useEditorStore.getState>): boolean {
+  return !!s.activeTabId && !s.activeCloneId && !s.activeGelId && !s.activeContigId
+    && s.activeSequencingReadIds.length === 0 && !s.activeAlignmentId
 }
 
 /**
@@ -397,6 +406,9 @@ export default function App() {
   const activeContig = useEditorStore(s => (s.activeContigId ? s.contigs.find(c => c.id === s.activeContigId) ?? null : null))
   // One read open on its own has an undo history of its own; several at once are a table.
   const activeRead = useEditorStore(s => (s.activeSequencingReadIds.length === 1 ? s.sequencingReads.find(r => r.id === s.activeSequencingReadIds[0]) ?? null : null))
+  /** The text view or map is what the workspace shows, so a sequence PDF makes sense. */
+  const sequenceShown = !!activeTabId && !activeClone && !activeGel && !activeContigId
+    && activeSequencingReadIds.length === 0 && !activeAlignmentId
   const undoAlignment = useEditorStore(s => s.undoAlignment)
   const redoAlignment = useEditorStore(s => s.redoAlignment)
   const gelOpen = activeGel !== null
@@ -674,6 +686,26 @@ export default function App() {
   usePopoverDismiss(themeOpen, () => setThemeOpen(false), themePopRef, themeBtnRef)
   usePopoverDismiss(infoOpen, () => setInfoOpen(false), infoPopRef, infoBtnRef)
   usePopoverDismiss(cloningDropdownOpen, () => setCloningDropdownOpen(false), cloningBtnRef)
+
+  // --- PDF export of the sequence ---
+  const [pdfOpen, setPdfOpen] = useState(false)
+  const openPdfExport = useCallback(() => {
+    if (sequenceOnScreen(useEditorStore.getState())) setPdfOpen(true)
+    else notify.info('Open a sequence to export it as a PDF')
+  }, [])
+  // Ctrl+P: the browser's print would print the app around the sequence, so
+  // the shortcut opens the export instead. Capture phase, like Ctrl+K, so it
+  // still works with focus in the sequence canvas.
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && !e.shiftKey && !e.altKey && (e.key === 'p' || e.key === 'P')) {
+        e.preventDefault()
+        if (!isFocusTrapActive()) openPdfExport()
+      }
+    }
+    window.addEventListener('keydown', handler, true)
+    return () => window.removeEventListener('keydown', handler, true)
+  }, [openPdfExport])
 
   // --- Export dialog ---
   const [exportModalOpen, setExportModalOpen] = useState(false)
@@ -1426,6 +1458,7 @@ export default function App() {
     { id: 'import-clipboard', label: 'Import from Clipboard', group: 'File', icon: ClipboardPaste, run: handleImportClipboard },
     { id: 'fetch', label: 'Fetch from NCBI…', group: 'File', icon: Globe, keywords: 'download accession', run: () => setFetchModalOpen(true) },
     { id: 'export', label: 'Export…', group: 'File', icon: Save, shortcut: `${mod}⇧S`, disabled: noDoc, run: () => { setBulkExportItems({}); setExportModalOpen(true) } },
+    { id: 'export-pdf', label: 'Export PDF…', group: 'File', icon: FileText, shortcut: `${mod}P`, keywords: 'print figure publication', disabled: !sequenceShown, run: openPdfExport },
     { id: 'session-export', label: 'Export Session', group: 'File', run: () => setSessionExportOpen(true) },
     { id: 'session-import', label: 'Import Session', group: 'File', run: () => sessionImportInputRef.current?.click() },
 
@@ -1470,7 +1503,7 @@ export default function App() {
     { id: 'theme', label: 'Change Theme', group: 'View', icon: SunMoon, keywords: 'dark light appearance', run: () => setThemeOpen(true) },
     { id: 'about', label: 'About SeqNexus', group: 'View', icon: Info, keywords: 'help version', run: () => setInfoOpen(true) },
   ], [
-    mod, redoKey, noDoc, undoDisabled, redoDisabled, handleOpenFind, handleNewSequence, handleNewFolder, openGel, openCloning, runUndo, runRedo,
+    mod, redoKey, noDoc, sequenceShown, openPdfExport, undoDisabled, redoDisabled, handleOpenFind, handleNewSequence, handleNewFolder, openGel, openCloning, runUndo, runRedo,
     handleImportClipboard, toggleOrfs, toggleEnzymes, openSidebar, openPrimerDesign, toggleAutoAnnotations,
     viewMode,
   ])
@@ -1557,6 +1590,13 @@ export default function App() {
               }} disabled={selectedExportableCount < 2}>
                 <span className="file-menu-icon"><Save size={14} /></span>
                 Export Selected…
+              </button>
+              <button className="file-menu-item" role="menuitem" onClick={() => {
+                setFileMenuOpen(false)
+                openPdfExport()
+              }} disabled={!sequenceShown}>
+                <span className="file-menu-icon"><FileText size={14} /></span>
+                Export PDF…
               </button>
               <div className="file-menu-sep" />
               <button className="file-menu-item" role="menuitem" onClick={() => { setSessionExportOpen(true); setFileMenuOpen(false) }}>
@@ -1873,7 +1913,7 @@ export default function App() {
                 className="info-copy-cite"
                 onClick={(e) => {
                   const btn = e.currentTarget
-                  navigator.clipboard.writeText('Acatay, C. (2026). SeqNexus: a browser-based molecular biology sequence editor. Available at https://seqnexus.app').then(() => {
+                  navigator.clipboard.writeText(CITATION_TEXT).then(() => {
                     btn.textContent = 'Copied!'
                     setTimeout(() => { btn.textContent = 'Copy citation' }, 1500)
                   })
@@ -1899,6 +1939,7 @@ export default function App() {
                 <div className="info-shortcut"><span className="shortcut-keys"><kbd>Ctrl</kbd>+<kbd>F</kbd></span><span className="shortcut-desc">Find / Replace</span></div>
                 <div className="info-shortcut"><span className="shortcut-keys"><kbd>Ctrl</kbd>+<kbd>G</kbd></span><span className="shortcut-desc">Go to position</span></div>
                 <div className="info-shortcut"><span className="shortcut-keys"><kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>S</kbd></span><span className="shortcut-desc">Export sequence</span></div>
+                <div className="info-shortcut"><span className="shortcut-keys"><kbd>Ctrl</kbd>+<kbd>P</kbd></span><span className="shortcut-desc">Export PDF</span></div>
                 <div className="info-shortcut"><span className="shortcut-keys"><kbd>Shift</kbd>+<kbd>Arrow</kbd></span><span className="shortcut-desc">Extend selection</span></div>
                 <div className="info-shortcut"><span className="shortcut-keys"><kbd>Home</kbd> / <kbd>End</kbd></span><span className="shortcut-desc">Jump to start / end</span></div>
                 <div className="info-shortcut"><span className="shortcut-keys"><kbd>Delete</kbd> / <kbd>Backspace</kbd></span><span className="shortcut-desc">Delete base(s)</span></div>
@@ -2542,6 +2583,7 @@ export default function App() {
           />
         )
       })()}
+      <SequencePdfDialog open={pdfOpen && sequenceShown} onClose={() => setPdfOpen(false)} onExportPrompt={handleFilenamePrompt} />
       {filenamePrompt && (
         <FilenamePrompt
           defaultName={filenamePrompt.defaultName}

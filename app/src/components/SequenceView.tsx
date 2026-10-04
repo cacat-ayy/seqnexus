@@ -21,12 +21,11 @@ import {
   useEditorStore, selectionRange, selectionSegments, isOriginSpanningSelection, selectionLength,
   selectionIsReverse,
 } from '../store'
-import { Annotation, type AnnotationData } from '../models/Annotation'
+import { Annotation } from '../models/Annotation'
 import { displayPosition } from '../models/Document'
 import { IntervalTree } from '../models/IntervalTree'
 import { getLayout, baseX as zBaseX, type ZoomLayout, RowLayoutMap } from './zoom-layout'
 import { groupCutSites, enzymeGroupKey, type GroupedCutSite } from '../enzymes/grouping'
-import { orfColor } from '../workers/orf-finder'
 import AnnotationTooltip from './AnnotationTooltip'
 import { copyText } from '../utils/clipboard'
 import { useDelayedHover, type HoverTarget } from '../hooks/useDelayedHover'
@@ -37,7 +36,7 @@ import { selectionTm, SELECTION_TM_MAX } from '../utils/selection-tm'
 import SequenceMinimap from './minimap/SequenceMinimap'
 import { createViewportSource } from './minimap/viewport'
 
-import { publishBasesPerRow, registerSequenceViewFit } from './sequence-view-controls'
+import { publishBasesPerRow, publishVisibleRange, registerSequenceViewFit } from './sequence-view-controls'
 
 const MINIMAP_SEQ_THRESHOLD = 1_000 // show minimap for sequences >= 1 kb
 const MAX_ZOOM = 20
@@ -45,39 +44,15 @@ const MAX_ZOOM = 20
 const WHEEL_ZOOM_STEP = 50
 /** Bases jumped by Ctrl+←/→: one ruler group. */
 const WORD_JUMP = 10
-/** Narrowest base, in px, that still gets a dot of its own when zoomed out. */
-const DOT_MIN_BP_WIDTH = 5
 
 /** Read canvas colors from CSS custom properties for theme support. */
-type CanvasColors = ReturnType<typeof readCanvasColors>
-function readCanvasColors(container: HTMLElement) {
-  const s = getComputedStyle(container)
-  const v = (name: string, fallback: string) => s.getPropertyValue(name).trim() || fallback
+type CanvasColors = SequenceColors
+function readCanvasColors(container: HTMLElement): CanvasColors {
   // The canvas draws text in the app's own faces, not the browser's generic
   // ones, so the bases match every other monospaced readout in the UI.
-  setCanvasFonts(v('--font-mono', 'monospace'), s.fontFamily || 'sans-serif')
-  const ruler = v('--canvas-ruler', '#999999')
-  return {
-    bg: v('--canvas-bg', '#ffffff'),
-    text: v('--canvas-text', '#213547'),
-    complement: v('--canvas-complement', '#888888'),
-    ruler,
-    rulerTick: v('--canvas-ruler-tick', '#cccccc'),
-    rowSeparator: v('--canvas-row-sep', '#f0f0f0'),
-    backbone: v('--canvas-backbone', ruler),
-    selectionBg: v('--selection-bg', 'rgba(59, 130, 246, 0.25)'),
-    caret: v('--accent', '#3b82f6'),
-    border: v('--border', '#e0e0e0'),
-    enzyme: v('--canvas-enzyme', '#e53e3e'),
-    enzymeBg: v('--canvas-enzyme-bg', 'rgba(229,62,62,.08)'),
-    enzymeBgHover: v('--canvas-enzyme-bg-hover', 'rgba(229,62,62,.22)'),
-    search: v('--canvas-search', 'rgba(250,204,21,.32)'),
-    searchCurrent: v('--canvas-search-current', 'rgba(249,115,22,.42)'),
-    searchEdge: v('--canvas-search-edge', '#ea580c'),
-    dam: v('--canvas-dam', '#3b82f6'),
-    dcm: v('--canvas-dcm', '#f59e0b'),
-    codon: v('--canvas-codon', 'rgba(100,116,139,.14)'),
-  }
+  const s = getComputedStyle(container)
+  setCanvasFonts(s.getPropertyValue('--font-mono').trim() || 'monospace', s.fontFamily || 'sans-serif')
+  return readSequenceColors(container)
 }
 
 // --- Canvas fonts ---
@@ -90,8 +65,8 @@ function setCanvasFonts(mono: string, sans: string) {
   SANS_FAMILY = sans
   _measureCache.clear()
 }
-const monoFont = (spec: string) => `${spec} ${MONO_FAMILY}`
 const sansFont = (spec: string) => `${spec} ${SANS_FAMILY}`
+const enzymeLabelFont = () => sansFont(ENZYME_LABEL_SPEC)
 
 /** Cached color reader – re-reads CSS only when the theme attribute changes. */
 let _cachedColors: CanvasColors | null = null
@@ -105,102 +80,24 @@ function getCanvasColors(container: HTMLElement): CanvasColors {
   return _cachedColors
 }
 
-import { visibleStroke, contrastText } from '../utils/color'
 import { buildBasePalette } from '../utils/base-colors'
-import { geneticCode } from '../codon/genetic-codes'
-import {
-  aminoAcidFill, aminoAcidLabel, framesFor, translationRowCount,
-  translatesSelection, selectionCodonsInRow,
-} from '../codon/translation-display'
-import {
-  proposalsFrom, proposalAnnotations, isAutoAnnotationId, keyFromAutoId,
-} from '../utils/auto-annotations'
-import { orfIdFor, orfName, keyFromOrfId } from '../utils/orf-features'
+import { keyFromAutoId } from '../utils/auto-annotations'
+import { keyFromOrfId } from '../utils/orf-features'
 import { isWidgetKeyTarget } from '../utils/key-target'
 import { basesFromPaste } from '../utils/paste-bases'
 import { notify } from '../toast'
-import { usePrimerSites, useDesignPreview } from '../primers/usePrimerSites'
-import { primerItems, isPrimerItemId, type PrimerItem } from '../primers/display'
-import { drawPrimerItem } from './primer-draw'
+import { isPrimerItemId, type PrimerItem } from '../primers/display'
 import PrimerTooltip from './primers/PrimerTooltip'
+import { useSequenceTracks, useTranslationSettings } from './useSequenceTracks'
+import {
+  annVisibleRange, stackAnnotations, lowerBoundGroups, assignEnzymeTiers, paintSequenceRows,
+  readSequenceColors, ENZYME_LABEL_SPEC, type SequenceColors, type RowStacks,
+} from './sequence-paint'
 
 // Module-level layout ref - set during draw(), used by hit-test helpers
 function baseX(i: number, rowStart: number, L: ZoomLayout): number {
   return zBaseX(i, rowStart, L)
 }
-
-/**
- * Compute the visible portion of an annotation on a given row [rowStart, rowEnd).
- * For origin-spanning annotations (start > end), returns the segment that
- * overlaps this row, or null if no overlap.
- */
-function annVisibleRange(
-  ann: Annotation,
-  rowStart: number,
-  rowEnd: number,
-): [number, number] | null {
-  if (ann.spansOrigin()) {
-    // Tail segment: [ann.start, seqLen) - check if it overlaps this row
-    if (ann.start < rowEnd && rowStart < rowEnd) {
-      const tailStart = Math.max(ann.start, rowStart)
-      if (tailStart < rowEnd) {
-        return [tailStart, rowEnd]
-      }
-    }
-    // Head segment: [0, ann.end) - check if it overlaps this row
-    if (ann.end > rowStart && rowStart < ann.end) {
-      const headEnd = Math.min(ann.end, rowEnd)
-      if (rowStart < headEnd) {
-        return [rowStart, headEnd]
-      }
-    }
-    return null
-  }
-  // Normal annotation
-  const aStart = Math.max(ann.start, rowStart)
-  const aEnd = Math.min(ann.end, rowEnd)
-  if (aStart >= aEnd) return null
-  return [aStart, aEnd]
-}
-
-function stackAnnotations(
-  annotations: Annotation[],
-  rowStart: number,
-  rowEnd: number,
-  L: ZoomLayout,
-): { rows: Annotation[][]; overflow: number } {
-  const rows: Annotation[][] = []
-  let overflow = 0
-  for (const ann of annotations) {
-    const aRange = annVisibleRange(ann, rowStart, rowEnd)
-    if (!aRange) continue
-    let placed = false
-    for (const row of rows) {
-      const overlaps = row.some(existing => {
-        const bRange = annVisibleRange(existing, rowStart, rowEnd)
-        if (!bRange) return false
-        return aRange[0] < bRange[1] && bRange[0] < aRange[1]
-      })
-      if (!overlaps) {
-        row.push(ann)
-        placed = true
-        break
-      }
-    }
-    if (!placed) {
-      if (rows.length < L.maxAnnotationRows) {
-        rows.push([ann])
-      } else {
-        overflow++
-      }
-    }
-  }
-  return { rows, overflow }
-}
-
-type RowStack = { rows: Annotation[][]; overflow: number }
-/** A row's annotation stack, from the draw cache when it has one. */
-type RowStacks = (rowIndex: number, rowStart: number, rowEnd: number) => RowStack
 
 /**
  * Per-row lane and translation counts for one layout.
@@ -261,42 +158,6 @@ function buildRowLayout(
   rl.perRowTranslations = perRowTranslations
   rl.build(L)
   return rl
-}
-
-/**
- * Paint one codon's backing block: inset so neighbouring codons read apart.
- *
- * `point` gives the block a small arrow tip on that side (1 right, -1 left),
- * the way annotation bars show their strand. The selection's translation
- * uses it to show which way it reads; a few pixels on every chip is enough to
- * read the direction on any line without competing with the letters.
- */
-function paintCodonBlock(
-  ctx: CanvasRenderingContext2D, x1: number, x2: number, y: number, h: number,
-  color: string, strong: boolean, point: 0 | 1 | -1 = 0,
-) {
-  const w = x2 - x1 - 2
-  if (w <= 0) return
-  ctx.fillStyle = color
-  ctx.globalAlpha = strong ? 1 : 0.5
-  ctx.beginPath()
-  const tip = Math.min(3, w / 3)
-  if (point !== 0 && typeof ctx.arcTo === 'function') {
-    // One path, so a half-strength block is not darker where parts overlap.
-    // Rounded corners at the back, the tip at the front.
-    const back = point === 1 ? x1 + 1 : x1 + 1 + w
-    const front = point === 1 ? x1 + 1 + w : x1 + 1
-    const shoulder = front - point * tip
-    ctx.moveTo(shoulder, y)
-    ctx.lineTo(front, y + h / 2)
-    ctx.lineTo(shoulder, y + h)
-    ctx.arcTo(back, y + h, back, y, 3)
-    ctx.arcTo(back, y, shoulder, y, 3)
-    ctx.closePath()
-  } else if (typeof ctx.roundRect === 'function') ctx.roundRect(x1 + 1, y, w, h, 3)
-  else ctx.rect(x1 + 1, y, w, h)
-  ctx.fill()
-  ctx.globalAlpha = 1
 }
 
 function hitTestAnnotation(
@@ -390,38 +251,6 @@ function hitTestAnnotationEdge(
 
 // Grouped enzyme sites (isoschizomer merging) live in ../enzymes/grouping.
 
-/** Compare two grouped sites by position (reference-independent). */
-function sameGroup(a: GroupedCutSite | null, b: GroupedCutSite | null): boolean {
-  if (a === b) return true
-  if (!a || !b) return false
-  return a.recognitionStart === b.recognitionStart && a.label === b.label
-}
-
-function lowerBoundGroups(groups: GroupedCutSite[], minPos: number): number {
-  let lo = 0, hi = groups.length
-  while (lo < hi) {
-    const mid = (lo + hi) >>> 1
-    if (groups[mid].recognitionStart < minPos) lo = mid + 1
-    else hi = mid
-  }
-  return lo
-}
-
-// --- Label tier assignment ---
-
-interface TieredLabel {
-  group: GroupedCutSite
-  /** X position of the label (left edge) */
-  x: number
-  /** Pixel width of the label text */
-  width: number
-  /** Tier index (0 = closest to ruler, higher = further above) */
-  tier: number
-}
-
-const enzymeLabelFont = (hovered = false) => sansFont(hovered ? '600 10px' : '10px')
-const ENZYME_LABEL_PAD = 6 // horizontal padding between labels
-
 /**
  * Text width in a font, measured once. Labels are drawn every frame and
  * hit-tested on every mouse move, but the set of distinct names is small.
@@ -446,47 +275,6 @@ function measureLabelWidth(text: string): number {
   return measureText(enzymeLabelFont(), text)
 }
 
-/**
- * Assign enzyme labels to tiers so they don't overlap horizontally.
- * Labels are placed at the cut site x-position, stacked into the lowest
- * available tier. Capped at maxTiers.
- */
-function assignEnzymeTiers(
-  groups: GroupedCutSite[],
-  rowStart: number,
-  rowEnd: number,
-  L: ZoomLayout,
-): TieredLabel[] {
-  const labels: TieredLabel[] = []
-  if (L.maxEnzymeTiers === 0) return labels
-
-  // Track the right edge of the last label placed in each tier
-  const tierRightEdge: number[] = new Array(L.maxEnzymeTiers).fill(-Infinity)
-
-  for (const group of groups) {
-    // Position label at the cut site x
-    const cutPos = group.fwdCut
-    if (cutPos < rowStart || cutPos >= rowEnd) continue
-    const labelX = baseX(cutPos, rowStart, L)
-    const labelW = measureLabelWidth(group.label)
-
-    // Find lowest tier where this label fits
-    let tier = 0
-    for (let t = 0; t < L.maxEnzymeTiers; t++) {
-      if (labelX >= tierRightEdge[t]) {
-        tier = t
-        break
-      }
-      if (t === L.maxEnzymeTiers - 1) {
-        tier = t // force into top tier
-      }
-    }
-
-    tierRightEdge[tier] = labelX + labelW + ENZYME_LABEL_PAD
-    labels.push({ group, x: labelX, width: labelW, tier })
-  }
-  return labels
-}
 
 // --- Hit-test for enzyme labels (tier area above ruler) ---
 
@@ -515,7 +303,7 @@ function hitTestEnzymeLabel(
   // Tiers are drawn bottom-up: tier 0 is at the bottom of the label area
   const tierFromBottom = Math.floor((labelAreaBottom - py) / L.enzymeLabelTierH)
 
-  const labels = assignEnzymeTiers(groupedSites, rowStart, rowEnd, L)
+  const labels = assignEnzymeTiers(groupedSites, rowStart, rowEnd, L, measureLabelWidth)
   for (const lbl of labels) {
     if (lbl.tier !== tierFromBottom) continue
     if (px >= lbl.x && px <= lbl.x + lbl.width) return lbl.group
@@ -640,9 +428,6 @@ function hitTestSelectionEdge(
   return null
 }
 
-import { COMPLEMENT, reverseComplement as reverseComplementStr } from '../models/complement'
-
-import { translateCodon } from '../utils/codon'
 
 // EnzymeTooltipPopup alias for backward compat within this file
 const EnzymeTooltipPopup = EnzymeTooltip
@@ -682,29 +467,17 @@ function SequenceView({ onFindRequest, onAnnotateRequest, onEditFeature }: Seque
   const colorTarget = useEditorStore(s => s.colorTarget)
   const showComplement = useEditorStore(s => s.showComplement)
   const showAnnotationTracks = useEditorStore(s => s.showAnnotationTracks)
-  const showTranslation = useEditorStore(s => s.showTranslation)
-  const translationFrame = useEditorStore(s => s.translationFrame)
-  const translationCodeId = useEditorStore(s => s.translationCodeId)
   const aminoAcidStyle = useEditorStore(s => s.aminoAcidStyle)
   const threeLetterAminoAcids = useEditorStore(s => s.threeLetterAminoAcids)
   const selection = useEditorStore(s => s.selection)
   const search = useEditorStore(s => s.search)
   const zoomLevel = useEditorStore(s => s.zoomLevel)
   const hoveredAnnotationId = useEditorStore(s => s.hoveredAnnotationId)
-  const hiddenAnnotationIds = useEditorStore(s => s.hiddenAnnotationIds)
-  const showOrfs = useEditorStore(s => s.showOrfs)
   const showEnzymes = useEditorStore(s => s.showEnzymes)
-  const showAutoAnnotations = useEditorStore(s => s.showAutoAnnotations)
   const allEnzymeCutSites = useEditorStore(s => s.enzymeCutSites)
-  const allOrfResults = useEditorStore(s => s.orfResults)
-  const designPicks = useEditorStore(s => s.primerDesign.picks)
-  const designBatch = useEditorStore(s => s.primerDesign.batch)
-  const allAutoAnnotations = useEditorStore(s => s.autoAnnotations)
   const autoAnnotationPicks = useEditorStore(s => s.autoAnnotationPicks)
   const orfPicks = useEditorStore(s => s.orfPicks)
-  const autoOverlapThreshold = useEditorStore(s => s.autoAnnotateOverlapThreshold)
   const enzymeCutSites = showEnzymes ? allEnzymeCutSites : []
-  const orfResults = showOrfs ? allOrfResults : []
 
   // Used by the delete confirmation
   const removeAnnotation = useEditorStore(s => s.removeAnnotation)
@@ -769,99 +542,13 @@ function SequenceView({ onFindRequest, onAnnotateRequest, onEditFeature }: Seque
     [showEnzymes, allEnzymeCutSites, damMethylated, dcmMethylated],
   )
 
-  // Convert ORF results to Annotation objects for unified rendering.
-  // The id carries the ORF's identity rather than its index in the list, so a
-  // pick survives the re-scan that changing the ORF settings triggers.
-  const orfAnnotations = useMemo(() => {
-    return orfResults.map(orf => {
-      const data: AnnotationData = {
-        id: orfIdFor(orf),
-        name: orfName(orf),
-        type: 'CDS',
-        start: orf.start,
-        end: orf.end,
-        strand: orf.strand,
-        color: orfColor(orf.strand, orf.frame),
-      }
-      return new Annotation(data)
-    })
-  }, [orfResults])
-
-  // Primers: one lane item per binding site, spanning its tails too. Saved
-  // primers and the workbench's unsaved picks go through the same path; the
-  // picks are flagged as previews and drawn dashed.
-  const primerSites = usePrimerSites(doc)
-  const designPreview = useDesignPreview(doc, designPicks, designBatch)
-  const allPrimerItems = useMemo(
-    () => [...primerItems(doc.primers ?? [], primerSites, doc.sequence.length), ...designPreview.items],
-    [doc.primers, primerSites, doc.sequence.length, designPreview.items],
-  )
-  const primerItemById = useMemo(
-    () => new Map<string, PrimerItem>(allPrimerItems.map(i => [i.annotation.id, i])),
-    [allPrimerItems],
-  )
+  // Everything in the feature lanes, and the translation settings, built the
+  // same way the PDF export builds them.
+  const { primerSites, designPreview, allPrimerItems, primerItemById, annTree, allAnnotations } = useSequenceTracks(doc)
   /** How many sites the primer behind an item has, for the tooltip. */
   const siteCountOf = (item: PrimerItem) =>
     (item.preview ? designPreview.sites : primerSites).get(item.primer.id)?.length ?? 1
-
-  /**
-   * Auto-annotation proposals, as annotations.
-   *
-   * Matches the document already covers are dropped here rather than drawn
-   * greyed out: a suggestion to add something that exists is not a suggestion.
-   */
-  const autoAnnotations = useMemo(() => {
-    if (!showAutoAnnotations || allAutoAnnotations.length === 0) return []
-    return proposalAnnotations(
-      proposalsFrom(allAutoAnnotations, doc.annotations, autoOverlapThreshold),
-    )
-  }, [showAutoAnnotations, allAutoAnnotations, doc.annotations, autoOverlapThreshold])
-
-  /**
-   * Which reading frames to draw, and how many rows that needs.
-   *
-   * An empty frame list means the annotation modes, which draw one row per
-   * distinct feature translation instead, and keep the two rows the view has
-   * always reserved for them.
-   */
-  const translationFrames = useMemo(
-    () => (showTranslation ? framesFor(translationFrame) : []),
-    [showTranslation, translationFrame],
-  )
-  const translationRows = showTranslation ? translationRowCount(translationFrame) : 0
-  const translateSelection = showTranslation && translatesSelection(translationFrame)
-  const translationCode = useMemo(() => geneticCode(translationCodeId), [translationCodeId])
-
-  // Filter out hidden annotations
-  const hiddenSet = useMemo(() => new Set(hiddenAnnotationIds), [hiddenAnnotationIds])
-  const visibleAnnotations = useMemo(() =>
-    hiddenSet.size === 0 ? doc.annotations : doc.annotations.filter(a => !hiddenSet.has(a.id)),
-    [doc.annotations, hiddenSet]
-  )
-
-  const annTree = useMemo(() => {
-    const tree = new IntervalTree()
-    for (const ann of visibleAnnotations) {
-      tree.insert(ann)
-    }
-    for (const ann of orfAnnotations) {
-      tree.insert(ann)
-    }
-    for (const item of allPrimerItems) {
-      tree.insert(item.annotation)
-    }
-    for (const ann of autoAnnotations) {
-      tree.insert(ann)
-    }
-    return tree
-  }, [visibleAnnotations, orfAnnotations, allPrimerItems, autoAnnotations])
-
-  // Combined list for hit-testing (visible annotations + ORFs + primers + proposals)
-  const allAnnotations = useMemo(() => {
-    const extra = [...orfAnnotations, ...allPrimerItems.map(i => i.annotation), ...autoAnnotations]
-    if (extra.length === 0) return visibleAnnotations
-    return [...visibleAnnotations, ...extra]
-  }, [visibleAnnotations, orfAnnotations, allPrimerItems, autoAnnotations])
+  const { translationFrames, translationRows, translateSelection, translationCode } = useTranslationSettings()
 
   // --- Refs mirroring frequently-changing state ---
   // Allows draw() and event handlers to stay referentially stable
@@ -1035,6 +722,11 @@ function SequenceView({ onFindRequest, onAnnotateRequest, onEditFeature }: Seque
     }
     const scrollTop = container.scrollTop
     const viewHeight = container.clientHeight
+    // Whole rows, the way the user sees them: a row cut off at an edge counts.
+    publishVisibleRange(seqLen === 0 ? null : {
+      start: rl.rowAtY(scrollTop) * L.basesPerRow,
+      end: Math.min((rl.rowAtY(scrollTop + Math.max(0, viewHeight - 1)) + 1) * L.basesPerRow, seqLen),
+    })
 
     // Canvas covers only the visible area + buffer.
     // Clamp so the canvas never extends past totalHeight (which would
@@ -1117,1025 +809,33 @@ function SequenceView({ onFindRequest, onAnnotateRequest, onEditFeature }: Seque
     ctx.save()
     ctx.translate(0, -canvasTop)
 
-    const visibleStart = firstRow * L.basesPerRow
-    const visibleEnd = Math.min((lastRow + 1) * L.basesPerRow, seqLen)
-    const visibleBases = seq.basesIn(visibleStart, visibleEnd)
-
-    const rowSepYs: number[] = []
-    for (let rowIdx = firstRow; rowIdx <= lastRow; rowIdx++) {
-      const rowStart = rowIdx * L.basesPerRow
-      const rowEnd = Math.min(rowStart + L.basesPerRow, seqLen)
-      const rowY = rl.rowY(rowIdx)
-      let cy = rowY
-
-      // --- Enzyme labels above ruler (SnapGene-style tiered labels) ---
-      if (groupedSites.length > 0 && L.maxEnzymeTiers > 0) {
-        const tieredLabels = assignEnzymeTiers(groupedSites, rowStart, rowEnd, L)
-        const labelAreaBottom = rowY + L.enzymeLabelAreaH
-
-        for (const lbl of tieredLabels) {
-          const isHovered = sameGroup(hoveredEnzymeGroup, lbl.group)
-          const methDim = lbl.group.methEffect
-          if (methDim) ctx.globalAlpha = methDim === 'blocked' ? 0.25 : 0.5
-          // Tier 0 is closest to ruler (bottom of label area)
-          const tierY = labelAreaBottom - (lbl.tier + 1) * L.enzymeLabelTierH
-
-          // Draw label text
-          ctx.font = enzymeLabelFont(isHovered)
-          ctx.fillStyle = COLORS.enzyme
-          ctx.textBaseline = 'top'
-          ctx.textAlign = 'left'
-          ctx.fillText(lbl.group.label, lbl.x, tierY + 1)
-
-          // Leader line from label down to ruler line
-          const cutX = baseX(lbl.group.fwdCut, rowStart, L)
-          const rulerLineYAbs = labelAreaBottom + 14
-          ctx.strokeStyle = isHovered ? COLORS.enzymeBgHover : COLORS.enzymeBg
-          ctx.lineWidth = 1
-          ctx.beginPath()
-          ctx.moveTo(cutX, tierY + L.enzymeLabelTierH)
-          ctx.lineTo(cutX, rulerLineYAbs)
-          ctx.stroke()
-
-          // Small triangle at ruler line
-          ctx.fillStyle = COLORS.enzyme
-          ctx.beginPath()
-          ctx.moveTo(cutX - 3, rulerLineYAbs)
-          ctx.lineTo(cutX + 3, rulerLineYAbs)
-          ctx.lineTo(cutX, rulerLineYAbs + 4)
-          ctx.closePath()
-          ctx.fill()
-          if (methDim) ctx.globalAlpha = 1
-        }
-      }
-
-      cy += L.enzymeLabelAreaH
-
-      // --- Ruler ---
-      ctx.fillStyle = COLORS.ruler
-      ctx.font = monoFont('10.5px')
-      ctx.textBaseline = 'top'
-      ctx.textAlign = 'left'
-      // Adaptive tick interval based on zoom
-      const tickInterval = L.mode === 'letters' ? L.basesPerGroup
-        : L.basesPerRow <= 500 ? 50
-        : L.basesPerRow <= 2000 ? 100
-        : L.basesPerRow <= 5000 ? 500
-        : 1000
-      const dispOrigin = (topology === 'circular' ? doc.metadata?.displayOrigin : 0) || 0
-      // The row's first position is already in the margin beside the bases,
-      // so the ruler starts labelling at the next tick.
-      if (L.bpWidth * tickInterval > 30) {
-        for (let i = rowStart + tickInterval; i < rowEnd; i += tickInterval) {
-          ctx.fillText(displayPosition(i, dispOrigin, seqLen).toLocaleString(), baseX(i, rowStart, L), cy)
-        }
-      }
-      ctx.strokeStyle = COLORS.rulerTick
-      ctx.lineWidth = 1
-      const rulerLineY = cy + 14
-      ctx.beginPath()
-      ctx.moveTo(L.leftMargin, rulerLineY)
-      ctx.lineTo(baseX(rowEnd - 1, rowStart, L) + L.bpWidth, rulerLineY)
-      ctx.stroke()
-      ctx.beginPath()
-      for (let i = rowStart; i < rowEnd; i += tickInterval) {
-        const x = baseX(i, rowStart, L)
-        ctx.moveTo(x, rulerLineY - 3)
-        ctx.lineTo(x, rulerLineY)
-      }
-      ctx.stroke()
-
-      // --- Methylation site markers (subtle ticks on ruler line) ---
-      if (damMeth || dcmMeth) {
-        // Scan visible bases for methylation motifs
-        // Extend read window by motif length to catch sites starting before rowStart
-        const methReadStart = Math.max(0, rowStart - 5)
-        const methReadEnd = Math.min(seqLen, rowEnd + 5)
-        const methBases = seq.basesIn(methReadStart, methReadEnd).toUpperCase()
-        const methOffset = methReadStart
-
-        ctx.globalAlpha = 0.4
-        if (damMeth) {
-          // Dam: GATC - methylates adenine at position 1
-          ctx.fillStyle = COLORS.dam
-          for (let mi = 0; mi <= methBases.length - 4; mi++) {
-            if (methBases[mi] === 'G' && methBases[mi+1] === 'A' && methBases[mi+2] === 'T' && methBases[mi+3] === 'C') {
-              const siteStart = mi + methOffset
-              const siteEnd = siteStart + 4
-              // Draw tick for each base in the motif that falls in this row
-              for (let bp = Math.max(siteStart, rowStart); bp < Math.min(siteEnd, rowEnd); bp++) {
-                const x = baseX(bp, rowStart, L) + L.bpWidth / 2
-                ctx.beginPath()
-                ctx.arc(x, rulerLineY + 1, 1.5, 0, Math.PI * 2)
-                ctx.fill()
-              }
-            }
-          }
-        }
-        if (dcmMeth) {
-          // Dcm: CCWGG (W = A or T) - methylates second cytosine
-          ctx.fillStyle = COLORS.dcm
-          for (let mi = 0; mi <= methBases.length - 5; mi++) {
-            if (methBases[mi] === 'C' && methBases[mi+1] === 'C' &&
-                (methBases[mi+2] === 'A' || methBases[mi+2] === 'T') &&
-                methBases[mi+3] === 'G' && methBases[mi+4] === 'G') {
-              const siteStart = mi + methOffset
-              const siteEnd = siteStart + 5
-              for (let bp = Math.max(siteStart, rowStart); bp < Math.min(siteEnd, rowEnd); bp++) {
-                const x = baseX(bp, rowStart, L) + L.bpWidth / 2
-                ctx.beginPath()
-                ctx.arc(x, rulerLineY + 1, 1.5, 0, Math.PI * 2)
-                ctx.fill()
-              }
-            }
-          }
-        }
-        ctx.globalAlpha = 1
-      }
-
-      cy += L.rulerHeight
-
-      const forwardY = cy
-
-      // --- Enzyme recognition site highlights (subtle tint on sequence) ---
-      if (groupedSites.length > 0) {
-        const searchStart = lowerBoundGroups(groupedSites, rowStart - 20)
-        for (let gi = searchStart; gi < groupedSites.length; gi++) {
-          const group = groupedSites[gi]
-          if (group.recognitionStart >= rowEnd) break
-          if (group.recognitionEnd <= rowStart) continue
-          const aStart = Math.max(group.recognitionStart, rowStart)
-          const aEnd = Math.min(group.recognitionEnd, rowEnd)
-          const x1 = baseX(aStart, rowStart, L)
-          const x2 = baseX(aEnd - 1, rowStart, L) + L.bpWidth
-
-          const isHovered = sameGroup(hoveredEnzymeGroup, group)
-          if (group.methEffect) ctx.globalAlpha = group.methEffect === 'blocked' ? 0.25 : 0.5
-          ctx.fillStyle = isHovered ? COLORS.enzymeBgHover : COLORS.enzymeBg
-          ctx.fillRect(x1, cy, x2 - x1, L.seqLineHeight)
-          if (isHovered) {
-            ctx.strokeStyle = COLORS.enzymeBgHover
-            ctx.lineWidth = 1
-            ctx.beginPath()
-            ctx.moveTo(x1, cy + L.seqLineHeight)
-            ctx.lineTo(x2, cy + L.seqLineHeight)
-            ctx.stroke()
-          }
-          if (group.methEffect) ctx.globalAlpha = 1
-        }
-      }
-
-      /**
-       * Selection band for this row.
-       *
-       * Supports origin-spanning selections on circular sequences via
-       * selectionSegments. `onTop` is for background colouring mode, where the
-       * band is drawn after the base blocks instead of under them: a 25% tint
-       * under an opaque fill is simply gone, and over one it only shifts the
-       * hue, so the band also gets a hard accent edge that reads as a boundary
-       * no matter what colour the bases underneath are.
-       */
-      const paintSelectionBand = (onTop: boolean) => {
-        const segs = selectionSegments(selection, topology, seqLen)
-        for (const [selStart, selEnd] of segs) {
-          const hlStart = Math.max(selStart, rowStart)
-          const hlEnd = Math.min(selEnd, rowEnd)
-          if (hlStart < hlEnd) {
-            const x1 = baseX(hlStart, rowStart, L)
-            const x2 = baseX(hlEnd - 1, rowStart, L) + L.bpWidth
-            ctx.fillStyle = COLORS.selectionBg
-            ctx.fillRect(x1, forwardY, x2 - x1, L.seqLineHeight)
-
-            // A hairline edge in the accent colour: the tint alone all but
-            // disappears on dark canvases, and under opaque base blocks
-            // (onTop) the edge is the only thing that reads as a boundary.
-            ctx.strokeStyle = COLORS.caret
-            ctx.lineWidth = onTop ? 1.5 : 1
-            ctx.globalAlpha = onTop ? 1 : 0.55
-            ctx.beginPath()
-            const inset = ctx.lineWidth / 2
-            ctx.moveTo(x1, forwardY + inset)
-            ctx.lineTo(x2, forwardY + inset)
-            ctx.moveTo(x1, forwardY + L.seqLineHeight - inset)
-            ctx.lineTo(x2, forwardY + L.seqLineHeight - inset)
-            ctx.stroke()
-            ctx.globalAlpha = 1
-
-            // Drag handles: a bar along the edge with a knob on the outside
-            // end, start knob on top and end knob below, as text editors do.
-            const knobR = L.mode === 'letters' ? 3.5 : 2.5
-            ctx.fillStyle = COLORS.caret
-            const handle = (hx: number, knobY: number) => {
-              ctx.fillRect(hx - 1, forwardY, 2, L.seqLineHeight)
-              ctx.beginPath()
-              ctx.arc(hx, knobY, knobR, 0, Math.PI * 2)
-              ctx.fill()
-            }
-            if (selStart >= rowStart && selStart < rowEnd) {
-              handle(baseX(selStart, rowStart, L), forwardY - knobR + 1)
-            }
-            if (selEnd > rowStart && selEnd <= rowEnd) {
-              handle(baseX(selEnd - 1, rowStart, L) + L.bpWidth, forwardY + L.seqLineHeight + knobR - 1)
-            }
-          }
-        }
-      }
-
-      /** Search match bands for this row. Buried by opaque base blocks the
-       * same way the selection is, so it moves on top under the same rule. */
-      const paintSearchBands = (onTop: boolean) => {
-        if (search.matches.length === 0) return
-        // Binary search for first match that could overlap this row
-        let mi = 0
-        {
-          let lo = 0, hi = search.matches.length
-          while (lo < hi) {
-            const mid = (lo + hi) >>> 1
-            if (search.matches[mid][1] <= rowStart) lo = mid + 1
-            else hi = mid
-          }
-          mi = lo
-        }
-        for (; mi < search.matches.length; mi++) {
-          const [mStart, mEnd] = search.matches[mi]
-          if (mStart >= rowEnd) break
-          const hlStart = Math.max(mStart, rowStart)
-          const hlEnd = Math.min(mEnd, rowEnd)
-          if (hlStart < hlEnd) {
-            const x1 = baseX(hlStart, rowStart, L)
-            const x2 = baseX(hlEnd - 1, rowStart, L) + L.bpWidth
-            const isCurrent = mi === search.currentMatch
-            ctx.fillStyle = isCurrent ? COLORS.searchCurrent : COLORS.search
-            ctx.fillRect(x1, forwardY, x2 - x1, L.seqLineHeight)
-            if (onTop && isCurrent) {
-              ctx.strokeStyle = COLORS.searchEdge
-              ctx.lineWidth = 1.5
-              ctx.strokeRect(x1 + 0.75, forwardY + 0.75, x2 - x1 - 1.5, L.seqLineHeight - 1.5)
-            }
-          }
-        }
-      }
-
-      // Opaque per-base colour blocks are only painted in letters mode; in the
-      // other modes the bases sit on the canvas background and the bands below
-      // stay visible, so keep them under the sequence as before.
-      const bandsOnTop = paintBackground && L.mode === 'letters'
-      if (!bandsOnTop) {
-        paintSelectionBand(false)
-        paintSearchBands(false)
-      }
-
-      // --- Row position label ---
-      // Centred on the forward strand, and in display coordinates like the
-      // ruler: on a circular sequence with a moved origin, row 1 is not base 1.
-      ctx.fillStyle = COLORS.ruler
-      ctx.font = monoFont('11px')
-      ctx.textAlign = 'right'
-      ctx.textBaseline = 'middle'
-      ctx.fillText(
-        displayPosition(rowStart, dispOrigin, seqLen).toLocaleString(),
-        L.leftMargin - 8,
-        cy + (L.mode === 'letters' ? 8 : L.seqLineHeight / 2),
-      )
-      ctx.textAlign = 'left'
-      ctx.textBaseline = 'top'
-
-      // --- Sequence rendering (mode-dependent) ---
-      if (L.mode === 'letters') {
-        const letterH = 16
-        ctx.font = monoFont('14px')
-        ctx.textBaseline = 'middle'
-        ctx.textAlign = 'center'
-        const bpW = L.bpWidth
-        const halfBp = bpW / 2
-        const midY = cy + letterH / 2
-        /**
-         * Draw one strand of letters.
-         *
-         * In background mode the cell is filled with the base's colour and the
-         * glyph is drawn in whatever contrasts with that fill, so the letter
-         * stays readable on both a dark G and a pale C. Fills are batched by
-         * colour: a row is hundreds of cells and only ever four or five
-         * distinct colours, so setting fillStyle per cell would be the most
-         * expensive thing in the frame.
-         */
-        const drawStrand = (midOfRow: number, charAt: (i: number) => string | undefined) => {
-          if (paintBackground) {
-            const runsByColor = new Map<string, number[]>()
-            let px = L.leftMargin
-            for (let i = rowStart; i < rowEnd; i++) {
-              const ch = charAt(i)
-              if (ch) {
-                const fill = basePalette[ch]
-                // Unpalettised characters (N, gaps) get no block — a filled
-                // cell would imply a call the data does not support.
-                if (fill && fill !== COLORS.text) {
-                  let xs = runsByColor.get(fill)
-                  if (!xs) { xs = []; runsByColor.set(fill, xs) }
-                  xs.push(px)
-                }
-              }
-              px += bpW
-            }
-            for (const [fill, xs] of runsByColor) {
-              ctx.fillStyle = fill
-              for (const x of xs) ctx.fillRect(x, midOfRow - letterH / 2, bpW, letterH)
-            }
-          }
-
-          let bx = L.leftMargin
-          for (let i = rowStart; i < rowEnd; i++) {
-            const ch = charAt(i)
-            if (ch) {
-              const color = basePalette[ch] ?? COLORS.text
-              ctx.fillStyle = paintBackground
-                ? (color === COLORS.text ? COLORS.text : contrastText(color))
-                : color
-              ctx.fillText(ch, bx + halfBp, midOfRow)
-            }
-            bx += bpW
-          }
-        }
-
-        // Forward strand
-        drawStrand(midY, i => visibleBases[i - visibleStart])
-
-        if (L.showComplement) {
-          cy += letterH + L.strandGap
-          const compMidY = cy + letterH / 2
-          if (paintBackground) {
-            // Complement gets the same treatment as the forward strand —
-            // colouring one and not the other reads as an error.
-            drawStrand(compMidY, i => {
-              const ch = visibleBases[i - visibleStart]
-              if (!ch) return undefined
-              const comp = COMPLEMENT[ch.toUpperCase()] ?? ch
-              return ch === ch.toLowerCase() ? comp.toLowerCase() : comp
-            })
-          } else {
-            ctx.fillStyle = COLORS.complement
-            let bx = L.leftMargin
-            for (let i = rowStart; i < rowEnd; i++) {
-              const ch = visibleBases[i - visibleStart]
-              if (ch) {
-                const comp = COMPLEMENT[ch.toUpperCase()] ?? ch
-                ctx.fillText(ch === ch.toLowerCase() ? comp.toLowerCase() : comp, bx + halfBp, compMidY)
-              }
-              bx += bpW
-            }
-          }
-        }
-        cy += letterH
-      } else {
-        // Zoomed out: a backbone, with a dot per base only once a base is
-        // wide enough to be a mark of its own. Narrower than that the dots
-        // merge into a speckled stripe that says nothing about the sequence;
-        // features and cut sites carry the meaning at this scale.
-        const lineY = cy + L.seqLineHeight / 2
-        const lineEnd = baseX(rowEnd - 1, rowStart, L) + L.bpWidth
-        const showDots = L.mode === 'dots' && L.bpWidth >= DOT_MIN_BP_WIDTH
-        ctx.strokeStyle = COLORS.backbone
-        ctx.lineWidth = showDots ? 1 : 2
-        ctx.lineCap = 'round'
-        ctx.globalAlpha = showDots ? 0.6 : 0.85
-        ctx.beginPath()
-        ctx.moveTo(L.leftMargin, lineY)
-        ctx.lineTo(lineEnd, lineY)
-        ctx.stroke()
-        ctx.globalAlpha = 1
-        ctx.lineCap = 'butt'
-        if (showDots) {
-          // Batch dots by color: collect x positions per color, then draw
-          const dotR = Math.max(1, Math.min(3, L.bpWidth * 0.3))
-          const dotsByColor = new Map<string, number[]>()
-          for (let i = rowStart; i < rowEnd; i++) {
-            const base = visibleBases[i - visibleStart]
-            const color = basePalette[base] ?? COLORS.text
-            let arr = dotsByColor.get(color)
-            if (!arr) { arr = []; dotsByColor.set(color, arr) }
-            arr.push(baseX(i, rowStart, L) + L.bpWidth / 2)
-          }
-          for (const [color, xs] of dotsByColor) {
-            ctx.fillStyle = color
-            ctx.beginPath()
-            for (const x of xs) {
-              ctx.moveTo(x + dotR, lineY)
-              ctx.arc(x, lineY, dotR, 0, Math.PI * 2)
-            }
-            ctx.fill()
-          }
-        }
-        cy += L.seqLineHeight
-      }
-
-      // --- Selection / search bands over opaque base colour blocks ---
-      if (bandsOnTop) {
-        paintSelectionBand(true)
-        paintSearchBands(true)
-      }
-
-      // The caret is a DOM element over the canvas (see placeCaret), so its
-      // blink costs nothing here.
-
-      // --- Annotation bars (lazy stacking: compute on first visit, cache for reuse) ---
-      const cached = stacksAt(rowIdx, rowStart, rowEnd)
-      const annRows = cached.rows
-      // With the tracks hidden there are zero lanes, so everything lands in
-      // overflow. Reporting "+N more" for a band the user deliberately closed
-      // would be noise, and rowHeightForLanes reserves no gap in that case
-      // either — so neither the label nor the leading gap applies.
-      const tracksVisible = L.maxAnnotationRows > 0
-      const annOverflow = tracksVisible ? cached.overflow : 0
-      if (tracksVisible) cy += L.annotationGap
-
-      // Batch annotation rendering: group by color to minimize state changes.
-      // First pass: collect geometry. Second pass: fill then stroke by color.
-      const annBatch: { ann: Annotation; x1: number; x2: number; cy: number; isStart: boolean; isEnd: boolean }[] = []
-      let annCy = cy
-      for (const annRow of annRows) {
-        for (const ann of annRow) {
-          const visRange = annVisibleRange(ann, rowStart, rowEnd)
-          if (!visRange) continue
-          const [aStart, aEnd] = visRange
-          const x1 = baseX(aStart, rowStart, L)
-          const x2 = baseX(aEnd - 1, rowStart, L) + L.bpWidth
-          if (x2 - x1 < 0.5) continue // skip sub-pixel annotations
-          const isEnd = ann.spansOrigin()
-            ? (ann.end <= rowEnd && ann.end > rowStart)
-            : ann.end <= rowEnd
-          const isStart = ann.spansOrigin()
-            ? (ann.start >= rowStart && ann.start < rowEnd)
-            : ann.start >= rowStart
-          annBatch.push({ ann, x1, x2, cy: annCy, isStart, isEnd })
-        }
-        annCy += L.annotationRowH + L.annotationGap
-      }
-      cy = annCy
-
-      // Helper to build annotation path
-      const buildAnnPath = (a: typeof annBatch[0]) => {
-        const { ann, x1, x2, cy: ay, isStart, isEnd } = a
-        const barW = x2 - x1
-        const h = L.annotationRowH
-        const midY = ay + h / 2
-        const arrowW = Math.min(6, barW / 3)
-        const cw = Math.min(5, barW / 4)
-
-        // At very small sizes, use simple rectangles
-        if (barW < 4) {
-          ctx.rect(x1, ay, barW, h)
-          return
-        }
-
-        ctx.moveTo(x1, ay)
-        if (ann.strand === 1) {
-          if (!isStart && barW > cw * 2) {
-            ctx.moveTo(x1, ay); ctx.lineTo(x1 + cw, midY); ctx.lineTo(x1, ay + h)
-          } else {
-            ctx.moveTo(x1, ay); ctx.lineTo(x1, ay + h)
-          }
-          if (isEnd && barW > arrowW * 2) {
-            ctx.lineTo(x2 - arrowW, ay + h); ctx.lineTo(x2, midY); ctx.lineTo(x2 - arrowW, ay)
-          } else if (!isEnd && barW > cw * 2) {
-            ctx.lineTo(x2 - cw, ay + h); ctx.lineTo(x2, midY); ctx.lineTo(x2 - cw, ay)
-          } else {
-            ctx.lineTo(x2, ay + h); ctx.lineTo(x2, ay)
-          }
-        } else if (ann.strand === -1) {
-          if (isStart && barW > arrowW * 2) {
-            ctx.moveTo(x1 + arrowW, ay); ctx.lineTo(x1, midY); ctx.lineTo(x1 + arrowW, ay + h)
-          } else if (!isStart && barW > cw * 2) {
-            ctx.moveTo(x1 + cw, ay); ctx.lineTo(x1, midY); ctx.lineTo(x1 + cw, ay + h)
-          } else {
-            ctx.moveTo(x1, ay); ctx.lineTo(x1, ay + h)
-          }
-          if (!isEnd && barW > cw * 2) {
-            ctx.lineTo(x2, ay + h); ctx.lineTo(x2 - cw, midY); ctx.lineTo(x2, ay)
-          } else {
-            ctx.lineTo(x2, ay + h); ctx.lineTo(x2, ay)
-          }
-        } else {
-          ctx.rect(x1, ay, barW, h)
-          return
-        }
-        ctx.closePath()
-      }
-
-      // Render: batch fills by color, then strokes, then labels
-      // Group by color for fewer state changes. Suggestions and picked ORFs
-      // are held back: their dashed or accent outline cannot be batched with
-      // the solid ones.
-      const autoPicks = autoPicksRef.current
-      const orfPicksNow = orfPicksRef.current
-      const colorGroups = new Map<string, typeof annBatch>()
-      const proposalBatch: typeof annBatch = []
-      const primerBatch: typeof annBatch = []
-      for (const a of annBatch) {
-        if (isPrimerItemId(a.ann.id)) {
-          primerBatch.push(a)
-          continue
-        }
-        const orfK = keyFromOrfId(a.ann.id)
-        if (isAutoAnnotationId(a.ann.id) || (orfK !== null && orfPicksNow.has(orfK))) {
-          proposalBatch.push(a)
-          continue
-        }
-        const c = a.ann.color
-        if (!colorGroups.has(c)) colorGroups.set(c, [])
-        colorGroups.get(c)!.push(a)
-      }
-
-      for (const [color, group] of colorGroups) {
-        // Fill pass
-        ctx.fillStyle = color
-        ctx.globalAlpha = 0.3
-        ctx.beginPath()
-        for (const a of group) {
-          if (a.ann.id === hoveredAnnotationId) continue // draw hovered separately
-          buildAnnPath(a)
-        }
-        ctx.fill()
-
-        // Stroke pass
-        ctx.globalAlpha = 1
-        ctx.strokeStyle = visibleStroke(color)
-        ctx.lineWidth = 1
-        ctx.beginPath()
-        for (const a of group) {
-          if (a.ann.id === hoveredAnnotationId) continue
-          buildAnnPath(a)
-        }
-        ctx.stroke()
-      }
-
-      /**
-       * Suggestions: dashed and faint, because they are not in the document
-       * yet. Anything picked — a suggestion or an ORF — is filled more
-       * strongly and outlined solid in the accent colour, so "picked" survives
-       * without depending on hue; the bars are already every colour a feature
-       * type can be.
-       */
-      for (const a of proposalBatch) {
-        if (a.ann.id === hoveredAnnotationId) continue
-        const autoKey = keyFromAutoId(a.ann.id)
-        const orfK = keyFromOrfId(a.ann.id)
-        const picked = (autoKey !== null && autoPicks.has(autoKey))
-          || (orfK !== null && orfPicksNow.has(orfK))
-        ctx.fillStyle = a.ann.color
-        ctx.globalAlpha = picked ? 0.35 : 0.14
-        ctx.beginPath()
-        buildAnnPath(a)
-        ctx.fill()
-        ctx.globalAlpha = picked ? 1 : 0.85
-        ctx.strokeStyle = picked ? COLORS.caret : visibleStroke(a.ann.color)
-        ctx.lineWidth = picked ? 2 : 1
-        ctx.setLineDash(picked ? [] : [4, 3])
-        ctx.beginPath()
-        buildAnnPath(a)
-        ctx.stroke()
-        ctx.setLineDash([])
-      }
-
-      // Primers: annealed bar, raised tail, mismatch marks. Drawn one by one,
-      // since each is several shapes and there are few of them.
-      const primerItemsNow = primerItemByIdRef.current
-      for (const a of primerBatch) {
-        const item = primerItemsNow.get(a.ann.id)
-        if (!item) continue
-        drawPrimerItem(ctx, item, a.cy, rowStart, rowEnd, L, doc.sequence.length, {
-          hovered: a.ann.id === hoveredAnnotationId,
-          preview: item.preview,
-          stroke: visibleStroke(a.ann.color),
-          mismatch: COLORS.enzyme,
-        })
-      }
-      ctx.globalAlpha = 1
-
-      // Draw hovered annotation on top
-      for (const a of annBatch) {
-        if (a.ann.id !== hoveredAnnotationId || isPrimerItemId(a.ann.id)) continue
-        ctx.fillStyle = a.ann.color
-        ctx.globalAlpha = 0.55
-        ctx.beginPath()
-        buildAnnPath(a)
-        ctx.fill()
-        ctx.globalAlpha = 1
-        ctx.strokeStyle = visibleStroke(a.ann.color)
-        ctx.lineWidth = 2.5
-        ctx.beginPath()
-        buildAnnPath(a)
-        ctx.stroke()
-      }
-
-      ctx.globalAlpha = 1
-
-      // Labels — only for bars wide enough
-      ctx.fillStyle = COLORS.text
-      const featureLabelFont = sansFont('500 11px')
-      ctx.font = featureLabelFont
-      ctx.textBaseline = 'middle'
-      ctx.textAlign = 'center'
-      for (const a of annBatch) {
-        const barW = a.x2 - a.x1
-        if (barW <= 20 || isPrimerItemId(a.ann.id)) continue
-        const h = L.annotationRowH
-        const arrowW = Math.min(6, barW / 3)
-        const cw = Math.min(5, barW / 4)
-        let clipLeft = a.x1
-        let clipRight = a.x2
-        if (a.ann.strand === 1) {
-          if (!a.isStart) clipLeft += cw
-          if (a.isEnd) clipRight -= arrowW
-          else clipRight -= cw
-        } else if (a.ann.strand === -1) {
-          if (a.isStart) clipLeft += arrowW
-          else clipLeft += cw
-          if (!a.isEnd) clipRight -= cw
-        }
-        const availW = clipRight - clipLeft
-        const textW = measureText(featureLabelFont, a.ann.name)
-        if (textW <= availW) {
-          // Text fits — no clipping needed (fast path)
-          ctx.fillText(a.ann.name, (clipLeft + clipRight) / 2, a.cy + h / 2)
-        } else if (availW > 12) {
-          // Text overflows — clip (slow path, only when necessary)
-          ctx.save()
-          ctx.beginPath()
-          ctx.rect(clipLeft, a.cy, availW, h)
-          ctx.clip()
-          ctx.fillText(a.ann.name, (clipLeft + clipRight) / 2, a.cy + h / 2)
-          ctx.restore()
-        }
-      }
-      ctx.textAlign = 'left'
-
-      // Annotation edge drag preview - dashed outline at new boundary
-      if (annEdgeDrag.current) {
-        for (const a of annBatch) {
-          if (annEdgeDrag.current.annId !== a.ann.id) continue
-          const drag = annEdgeDrag.current
-          const previewStart = drag.edge === 'start' ? drag.currentPos : drag.originalStart
-          const previewEnd = drag.edge === 'end' ? drag.currentPos : drag.originalEnd
-          const pVisRange = annVisibleRange(
-            a.ann.with({ start: previewStart, end: previewEnd }),
-            rowStart, rowEnd,
-          )
-          if (pVisRange) {
-            const [pStart, pEnd] = pVisRange
-            const px1 = baseX(pStart, rowStart, L)
-            const px2 = baseX(pEnd - 1, rowStart, L) + L.bpWidth
-            const h = L.annotationRowH
-            ctx.save()
-            ctx.setLineDash([4, 3])
-            ctx.strokeStyle = visibleStroke(a.ann.color)
-            ctx.lineWidth = 2
-            ctx.strokeRect(px1, a.cy, px2 - px1, h)
-            ctx.fillStyle = a.ann.color
-            ctx.globalAlpha = 0.15
-            ctx.fillRect(px1, a.cy, px2 - px1, h)
-            ctx.restore()
-          }
-        }
-      }
-
-      // --- Overflow indicator for clipped annotations ---
-      if (annOverflow > 0) {
-        const label = `+${annOverflow} more`
-        ctx.font = sansFont('500 9px')
-        const px = L.leftMargin + 4
-        const py = cy - L.annotationGap - 2
-        ctx.globalAlpha = 0.6
-        ctx.fillStyle = COLORS.text
-        ctx.fillText(label, px, py)
-        ctx.globalAlpha = 1
-      }
-
-      // --- Amino acid translation (letters mode only) ---
-      //
-      // Two shapes, chosen in the display popover. Frame mode translates the
-      // sequence itself in fixed reading frames, which is a simple walk; the
-      // annotation modes translate each feature, which has to respect its
-      // strand and /codon_start and so keeps the older, fiddlier path below.
-      const frames = translationFramesRef.current
-      if (L.mode === 'letters' && L.maxTranslationRows > 0 && frames.length > 0) {
-        const code = translationCodeRef.current
-        const aaStyle = aminoAcidStyleRef.current
-        const threeLetter = threeLetterRef.current
-        const seqLen = doc.sequence.length
-
-        ctx.font = monoFont(threeLetter ? '9px' : '10px')
-        ctx.textBaseline = 'middle'
-        ctx.textAlign = 'center'
-
-        for (const frame of frames.slice(0, L.maxTranslationRows)) {
-          // Codon boundaries in genomic coordinates. A reverse frame counts
-          // its offset from the 3' end, which is where its ribosome starts.
-          const anchor = frame.strand === 1 ? frame.offset : (seqLen - frame.offset) % 3
-          const first = rowStart + ((anchor - rowStart) % 3 + 3) % 3
-
-          for (let pos = first; pos + 2 < Math.min(rowEnd + 2, seqLen); pos += 3) {
-            const bases = doc.sequence.basesIn(pos, Math.min(pos + 3, seqLen)).toUpperCase()
-            if (bases.length < 3) break
-            const codon = frame.strand === 1 ? bases : reverseComplementStr(bases)
-            const aa = code.table[codon] ?? '?'
-            const codonIdx = Math.floor((pos - anchor) / 3)
-
-            // A block behind each codon, alternating in strength, the same cue
-            // the feature translations use to show where codons begin and end.
-            // Its own tone, not the selection's: a translated row is not a
-            // selected one. A residue with a colour of its own fills the block
-            // with it instead: a solid chip reads at a glance where a coloured
-            // 10px letter does not, and the gap between chips still marks the
-            // codon boundaries.
-            const fill = aminoAcidFill(aaStyle, aa)
-            const bgFirst = Math.max(pos, rowStart)
-            const bgLast = Math.min(pos + 2, rowEnd - 1)
-            if (bgFirst <= bgLast) {
-              paintCodonBlock(
-                ctx, baseX(bgFirst, rowStart, L), baseX(bgLast, rowStart, L) + L.bpWidth,
-                cy, L.translationRowH, fill ?? COLORS.codon, fill !== null || codonIdx % 2 === 0,
-              )
-            }
-
-            const middle = pos + 1
-            if (middle < rowStart || middle >= rowEnd) continue
-            ctx.fillStyle = fill ? contrastText(fill) : COLORS.text
-            ctx.fillText(
-              aminoAcidLabel(aa, threeLetter),
-              baseX(middle, rowStart, L) + L.bpWidth / 2,
-              cy + L.translationRowH / 2,
-            )
-          }
-          cy += L.translationRowH + L.translationGap
-        }
-        ctx.textAlign = 'left'
-        ctx.textBaseline = 'top'
-      }
-
-      if (L.mode === 'letters' && L.maxTranslationRows > 0 && frames.length === 0) {
-        // The selection's translation first, nearest the sequence it was read
-        // from, then the features'. The layout reserved its row wherever the
-        // selection has a whole codon, which is where this finds codons.
-        let selRowUsed = 0
-        if (selTranslation) {
-          const codons = selectionCodonsInRow(
-            selTranslation.start, selTranslation.length, seqLen, selTranslation.reverse,
-            rowStart, rowEnd,
-          )
-          if (codons.length > 0) {
-            const code = translationCodeRef.current
-            const aaStyle = aminoAcidStyleRef.current
-            const threeLetter = threeLetterRef.current
-            ctx.font = monoFont(threeLetter ? '9px' : '10px')
-            ctx.textBaseline = 'middle'
-            ctx.textAlign = 'center'
-            for (const { index, bases, partial } of codons) {
-              const inRow = bases.filter(p => p >= rowStart && p < rowEnd)
-              const x1 = baseX(Math.min(...inRow), rowStart, L)
-              const x2 = baseX(Math.max(...inRow), rowStart, L) + L.bpWidth
-              // The tip goes on the codon's last base in reading order, so a
-              // codon split across lines points only where it ends.
-              const end = bases[bases.length - 1]
-              const point = end >= rowStart && end < rowEnd ? (selTranslation.reverse ? -1 : 1) : 0
-              if (partial) {
-                // The codon still being selected: a smaller blank chip over the
-                // bases it has so far, the next residue taking shape. It
-                // becomes a full chip with its letter on the third base. Always
-                // full strength: at half, the plain tone all but disappears.
-                paintCodonBlock(
-                  ctx, x1, x2, cy + 2, L.translationRowH - 4,
-                  COLORS.codon, true, point,
-                )
-                continue
-              }
-              // Top-strand bases in reading order. Read leftwards, that order
-              // runs 5' to 3' along the bottom strand, so the codon is their
-              // complement: the reverse complement of the reversed string.
-              const top = bases.map(p => doc.sequence.basesIn(p, p + 1)).join('').toUpperCase()
-              const codon = selTranslation.reverse ? reverseComplementStr([...top].reverse().join('')) : top
-              const aa = code.table[codon] ?? '?'
-              // A selection has no feature colour, so "By annotation" leaves
-              // it plain apart from stops.
-              const fill = aminoAcidFill(aaStyle, aa)
-              paintCodonBlock(
-                ctx, x1, x2, cy, L.translationRowH,
-                fill ?? COLORS.codon, fill !== null || index % 2 === 0, point,
-              )
-              const middle = bases[1]
-              if (middle < rowStart || middle >= rowEnd) continue
-              ctx.fillStyle = fill ? contrastText(fill) : COLORS.text
-              ctx.fillText(
-                aminoAcidLabel(aa, threeLetter),
-                baseX(middle, rowStart, L) + L.bpWidth / 2,
-                cy + L.translationRowH / 2,
-              )
-            }
-            ctx.textAlign = 'left'
-            ctx.textBaseline = 'top'
-            cy += L.translationRowH + L.translationGap
-            selRowUsed = 1
-          }
-        }
-
-        const cdsAnnotations = annBatch.filter(a => a.ann.type === 'CDS' && a.ann.strand !== 0).map(a => a.ann)
-
-        // Read only the visible portion of each CDS (plus codon-alignment buffer)
-        // instead of the entire CDS span. Cache between dedup and render passes.
-        const cdsVisData = new Map<Annotation, { aStart: number; aEnd: number; seqForTranslation: string; readStart: number }>()
-        for (const ann of cdsAnnotations) {
-          const visRange = annVisibleRange(ann, rowStart, rowEnd)
-          if (!visRange) continue
-          const [aStart, aEnd] = visRange
-          // Expand read window by 3bp on each side to cover partial codons at edges
-          const readStart = Math.max(ann.start, aStart - 3)
-          const readEnd = Math.min(ann.end, aEnd + 3)
-          const bases = doc.sequence.basesIn(readStart, readEnd)
-          const seqForTranslation = ann.strand === -1 ? reverseComplementStr(bases) : bases
-          cdsVisData.set(ann, { aStart, aEnd, seqForTranslation, readStart })
-        }
-
-        // Helper: get the offset into seqForTranslation for a genome position
-        const localOffset = (ann: Annotation, pos: number, data: { readStart: number; seqForTranslation: string }) => {
-          if (ann.strand === 1) {
-            return pos - data.readStart
-          } else {
-            // For reverse strand, the sequence is reverse-complemented from [readStart, readEnd)
-            // readEnd = readStart + seqForTranslation.length
-            return (data.readStart + data.seqForTranslation.length - 1) - pos
-          }
-        }
-
-        // annOffset within the full CDS (for codon frame calculation)
-        const fullAnnOffset = (ann: Annotation, pos: number) => {
-          return ann.strand === 1 ? pos - ann.start : (ann.end - 1 - pos)
-        }
-
-        // Collapse CDS annotations that produce identical translations in this row
-        const seenTranslationKeys = new Set<string>()
-        const uniqueCds: typeof cdsAnnotations = []
-        for (const ann of cdsAnnotations) {
-          const data = cdsVisData.get(ann)
-          if (!data) continue
-          const { aStart, aEnd, seqForTranslation } = data
-          let key = `${ann.strand}:`
-          for (let pos = aStart; pos < aEnd; pos++) {
-            const fOffset = fullAnnOffset(ann, pos)
-            if (fOffset % 3 !== 0) continue
-            const lOffset = localOffset(ann, pos, data)
-            if (lOffset < 0 || lOffset + 3 > seqForTranslation.length) continue
-            const codon = seqForTranslation.slice(lOffset, lOffset + 3)
-            key += `${pos}:${translateCodon(codon)},`
-          }
-          if (seenTranslationKeys.has(key)) continue
-          seenTranslationKeys.add(key)
-          uniqueCds.push(ann)
-        }
-
-        let translationCount = 0
-        for (const ann of uniqueCds) {
-          if (translationCount >= rl.translationRowsAt(rowIdx, L) - selRowUsed) break
-          const data = cdsVisData.get(ann)!
-          const { aStart, aEnd, seqForTranslation } = data
-
-          const threeLetter = threeLetterRef.current
-          const aaStyle = aminoAcidStyleRef.current
-          const code = translationCodeRef.current
-          // "By annotation" colouring means the feature's own colour, which is
-          // the one thing the residue palettes cannot supply. Stops keep their
-          // red so they still stand out in a feature-coloured row.
-          const fillFor = (aa: string) => aaStyle === 'annotation' && aa !== '*'
-            ? ann.color
-            : aminoAcidFill(aaStyle, aa)
-
-          // Draw codon backgrounds spanning the 3 nucleotide columns:
-          // alternating plain blocks, or chips filled with the residue's
-          // colour, as in the frame translations above.
-          for (let pos = aStart; pos < aEnd; pos++) {
-            const fOffset = fullAnnOffset(ann, pos)
-            if (fOffset % 3 !== 0) continue
-            const lOffset = localOffset(ann, pos, data)
-            if (lOffset < 0 || lOffset + 3 > seqForTranslation.length) continue
-            const codonIdx = Math.floor(fOffset / 3)
-            const codon = seqForTranslation.slice(lOffset, lOffset + 3)
-            const fill = fillFor(code.table[codon.toUpperCase()] ?? '?')
-            const firstBase = ann.strand === 1 ? pos : pos - 2
-            const lastBase = ann.strand === 1 ? pos + 2 : pos
-            const clampedFirst = Math.max(firstBase, rowStart)
-            const clampedLast = Math.min(lastBase, rowEnd - 1)
-            if (clampedFirst > clampedLast) continue
-            paintCodonBlock(
-              ctx, baseX(clampedFirst, rowStart, L), baseX(clampedLast, rowStart, L) + L.bpWidth,
-              cy, L.translationRowH, fill ?? COLORS.codon, fill !== null || codonIdx % 2 === 0,
-            )
-          }
-
-          // Draw AA letters
-          ctx.font = monoFont(threeLetter ? '9px' : '10px')
-          ctx.textBaseline = 'middle'
-          ctx.textAlign = 'center'
-          const aaHalfBp = L.bpWidth / 2
-          for (let pos = aStart; pos < aEnd; pos++) {
-            const fOffset = fullAnnOffset(ann, pos)
-            if (fOffset % 3 !== 0) continue
-            const lOffset = localOffset(ann, pos, data)
-            if (lOffset < 0 || lOffset + 3 > seqForTranslation.length) continue
-            const codon = seqForTranslation.slice(lOffset, lOffset + 3)
-            const aa = code.table[codon.toUpperCase()] ?? '?'
-            let middleBase: number
-            if (ann.strand === 1) {
-              middleBase = pos + 1
-              if (middleBase >= aEnd) continue
-            } else {
-              middleBase = pos - 1
-              if (middleBase < aStart) continue
-            }
-            if (middleBase < rowStart || middleBase >= rowEnd) continue
-            const x = baseX(middleBase, rowStart, L) + aaHalfBp
-            const fill = fillFor(aa)
-            ctx.fillStyle = fill ? contrastText(fill) : COLORS.text
-            ctx.fillText(aminoAcidLabel(aa, threeLetter), x, cy + L.translationRowH / 2)
-          }
-          ctx.textAlign = 'left'
-          ctx.textBaseline = 'top'
-          cy += L.translationRowH + L.translationGap
-          translationCount++
-        }
-      }
-
-      // --- Enzyme cut-site dashed lines (drawn after all row content) ---
-      if (groupedSites.length > 0) {
-        const searchStart = lowerBoundGroups(groupedSites, rowStart - 20)
-        const lineTop = rowY + L.enzymeLabelAreaH + L.rulerHeight
-        const lineBottom = rowY + rl.rowH(rowIdx) - L.rowPaddingBottom
-        ctx.lineWidth = 1
-        ctx.setLineDash([2, 3])
-        // Normal lines (no methylation effect)
-        ctx.strokeStyle = COLORS.enzymeBg
-        ctx.beginPath()
-        let hasNormal = false
-        let hasHovered = false
-        let hasMethDimmed = false
-        for (let gi = searchStart; gi < groupedSites.length; gi++) {
-          const group = groupedSites[gi]
-          if (group.recognitionStart >= rowEnd) break
-          if (group.fwdCut < rowStart || group.fwdCut >= rowEnd) continue
-          if (sameGroup(hoveredEnzymeGroup, group)) { hasHovered = true; continue }
-          if (group.methEffect) { hasMethDimmed = true; continue }
-          hasNormal = true
-          const cutX = baseX(group.fwdCut, rowStart, L)
-          ctx.moveTo(cutX, lineTop)
-          ctx.lineTo(cutX, lineBottom)
-        }
-        if (hasNormal) ctx.stroke()
-        // Methylation-dimmed lines
-        if (hasMethDimmed) {
-          ctx.strokeStyle = COLORS.enzymeBg
-          for (let gi = searchStart; gi < groupedSites.length; gi++) {
-            const group = groupedSites[gi]
-            if (group.recognitionStart >= rowEnd) break
-            if (group.fwdCut < rowStart || group.fwdCut >= rowEnd) continue
-            if (sameGroup(hoveredEnzymeGroup, group) || !group.methEffect) continue
-            ctx.globalAlpha = group.methEffect === 'blocked' ? 0.25 : 0.5
-            ctx.beginPath()
-            const cutX = baseX(group.fwdCut, rowStart, L)
-            ctx.moveTo(cutX, lineTop)
-            ctx.lineTo(cutX, lineBottom)
-            ctx.stroke()
-          }
-          ctx.globalAlpha = 1
-        }
-        // Hovered lines
-        if (hasHovered) {
-          ctx.strokeStyle = COLORS.enzymeBgHover
-          ctx.beginPath()
-          for (let gi = searchStart; gi < groupedSites.length; gi++) {
-            const group = groupedSites[gi]
-            if (group.recognitionStart >= rowEnd) break
-            if (group.fwdCut < rowStart || group.fwdCut >= rowEnd) continue
-            if (!sameGroup(hoveredEnzymeGroup, group)) continue
-            const cutX = baseX(group.fwdCut, rowStart, L)
-            ctx.moveTo(cutX, lineTop)
-            ctx.lineTo(cutX, lineBottom)
-          }
-          ctx.stroke()
-        }
-        ctx.setLineDash([])
-      }
-
-      rowSepYs.push(rowY + rl.rowH(rowIdx) - 1)
-    }
-
-    // --- Row separators (batched) ---
-    if (rowSepYs.length > 0) {
-      ctx.strokeStyle = COLORS.rowSeparator
-      ctx.lineWidth = 1
-      ctx.beginPath()
-      for (const sy of rowSepYs) {
-        ctx.moveTo(0, sy)
-        ctx.lineTo(width, sy)
-      }
-      ctx.stroke()
-    }
+    const bpr = L.basesPerRow
+    paintSequenceRows(ctx, {
+      doc, L, rl,
+      rowSpan: i => [i * bpr, Math.min(i * bpr + bpr, seqLen)],
+      stacksAt,
+      groupedSites,
+      colors: COLORS,
+      basePalette,
+      paintBackground,
+      fonts: { mono: MONO_FAMILY, sans: SANS_FAMILY },
+      measure: measureText,
+      selection,
+      selectionHandles: true,
+      search,
+      selTranslation,
+      hoveredAnnotationId,
+      hoveredEnzymeGroup,
+      annEdgeDrag: annEdgeDrag.current,
+      autoPicks: autoPicksRef.current,
+      orfPicks: orfPicksRef.current,
+      primerItemById: primerItemByIdRef.current,
+      translationFrames: translationFramesRef.current,
+      translationCode: translationCodeRef.current,
+      aminoAcidStyle: aminoAcidStyleRef.current,
+      threeLetter: threeLetterRef.current,
+      width,
+    }, firstRow, lastRow)
 
     ctx.restore() // end virtual scroll translate
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -2899,6 +1599,7 @@ function SequenceView({ onFindRequest, onAnnotateRequest, onEditFeature }: Seque
   }, [])
 
   useEffect(() => registerSequenceViewFit(fitToView), [fitToView])
+  useEffect(() => () => publishVisibleRange(null), [])
 
   // Attach event listeners once (all callbacks are stable via refs)
   useEffect(() => {

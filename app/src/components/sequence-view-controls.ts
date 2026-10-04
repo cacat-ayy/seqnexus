@@ -51,3 +51,18 @@ export function fitSequenceView(): boolean {
   fitHandler()
   return true
 }
+
+let visibleRange: { start: number; end: number } | null = null
+
+/**
+ * Called from the view's draw: the whole rows in view, as bases [start, end).
+ * The PDF export offers them as "visible region". Null when no view is mounted.
+ */
+export function publishVisibleRange(range: { start: number; end: number } | null): void {
+  visibleRange = range
+}
+
+/** The rows the sequence view shows right now, or null when none is mounted. */
+export function getVisibleRange(): { start: number; end: number } | null {
+  return visibleRange
+}

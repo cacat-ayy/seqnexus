@@ -84,6 +84,7 @@ of each build.
 - **Sequence alignment** - pairwise (global/local) and multiple sequence alignment
 - **In-silico cloning** - digest/ligation, Gibson assembly, Golden Gate assembly
 - **NCBI BLAST** - search NCBI databases directly from the editor
+- **PDF export** of the sequence as the text view draws it, vector, on A4
 - **10 themes** (5 light, 5 dark)
 - **File explorer** with folders, search, drag-to-group
 - **Keyboard shortcuts** and right-click context menus
@@ -456,6 +457,7 @@ clutter.
 | SCF (.scf) | Yes | - | Sanger chromatogram traces. |
 | GFF3 (.gff, .gff3) | Yes | - | Feature annotations with embedded FASTA. |
 | Clustal (.aln) | - | Yes | Alignment export. |
+| PDF (.pdf) | - | Yes | The sequence as the text view draws it, with an optional map page and feature and enzyme tables. See [PDF Export](#pdf-export). |
 | CSV | - | Yes | Feature table export. |
 | Plain text | Yes | Yes | Raw sequence. |
 
@@ -749,6 +751,86 @@ untouched.
 
 ---
 
+## PDF Export
+
+File > Export PDF (Ctrl+P) writes the sequence as the text view draws it:
+base colours, complement, feature bars, primers, ORFs, cut sites and
+translations, laid out on A4 pages. The bases to export are the whole
+sequence, the rows in view, the selection or a typed range (through the
+origin on a circular sequence). Optional extras: a plasmid map page for
+circular sequences, a feature table and a restriction site table (both
+limited to the exported range), and a header with the title, length and
+page numbers.
+
+### One painter, two outputs
+
+The row drawing lives in one function (`components/sequence-paint.ts`) that
+the screen and the export both call. For the PDF it draws into `PdfCanvas`
+(`pdf/canvas.ts`), an object with the subset of the Canvas 2D API the
+painters use (paths, arcs, rectangles, text, dashes, alpha, save/restore,
+transforms) that writes PDF operators instead of pixels. The plasmid map's
+renderer draws into the same object. The export therefore cannot drift from
+the view: a change to how features or translations are drawn reaches both.
+
+Rejected alternatives:
+- **Printing through the browser** (as the alignment figure does) gives no
+  control over page breaks, so a line and its features can split across
+  pages, and the user has to go through the print dialog every time.
+- **Rasterising each page** would be exact but not searchable, large, and
+  blurry when zoomed.
+- **A PDF library** would add weight to a single-file app for what is a
+  small amount of format: the writer (`pdf/document.ts`) is a page tree,
+  Flate-compressed content streams (fflate, already used for Geneious
+  files) and an xref table.
+
+### Layout
+
+Rows are laid out in the view's own pixel units and scaled to the page
+width, so letters, labels and bars keep their on-screen proportions. At
+letters zoom the line length is the screen's by default, or a fixed 50 to
+150 bases; the row is as wide as that many cells at the current zoom's cell
+width, and the dialog reports the resulting letter size in points (under
+5 pt it suggests fewer bases or landscape). Below letters zoom the overview
+prints as on screen, scaled so its labels land near 7 pt. A line is never
+split across pages. The map page and the tables follow the same rule: a
+table's heading, header and first row stay together, and the header row
+repeats on each new page.
+
+Feature lanes are not capped at the screen's four: paper cannot be hovered
+to reveal "+N more", so print shows every lane up to 16.
+
+### Fonts and text
+
+The PDF uses three of the standard 14 fonts (Helvetica, Helvetica-Bold,
+Courier), which every reader provides, so nothing is embedded. Their glyph
+widths are fixed by the Adobe font metrics, which lets the export measure
+labels exactly without a canvas; the painter is handed these metrics, so
+label fitting and enzyme label tiers are computed for the glyphs that will
+print. Monospaced text prints in Courier, the rest in Helvetica.
+
+The sequence letters of a line are written as one text run with character
+spacing set to the cell width, and tagged with `/ActualText` so copy and
+search read "ACGT" rather than "A C G T" (readers that honour it, such as
+Acrobat and Chrome's viewer; pdf.js extracts the spaced form).
+
+### Colours
+
+The export always uses the light theme's colours on white, read from the
+theme tokens through a hidden probe element rather than copied. Dark themes
+are made for a dark canvas (pale text, bright bases) and would print as
+faint marks on white. Selection and search highlights are off by default.
+
+### Limits
+
+- The standard fonts use WinAnsiEncoding (Latin-1 plus typographic marks).
+  Greek letters in names are spelled out ("beta-lactamase"); other
+  characters outside the set print as "?".
+- Exports over 1,500 pages are refused; choose a smaller range or zoom out.
+- Writing runs on the main thread in batches, so a long export keeps the
+  dialog responsive and can be stopped.
+
+---
+
 ## References
 
 - SantaLucia J Jr. (1998) "A unified view of polymer, dumbbell, and
@@ -796,6 +878,10 @@ untouched.
 - Hoover DM, Lubkowski J. (2002) "DNAWorks: an automated method for designing
   oligonucleotides for PCR-based gene synthesis."
   *Nucleic Acids Res* 30(10):e43.
+
+- ISO 32000-1:2008. *Document management - Portable document format -
+  Part 1: PDF 1.7.* Standard Type 1 fonts (9.6.2.2) and replacement text,
+  `/ActualText` (14.9.4). Glyph widths from the Adobe Core 14 AFM files.
 
 ## License
 

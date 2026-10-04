@@ -58,6 +58,16 @@ export interface LayoutToggles {
    * frame modes ask for one row per frame, up to all six.
    */
   translationRows?: number
+  /**
+   * Letters zoom only: this many bases per row instead of as many as fit.
+   * The PDF export sets the line length and sizes the page to it.
+   */
+  basesPerRow?: number
+}
+
+/** The width a base gets at a letters zoom level; it grows with the zoom. */
+export function letterCellWidth(zoomLevel: number): number {
+  return 9.6 + (Math.max(13, Math.min(20, zoomLevel)) - 13) * 1.2
 }
 
 export function getLayout(
@@ -86,9 +96,9 @@ export function getLayout(
 
   if (mode === 'letters') {
     groupGap = 0
-    // Target bpWidth increases with zoom (bigger chars at higher zoom)
-    const targetBpWidth = 9.6 + (z - 13) * 1.2
-    basesPerRow = Math.max(10, Math.floor(available / targetBpWidth))
+    basesPerRow = toggles.basesPerRow && toggles.basesPerRow > 0
+      ? Math.round(toggles.basesPerRow)
+      : Math.max(10, Math.floor(available / letterCellWidth(z)))
     bpWidth = available / basesPerRow
   } else if (mode === 'dots') {
     groupGap = 0

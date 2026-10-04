@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { buildPlasmidScene, type PlasmidSceneInput, type SceneItem } from './scene'
+import { buildPlasmidScene, isFlipped, type PlasmidSceneInput, type SceneItem } from './scene'
 import { stackAnnotations } from './geometry'
 import { PLASMID_STYLES, getPlasmidStyle, resolvePlasmidColors } from './styles'
 import { Annotation } from '../models/Annotation'
@@ -287,5 +287,29 @@ describe('legend', () => {
     )
     expect(texts.some(t => t.text === 'CDS')).toBe(true)
     expect(texts.some(t => t.text === 'promoter')).toBe(true)
+  })
+})
+
+describe('curved label direction', () => {
+  // The canvas and SVG emitters turn each glyph by angle + 90° when a label
+  // runs clockwise and by angle - 90° when it is flipped. Upright means that
+  // turn stays within a quarter turn either way.
+  const turn = (angle: number) => {
+    const t = isFlipped(angle) ? angle - Math.PI / 2 : angle + Math.PI / 2
+    return Math.atan2(Math.sin(t), Math.cos(t))
+  }
+
+  it('keeps labels upright all the way round', () => {
+    for (let deg = -90; deg < 270; deg += 5) {
+      if (deg % 180 === 0) continue // 3 and 9 o'clock read sideways either way
+      expect(Math.abs(turn((deg * Math.PI) / 180)), `at ${deg}°`).toBeLessThan(Math.PI / 2)
+    }
+  })
+
+  it('flips only the bottom half', () => {
+    expect(isFlipped(-Math.PI / 2)).toBe(false) // 12 o'clock
+    expect(isFlipped(-Math.PI * 0.75)).toBe(false) // top left, where the bug was
+    expect(isFlipped(Math.PI / 4)).toBe(true) // bottom right, where the bug was
+    expect(isFlipped(Math.PI / 2)).toBe(true) // 6 o'clock
   })
 })

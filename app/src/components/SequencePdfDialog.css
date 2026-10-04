@@ -1,0 +1,238 @@
+/* ===== Export PDF dialog ===== */
+
+.pdf-dialog {
+  width: min(900px, calc(100vw - 32px));
+}
+
+.pdf-body {
+  display: flex;
+  gap: var(--space-5);
+  align-items: flex-start;
+}
+
+/* --- Preview: the page on a grey desk --- */
+
+.pdf-preview {
+  flex: 0 0 auto;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-4);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-input);
+  position: sticky;
+  top: 0;
+}
+
+.pdf-page {
+  background: var(--canvas-bg);
+  box-shadow: var(--shadow-card);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+}
+
+/* The preview is the page itself, always on paper white whatever the theme. */
+.pdf-page canvas {
+  display: block;
+}
+
+.pdf-page-note {
+  margin: 0;
+  padding: var(--space-5);
+  font-size: var(--text-sm);
+  color: var(--text-muted);
+  text-align: center;
+  line-height: 1.5;
+}
+
+.pdf-pager {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: var(--text-xs);
+  color: var(--text-secondary);
+  font-variant-numeric: tabular-nums;
+}
+
+.pdf-pager-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg-alt);
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: background var(--dur-fast) var(--ease-out);
+}
+
+.pdf-pager-btn:hover:not(:disabled) {
+  background: var(--bg-hover);
+  color: var(--text);
+}
+
+.pdf-pager-btn:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+/* --- Options --- */
+
+.pdf-options {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.pdf-section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1-5);
+}
+
+.pdf-section-label {
+  font-size: var(--text-2xs);
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-muted);
+}
+
+.pdf-range-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.pdf-radio,
+.pdf-check {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1-5);
+  font-size: var(--text-sm);
+  color: var(--text);
+  cursor: pointer;
+}
+
+.pdf-radio input,
+.pdf-check input {
+  accent-color: var(--accent);
+  margin: 0;
+}
+
+.pdf-radio.disabled,
+.pdf-check.disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.pdf-hint {
+  margin-left: auto;
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.pdf-custom {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1-5);
+  padding-left: var(--space-5);
+  font-size: var(--text-sm);
+  color: var(--text-secondary);
+}
+
+.pdf-pos {
+  width: 90px;
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
+}
+
+.pdf-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: var(--text-sm);
+  color: var(--text);
+}
+
+.pdf-row-label {
+  flex: 0 0 100px;
+  color: var(--text-secondary);
+}
+
+.pdf-row .select {
+  flex: 1;
+}
+
+.pdf-title {
+  flex: 1;
+  min-width: 0;
+}
+
+.pdf-note {
+  margin: 0;
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+  line-height: 1.45;
+}
+
+.pdf-warn {
+  color: var(--warning);
+}
+
+/* --- Citation reminder --- */
+
+.pdf-cite {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-1);
+  padding: var(--space-2-5) var(--space-3);
+  background: var(--accent-bg);
+  border: 1px solid color-mix(in srgb, var(--accent) 25%, transparent);
+  border-radius: var(--radius-input);
+  font-size: var(--text-xs);
+  color: var(--text-secondary);
+}
+
+.pdf-cite p {
+  margin: 0;
+  line-height: 1.45;
+}
+
+.pdf-cite-text {
+  color: var(--text);
+  user-select: all;
+}
+
+.pdf-cite .btn {
+  margin-top: var(--space-1);
+}
+
+.pdf-progress {
+  margin-right: auto;
+  align-self: center;
+  font-size: var(--text-sm);
+  color: var(--text-secondary);
+  font-variant-numeric: tabular-nums;
+}
+
+@media (max-width: 720px) {
+  .pdf-body {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .pdf-preview {
+    position: static;
+  }
+}
