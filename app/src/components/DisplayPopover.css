@@ -1,12 +1,17 @@
-/* Display settings popover — see DisplayPopover.tsx. */
+/* Display settings popover: see DisplayPopover.tsx. */
 
-/* Fixed, with left/top supplied by useClampedPosition — see the note in
+/* Fixed, with left/top supplied by useClampedPosition: see the note in
    DisplayPopover.tsx. Absolute positioning inside the panel bar put it off the
-   right edge of the window, and .main-area clips its overflow. */
+   right edge of the window, and .main-area clips its overflow.
+
+   A set width rather than one that follows the content. Sized to its content
+   it took the width of the longest genetic code name in the select, and it
+   grew whenever the translation fields appeared. Plasmid descriptions wrap
+   instead. */
 .dp-popover {
   position: fixed;
   z-index: var(--z-popover);
-  min-width: 244px;
+  width: 272px;
   max-height: calc(100vh - 16px);
   overflow-y: auto;
   padding: var(--space-2) 0 0;
@@ -195,8 +200,12 @@
   bottom: calc(100% + 2px);
 }
 
+/* width: 0 so the select takes the row's free space and no more. Left to
+   itself a select is as wide as its longest option, which is what made the
+   popover wide. */
 .dp-select {
   flex: 1;
+  width: 0;
   min-width: 0;
   font-size: var(--text-xs);
   padding: 2px var(--space-1);
@@ -243,6 +252,18 @@
 }
 
 .dp-target-btn:disabled { opacity: .4; cursor: default; }
+
+/* Amino acid previews: one chip per residue, as the sequence view draws
+   them. A plain residue sits on the same faint block the canvas uses. */
+.dp-aa-chips { gap: 1px; }
+
+.dp-aa-chips span {
+  min-width: 11px;
+  padding: 0 1px;
+  text-align: center;
+  border-radius: var(--radius-xs);
+  background: color-mix(in srgb, var(--text) 10%, transparent);
+}
 
 /* Filled previews need the letters packed edge to edge so the colour blocks
    form a continuous strip, the way they render on the canvas. */

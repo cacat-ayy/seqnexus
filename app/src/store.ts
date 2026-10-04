@@ -68,6 +68,26 @@ const MAX_UNDO = 100
 export interface Selection {
   anchor: number
   caret: number
+  /**
+   * The selection was dragged right to left. A drag stores its ends in order
+   * (anchor before caret), because on a circular sequence anchor > caret
+   * means a selection across the origin, so the direction is kept here. Read
+   * by the selection translation, which reads in the direction of the drag.
+   */
+  reverse?: boolean
+}
+
+/**
+ * Whether a selection reads right to left.
+ *
+ * The drag's own record when there is one. Otherwise (keyboard extension,
+ * code) a linear selection whose caret is before its anchor was made
+ * leftwards; on a circular sequence that ordering means the origin instead,
+ * so it reads forwards.
+ */
+export function selectionIsReverse(sel: Selection, topology: string): boolean {
+  if (sel.reverse !== undefined) return sel.reverse
+  return topology !== 'circular' && sel.caret < sel.anchor
 }
 
 export function selectionRange(sel: Selection): [number, number] | null {

@@ -18,7 +18,7 @@ import { contrastText } from '../utils/color'
 import { PLASMID_STYLES, type PlasmidStyleId } from '../plasmid/styles'
 import { GENETIC_CODES } from '../codon/genetic-codes'
 import {
-  AMINO_ACID_STYLES, TRANSLATION_FRAMES, aminoAcidColor,
+  AMINO_ACID_STYLES, TRANSLATION_FRAMES, aminoAcidFill,
   type AminoAcidStyleId, type TranslationFrameId,
 } from '../codon/translation-display'
 import { usePopoverDismiss } from '../hooks/usePopoverDismiss'
@@ -68,7 +68,8 @@ function SchemeSwatch({ schemeId, target }: { schemeId: ColorSchemeId; target: C
 const AA_PREVIEW = ['A', 'R', 'N', 'D', '*']
 
 /**
- * The palette previewed the way the base schemes are.
+ * The palette previewed the way the sequence view draws it: each residue on a
+ * chip, filled with its colour when the palette gives it one.
  *
  * Reading a palette name tells you nothing; seeing D red and A grey does. The
  * residues are the same five in every row, so the rows differ only by colour
@@ -77,23 +78,25 @@ const AA_PREVIEW = ['A', 'R', 'N', 'D', '*']
 function AminoAcidSwatch({ styleId }: { styleId: AminoAcidStyleId }) {
   // "By annotation" has no palette of its own: it takes each feature's colour,
   // so the preview borrows two feature colours to say so rather than looking
-  // identical to Plain.
+  // identical to Plain. Sample user data, not decoration, hence the literals.
   const FEATURE_SAMPLE = ['#4dabf7', '#51cf66', '#4dabf7', '#51cf66', '#4dabf7']
 
   return (
-    <span className="dp-swatch" aria-hidden="true">
-      {AA_PREVIEW.map((aa, i) => (
-        <span
-          key={aa}
-          style={{
-            color: styleId === 'annotation' && aa !== '*'
-              ? FEATURE_SAMPLE[i]
-              : aminoAcidColor(styleId, aa, 'currentColor'),
-          }}
-        >
-          {aa}
-        </span>
-      ))}
+    <span className="dp-swatch dp-aa-chips" aria-hidden="true">
+      {AA_PREVIEW.map((aa, i) => {
+        const fill = styleId === 'annotation' && aa !== '*'
+          ? FEATURE_SAMPLE[i]
+          : aminoAcidFill(styleId, aa)
+        return (
+          <span
+            key={aa}
+            className={fill ? 'filled' : undefined}
+            style={fill ? { background: fill, color: contrastText(fill) } : undefined}
+          >
+            {aa}
+          </span>
+        )
+      })}
     </span>
   )
 }

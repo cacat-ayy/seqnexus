@@ -17,7 +17,10 @@
  */
 
 import { useRef, useEffect, useCallback, useState, useMemo, memo } from 'react'
-import { useEditorStore, selectionRange, selectionSegments, isOriginSpanningSelection, selectionLength } from '../store'
+import {
+  useEditorStore, selectionRange, selectionSegments, isOriginSpanningSelection, selectionLength,
+  selectionIsReverse,
+} from '../store'
 import { Annotation, type AnnotationData } from '../models/Annotation'
 import { displayPosition } from '../models/Document'
 import { IntervalTree } from '../models/IntervalTree'
@@ -106,7 +109,8 @@ import { visibleStroke, contrastText } from '../utils/color'
 import { buildBasePalette } from '../utils/base-colors'
 import { geneticCode } from '../codon/genetic-codes'
 import {
-  aminoAcidColor, aminoAcidLabel, framesFor, translationRowCount,
+  aminoAcidFill, aminoAcidLabel, framesFor, translationRowCount,
+  translatesSelection, selectionCodonsInRow,
 } from '../codon/translation-display'
 import {
   proposalsFrom, proposalAnnotations, isAutoAnnotationId, keyFromAutoId,
@@ -204,13 +208,16 @@ type RowStacks = (rowIndex: number, rowStart: number, rowEnd: number) => RowStac
  * A difference array over the rows each annotation spans gives the overlap
  * count per row in O(annotations + rows), without stacking anything. When
  * feature translations are on, rows reserve one translation row per coding
- * feature they cross, so a row without a CDS carries no blank band.
+ * feature they cross, so a row without a CDS carries no blank band, plus one
+ * for the selection's translation in the rows given as `selectionRows`
+ * (inclusive [first, last] row ranges).
  */
 function buildRowLayout(
   L: ZoomLayout,
   annTree: IntervalTree,
   seqLen: number,
   perRowTranslations: boolean,
+  selectionRows: [number, number][] = [],
 ): RowLayoutMap {
   const bpr = L.basesPerRow
   const totalRows = Math.max(1, Math.ceil(seqLen / bpr))
@@ -234,32 +241,59 @@ function buildRowLayout(
     mark(diff, ann)
     if (cdsDiff && ann.type === 'CDS' && ann.strand !== 0) mark(cdsDiff, ann)
   }
+  const selDiff = perRowTranslations && selectionRows.length > 0 ? new Int32Array(totalRows + 1) : null
+  if (selDiff) {
+    for (const [first, last] of selectionRows) {
+      selDiff[first]++
+      selDiff[Math.min(last + 1, totalRows)]--
+    }
+  }
   let count = 0
   let cds = 0
+  let sel = 0
   for (let r = 0; r < totalRows; r++) {
     count += diff[r]
     rl.lanes[r] = Math.min(count, L.maxAnnotationRows)
-    if (cdsDiff) {
-      cds += cdsDiff[r]
-      rl.translations[r] = Math.min(cds, 6)
-    }
+    if (cdsDiff) cds += cdsDiff[r]
+    if (selDiff) sel += selDiff[r]
+    if (perRowTranslations) rl.translations[r] = Math.min(cds + Math.min(sel, 1), 6)
   }
   rl.perRowTranslations = perRowTranslations
   rl.build(L)
   return rl
 }
 
-/** Paint one codon's backing block: inset so neighbouring codons read apart. */
+/**
+ * Paint one codon's backing block: inset so neighbouring codons read apart.
+ *
+ * `point` gives the block a small arrow tip on that side (1 right, -1 left),
+ * the way annotation bars show their strand. The selection's translation
+ * uses it to show which way it reads; a few pixels on every chip is enough to
+ * read the direction on any line without competing with the letters.
+ */
 function paintCodonBlock(
   ctx: CanvasRenderingContext2D, x1: number, x2: number, y: number, h: number,
-  color: string, strong: boolean,
+  color: string, strong: boolean, point: 0 | 1 | -1 = 0,
 ) {
   const w = x2 - x1 - 2
   if (w <= 0) return
   ctx.fillStyle = color
   ctx.globalAlpha = strong ? 1 : 0.5
   ctx.beginPath()
-  if (typeof ctx.roundRect === 'function') ctx.roundRect(x1 + 1, y, w, h, 3)
+  const tip = Math.min(3, w / 3)
+  if (point !== 0 && typeof ctx.arcTo === 'function') {
+    // One path, so a half-strength block is not darker where parts overlap.
+    // Rounded corners at the back, the tip at the front.
+    const back = point === 1 ? x1 + 1 : x1 + 1 + w
+    const front = point === 1 ? x1 + 1 + w : x1 + 1
+    const shoulder = front - point * tip
+    ctx.moveTo(shoulder, y)
+    ctx.lineTo(front, y + h / 2)
+    ctx.lineTo(shoulder, y + h)
+    ctx.arcTo(back, y + h, back, y, 3)
+    ctx.arcTo(back, y, shoulder, y, 3)
+    ctx.closePath()
+  } else if (typeof ctx.roundRect === 'function') ctx.roundRect(x1 + 1, y, w, h, 3)
   else ctx.rect(x1 + 1, y, w, h)
   ctx.fill()
   ctx.globalAlpha = 1
@@ -625,7 +659,7 @@ function SequenceView({ onFindRequest, onAnnotateRequest, onEditFeature }: Seque
   const spacerRef = useRef<HTMLDivElement>(null)
   const layoutRef = useRef<ZoomLayout>(getLayout(14, 800))
   const rowLayoutRef = useRef<RowLayoutMap>(new RowLayoutMap(0))
-  const rowLayoutCacheRef = useRef<{ key: string; tree: IntervalTree; map: RowLayoutMap; layoutKey: string } | null>(null)
+  const rowLayoutCacheRef = useRef<{ key: string; baseKey: string; tree: IntervalTree; map: RowLayoutMap; layoutKey: string } | null>(null)
   const stackCacheRef = useRef<{ key: string; tree: IntervalTree; stacks: Map<number, { rows: Annotation[][]; overflow: number }> } | null>(null)
   const canvasTopRef = useRef(0)
   const isDragging = useRef(false)
@@ -795,6 +829,7 @@ function SequenceView({ onFindRequest, onAnnotateRequest, onEditFeature }: Seque
     [showTranslation, translationFrame],
   )
   const translationRows = showTranslation ? translationRowCount(translationFrame) : 0
+  const translateSelection = showTranslation && translatesSelection(translationFrame)
   const translationCode = useMemo(() => geneticCode(translationCodeId), [translationCodeId])
 
   // Filter out hidden annotations
@@ -845,6 +880,7 @@ function SequenceView({ onFindRequest, onAnnotateRequest, onEditFeature }: Seque
   const showComplementRef = useRef(showComplement)
   const showAnnotationTracksRef = useRef(showAnnotationTracks)
   const translationFramesRef = useRef(translationFrames)
+  const translateSelectionRef = useRef(translateSelection)
   const translationRowsRef = useRef(translationRows)
   const translationCodeRef = useRef(translationCode)
   const aminoAcidStyleRef = useRef(aminoAcidStyle)
@@ -870,6 +906,7 @@ function SequenceView({ onFindRequest, onAnnotateRequest, onEditFeature }: Seque
   showComplementRef.current = showComplement
   showAnnotationTracksRef.current = showAnnotationTracks
   translationFramesRef.current = translationFrames
+  translateSelectionRef.current = translateSelection
   translationRowsRef.current = translationRows
   translationCodeRef.current = translationCode
   aminoAcidStyleRef.current = aminoAcidStyle
@@ -922,10 +959,45 @@ function SequenceView({ onFindRequest, onAnnotateRequest, onEditFeature }: Seque
     // part of the key: a stale stack would draw bars into rows sized for none.
     const perRowTranslations = translationFramesRef.current.length === 0
     const rlCacheKey = `${L.basesPerRow}_${seqLen}_${L.maxAnnotationRows}_${perRowTranslations ? 1 : 0}`
+
+    // The selection's translation, in the mode that has one, read in the
+    // direction it was dragged. It follows a drag live, which is safe because
+    // the row it adds never moves the bases under the pointer: a line grows
+    // below its own sequence, so dragging down grows the pointer's line at its
+    // bottom and dragging up grows the line entered without moving its top.
+    // Lines growing above the view are held still by scrollFix below.
+    let selTranslation: { start: number; length: number; reverse: boolean } | null = null
+    const selRows: [number, number][] = []
+    if (perRowTranslations && translateSelectionRef.current && L.maxTranslationRows > 0
+        && seqLen > 0) {
+      const length = selectionLength(selection, topology, seqLen)
+      const start = isOriginSpanningSelection(selection, topology)
+        ? selection.anchor
+        : Math.min(selection.anchor, selection.caret)
+      const reverse = selectionIsReverse(selection, topology)
+      // Every selected base belongs to a codon, whole or still partial, so
+      // the row runs the full length of the selection.
+      if (length > 0) {
+        selTranslation = { start, length, reverse }
+        const first = start
+        const last = start + length - 1
+        const bpr = L.basesPerRow
+        if (last < seqLen) {
+          selRows.push([Math.floor(first / bpr), Math.floor(last / bpr)])
+        } else {
+          selRows.push([Math.floor(first / bpr), totalRows - 1], [0, Math.floor((last - seqLen) / bpr)])
+        }
+      }
+    }
+    const rlKey = `${rlCacheKey}|${selRows.map(r => r.join('-')).join(',')}`
     const rlLayoutKey = `${rlCacheKey}_${L.annotationRowH}_${L.annotationGap}_${L.rulerHeight}_${L.seqLineHeight}_${L.enzymeLabelAreaH}_${L.translationRowH}_${L.translationGap}_${L.maxTranslationRows}_${L.rowPaddingBottom}`
     let rl: RowLayoutMap
+    // Where to scroll to keep the view still when only the selection's
+    // translation rows changed: rows growing above the view would otherwise
+    // push what the user is looking at down.
+    let scrollFix: number | null = null
     if (rowLayoutCacheRef.current
-        && rowLayoutCacheRef.current.key === rlCacheKey
+        && rowLayoutCacheRef.current.key === rlKey
         && rowLayoutCacheRef.current.tree === annTree) {
       rl = rowLayoutCacheRef.current.map
       // Only rebuild offsets if layout constants changed
@@ -934,21 +1006,35 @@ function SequenceView({ onFindRequest, onAnnotateRequest, onEditFeature }: Seque
         rowLayoutCacheRef.current.layoutKey = rlLayoutKey
       }
     } else {
-      rl = buildRowLayout(L, annTree, seqLen, perRowTranslations)
-      rowLayoutCacheRef.current = { key: rlCacheKey, tree: annTree, map: rl, layoutKey: rlLayoutKey }
-      // Clear stacking cache — will be computed lazily for visible rows
-      stackCacheRef.current = { key: rlCacheKey, tree: annTree, stacks: new Map() }
+      const prev = rowLayoutCacheRef.current
+      rl = buildRowLayout(L, annTree, seqLen, perRowTranslations, selRows)
+      rowLayoutCacheRef.current = { key: rlKey, baseKey: rlCacheKey, tree: annTree, map: rl, layoutKey: rlLayoutKey }
+      if (prev && prev.baseKey === rlCacheKey && prev.tree === annTree) {
+        // Same rows, only the selection's band changed: hold the top visible row.
+        const st = container.scrollTop
+        const topRow = prev.map.rowAtY(st)
+        scrollFix = rl.rowY(topRow) + (st - prev.map.rowY(topRow))
+      }
+      // Clear the stacking cache (computed lazily for visible rows), unless
+      // only the selection changed: lane stacks do not depend on it.
+      const stacks = stackCacheRef.current
+      if (!stacks || stacks.key !== rlCacheKey || stacks.tree !== annTree) {
+        stackCacheRef.current = { key: rlCacheKey, tree: annTree, stacks: new Map() }
+      }
     }
     rowLayoutRef.current = rl
 
     const totalHeight = rl.totalHeight + 4
 
-    // Virtual scrolling: use a spacer for scroll height, canvas covers viewport
+    // Virtual scrolling: use a spacer for scroll height, canvas covers
+    // viewport. The spacer is sized first so a scroll correction is not
+    // clamped to the old height.
+    if (spacerRef.current) spacerRef.current.style.height = `${totalHeight}px`
+    if (scrollFix !== null && Math.abs(scrollFix - container.scrollTop) >= 1) {
+      container.scrollTop = scrollFix
+    }
     const scrollTop = container.scrollTop
     const viewHeight = container.clientHeight
-
-    // Set spacer to full height for scrollbar
-    if (spacerRef.current) spacerRef.current.style.height = `${totalHeight}px`
 
     // Canvas covers only the visible area + buffer.
     // Clamp so the canvas never extends past totalHeight (which would
@@ -1757,19 +1843,23 @@ function SequenceView({ onFindRequest, onAnnotateRequest, onEditFeature }: Seque
             // A block behind each codon, alternating in strength, the same cue
             // the feature translations use to show where codons begin and end.
             // Its own tone, not the selection's: a translated row is not a
-            // selected one.
+            // selected one. A residue with a colour of its own fills the block
+            // with it instead: a solid chip reads at a glance where a coloured
+            // 10px letter does not, and the gap between chips still marks the
+            // codon boundaries.
+            const fill = aminoAcidFill(aaStyle, aa)
             const bgFirst = Math.max(pos, rowStart)
             const bgLast = Math.min(pos + 2, rowEnd - 1)
             if (bgFirst <= bgLast) {
               paintCodonBlock(
                 ctx, baseX(bgFirst, rowStart, L), baseX(bgLast, rowStart, L) + L.bpWidth,
-                cy, L.translationRowH, COLORS.codon, codonIdx % 2 === 0,
+                cy, L.translationRowH, fill ?? COLORS.codon, fill !== null || codonIdx % 2 === 0,
               )
             }
 
             const middle = pos + 1
             if (middle < rowStart || middle >= rowEnd) continue
-            ctx.fillStyle = aminoAcidColor(aaStyle, aa, COLORS.text)
+            ctx.fillStyle = fill ? contrastText(fill) : COLORS.text
             ctx.fillText(
               aminoAcidLabel(aa, threeLetter),
               baseX(middle, rowStart, L) + L.bpWidth / 2,
@@ -1783,6 +1873,70 @@ function SequenceView({ onFindRequest, onAnnotateRequest, onEditFeature }: Seque
       }
 
       if (L.mode === 'letters' && L.maxTranslationRows > 0 && frames.length === 0) {
+        // The selection's translation first, nearest the sequence it was read
+        // from, then the features'. The layout reserved its row wherever the
+        // selection has a whole codon, which is where this finds codons.
+        let selRowUsed = 0
+        if (selTranslation) {
+          const codons = selectionCodonsInRow(
+            selTranslation.start, selTranslation.length, seqLen, selTranslation.reverse,
+            rowStart, rowEnd,
+          )
+          if (codons.length > 0) {
+            const code = translationCodeRef.current
+            const aaStyle = aminoAcidStyleRef.current
+            const threeLetter = threeLetterRef.current
+            ctx.font = monoFont(threeLetter ? '9px' : '10px')
+            ctx.textBaseline = 'middle'
+            ctx.textAlign = 'center'
+            for (const { index, bases, partial } of codons) {
+              const inRow = bases.filter(p => p >= rowStart && p < rowEnd)
+              const x1 = baseX(Math.min(...inRow), rowStart, L)
+              const x2 = baseX(Math.max(...inRow), rowStart, L) + L.bpWidth
+              // The tip goes on the codon's last base in reading order, so a
+              // codon split across lines points only where it ends.
+              const end = bases[bases.length - 1]
+              const point = end >= rowStart && end < rowEnd ? (selTranslation.reverse ? -1 : 1) : 0
+              if (partial) {
+                // The codon still being selected: a smaller blank chip over the
+                // bases it has so far, the next residue taking shape. It
+                // becomes a full chip with its letter on the third base. Always
+                // full strength: at half, the plain tone all but disappears.
+                paintCodonBlock(
+                  ctx, x1, x2, cy + 2, L.translationRowH - 4,
+                  COLORS.codon, true, point,
+                )
+                continue
+              }
+              // Top-strand bases in reading order. Read leftwards, that order
+              // runs 5' to 3' along the bottom strand, so the codon is their
+              // complement: the reverse complement of the reversed string.
+              const top = bases.map(p => doc.sequence.basesIn(p, p + 1)).join('').toUpperCase()
+              const codon = selTranslation.reverse ? reverseComplementStr([...top].reverse().join('')) : top
+              const aa = code.table[codon] ?? '?'
+              // A selection has no feature colour, so "By annotation" leaves
+              // it plain apart from stops.
+              const fill = aminoAcidFill(aaStyle, aa)
+              paintCodonBlock(
+                ctx, x1, x2, cy, L.translationRowH,
+                fill ?? COLORS.codon, fill !== null || index % 2 === 0, point,
+              )
+              const middle = bases[1]
+              if (middle < rowStart || middle >= rowEnd) continue
+              ctx.fillStyle = fill ? contrastText(fill) : COLORS.text
+              ctx.fillText(
+                aminoAcidLabel(aa, threeLetter),
+                baseX(middle, rowStart, L) + L.bpWidth / 2,
+                cy + L.translationRowH / 2,
+              )
+            }
+            ctx.textAlign = 'left'
+            ctx.textBaseline = 'top'
+            cy += L.translationRowH + L.translationGap
+            selRowUsed = 1
+          }
+        }
+
         const cdsAnnotations = annBatch.filter(a => a.ann.type === 'CDS' && a.ann.strand !== 0).map(a => a.ann)
 
         // Read only the visible portion of each CDS (plus codon-alignment buffer)
@@ -1839,17 +1993,31 @@ function SequenceView({ onFindRequest, onAnnotateRequest, onEditFeature }: Seque
 
         let translationCount = 0
         for (const ann of uniqueCds) {
-          if (translationCount >= rl.translationRowsAt(rowIdx, L)) break
+          if (translationCount >= rl.translationRowsAt(rowIdx, L) - selRowUsed) break
           const data = cdsVisData.get(ann)!
           const { aStart, aEnd, seqForTranslation } = data
 
-          // Draw alternating codon backgrounds spanning the 3 nucleotide columns
+          const threeLetter = threeLetterRef.current
+          const aaStyle = aminoAcidStyleRef.current
+          const code = translationCodeRef.current
+          // "By annotation" colouring means the feature's own colour, which is
+          // the one thing the residue palettes cannot supply. Stops keep their
+          // red so they still stand out in a feature-coloured row.
+          const fillFor = (aa: string) => aaStyle === 'annotation' && aa !== '*'
+            ? ann.color
+            : aminoAcidFill(aaStyle, aa)
+
+          // Draw codon backgrounds spanning the 3 nucleotide columns:
+          // alternating plain blocks, or chips filled with the residue's
+          // colour, as in the frame translations above.
           for (let pos = aStart; pos < aEnd; pos++) {
             const fOffset = fullAnnOffset(ann, pos)
             if (fOffset % 3 !== 0) continue
             const lOffset = localOffset(ann, pos, data)
             if (lOffset < 0 || lOffset + 3 > seqForTranslation.length) continue
             const codonIdx = Math.floor(fOffset / 3)
+            const codon = seqForTranslation.slice(lOffset, lOffset + 3)
+            const fill = fillFor(code.table[codon.toUpperCase()] ?? '?')
             const firstBase = ann.strand === 1 ? pos : pos - 2
             const lastBase = ann.strand === 1 ? pos + 2 : pos
             const clampedFirst = Math.max(firstBase, rowStart)
@@ -1857,17 +2025,11 @@ function SequenceView({ onFindRequest, onAnnotateRequest, onEditFeature }: Seque
             if (clampedFirst > clampedLast) continue
             paintCodonBlock(
               ctx, baseX(clampedFirst, rowStart, L), baseX(clampedLast, rowStart, L) + L.bpWidth,
-              cy, L.translationRowH, COLORS.codon, codonIdx % 2 === 0,
+              cy, L.translationRowH, fill ?? COLORS.codon, fill !== null || codonIdx % 2 === 0,
             )
           }
 
           // Draw AA letters
-          const threeLetter = threeLetterRef.current
-          const aaStyle = aminoAcidStyleRef.current
-          const code = translationCodeRef.current
-          // "By annotation" colouring means the feature's own colour, which is
-          // the one thing the residue palettes cannot supply.
-          const plainColor = aaStyle === 'annotation' ? ann.color : COLORS.text
           ctx.font = monoFont(threeLetter ? '9px' : '10px')
           ctx.textBaseline = 'middle'
           ctx.textAlign = 'center'
@@ -1889,7 +2051,8 @@ function SequenceView({ onFindRequest, onAnnotateRequest, onEditFeature }: Seque
             }
             if (middleBase < rowStart || middleBase >= rowEnd) continue
             const x = baseX(middleBase, rowStart, L) + aaHalfBp
-            ctx.fillStyle = aminoAcidColor(aaStyle, aa, plainColor)
+            const fill = fillFor(aa)
+            ctx.fillStyle = fill ? contrastText(fill) : COLORS.text
             ctx.fillText(aminoAcidLabel(aa, threeLetter), x, cy + L.translationRowH / 2)
           }
           ctx.textAlign = 'left'
@@ -2167,10 +2330,11 @@ function SequenceView({ onFindRequest, onAnnotateRequest, onEditFeature }: Seque
     // Use the stable drag anchor stored on mousedown, not the store's
     // anchor which may have been normalized on a previous frame.
     const anchor = dragAnchor.current
-    // Always keep anchor <= caret to avoid triggering origin-spanning
+    // Always keep anchor <= caret to avoid triggering origin-spanning, and
+    // record the direction separately for the selection translation.
     const lo = Math.min(anchor, seqPos)
     const hi = Math.max(anchor, seqPos)
-    useEditorStore.getState().setSelection({ anchor: lo, caret: hi })
+    useEditorStore.getState().setSelection({ anchor: lo, caret: hi, reverse: seqPos < anchor })
     showDragPill(e, lo, hi)
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
@@ -2812,7 +2976,7 @@ function SequenceView({ onFindRequest, onAnnotateRequest, onEditFeature }: Seque
   // Redraw when any render-affecting state changes
   useEffect(() => {
     draw()
-  }, [doc, selection, search, annTree, zoomLevel, hoveredAnnotationId, enzymeCutSites, hoveredEnzymeGroup, showEnzymes, autoAnnotationPicks, orfPicks, translationFrames, translationRows, translationCode, aminoAcidStyle, threeLetterAminoAcids, draw])
+  }, [doc, selection, search, annTree, zoomLevel, hoveredAnnotationId, enzymeCutSites, hoveredEnzymeGroup, showEnzymes, autoAnnotationPicks, orfPicks, translationFrames, translationRows, translateSelection, translationCode, aminoAcidStyle, threeLetterAminoAcids, draw])
 
   const showMinimap = doc.sequence.length >= MINIMAP_SEQ_THRESHOLD
 

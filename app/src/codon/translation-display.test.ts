@@ -8,7 +8,8 @@ import { describe, it, expect } from 'vitest'
 import {
   TRANSLATION_FRAMES, DEFAULT_TRANSLATION_FRAME, framesFor, followsAnnotations,
   frameLabel, translationRowCount, AMINO_ACID_STYLES, DEFAULT_AMINO_ACID_STYLE,
-  aminoAcidColor, aminoAcidLabel, AA_THREE_LETTER,
+  aminoAcidColor, aminoAcidFill, aminoAcidLabel, AA_THREE_LETTER,
+  translatesSelection, selectionCodonsInRow,
 } from './translation-display'
 
 describe('frame options', () => {
@@ -48,12 +49,14 @@ describe('frame options', () => {
     expect(framesFor('r23')).toEqual([{ strand: -1, offset: 1 }, { strand: -1, offset: 2 }])
   })
 
-  it('asks for one row per frame, and two for the annotation modes', () => {
+  it('asks for one row per frame, two for the annotation mode and one more for the selection', () => {
     expect(translationRowCount('all')).toBe(6)
     expect(translationRowCount('f12')).toBe(2)
     expect(translationRowCount('f1')).toBe(1)
     expect(translationRowCount('annotation')).toBe(2)
-    expect(translationRowCount('selection-or-annotation')).toBe(2)
+    expect(translationRowCount('selection-or-annotation')).toBe(3)
+    expect(translatesSelection('selection-or-annotation')).toBe(true)
+    expect(translatesSelection('annotation')).toBe(false)
   })
 
   it('labels an unknown option as itself rather than blank', () => {
@@ -74,9 +77,16 @@ describe('amino acid colours', () => {
     }
   })
 
-  it('colours only the stop under the stop-codon style', () => {
-    expect(aminoAcidColor('stop', 'A', '#123456')).toBe('#123456')
-    expect(aminoAcidColor('stop', 'W', '#123456')).toBe('#123456')
+  it('reports a plain residue as having no fill of its own', () => {
+    expect(aminoAcidFill('none', 'A')).toBeNull()
+    expect(aminoAcidFill('none', '*')).toBe(aminoAcidColor('none', '*', '#123456'))
+    expect(aminoAcidFill('clustal', 'k')).toBe(aminoAcidColor('clustal', 'K', '#123456'))
+  })
+
+  it('colours only the stop under Plain', () => {
+    expect(aminoAcidColor('none', 'A', '#123456')).toBe('#123456')
+    expect(aminoAcidColor('none', 'W', '#123456')).toBe('#123456')
+    expect(AMINO_ACID_STYLES.map(s => s.id)).not.toContain('stop')
   })
 
   it('gives every standard residue a colour in the palette styles', () => {
@@ -120,5 +130,50 @@ describe('amino acid labels', () => {
 
   it('passes an unknown residue through unchanged', () => {
     expect(aminoAcidLabel('Z', true)).toBe('Z')
+  })
+})
+
+describe('translating a selection', () => {
+  const bases = (codons: { bases: number[] }[]) => codons.map(c => c.bases)
+
+  it('reads a left-to-right selection from its first base', () => {
+    // 7 bases from position 2: two codons, then base 8 as the codon still
+    // being selected at the far end.
+    const codons = selectionCodonsInRow(2, 7, 20, false, 0, 20)
+    expect(codons.map(c => c.index)).toEqual([0, 1, 2])
+    expect(bases(codons)).toEqual([[2, 3, 4], [5, 6, 7], [8]])
+    expect(codons.map(c => c.partial)).toEqual([false, false, true])
+  })
+
+  it('reads a right-to-left selection from its last base', () => {
+    // The same bases dragged the other way: the protein starts at base 8 and
+    // base 2 is the partial codon. Returned in row order, left to right, so
+    // the first codon read is last.
+    const codons = selectionCodonsInRow(2, 7, 20, true, 0, 20)
+    expect(codons.map(c => c.index)).toEqual([2, 1, 0])
+    expect(bases(codons)).toEqual([[2], [5, 4, 3], [8, 7, 6]])
+    expect(codons.map(c => c.partial)).toEqual([true, false, false])
+  })
+
+  it('returns only the codons with a base in the row', () => {
+    expect(bases(selectionCodonsInRow(2, 7, 20, false, 0, 5))).toEqual([[2, 3, 4]])
+    expect(bases(selectionCodonsInRow(2, 7, 20, false, 5, 10))).toEqual([[5, 6, 7], [8]])
+    // A codon split across rows shows up in both.
+    expect(bases(selectionCodonsInRow(2, 7, 20, false, 0, 4))).toEqual([[2, 3, 4]])
+    expect(bases(selectionCodonsInRow(2, 7, 20, false, 4, 8))).toEqual([[2, 3, 4], [5, 6, 7]])
+  })
+
+  it('wraps across the origin of a circular sequence', () => {
+    // 10 bp circle, 6 bases from position 8: 8 9 0 | 1 2 3.
+    const codons = selectionCodonsInRow(8, 6, 10, false, 0, 10)
+    expect(codons.map(c => c.index).sort()).toEqual([0, 1])
+    expect(codons.find(c => c.index === 0)!.bases).toEqual([8, 9, 0])
+    expect(codons.find(c => c.index === 1)!.bases).toEqual([1, 2, 3])
+  })
+
+  it('shows one or two bases as a partial codon, and nothing for none', () => {
+    expect(selectionCodonsInRow(2, 1, 20, false, 0, 20)).toEqual([{ index: 0, bases: [2], partial: true }])
+    expect(selectionCodonsInRow(2, 2, 20, true, 0, 20)).toEqual([{ index: 0, bases: [3, 2], partial: true }])
+    expect(selectionCodonsInRow(2, 0, 20, false, 0, 20)).toEqual([])
   })
 })

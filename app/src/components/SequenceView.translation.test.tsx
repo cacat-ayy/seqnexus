@@ -10,6 +10,8 @@ import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest'
 import SequenceView from './SequenceView'
 import { useEditorStore } from '../store'
 import { DEFAULT_DISPLAY_SETTINGS } from '../utils/display-settings'
+import { aminoAcidFill } from '../codon/translation-display'
+import { contrastText } from '../utils/color'
 
 const store = () => useEditorStore.getState()
 
@@ -19,6 +21,8 @@ const BASES = 'ATGAAATTTTAA'.repeat(8)
 interface DrawnText { text: string; x: number; y: number; fill: string }
 
 let drawn: DrawnText[] = []
+/** The fill style of every shape filled, which is how the residue chips show. */
+let filled: string[] = []
 
 function recordingContext() {
   const state: Record<string, unknown> = {
@@ -32,6 +36,7 @@ function recordingContext() {
       drawn.push({ text, x, y, fill: String(target.fillStyle) })
     },
     measureText: (t: string) => ({ width: t.length * 6 }),
+    fill: () => { filled.push(String(target.fillStyle)) },
   }
   return new Proxy(target, {
     get: (obj, prop: string) => prop in obj ? obj[prop] : () => {},
@@ -66,6 +71,7 @@ function sizeContainer() {
 describe('translation rendering', () => {
   beforeEach(() => {
     drawn = []
+    filled = []
     sizeSpies = []
     for (const tab of store().tabs) store().closeTab(tab.id)
     store().openDocument('pTrans', BASES)
@@ -90,6 +96,27 @@ describe('translation rendering', () => {
   it('draws nothing for a frame when the translation is switched off', async () => {
     act(() => { store().toggleTranslation() })
     render(<SequenceView />)
+    await frames()
+    expect(residues()).toEqual([])
+  })
+
+  it('translates the selection in the direction it was dragged', async () => {
+    // ATGAAAT: dragged left to right it reads ATG AAA (M K) and leaves the
+    // last T; dragged right to left it reads the bottom strand from the last
+    // base, ATT TCA (I S), and leaves the first A.
+    act(() => { store().setSelection({ anchor: 0, caret: 7, reverse: false }) })
+    render(<SequenceView />)
+    await frames()
+    expect(residues().sort()).toEqual(['K', 'M'])
+
+    drawn = []
+    act(() => { store().setSelection({ anchor: 0, caret: 7, reverse: true }) })
+    await frames()
+    expect(residues().sort()).toEqual(['I', 'S'])
+
+    // Nothing to translate without a selection, and no CDS in this sequence.
+    drawn = []
+    act(() => { store().setCaret(3) })
     await frames()
     expect(residues()).toEqual([])
   })
@@ -146,22 +173,27 @@ describe('translation rendering', () => {
     expect(seen).not.toContain('M')
   })
 
-  it('colours residues by the chosen palette, and always marks a stop', async () => {
+  it('fills residue chips with the chosen palette, and always marks a stop', async () => {
     act(() => { store().setTranslationFrame('f1') })
     render(<SequenceView />)
     await frames()
 
-    const stop = drawn.find(d => d.text === '*')!
-    const met = drawn.find(d => d.text === 'M')!
-    // Plain style: only the stop is coloured.
-    expect(stop.fill).not.toBe(met.fill)
+    // Plain style: only the stop gets a coloured chip.
+    const stopFill = aminoAcidFill('none', '*')!
+    const lysineFill = aminoAcidFill('clustal', 'K')!
+    const pheFill = aminoAcidFill('clustal', 'F')!
+    expect(filled).toContain(stopFill)
+    expect(filled).not.toContain(lysineFill)
 
     drawn = []
+    filled = []
     act(() => { store().setAminoAcidStyle('clustal') })
     await frames()
-    const lysine = drawn.find(d => d.text === 'K')!
-    const phenylalanine = drawn.find(d => d.text === 'F')!
-    expect(lysine.fill).not.toBe(phenylalanine.fill)
+    expect(filled).toContain(lysineFill)
+    expect(filled).toContain(pheFill)
+    // The letter is drawn in a colour that reads on its chip, not in the
+    // palette colour, which would vanish against it.
+    expect(drawn.find(d => d.text === 'K')!.fill).toBe(contrastText(lysineFill))
   })
 
   it('draws one row per frame', async () => {

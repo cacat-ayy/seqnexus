@@ -284,12 +284,18 @@ describe('translation', () => {
       expect(row.querySelectorAll('.dp-swatch span')).toHaveLength(5)
     }
 
-    // And the preview is actually colourised, not just the label.
+    // And the preview is actually colourised, not just the label: each
+    // residue sits on a chip filled with its colour, as the sequence view
+    // draws it.
     const clustal = rows.find(r => r.textContent?.includes('Clustal'))!
-    const colours = [...clustal.querySelectorAll<HTMLElement>('.dp-swatch span')]
-      .map(el => el.style.color)
-    expect(new Set(colours).size).toBeGreaterThan(1)
-    expect(colours).not.toContain('currentcolor')
+    const chips = [...clustal.querySelectorAll<HTMLElement>('.dp-swatch span')]
+    expect(chips.every(el => el.classList.contains('filled'))).toBe(true)
+    expect(new Set(chips.map(el => el.style.background)).size).toBeGreaterThan(1)
+
+    // Plain leaves every residue on a plain chip except the stop.
+    const plain = rows.find(r => r.textContent?.includes('Plain'))!
+    const plainFilled = [...plain.querySelectorAll<HTMLElement>('.dp-swatch span.filled')]
+    expect(plainFilled.map(el => el.textContent)).toEqual(['*'])
   })
 
   it('writes each choice to the store', () => {

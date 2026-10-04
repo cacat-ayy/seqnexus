@@ -77,21 +77,85 @@ export function frameLabel(id: TranslationFrameId): string {
   return FRAME_BY_ID.get(id)?.label ?? id
 }
 
+/** True for the option that also translates the selection. */
+export function translatesSelection(id: TranslationFrameId): boolean {
+  return id === 'selection-or-annotation'
+}
+
 /**
  * How many translation rows an option needs.
  *
  * The annotation modes get two, which is what the view has always reserved for
- * overlapping features; the frame modes get exactly the frames they ask for.
+ * overlapping features, and the selection mode one more for the selection's
+ * own translation. The frame modes get exactly the frames they ask for.
  */
 export function translationRowCount(id: TranslationFrameId): number {
   const frames = framesFor(id)
-  return frames.length > 0 ? frames.length : 2
+  if (frames.length > 0) return frames.length
+  return translatesSelection(id) ? 3 : 2
+}
+
+// --- Translating a selection ---
+
+/** One codon of a translated selection. */
+export interface SelectionCodon {
+  /** Codon number counted from where the selection starts reading: 0, 1, 2... */
+  index: number
+  /**
+   * Genomic positions of its bases, in reading order: three, or one or two
+   * for the codon still being selected at the far end.
+   */
+  bases: number[]
+  /** Fewer than three bases selected so far, so there is no residue yet. */
+  partial: boolean
+}
+
+/**
+ * The selection's codons that have a base in one row.
+ *
+ * The selection is read in the direction it was dragged: left to right reads
+ * the top strand from its first base, right to left reads the bottom strand
+ * from its last base, so the protein starts wherever the drag started. A
+ * selection that is not a multiple of three ends in a partial codon of one
+ * or two bases at the far end, the end the drag is on; it is returned too, so
+ * the view can show the next codon taking shape before its third base.
+ *
+ * `start` and `length` are in genomic coordinates and may run past the end
+ * of a circular sequence; positions wrap at `seqLen`. The walk is over the
+ * row, not the selection, so the cost is one row's width however long the
+ * selection is.
+ */
+export function selectionCodonsInRow(
+  start: number, length: number, seqLen: number, reverse: boolean,
+  rowStart: number, rowEnd: number,
+): SelectionCodon[] {
+  if (length <= 0 || seqLen === 0) return []
+  const whole = Math.floor(length / 3)
+  // u counts bases from the end reading starts at; a codon is three of them.
+  const posAt = (u: number) => (start + (reverse ? length - 1 - u : u)) % seqLen
+  const out: SelectionCodon[] = []
+  // A set, not a check against the previous codon: on a circular sequence
+  // short enough to fit one row, the row meets the selection's wrapped tail
+  // before its start, so a codon's bases need not arrive together.
+  const seen = new Set<number>()
+  for (let p = rowStart; p < rowEnd; p++) {
+    const t = (p - start + seqLen) % seqLen
+    if (t >= length) continue
+    const k = Math.floor((reverse ? length - 1 - t : t) / 3)
+    if (seen.has(k)) continue
+    seen.add(k)
+    const count = k < whole ? 3 : length - 3 * k
+    const bases: number[] = []
+    for (let i = 0; i < count; i++) bases.push(posAt(3 * k + i))
+    out.push({ index: k, bases, partial: count < 3 })
+  }
+  return out
 }
 
 // --- Amino acid colouring ---
 
 export type AminoAcidStyleId =
-  | 'none' | 'stop' | 'hydrophobicity' | 'polarity' | 'rasmol' | 'clustal' | 'macclade' | 'annotation'
+  | 'none' | 'hydrophobicity' | 'polarity' | 'rasmol' | 'clustal' | 'macclade' | 'annotation'
 
 export interface AminoAcidStyle {
   id: AminoAcidStyleId
@@ -100,8 +164,7 @@ export interface AminoAcidStyle {
 }
 
 export const AMINO_ACID_STYLES: AminoAcidStyle[] = [
-  { id: 'none', label: 'Plain', description: 'One colour for every residue' },
-  { id: 'stop', label: 'Stop codons', description: 'Only stops are coloured' },
+  { id: 'none', label: 'Plain', description: 'One colour for every residue, stops in red' },
   { id: 'hydrophobicity', label: 'Hydrophobicity', description: 'Kyte-Doolittle, blue polar to orange hydrophobic' },
   { id: 'polarity', label: 'Polarity', description: 'Charged, polar and non-polar groups' },
   { id: 'rasmol', label: 'RasMol', description: 'The RasMol amino acid palette' },
@@ -161,7 +224,6 @@ const MACCLADE: Record<string, string> = {
 
 const PALETTES: Record<AminoAcidStyleId, Record<string, string> | null> = {
   none: null,
-  stop: null,
   hydrophobicity: HYDROPHOBICITY,
   polarity: POLARITY,
   rasmol: RASMOL,
@@ -180,10 +242,19 @@ const PALETTES: Record<AminoAcidStyleId, Record<string, string> | null> = {
 export function aminoAcidColor(
   style: AminoAcidStyleId, aa: string, fallback: string,
 ): string {
+  return aminoAcidFill(style, aa) ?? fallback
+}
+
+/**
+ * The residue's own colour, or null when the style leaves it plain.
+ *
+ * The sequence view fills the chip behind a coloured residue rather than
+ * colouring the letter, so it needs to know which residues have a colour of
+ * their own and which keep the plain codon block.
+ */
+export function aminoAcidFill(style: AminoAcidStyleId, aa: string): string | null {
   if (aa === '*') return STOP
-  const palette = PALETTES[style]
-  if (!palette) return fallback
-  return palette[aa.toUpperCase()] ?? fallback
+  return PALETTES[style]?.[aa.toUpperCase()] ?? null
 }
 
 /** One-letter to three-letter, for the three-letter spelling. */

@@ -2,10 +2,12 @@
  * Hook that clamps a tooltip's fixed position so it stays within the viewport.
  *
  * Returns a ref callback to attach to the tooltip element and the clamped { left, top }.
- * Measures the element after render and adjusts on every x/y change.
+ * Measures the element after render and adjusts on every x/y change, and again
+ * whenever the element changes size: a popover that grows after it opens (a
+ * section expanding) would otherwise run past the edge it was clamped to.
  */
 
-import { useRef, useState, useLayoutEffect } from 'react'
+import { useRef, useState, useLayoutEffect, useCallback } from 'react'
 
 const MARGIN = 8 // px from viewport edge
 
@@ -30,10 +32,23 @@ export function useClampedPosition(
 ): { ref: React.RefCallback<HTMLDivElement>; pos: ClampedPosition } {
   const elRef = useRef<HTMLDivElement | null>(null)
   const [pos, setPos] = useState<ClampedPosition>({ left: x, top: y })
+  const observerRef = useRef<ResizeObserver | null>(null)
+  const [size, setSize] = useState(0)
 
-  const ref = (node: HTMLDivElement | null) => {
-    elRef.current = node
-  }
+  // Watches the element for resizes, bumping `size` to rerun the clamp below.
+  // Stable, so React does not detach and reattach it on every render, and the
+  // observer is swapped here rather than in an effect so it follows the
+  // element across mount and unmount.
+  const ref = useCallback((el: HTMLDivElement | null) => {
+    elRef.current = el
+    observerRef.current?.disconnect()
+    observerRef.current = null
+    if (el && typeof ResizeObserver !== 'undefined') {
+      const observer = new ResizeObserver(() => setSize(n => n + 1))
+      observer.observe(el)
+      observerRef.current = observer
+    }
+  }, [])
 
   useLayoutEffect(() => {
     const el = elRef.current
@@ -42,7 +57,12 @@ export function useClampedPosition(
       return
     }
 
-    const rect = el.getBoundingClientRect()
+    // The layout size, not the drawn one: popovers open with a scale-in
+    // animation, and measuring the shrunken first frame left them a few pixels
+    // short of the margin. offsetWidth ignores transforms; the bounding rect
+    // is the fallback where there is no layout (jsdom).
+    const box = el.getBoundingClientRect()
+    const rect = { width: el.offsetWidth || box.width, height: el.offsetHeight || box.height }
     const vw = window.innerWidth
     const vh = window.innerHeight
 
@@ -59,7 +79,7 @@ export function useClampedPosition(
     if (top < MARGIN) top = MARGIN
 
     setPos({ left, top })
-  }, [x, y, flip])
+  }, [x, y, flip, size])
 
   return { ref, pos }
 }
