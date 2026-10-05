@@ -77,7 +77,7 @@ export default function VerifyDialog({ doc, name, consensus, features, canAnnota
 
   return (
     <div className="aw-figure-backdrop" onMouseDown={e => { if (e.target === e.currentTarget) onClose() }}>
-      <div className="aw-figure cw-verify" ref={ref} role="dialog" aria-modal="true" aria-label="Clone verification">
+      <div className="aw-figure cw-verify-dialog" ref={ref} role="dialog" aria-modal="true" aria-label="Clone verification">
         <div className="aw-popover-head">
           <ShieldCheck size={14} /> <span>Clone verification · {report.reference.name}</span>
           <button className="aw-icon-btn" onClick={onClose} aria-label="Close"><X size={14} /></button>

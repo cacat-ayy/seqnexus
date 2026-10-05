@@ -9,13 +9,15 @@
 import { openDB, type IDBPDatabase } from 'idb'
 
 const DB_NAME = 'seqnexus'
-const DB_VERSION = 6
+const DB_VERSION = 7
 const STORE_NAME = 'sequences'
 const TRACE_STORE = 'traces'
 const ALIGN_STORE = 'alignments'
 const UNDO_STORE = 'undoHistory'
 const FEATURE_SOURCE_STORE = 'featureSources'
 const USAGE_TABLE_STORE = 'codonUsageTables'
+/** NGS reads in compressed chunks, keyed "<read set id>:<chunk number>" (see ngs/codec.ts). */
+const READ_CHUNK_STORE = 'readChunks'
 
 let _db: IDBPDatabase | null = null
 
@@ -40,6 +42,9 @@ async function getDB(): Promise<IDBPDatabase> {
       }
       if (!db.objectStoreNames.contains(USAGE_TABLE_STORE)) {
         db.createObjectStore(USAGE_TABLE_STORE)
+      }
+      if (!db.objectStoreNames.contains(READ_CHUNK_STORE)) {
+        db.createObjectStore(READ_CHUNK_STORE)
       }
     },
   })
@@ -308,6 +313,45 @@ export async function getAllStoredUndoIds(): Promise<string[]> {
   const db = await getDB()
   const keys = await db.getAllKeys(UNDO_STORE)
   return keys.map(k => String(k))
+}
+
+// ---- NGS read chunks ----
+
+const chunkKey = (readSetId: string, index: number) => `${readSetId}:${String(index).padStart(6, '0')}`
+/** Every key of one read set: its id, the separator, then any chunk number. */
+const chunkRange = (readSetId: string) => IDBKeyRange.bound(`${readSetId}:`, `${readSetId}:￿`)
+
+/** Store one chunk of a read set. */
+export async function putReadChunk(readSetId: string, index: number, data: Uint8Array): Promise<void> {
+  const db = await getDB()
+  await db.put(READ_CHUNK_STORE, data, chunkKey(readSetId, index))
+}
+
+/** One chunk of a read set, or undefined when it is not stored. */
+export async function getReadChunk(readSetId: string, index: number): Promise<Uint8Array | undefined> {
+  const db = await getDB()
+  return (await db.get(READ_CHUNK_STORE, chunkKey(readSetId, index))) as Uint8Array | undefined
+}
+
+/** Delete every chunk of the given read sets. */
+export async function deleteReadChunks(readSetIds: string[]): Promise<void> {
+  if (readSetIds.length === 0) return
+  const db = await getDB()
+  const tx = db.transaction(READ_CHUNK_STORE, 'readwrite')
+  for (const id of readSetIds) tx.store.delete(chunkRange(id))
+  await tx.done
+}
+
+/** The read sets that have chunks stored. */
+export async function getStoredReadSetIds(): Promise<string[]> {
+  const db = await getDB()
+  const keys = await db.getAllKeys(READ_CHUNK_STORE)
+  const ids = new Set<string>()
+  for (const k of keys) {
+    const s = String(k)
+    ids.add(s.slice(0, s.lastIndexOf(':')))
+  }
+  return [...ids]
 }
 
 /**

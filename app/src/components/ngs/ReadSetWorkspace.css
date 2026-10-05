@@ -1,0 +1,161 @@
+/* Read sets: the QC workspace, its charts, and the import and trim dialogs.
+   Classes are prefixed ngs- (the Sanger read set view already uses rs-). */
+
+.ngs-body {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: var(--space-4) var(--space-5);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  background: var(--bg);
+}
+
+/* ---- Verdict ---- */
+.ngs-verdict {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
+  padding: var(--space-2-5) var(--space-3);
+  border-radius: var(--radius-input);
+  font-size: var(--text-sm);
+  color: var(--text);
+}
+.ngs-verdict.good { background: var(--success-bg); }
+.ngs-verdict.good svg { color: var(--success); }
+.ngs-verdict.check { background: var(--warning-bg); }
+.ngs-verdict.check svg { color: var(--warning); }
+.ngs-verdict.fail { background: var(--danger-bg); }
+.ngs-verdict.fail svg { color: var(--danger); }
+.ngs-verdict svg { flex-shrink: 0; margin-top: var(--space-0-5); }
+.ngs-verdict-title { font-weight: 600; }
+.ngs-verdict-sub { color: var(--text-secondary); }
+.ngs-issues { margin: var(--space-0-5) 0 0; padding-left: var(--space-4); color: var(--text-secondary); }
+
+/* ---- Figures ---- */
+.ngs-tiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: var(--space-2); }
+.ngs-tile {
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-input);
+  background: var(--bg-alt);
+}
+.ngs-tile-label { font-size: var(--text-2xs); font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; color: var(--text-muted); }
+.ngs-tile-value { margin-top: var(--space-0-5); font-size: var(--text-lg); font-weight: 600; color: var(--text); }
+.ngs-tile-detail { font-size: var(--text-xs); color: var(--text-muted); }
+
+/* ---- Cards ---- */
+.ngs-card {
+  padding: var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-input);
+  background: var(--bg);
+}
+.ngs-card-title { margin-bottom: var(--space-2); font-size: var(--text-md); font-weight: 600; color: var(--text); }
+.ngs-origin-text { font-size: var(--text-sm); line-height: 1.5; color: var(--text-secondary); }
+.ngs-link {
+  padding: 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  color: var(--accent);
+  cursor: pointer;
+}
+.ngs-link:hover { text-decoration: underline; }
+.ngs-facts {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: var(--space-1-5) var(--space-5);
+  margin: 0;
+  font-size: var(--text-sm);
+}
+.ngs-facts dt { color: var(--text-muted); }
+.ngs-facts dd { margin: 0; color: var(--text); }
+.ngs-preview { max-height: 320px; overflow: auto; border: 1px solid var(--border-light); border-radius: var(--radius-sm); }
+.ngs-preview .rs-table tbody tr, .ngs-static { cursor: default; }
+.rs-table tbody tr.ngs-static:hover td { background: transparent; }
+.ngs-read-id { max-width: 280px; font-family: var(--font-mono); font-size: var(--text-2xs); }
+.ngs-seq { font-family: var(--font-mono); font-size: var(--text-2xs); color: var(--text-secondary); }
+
+/* ---- Charts ---- */
+.ngs-charts { display: grid; grid-template-columns: repeat(auto-fit, minmax(340px, 1fr)); gap: var(--space-3); }
+.ngs-chart {
+  min-width: 0;
+  padding: var(--space-2-5) var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-input);
+  background: var(--bg);
+}
+.ngs-chart-head { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--space-2); }
+.ngs-chart-title { margin: 0; font-size: var(--text-sm); font-weight: 600; color: var(--text); }
+.ngs-chart-sub { font-size: var(--text-xs); color: var(--text-muted); }
+.ngs-chart-body { position: relative; margin-top: var(--space-2); }
+.ngs-chart-table { max-height: 150px; overflow: auto; }
+.ngs-legend { display: flex; flex-wrap: wrap; gap: var(--space-1) var(--space-3); margin-top: var(--space-1-5); font-size: var(--text-2xs); color: var(--text-secondary); }
+.ngs-key { display: inline-flex; align-items: center; gap: var(--space-1); }
+.ngs-swatch { display: inline-block; width: 12px; height: 8px; border-radius: var(--radius-xs); }
+.ngs-swatch.line { height: 2px; background: var(--accent); }
+.ngs-swatch.iqr { background: color-mix(in srgb, var(--accent) 45%, transparent); }
+.ngs-swatch.p80 { background: color-mix(in srgb, var(--accent) 20%, transparent); }
+.ngs-swatch.zone.good, .ngs-zone.good { background: color-mix(in srgb, var(--success) 12%, transparent); fill: color-mix(in srgb, var(--success) 12%, transparent); }
+.ngs-swatch.zone.fair, .ngs-zone.fair { background: color-mix(in srgb, var(--warning) 14%, transparent); fill: color-mix(in srgb, var(--warning) 14%, transparent); }
+.ngs-swatch.zone.poor, .ngs-zone.poor { background: color-mix(in srgb, var(--danger) 12%, transparent); fill: color-mix(in srgb, var(--danger) 12%, transparent); }
+.ngs-plot { position: relative; }
+.ngs-plot svg { display: block; overflow: visible; }
+.ngs-grid { stroke: var(--border-light); stroke-width: 1; }
+.ngs-baseline { stroke: var(--border); stroke-width: 1; }
+.ngs-axis { fill: var(--text-muted); font-size: var(--text-2xs); font-variant-numeric: tabular-nums; }
+.ngs-bar { fill: var(--accent); }
+.ngs-bar.hot { fill: var(--accent-dark); }
+.ngs-band.p80 { fill: color-mix(in srgb, var(--accent) 20%, transparent); }
+.ngs-band.iqr { fill: color-mix(in srgb, var(--accent) 45%, transparent); }
+.ngs-median { fill: none; stroke: var(--accent); stroke-width: 2; stroke-linejoin: round; }
+.ngs-cross { stroke: var(--text-muted); stroke-width: 1; }
+.ngs-dot { fill: var(--accent); stroke: var(--bg); stroke-width: 2; }
+.ngs-hit { fill: transparent; cursor: crosshair; }
+.ngs-tip {
+  position: absolute;
+  top: 0;
+  z-index: var(--z-popover);
+  min-width: 150px;
+  padding: var(--space-1-5) var(--space-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg);
+  box-shadow: var(--shadow-popover);
+  font-size: var(--text-xs);
+  color: var(--text-secondary);
+  pointer-events: none;
+  font-variant-numeric: tabular-nums;
+}
+.ngs-tip-head { font-weight: 600; color: var(--text); }
+
+/* ---- Import dialog ---- */
+.ngs-import { width: min(980px, 95vw); max-height: min(720px, 92vh); }
+.ngs-import-body { flex: 1; min-height: 0; overflow: auto; padding: var(--space-3); display: flex; flex-direction: column; gap: var(--space-2); }
+.ngs-import-table td { vertical-align: top; }
+.ngs-name-input { width: 180px; }
+.ngs-files { white-space: normal; font-size: var(--text-xs); }
+.ngs-guess { margin-top: var(--space-0-5); font-size: var(--text-2xs); }
+.ngs-status-col { width: 200px; white-space: normal; }
+.ngs-ok { color: var(--success); }
+.ngs-error { display: inline-flex; gap: var(--space-1); align-items: flex-start; color: var(--danger); font-size: var(--text-xs); }
+.ngs-error svg { flex-shrink: 0; margin-top: var(--space-0-5); }
+.ngs-progress { height: 4px; margin-top: var(--space-2); border-radius: var(--radius-pill); background: var(--border); overflow: hidden; }
+.ngs-progress > div { height: 100%; background: var(--accent); transition: width var(--dur-fast) var(--ease-out); }
+.ngs-import-foot {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  border-top: 1px solid var(--border);
+  font-size: var(--text-xs);
+}
+
+/* ---- Trim dialog ---- */
+.ngs-trim { width: min(460px, 94vw); }
+.ngs-trim-body { padding: var(--space-3); align-items: stretch; }
+.ngs-check { display: flex; align-items: center; gap: var(--space-1-5); font-size: var(--text-sm); color: var(--text); }
+.ngs-warn-note { color: var(--warning); }
+.ngs-ref-list { display: flex; flex-direction: column; gap: var(--space-1); max-height: 180px; overflow: auto; }

@@ -16,7 +16,7 @@ import FindModal from './components/FindModal'
 const AnnotateModal = lazy(() => import('./components/AnnotateModal'))
 import NewSequenceModal, { type NewSequenceResult } from './components/NewSequenceModal'
 import ExplorerPanel from './components/explorer/ExplorerPanel'
-import { groupSelection, countSelectable } from './explorer/selection'
+import { exportSelection, countSelectable } from './explorer/selection'
 import SequencePropertiesModal from './components/SequencePropertiesModal'
 import SequenceStatsPopover from './components/SequenceStatsPopover'
 const CodonOptimizeModal = lazy(() => import('./components/CodonOptimizeModal'))
@@ -41,6 +41,8 @@ import { importTraceFiles, isTraceFile } from './sanger/import'
 import { getTraceView, subscribeTraceView, updateTraceView, ZOOM_WIDTHS } from './sanger/view'
 import { CONTIG_ZOOM } from './assembly/view'
 import { parseFastq, meanQuality } from './io/fastq'
+import { countRecords, isNgsByName, NGS_FEW_RECORDS } from './ngs/peek'
+import { isReadFile } from './ngs/detect'
 import { libraryMatches } from './primers/library'
 import { notify } from './toast'
 import { loadStoredWorkspace, clearStoredWorkspace } from './gel/workspace'
@@ -91,6 +93,9 @@ const ReadSetView = lazy(() => import('./components/sanger/ReadSetView'))
 
 const ContigWorkspace = lazy(() => import('./components/contig/ContigWorkspace'))
 const AssembleDialog = lazy(() => import('./components/contig/AssembleDialog'))
+const AssemblyOverview = lazy(() => import('./components/contig/AssemblyOverview'))
+const ReadSetWorkspace = lazy(() => import('./components/ngs/ReadSetWorkspace'))
+const ImportReadsDialog = lazy(() => import('./components/ngs/ImportReadsDialog'))
 
 import type { AlnDoc } from './msa/model'
 import { contigToAlignment } from './assembly/export'
@@ -136,7 +141,7 @@ const SUPPORTED_FORMATS_HINT =
   + 'Clustal (.aln), PHYLIP (.phy), NEXUS (.nex), MEGA (.meg), Stockholm (.sto), PIR (.pir) and MSF (.msf).'
 
 /** Everything the Open dialog offers: sequences, reads and alignments. */
-const OPEN_ACCEPT = ['.gb', '.gbk', '.genbank', '.fasta', '.fa', '.fna', '.faa', '.fastq', '.fq', '.seq', '.txt', '.dna', '.geneious', '.ab1', '.abi', '.abif', '.scf', ...ALN_EXTENSIONS].join(',')
+const OPEN_ACCEPT = ['.gb', '.gbk', '.genbank', '.fasta', '.fa', '.fna', '.faa', '.fastq', '.fq', '.gz', '.seq', '.txt', '.dna', '.geneious', '.ab1', '.abi', '.abif', '.scf', ...ALN_EXTENSIONS].join(',')
 
 /**
  * Whether a text file is an alignment rather than sequences: an alignment-only
@@ -178,9 +183,19 @@ function reportGenBankWarnings(source: string, warnings: string[]): void {
   )
 }
 
+/** The contigs on screen: the open contig, or every contig of the assembly whose overview is open. */
+function contigsOnScreen(s: ReturnType<typeof useEditorStore.getState>) {
+  if (s.activeContigId) return s.contigs.filter(c => c.id === s.activeContigId)
+  const assembly = s.assemblies.find(a => a.id === s.activeAssemblyId)
+  if (!assembly) return []
+  const byId = new Map(s.contigs.map(c => [c.id, c]))
+  return assembly.contigIds.map(id => byId.get(id)).filter((c): c is NonNullable<typeof c> => !!c)
+}
+
 /** A sequence fills the workspace: no alignment, read, contig, gel or clone is open over it. */
 function sequenceOnScreen(s: ReturnType<typeof useEditorStore.getState>): boolean {
-  return !!s.activeTabId && !s.activeCloneId && !s.activeGelId && !s.activeContigId
+  return !!s.activeTabId && !s.activeCloneId && !s.activeGelId && !s.activeContigId && !s.activeAssemblyId
+    && !s.activeReadSetId
     && s.activeSequencingReadIds.length === 0 && !s.activeAlignmentId
 }
 
@@ -402,6 +417,8 @@ export default function App() {
   const setContigView = useEditorStore(s => s.setContigView)
   // Reads waiting to be assembled (the assemble dialog is open while set).
   const [assembleReadIds, setAssembleReadIds] = useState<string[] | null>(null)
+  // NGS read files waiting in the import dialog.
+  const [readImportFiles, setReadImportFiles] = useState<File[] | null>(null)
 
   /** Extract trimmed, edited bases from a sequencing read. */
   const getReadBases = useCallback((read: SequencingRead): string => {
@@ -417,10 +434,12 @@ export default function App() {
   const activeClone = useEditorStore(s => s.clones.find(c => c.id === s.activeCloneId) ?? null)
   const activeAln = useEditorStore(s => (s.activeAlignmentId ? s.alignments.find(a => a.id === s.activeAlignmentId) ?? null : null))
   const activeContig = useEditorStore(s => (s.activeContigId ? s.contigs.find(c => c.id === s.activeContigId) ?? null : null))
+  const activeAssembly = useEditorStore(s => (s.activeAssemblyId ? s.assemblies.find(a => a.id === s.activeAssemblyId) ?? null : null))
+  const activeReadSet = useEditorStore(s => (s.activeReadSetId ? s.readSets.find(r => r.id === s.activeReadSetId) ?? null : null))
   // One read open on its own has an undo history of its own; several at once are a table.
   const activeRead = useEditorStore(s => (s.activeSequencingReadIds.length === 1 ? s.sequencingReads.find(r => r.id === s.activeSequencingReadIds[0]) ?? null : null))
   /** The text view or map is what the workspace shows, so a sequence PDF makes sense. */
-  const sequenceShown = !!activeTabId && !activeClone && !activeGel && !activeContigId
+  const sequenceShown = !!activeTabId && !activeClone && !activeGel && !activeContigId && !activeAssembly && !activeReadSet
     && activeSequencingReadIds.length === 0 && !activeAlignmentId
   const undoAlignment = useEditorStore(s => s.undoAlignment)
   const redoAlignment = useEditorStore(s => s.redoAlignment)
@@ -466,6 +485,8 @@ export default function App() {
       (s.activeTabId !== prev.activeTabId && s.activeTabId !== null) ||
       (s.activeAlignmentId !== prev.activeAlignmentId && s.activeAlignmentId !== null) ||
       (s.activeContigId !== prev.activeContigId && s.activeContigId !== null) ||
+      (s.activeAssemblyId !== prev.activeAssemblyId && s.activeAssemblyId !== null) ||
+      (s.activeReadSetId !== prev.activeReadSetId && s.activeReadSetId !== null) ||
       (s.activeSequencingReadIds !== prev.activeSequencingReadIds && s.activeSequencingReadIds.length > 0)
     ) s.setActiveGel(null)
   }), [])
@@ -608,7 +629,7 @@ export default function App() {
       if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key === 'S') {
         e.preventDefault()
         const s = useEditorStore.getState()
-        if (s.activeTabId || s.activeSequencingReadIds.length > 0 || s.activeAlignmentId || s.activeContigId) {
+        if (s.activeTabId || s.activeSequencingReadIds.length > 0 || s.activeAlignmentId || s.activeContigId || s.activeAssemblyId) {
           setBulkExportItems({})
           setExportModalOpen(true)
         }
@@ -828,7 +849,7 @@ export default function App() {
 
   const handleFileOpen = useCallback((file: File) => {
     // Validate file extension
-    if (!SUPPORTED_EXTENSIONS.test(file.name)) {
+    if (!SUPPORTED_EXTENSIONS.test(file.name) && !isReadFile(file.name)) {
       notify.error(`Can't open "${file.name}"`, { detail: SUPPORTED_FORMATS_HINT })
       return
     }
@@ -991,7 +1012,24 @@ export default function App() {
   const handleFilesOpen = useCallback((files: File[]) => {
     const traces = files.filter(f => isTraceFile(f.name))
     if (traces.length > 0) void importTraceFiles(traces)
-    for (const f of files) if (!isTraceFile(f.name)) handleFileOpen(f)
+    // NGS reads go to the import dialog as read sets. A small uncompressed
+    // FASTQ is opened as sequences, as before, unless it holds many records.
+    const ngs = files.filter(isNgsByName)
+    const smallFastq = files.filter(f => !isNgsByName(f) && /\.(fastq|fq)$/i.test(f.name))
+    for (const f of files) {
+      if (!isTraceFile(f.name) && !ngs.includes(f) && !smallFastq.includes(f)) handleFileOpen(f)
+    }
+    if (ngs.length === 0 && smallFastq.length === 0) return
+    void (async () => {
+      const many: File[] = []
+      for (const f of smallFastq) {
+        const n = countRecords(await f.text().catch(() => ''))
+        if (n > NGS_FEW_RECORDS) many.push(f)
+        else handleFileOpen(f)
+      }
+      const all = [...ngs, ...many]
+      if (all.length > 0) setReadImportFiles(all)
+    })()
   }, [handleFileOpen])
 
   // --- File menu actions ---
@@ -1074,7 +1112,7 @@ export default function App() {
     if (!e.dataTransfer.types.includes('Files')) return // internal drag, ignore
     e.preventDefault()
     const files = Array.from(e.dataTransfer.files)
-    const unsupported = files.filter(f => !SUPPORTED_EXTENSIONS.test(f.name))
+    const unsupported = files.filter(f => !SUPPORTED_EXTENSIONS.test(f.name) && !isReadFile(f.name))
     if (unsupported.length > 0 && unsupported.length === files.length) {
       // All files unsupported: show a brief error on the overlay
       const exts = unsupported.map(f => `.${f.name.split('.').pop()}`).join(', ')
@@ -1138,6 +1176,7 @@ export default function App() {
       session.tagColors,
       session.oligos,
     )
+    useEditorStore.getState().restoreAssemblies(session.assemblies, session.activeAssemblyId ?? null)
     useEditorStore.getState().restoreGels(session.gels, session.activeGelId ?? null)
     useEditorStore.getState().restoreClones(session.clones, session.activeCloneId ?? null)
     setSessionImportOpen(false)
@@ -1159,6 +1198,7 @@ export default function App() {
       session.contigs, session.itemMeta, session.tagColors,
       session.oligos,
     )
+    useEditorStore.getState().mergeAssemblies(session.assemblies)
     useEditorStore.getState().mergeGels(session.gels)
     useEditorStore.getState().mergeClones(session.clones)
     setSessionImportOpen(false)
@@ -1170,7 +1210,8 @@ export default function App() {
 
   /** Determine the kind of the currently active/viewed item. */
   const getActiveItemKind = (s: ReturnType<typeof useEditorStore.getState>): ExportItemKind => {
-    if (s.activeContigId) return 'contig'
+    // An assembly's overview exports its contigs.
+    if (s.activeContigId || s.activeAssemblyId) return 'contig'
     if (s.activeAlignmentId) return 'alignment'
     if (s.activeSequencingReadIds.length > 0) return 'read'
     return 'sequence'
@@ -1285,9 +1326,9 @@ export default function App() {
           written = 1
         }
       } else if (activeKind === 'contig') {
-        const contig = state.contigs.find(c => c.id === state.activeContigId)
-        if (contig) {
-          downloadBlob(new Blob([contigText(contig, format)], { type: 'text/plain' }), filename)
+        const shown = contigsOnScreen(state)
+        if (shown.length > 0) {
+          downloadBlob(new Blob([shown.map(c => contigText(c, format)).join('')], { type: 'text/plain' }), filename)
           written = 1
         }
       }
@@ -1594,12 +1635,12 @@ export default function App() {
                 setBulkExportItems({})
                 setExportModalOpen(true)
                 setFileMenuOpen(false)
-              }} disabled={!activeTabId && activeSequencingReadIds.length === 0 && !activeAlignmentId && !activeContigId}>
+              }} disabled={!activeTabId && activeSequencingReadIds.length === 0 && !activeAlignmentId && !activeContigId && !activeAssembly}>
                 <span className="file-menu-icon"><Save size={14} /></span>
                 Export…
               </button>
               <button className="file-menu-item" role="menuitem" onClick={() => {
-                setBulkExportItems(groupSelection(useEditorStore.getState().explorerSelectedIds))
+                setBulkExportItems(exportSelection(useEditorStore.getState().explorerSelectedIds, id => useEditorStore.getState().assemblies.find(a => a.id === id)?.contigIds ?? []))
                 setExportModalOpen(true)
                 setFileMenuOpen(false)
               }} disabled={selectedExportableCount < 2}>
@@ -1999,6 +2040,22 @@ export default function App() {
                 onExportPrompt={handleFilenamePrompt}
                 findRequested={contigSearchOpen}
                 onFindClosed={() => setContigSearchOpen(false)}
+              />
+            </Suspense>
+          ) : activeAssembly ? (
+            <Suspense fallback={null}>
+              <AssemblyOverview
+                key={activeAssembly.id}
+                assembly={activeAssembly}
+                onClose={() => useEditorStore.getState().setActiveAssembly(null)}
+              />
+            </Suspense>
+          ) : activeReadSet ? (
+            <Suspense fallback={null}>
+              <ReadSetWorkspace
+                key={activeReadSet.id}
+                readSet={activeReadSet}
+                onClose={() => useEditorStore.getState().setActiveReadSet(null)}
               />
             </Suspense>
           ) : activeSequencingReadIds.length > 1 ? (
@@ -2481,6 +2538,11 @@ export default function App() {
           setAlignInitialEntries(undefined)
         }}
       />
+      {readImportFiles && (
+        <Suspense fallback={null}>
+          <ImportReadsDialog files={readImportFiles} onClose={() => setReadImportFiles(null)} />
+        </Suspense>
+      )}
       {assembleReadIds && (
         <Suspense fallback={null}>
           <AssembleDialog readIds={assembleReadIds} onClose={() => setAssembleReadIds(null)} />
@@ -2568,8 +2630,9 @@ export default function App() {
             const align = s.alignments.find(a => a.id === s.activeAlignmentId)
             defaultName = align?.name.replace(/\s+/g, '_') ?? 'alignment'
           } else if (ak === 'contig') {
-            const contig = s.contigs.find(c => c.id === s.activeContigId)
-            defaultName = contig?.name.replace(/\s+/g, '_') ?? 'contig'
+            const name = s.contigs.find(c => c.id === s.activeContigId)?.name
+              ?? s.assemblies.find(a => a.id === s.activeAssemblyId)?.name
+            defaultName = name?.replace(/\s+/g, '_') ?? 'contig'
           } else {
             defaultName = doc.name
           }

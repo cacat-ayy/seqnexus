@@ -88,6 +88,11 @@ of each build.
   constraints
 - **Sequence alignment** - pairwise (global/local) and multiple sequence alignment
 - **In-silico cloning** - digest/ligation, Gibson assembly, Golden Gate assembly
+- **NGS read sets** - FASTQ(.gz) import with R1/R2 pairing, QC charts and
+  verdicts, fastp trimming and minimap2 mapping (WebAssembly), FASTQ.gz export
+- **Sanger sequencing** - chromatograms, trimming, mapping to a reference or de
+  novo assembly kept as assemblies with their contigs, variants, clone
+  verification
 - **NCBI BLAST** - search NCBI databases directly from the editor
 - **PDF export** of the sequence as the text view draws it, vector, on A4
 - **10 themes** (5 light, 5 dark)
@@ -423,6 +428,227 @@ the two profiles.
 | Global pairwise (too large) | Rejected with error | - |
 
 All alignment runs in a Web Worker to keep the UI responsive.
+
+---
+
+## Sanger Assembly
+
+### Assemblies and contigs
+
+One run of the assembler (reads mapped to a reference, or joined de novo) is
+kept as one **assembly**. It holds:
+
+- its **contigs**: one when mapping to a reference, one per group of
+  overlapping reads de novo;
+- the **reads that went in**, and the reference mapped to;
+- the **settings** used (lowest identity, shortest overlap, seed length);
+- the **reads left out**, each with the reason the assembler gave: too short
+  after trimming, no match to the reference, below the identity threshold
+  (with the identity reached), or no overlap with any other read.
+
+Each contig used to be an item of its own, and the reads left out were
+reported once in a toast and then lost. Keeping them together answers which
+contigs came from the same reads and why a read is missing, and makes a run
+repeatable: **Run again** starts from the same reads, reference and settings.
+Its result replaces the assembly's contigs, with an Undo. Manual edits made in
+the old contigs do not carry over, because the new contigs can have different
+columns. When the reference sequence is no longer open, the run maps to the
+copy the contig keeps (its gap columns and circular extension removed).
+
+An assembly with a single contig is shown and opened as that contig. One with
+several opens an overview: its contigs, the reads not placed, and how it was
+made.
+
+Contigs saved before assemblies existed each get an assembly of their own when
+loaded. The reads and reference are read back from the contig; the settings
+were not saved, so they are shown as not recorded.
+
+### Overview figures
+
+- **Mean depth**: the mean number of reads over the columns that some read
+  spans. A read spans the columns from its first to its last base, so a
+  deletion inside a read still counts as covered.
+- **Reference covered**: the share of the reference's bases that some read
+  spans. On a circular reference, columns past the end are the circular
+  extension, and count as the bases at the start that they repeat.
+- **Consensus**: the length of the consensus with the contig's own consensus
+  settings, gaps removed.
+
+---
+
+## NGS Read Sets
+
+A **read set** holds the reads of one sample: a FASTQ file, an R1/R2 pair, or
+a long-read run. Only its description (name, technology, QC figures) is kept
+with the session; the reads themselves are stored in IndexedDB and read a
+chunk at a time by Web Workers, so a sample of millions of reads never has to
+be held in memory.
+
+### Import
+
+- **Which files:** any gzipped read file (`.fastq.gz`, `.fq.gz`, `.fasta.gz`),
+  and any uncompressed FASTQ over 256 KB or with more than 20 records. Smaller
+  FASTQ files still open as sequences, as before: a handful of records is
+  more likely a few Sanger or consensus reads than a sequencing run.
+- **Gzip:** inflated with fflate, which reads files made of several gzip
+  members back to back. Illumina's `.fastq.gz` is usually BGZF, which is
+  exactly that.
+- **Pairs:** two files whose names differ only in a mate marker before the
+  extension (`_R1`/`_R2`, `.1`/`.2`, `_1`/`_2`, optionally followed by
+  Illumina's `_001`) are taken as the two mates of a pair. During import the
+  mates are read in lockstep and must have the same read ID (ignoring a
+  trailing `/1` or `/2`), in the same order; otherwise the import stops and
+  says at which read. A single file whose consecutive reads come in twos with
+  the same ID is offered as **interleaved**.
+- **Technology:** guessed from the read headers first (CASAVA 1.8 or older
+  Illumina IDs; Nanopore UUIDs and `runid=`/`ch=` tags; PacBio `m64...`
+  movie names), then from read lengths (600 bp or shorter: Illumina; mean of
+  1 kb or more: Nanopore). A guess from lengths is marked as such, and the
+  import dialog lets the user change it. The technology decides which QC
+  rules apply and how reads are trimmed.
+- **Parsing:** records may be split anywhere between the pieces a stream
+  delivers, and sequence and quality may be wrapped; quality is collected
+  until it is as long as the sequence, because a quality line can begin with
+  `@`. FASTA reads (no quality) are accepted.
+
+### Storage
+
+Reads are stored in chunks of 16,384 (an even number, so a pair never
+straddles two chunks; mates are stored next to each other). Each chunk is one
+binary buffer, deflated:
+
+- each read's length, then the read IDs as one newline-joined text;
+- the bases two to a byte in BAM's 4-bit code (`=ACMGRSVTWYHKDBN`), so N and
+  the IUPAC letters survive, unlike a 2-bit code;
+- one byte of Phred quality per base.
+
+Deflate shrinks the IDs (which repeat their instrument, run and flow cell)
+and the qualities (which take few values) several-fold; a test chunk of
+Illumina reads comes out under an eighth of its FASTQ text. Only the read ID
+is kept from each header, not its comment: comments run to dozens of bytes
+per read and nothing downstream reads them.
+
+Read sets are not part of session files (they would make them huge); they
+stay in the browser and are exported as FASTQ. The reads of a deleted read
+set stay stored while it can be restored from Recently deleted, and are
+removed the next time SeqNexus opens: at save time, a read set in the undo
+buffer or one still importing would look the same as a deleted one.
+
+### QC
+
+Figures are gathered while the reads are imported, a read at a time:
+
+- **Q20 and Q30:** the share of bases at those Phred scores and above.
+- **Read quality:** a read's mean quality is computed from error
+  probabilities, `Q = -10 log10(mean of 10^(-q/10))`, not by averaging the
+  scores. Averaging overstates it: one Q5 base (a 32% chance of error) costs
+  far more accuracy than one Q40 base gains, so a read of Q40 and Q5 bases
+  half and half has a mean score of 22.5 but an expected error rate of 16%
+  (Q8). This is how Nanopore and PacBio tools report read quality. The read
+  set shows the median over reads.
+- **Quality by position:** a histogram of scores at each position (up to
+  1,000) per mate, reported as the median, the middle 50% and the middle 80%,
+  over FastQC's zones (Q28 and up good, Q20 to 28 reasonable, below Q20
+  poor). Long reads skip it: position along a 20 kb read says little.
+- **Read length:** one bin per length when lengths span fewer than 60 values;
+  otherwise 60 bins, evenly spaced for short reads and log-spaced for long
+  reads, whose lengths span orders of magnitude. N50 is the length at which
+  half the bases are in reads at least that long.
+- **GC content** per read (1% bins) and the share of N calls.
+
+The verdict uses SeqNexus's own rules of thumb, set from what current
+instruments deliver, not a standard:
+
+| | Good | Check | Fail |
+|---|---|---|---|
+| Illumina and other short reads: bases at Q30+ | 75% and up | 60 to 75% | below 60% |
+| Nanopore: median read quality | Q12 and up | Q9 to 12 | below Q9 |
+| PacBio (HiFi is Q20 by definition) | Q20 and up | Q15 to 20 | below Q15 |
+| N calls (all) | 1% or less | over 1% | over 5% |
+
+Fewer than 1,000 reads, or no qualities in the file, also earn a Check.
+
+### Trimming and filtering
+
+Trimming makes a new read set and keeps the original.
+
+**Short reads** go through **fastp 0.20.1** (the biowasm WebAssembly build),
+in batches of 100,000 reads, with:
+
+- adapters trimmed: for pairs, where the two mates overlap and run past the
+  insert (`--detect_adapter_for_pe` adds sequence-based detection); for single
+  reads, by fastp's adapter detection;
+- both ends cut while a 4-base window's mean quality is below the threshold
+  (`--cut_front --cut_tail -W 4 -M 20` by default);
+- reads shorter than the minimum dropped (`-l 20` by default), with their mate.
+
+fastp's own defaults stay on: reads with more than 40% of bases below Q15, or
+more than 5 N, are dropped, and poly-G tails are cut on NovaSeq and NextSeq
+data, whose two-colour chemistry calls G where there is no signal. Batches
+keep memory bounded; adapter detection for single reads then works per batch,
+which with 100,000 reads per batch has ample reads to work from.
+
+**Long reads** are filtered rather than trimmed, by minimum length (1 kb by
+default) and minimum mean read quality (Q10 by default). fastp's short-read
+model does not fit them, and current basecallers already cut the sequencing
+adapters.
+
+### Export
+
+A read set exports as gzipped FASTQ: R1 and R2 as two files, or interleaved
+in one. Each stored chunk becomes one gzip member and the members are placed
+one after another, which every gzip reader inflates as one stream; memory
+stays at one chunk. FASTA reads, which have no quality, export with `!` (Q0)
+throughout.
+
+### Limits
+
+- Tested in the browser with 20,000 Illumina pairs and 2,000 Nanopore reads
+  (import about a second, fastp trimming about two). The design is meant to
+  reach bacterial genomes (millions of reads); timings at that scale are still
+  to be measured.
+- Phred+64 qualities (Illumina 1.3 to 1.7) are not detected, as in the FASTQ
+  reader for sequences.
+- Opened as a file (`file://`), Chrome starts no module workers, so import,
+  export and the long-read filter run on the page instead (in chunk-sized
+  steps). fastp and minimap2 cannot run there: such a page may not fetch
+  `wasm/`. Double-click `serve.bat` in the SeqNexus folder (PowerShell's
+  built-in web server, nothing to install) and open
+  http://localhost:8080/app.html instead.
+
+### Mapping to a reference
+
+A read set is mapped to one or more open sequences with **minimap2 2.22**
+(biowasm WebAssembly build), with the preset for its technology: `sr` for
+short reads, `map-ont` for Nanopore, `map-hifi` for PacBio HiFi. Several
+references (a chromosome and its plasmids) go into one run, so each read lands
+on whichever fits it best rather than being forced onto the only one offered.
+The result is an assembly holding the mapping.
+
+- **Batches:** reads go to minimap2 40 Mb of bases at a time, with the
+  references written out each run; indexing a few megabases takes a moment
+  against the mapping itself. Mates are written to two files in the same
+  order, which is how minimap2 pairs them.
+- **Circular references:** the start of the sequence is appended (as long as
+  the longest read needs, at least 1 kb, at most the sequence's own length),
+  so a read across the origin maps in one piece; positions past the end are
+  folded back. In the appended stretch the sequence is there twice, so
+  minimap2 gives reads there mapping quality 0.
+- **Coverage** counts the aligned bases (CIGAR M, = and X) of every primary
+  and supplementary alignment, whatever its mapping quality, so the origin of
+  a circular reference is not left uncovered. Deletions are not counted, as
+  `samtools depth` does by default. Secondary alignments are not reported
+  (`--secondary=no`).
+- **Report:** reads mapped, the share of mapped reads in proper pairs, mean
+  depth, the share of bases covered once and ten times, coverage along each
+  reference in up to 400 windows, fragment lengths of proper pairs (60 bins up
+  to the 99th percentile, longer ones in the last bin), and mapping qualities.
+- **Storage:** the alignments are kept (reference, position, read number,
+  flag, mapping quality, CIGAR) without their bases, which stay in the read
+  set; a record names its read by its place in the read set. Full per-base
+  coverage is stored too. Both serve the read viewer to come.
+- **Speed:** 40,000 reads of 150 bp map to 8 kb in about 25 seconds in the
+  browser (single-threaded WebAssembly).
 
 ---
 
@@ -1053,6 +1279,26 @@ faint marks on white. Selection and search highlights are off by default.
 - ISO 32000-1:2008. *Document management - Portable document format -
   Part 1: PDF 1.7.* Standard Type 1 fonts (9.6.2.2) and replacement text,
   `/ActualText` (14.9.4). Glyph widths from the Adobe Core 14 AFM files.
+
+- Ewing B, Green P. (1998) "Base-calling of automated sequencer traces using
+  phred. II. Error probabilities." *Genome Res* 8:186-194.
+
+- Cock PJA, Fields CJ, Goto N, Heuer ML, Rice PM. (2010) "The Sanger FASTQ
+  file format for sequences with quality scores, and the Solexa/Illumina
+  FASTQ variants." *Nucleic Acids Res* 38:1767-1771.
+
+- Chen S, Zhou Y, Chen Y, Gu J. (2018) "fastp: an ultra-fast all-in-one
+  FASTQ preprocessor." *Bioinformatics* 34:i884-i890.
+
+- Andrews S. (2010) "FastQC: a quality control tool for high throughput
+  sequence data." Babraham Bioinformatics.
+  https://www.bioinformatics.babraham.ac.uk/projects/fastqc/
+
+- Li H. (2018) "Minimap2: pairwise alignment for nucleotide sequences."
+  *Bioinformatics* 34:3094-3100.
+
+- Li H, Handsaker B, Wysoker A, et al. (2009) "The Sequence Alignment/Map
+  format and SAMtools." *Bioinformatics* 25:2078-2079. (The 4-bit base code.)
 
 ## License
 

@@ -42,6 +42,8 @@ import type { ORFResult } from './workers/orf-finder'
 import type { DesignResult } from './primers/design/types'
 import type { ContigDoc } from './assembly/types'
 import { DEFAULT_CONTIG_VIEW, type ContigView } from './assembly/view'
+import { runFromDocs, type AssemblyRecord, type AssemblyRun } from './assembly/container'
+import type { ReadSetRecord } from './ngs/types'
 import type { AlnDoc } from './msa/model'
 import { DEFAULT_VIEW, type AlnView } from './msa/view'
 import { toUid, parseUid, type ItemMeta } from './explorer/types'
@@ -463,7 +465,11 @@ export type DeletedItem =
   | ({ kind: 'sequence'; gelLanes?: RemovedGelLane[] } & ClosedTab)
   | { kind: 'read'; index: number; folderId: string | null; read: SequencingRead; wasActive: boolean }
   | { kind: 'alignment'; index: number; folderId: string | null; alignment: SavedAlignment }
-  | { kind: 'contig'; index: number; folderId: string | null; contig: Contig }
+  /** Only the description: the reads stay in IndexedDB until the next load cleans them up. */
+  | { kind: 'readset'; index: number; folderId: string | null; readSet: ReadSet; wasActive: boolean }
+  | { kind: 'assembly'; index: number; folderId: string | null; assembly: Assembly; contigs: { index: number; contig: Contig }[]; wasActive: boolean }
+  /** One contig taken out of an assembly that still has others. */
+  | { kind: 'contig'; index: number; assemblyId: string; position: number; contig: Contig }
   | { kind: 'oligo'; index: number; folderId: string | null; oligo: LibraryOligo }
   | { kind: 'gel'; index: number; folderId: string | null; gel: GelDoc; wasActive: boolean }
   | { kind: 'clone'; index: number; folderId: string | null; clone: CloneDoc; wasActive: boolean }
@@ -595,6 +601,8 @@ const seqReadIds = makeIdGenerator('seqread')
 const folderIds = makeIdGenerator('folder')
 const alignIds = makeIdGenerator('align')
 const contigIds = makeIdGenerator('contig')
+const assemblyIds = makeIdGenerator('asm')
+const readSetIds = makeIdGenerator('rset')
 const oligoIds = makeIdGenerator('libo')
 const gelIds = makeIdGenerator('gel')
 const cloneIds = makeIdGenerator('clone')
@@ -646,6 +654,7 @@ const nextFeatureSourceId = () => featureSourceIds.next()
 const nextUsageTableId = () => usageTableIds.next()
 const nextAlignId = () => alignIds.next()
 const nextContigId = () => contigIds.next()
+const nextAssemblyId = () => assemblyIds.next()
 const nextOligoId = () => oligoIds.next()
 
 /**
@@ -774,9 +783,26 @@ export interface ContigHistoryEntry {
   label: string
 }
 
-/** A contig: reads assembled to a reference or to each other. */
+/** NGS reads of one sample: the description; the reads are in IndexedDB. See ngs/types.ts. */
+export type ReadSet = ReadSetRecord
+
+/**
+ * One run of the assembler as an item: its contigs, the reads that went in,
+ * the settings used and the reads left out. See assembly/container.ts.
+ */
+export type Assembly = AssemblyRecord
+
+/** What a new assembly is made of. The run defaults to what the contigs show. */
+export type NewAssembly = Partial<AssemblyRun> & {
+  name: string
+  contigs: { name: string; doc: ContigDoc }[]
+}
+
+/** A contig: reads assembled to a reference or to each other. Always part of an assembly. */
 export interface Contig {
   id: string
+  /** The assembly that lists it. */
+  assemblyId: string
   name: string
   doc: ContigDoc
   createdAt: number
@@ -1273,15 +1299,52 @@ interface EditorStore {
   /** Change how an alignment is shown. Not an undo step. */
   setAlignmentView: (id: string, patch: Partial<AlnView>) => void
 
-  // Contigs
+  // NGS read sets
+  readSets: ReadSet[]
+  activeReadSetId: string | null
+  /** An id for a read set about to be imported (its reads are stored under it first). */
+  newReadSetId: () => string
+  /** Add a read set whose reads are stored; open it unless `open` is false. */
+  addReadSet: (record: ReadSet, open?: boolean) => void
+  renameReadSet: (id: string, name: string) => void
+  /** Delete a read set into the Recently deleted buffer. */
+  removeReadSet: (id: string) => void
+  setActiveReadSet: (id: string | null) => void
+  restoreReadSets: (readSets: ReadSet[], activeReadSetId: string | null) => void
+
+  // Assemblies and their contigs
+  assemblies: Assembly[]
+  /** The assembly whose overview is open (not one of its contigs). */
+  activeAssemblyId: string | null
+  /** Add an assembly and open it. Null when there are no contigs. */
+  addAssembly: (spec: NewAssembly) => { assemblyId: string; contigIds: string[] } | null
+  /** An id for an NGS mapping about to run (its alignments are stored under it first). */
+  newAssemblyId: () => string
+  /** Add an NGS mapping (an assembly with no Sanger contigs) and open its overview. */
+  addMapping: (assembly: Assembly) => void
+  /** Open an assembly: its one contig straight away, or the overview of several. */
+  openAssembly: (id: string) => void
+  setActiveAssembly: (id: string | null) => void
+  /** Rename an assembly; one with a single contig renames the contig too. */
+  renameAssembly: (id: string, name: string) => void
+  /** Delete an assembly with its contigs, into the Recently deleted buffer. */
+  removeAssembly: (id: string) => void
+  /**
+   * Put the result of running an assembly again in place of its contigs.
+   * Returns a function that puts the previous contigs back.
+   */
+  replaceAssemblyRun: (id: string, run: AssemblyRun, contigs: { name: string; doc: ContigDoc }[]) => (() => void) | null
+  /** Move a contig out of its assembly into a new one of its own; returns the new assembly's id. */
+  extractContig: (contigId: string) => string | null
+  restoreAssemblies: (assemblies: Assembly[], activeAssemblyId: string | null) => void
+  mergeAssemblies: (assemblies: Assembly[]) => void
   contigs: Contig[]
   activeContigId: string | null
-  /** Add assembled contigs, optionally filed into a new folder; the first is opened. */
-  addContigs: (items: { name: string; doc: ContigDoc }[], folderName?: string) => string[]
   /** Change a contig's document as one named undo step. */
   updateContig: (id: string, fn: (doc: ContigDoc) => ContigDoc, label: string) => void
   undoContig: (id: string) => string | null
   redoContig: (id: string) => string | null
+  /** Delete a contig; the last one in its assembly takes the assembly with it. */
   removeContig: (id: string) => void
   renameContig: (id: string, name: string) => void
   setActiveContig: (id: string | null) => void
@@ -2172,6 +2235,9 @@ export const useEditorStore = create<EditorStore>((set, get) => {
         ...s.sequencingReads.map(r => toUid('read', r.id)),
         ...s.alignments.map(a => toUid('alignment', a.id)),
         ...s.contigs.map(c => toUid('contig', c.id)),
+        ...s.assemblies.map(a => toUid('assembly', a.id)),
+        ...s.readSets.map(r => toUid('readset', r.id)),
+        ...s.clones.map(c => toUid('clone', c.id)),
         ...s.oligos.map(o => toUid('oligo', o.id)),
         ...s.gels.map(g => toUid('gel', g.id)),
       ])
@@ -2215,7 +2281,7 @@ export const useEditorStore = create<EditorStore>((set, get) => {
 
       // The whole subtree goes, and so does everything filed anywhere in it.
       const doomedFolders = folderSubtree(state.folders, folderId)
-      const doomed = { sequence: new Set<string>(), read: new Set<string>(), alignment: new Set<string>(), contig: new Set<string>(), oligo: new Set<string>(), gel: new Set<string>(), clone: new Set<string>() }
+      const doomed = { sequence: new Set<string>(), read: new Set<string>(), alignment: new Set<string>(), contig: new Set<string>(), assembly: new Set<string>(), readset: new Set<string>(), oligo: new Set<string>(), gel: new Set<string>(), clone: new Set<string>() }
       for (const f of state.folders) {
         if (!doomedFolders.has(f.id)) continue
         for (const uid of f.itemUids) {
@@ -2233,7 +2299,9 @@ export const useEditorStore = create<EditorStore>((set, get) => {
       }
       const active = newTabs.find(t => t.id === newActiveId)
 
-      const contigs = state.contigs.filter(c => !doomed.contig.has(c.id))
+      // An assembly goes with its contigs. (Contigs themselves are never filed.)
+      const assemblies = state.assemblies.filter(a => !doomed.assembly.has(a.id))
+      const contigs = state.contigs.filter(c => assemblies.some(a => a.id === c.assemblyId))
       const contigIds = new Set(contigs.map(c => c.id))
       const { gels } = withoutSequenceLanes(state.gels.filter(g => !doomed.gel.has(g.id)), doomed.sequence)
 
@@ -2258,8 +2326,12 @@ export const useEditorStore = create<EditorStore>((set, get) => {
         activeSequencingReadIds: state.activeSequencingReadIds.filter(id => !doomed.read.has(id)),
         alignments: state.alignments.filter(a => !doomed.alignment.has(a.id)),
         activeAlignmentId: doomed.alignment.has(state.activeAlignmentId ?? '') ? null : state.activeAlignmentId,
+        assemblies,
+        readSets: state.readSets.filter(r => !doomed.readset.has(r.id)),
+        activeReadSetId: doomed.readset.has(state.activeReadSetId ?? '') ? null : state.activeReadSetId,
         contigs,
         activeContigId: contigIds.has(state.activeContigId ?? '') ? state.activeContigId : null,
+        activeAssemblyId: doomed.assembly.has(state.activeAssemblyId ?? '') ? null : state.activeAssemblyId,
         oligos: state.oligos.filter(o => !doomed.oligo.has(o.id)),
         gels,
         activeGelId: doomed.gel.has(state.activeGelId ?? '') ? null : state.activeGelId,
@@ -2271,8 +2343,12 @@ export const useEditorStore = create<EditorStore>((set, get) => {
     toggleFolder: (id) => {
       set(state => ({ folders: state.folders.map(f => f.id === id ? { ...f, collapsed: !f.collapsed } : f) }))
     },
-    moveItemToFolder: (uid, folderId) => {
+    moveItemToFolder: (target, folderId) => {
       set(state => {
+        // A contig is filed with its assembly; moving one moves the assembly.
+        const parsed = parseUid(target)
+        const owner = parsed?.kind === 'contig' ? state.contigs.find(c => c.id === parsed.id)?.assemblyId : undefined
+        const uid = owner ? toUid('assembly', owner) : target
         // Pulled out of every folder first, so an item can never end up filed
         // in two places by a dropped drag that was not cleaned up.
         let folders = state.folders.map(f => ({
@@ -2452,12 +2528,51 @@ export const useEditorStore = create<EditorStore>((set, get) => {
           get().setActiveAlignment(last.alignment.id)
           return
         }
-        case 'contig': {
+        case 'readset': {
           set({
-            contigs: insertAt(state.contigs, last.index, last.contig),
-            folders: withItem(state.folders, toUid('contig', last.contig.id), last.folderId),
+            readSets: insertAt(state.readSets, last.index, last.readSet),
+            folders: withItem(state.folders, toUid('readset', last.readSet.id), last.folderId),
             recentlyDeleted: rest,
           })
+          if (last.wasActive) get().setActiveReadSet(last.readSet.id)
+          return
+        }
+        case 'assembly': {
+          // Back in their old places; ascending, so each index is right when used.
+          let contigs = state.contigs
+          for (const { index, contig } of last.contigs) contigs = insertAt(contigs, index, contig)
+          set({
+            assemblies: insertAt(state.assemblies, last.index, last.assembly),
+            contigs,
+            folders: withItem(state.folders, toUid('assembly', last.assembly.id), last.folderId),
+            recentlyDeleted: rest,
+          })
+          if (last.wasActive) get().openAssembly(last.assembly.id)
+          return
+        }
+        case 'contig': {
+          const home = state.assemblies.find(a => a.id === last.assemblyId)
+          if (home) {
+            const contigIds = home.contigIds.slice()
+            contigIds.splice(Math.min(last.position, contigIds.length), 0, last.contig.id)
+            set({
+              contigs: insertAt(state.contigs, last.index, last.contig),
+              assemblies: state.assemblies.map(a => (a.id === home.id ? { ...a, contigIds } : a)),
+              recentlyDeleted: rest,
+            })
+          } else {
+            // Its assembly has gone since: it comes back as one of its own.
+            const id = nextAssemblyId()
+            const contig = { ...last.contig, assemblyId: id }
+            set({
+              contigs: insertAt(state.contigs, last.index, contig),
+              assemblies: [...state.assemblies, {
+                id, name: contig.name, createdAt: contig.createdAt, modifiedAt: Date.now(),
+                contigIds: [contig.id], ...runFromDocs([contig.doc]),
+              }],
+              recentlyDeleted: rest,
+            })
+          }
           get().setActiveContig(last.contig.id)
           return
         }
@@ -2521,6 +2636,8 @@ export const useEditorStore = create<EditorStore>((set, get) => {
         activeSequencingReadIds: [],
         activeAlignmentId: null,
         activeContigId: null,
+        activeAssemblyId: null,
+        activeReadSetId: null,
         doc: tab.doc,
         selection: tab.selection,
         search: tab.search,
@@ -3184,6 +3301,8 @@ export const useEditorStore = create<EditorStore>((set, get) => {
         activeTabId: null,
         activeAlignmentId: null,
         activeContigId: null,
+        activeAssemblyId: null,
+        activeReadSetId: null,
         activeGelId: null,
         activeCloneId: null,
       }))
@@ -3217,6 +3336,8 @@ export const useEditorStore = create<EditorStore>((set, get) => {
         activeTabId: id ? null : get().activeTabId,
         activeAlignmentId: id ? null : get().activeAlignmentId,
         activeContigId: id ? null : get().activeContigId,
+        activeAssemblyId: id ? null : get().activeAssemblyId,
+        activeReadSetId: id ? null : get().activeReadSetId,
       })
     },
 
@@ -3230,6 +3351,8 @@ export const useEditorStore = create<EditorStore>((set, get) => {
         activeTabId: null,
         activeAlignmentId: null,
         activeContigId: null,
+        activeAssemblyId: null,
+        activeReadSetId: null,
       })
     },
 
@@ -3243,6 +3366,8 @@ export const useEditorStore = create<EditorStore>((set, get) => {
           activeSequencingReadIds: next,
           activeAlignmentId: next.length > 0 ? null : s.activeAlignmentId,
           activeContigId: next.length > 0 ? null : s.activeContigId,
+          activeAssemblyId: next.length > 0 ? null : s.activeAssemblyId,
+          activeReadSetId: next.length > 0 ? null : s.activeReadSetId,
           activeTabId: next.length > 0 ? null : s.activeTabId,
         }
       })
@@ -3484,6 +3609,8 @@ export const useEditorStore = create<EditorStore>((set, get) => {
         activeCloneId: id ? null : get().activeCloneId,
         activeSequencingReadIds: id ? [] : get().activeSequencingReadIds,
         activeContigId: id ? null : get().activeContigId,
+        activeAssemblyId: id ? null : get().activeAssemblyId,
+        activeReadSetId: id ? null : get().activeReadSetId,
       })
     },
 
@@ -3576,13 +3703,15 @@ export const useEditorStore = create<EditorStore>((set, get) => {
           activeSequencingReadIds: [],
           activeAlignmentId: null,
           activeContigId: null,
+          activeAssemblyId: null,
+          activeReadSetId: null,
           activeGelId: null,
         })
         return
       }
       set({ activeCloneId: null })
       const back = s.cloneReturnTabId
-      const nothingElseOpen = !s.activeTabId && !s.activeAlignmentId && !s.activeContigId
+      const nothingElseOpen = !s.activeTabId && !s.activeAlignmentId && !s.activeContigId && !s.activeAssemblyId && !s.activeReadSetId
         && !s.activeGelId && s.activeSequencingReadIds.length === 0
       if (nothingElseOpen && back && s.tabs.some(t => t.id === back)) get().setActiveTab(back)
     },
@@ -3729,12 +3858,14 @@ export const useEditorStore = create<EditorStore>((set, get) => {
           activeSequencingReadIds: [],
           activeAlignmentId: null,
           activeContigId: null,
+          activeAssemblyId: null,
+          activeReadSetId: null,
         })
         return
       }
       set({ activeGelId: null })
       const back = s.gelReturnTabId
-      const nothingElseOpen = !s.activeTabId && !s.activeAlignmentId && !s.activeContigId
+      const nothingElseOpen = !s.activeTabId && !s.activeAlignmentId && !s.activeContigId && !s.activeAssemblyId && !s.activeReadSetId
         && s.activeSequencingReadIds.length === 0
       if (nothingElseOpen && back && s.tabs.some(t => t.id === back)) get().setActiveTab(back)
     },
@@ -3855,31 +3986,233 @@ export const useEditorStore = create<EditorStore>((set, get) => {
       set(s => ({ gels: [...s.gels, ...gels] }))
     },
 
-    // ---- Contigs ----
+    // ---- NGS read sets ----
+    readSets: [],
+
+    newReadSetId() {
+      return readSetIds.next()
+    },
+
+    addReadSet(record, open = true) {
+      set(s => ({ readSets: [...s.readSets, record] }))
+      if (open) get().setActiveReadSet(record.id)
+    },
+
+    renameReadSet(id, name) {
+      set(s => ({ readSets: s.readSets.map(r => (r.id === id ? { ...r, name } : r)) }))
+    },
+
+    removeReadSet(id) {
+      set(s => {
+        const index = s.readSets.findIndex(r => r.id === id)
+        if (index === -1) return {}
+        const uid = toUid('readset', id)
+        return {
+          readSets: s.readSets.filter(r => r.id !== id),
+          activeReadSetId: s.activeReadSetId === id ? null : s.activeReadSetId,
+          folders: withoutItem(s.folders, uid),
+          recentlyDeleted: pushDeleted(s.recentlyDeleted, {
+            kind: 'readset', index, folderId: folderOf(s.folders, uid), readSet: s.readSets[index], wasActive: s.activeReadSetId === id,
+          }),
+        }
+      })
+    },
+
+    setActiveReadSet(id) {
+      set({
+        activeReadSetId: id,
+        activeAssemblyId: id ? null : get().activeAssemblyId,
+        activeContigId: id ? null : get().activeContigId,
+        activeTabId: id ? null : get().activeTabId,
+        activeGelId: id ? null : get().activeGelId,
+        activeCloneId: id ? null : get().activeCloneId,
+        activeSequencingReadIds: id ? [] : get().activeSequencingReadIds,
+        activeAlignmentId: id ? null : get().activeAlignmentId,
+      })
+    },
+
+    restoreReadSets(readSets, activeReadSetId) {
+      for (const r of readSets) {
+        const m = r.id.match(/^rset_(\d+)$/)
+        if (m) readSetIds.syncTo(parseInt(m[1], 10))
+      }
+      set({ readSets, activeReadSetId: null })
+      if (activeReadSetId && readSets.some(r => r.id === activeReadSetId)) get().setActiveReadSet(activeReadSetId)
+    },
+
+    // ---- Assemblies and their contigs ----
+    assemblies: [],
+    activeAssemblyId: null,
+    activeReadSetId: null,
     contigs: [],
     activeContigId: null,
 
-    addContigs(items, folderName) {
-      if (items.length === 0) return []
+    addAssembly(spec) {
+      if (spec.contigs.length === 0) return null
       const now = Date.now()
-      const made: Contig[] = items.map(it => ({
-        id: nextContigId(), name: it.name, doc: it.doc, createdAt: now, modifiedAt: now,
+      const assemblyId = nextAssemblyId()
+      const made: Contig[] = spec.contigs.map(it => ({
+        id: nextContigId(), assemblyId, name: it.name, doc: it.doc, createdAt: now, modifiedAt: now,
         view: DEFAULT_CONTIG_VIEW, undoStack: [], redoStack: [],
       }))
-      const folderId = folderName ? get().createFolder(folderName) : null
-      set(s => ({
-        contigs: [...s.contigs, ...made],
-        folders: folderId
-          ? s.folders.map(f => f.id === folderId ? { ...f, itemUids: [...f.itemUids, ...made.map(c => toUid('contig', c.id))] } : f)
-          : s.folders,
-        activeContigId: made[0].id,
-        activeTabId: null,
-        activeSequencingReadIds: [],
-        activeAlignmentId: null,
-        activeGelId: null,
-        activeCloneId: null,
+      // A single contig is shown as the assembly, under its name.
+      if (made.length === 1) made[0].name = spec.name
+      const shown = runFromDocs(made.map(c => c.doc))
+      const assembly: Assembly = {
+        id: assemblyId, name: spec.name, createdAt: now, modifiedAt: now,
+        contigIds: made.map(c => c.id),
+        method: spec.method ?? shown.method,
+        settings: spec.settings ?? null,
+        inputs: spec.inputs ?? shown.inputs,
+        unplaced: spec.unplaced ?? [],
+      }
+      set(s => ({ assemblies: [...s.assemblies, assembly], contigs: [...s.contigs, ...made] }))
+      get().openAssembly(assemblyId)
+      return { assemblyId, contigIds: assembly.contigIds }
+    },
+
+    newAssemblyId() {
+      return nextAssemblyId()
+    },
+
+    addMapping(assembly) {
+      set(s => ({ assemblies: [...s.assemblies, assembly] }))
+      get().setActiveAssembly(assembly.id)
+    },
+
+    openAssembly(id) {
+      const a = get().assemblies.find(x => x.id === id)
+      if (!a) return
+      if (a.contigIds.length === 1) get().setActiveContig(a.contigIds[0])
+      else get().setActiveAssembly(id)
+    },
+
+    setActiveAssembly(id) {
+      set({
+        activeAssemblyId: id,
+        activeReadSetId: id ? null : get().activeReadSetId,
+        activeContigId: id ? null : get().activeContigId,
+        activeTabId: id ? null : get().activeTabId,
+        activeGelId: id ? null : get().activeGelId,
+        activeCloneId: id ? null : get().activeCloneId,
+        activeSequencingReadIds: id ? [] : get().activeSequencingReadIds,
+        activeAlignmentId: id ? null : get().activeAlignmentId,
+      })
+    },
+
+    renameAssembly(id, name) {
+      set(s => {
+        const a = s.assemblies.find(x => x.id === id)
+        if (!a) return {}
+        // A single contig is shown as the assembly, so the two names are one.
+        const single = a.contigIds.length === 1 ? a.contigIds[0] : null
+        return {
+          assemblies: s.assemblies.map(x => (x.id === id ? { ...x, name } : x)),
+          contigs: single ? s.contigs.map(c => (c.id === single ? { ...c, name } : c)) : s.contigs,
+        }
+      })
+    },
+
+    removeAssembly(id) {
+      set(s => {
+        const index = s.assemblies.findIndex(a => a.id === id)
+        if (index === -1) return {}
+        const assembly = s.assemblies[index]
+        const ids = new Set(assembly.contigIds)
+        const taken = s.contigs.flatMap((contig, i) => (ids.has(contig.id) ? [{ index: i, contig }] : []))
+        const uid = toUid('assembly', id)
+        const wasActive = s.activeAssemblyId === id || ids.has(s.activeContigId ?? '')
+        return {
+          assemblies: s.assemblies.filter(a => a.id !== id),
+          contigs: s.contigs.filter(c => !ids.has(c.id)),
+          activeAssemblyId: s.activeAssemblyId === id ? null : s.activeAssemblyId,
+          activeContigId: ids.has(s.activeContigId ?? '') ? null : s.activeContigId,
+          folders: withoutItem(s.folders, uid),
+          recentlyDeleted: pushDeleted(s.recentlyDeleted, {
+            kind: 'assembly', index, folderId: folderOf(s.folders, uid), assembly, contigs: taken, wasActive,
+          }),
+        }
+      })
+    },
+
+    replaceAssemblyRun(id, run, specs) {
+      const s = get()
+      const before = s.assemblies.find(a => a.id === id)
+      if (!before || specs.length === 0) return null
+      const oldIds = new Set(before.contigIds)
+      const oldContigs = s.contigs.filter(c => oldIds.has(c.id))
+      const wasOpen = s.activeAssemblyId === id || oldIds.has(s.activeContigId ?? '')
+      const now = Date.now()
+      const made: Contig[] = specs.map(it => ({
+        id: nextContigId(), assemblyId: id, name: it.name, doc: it.doc, createdAt: now, modifiedAt: now,
+        view: DEFAULT_CONTIG_VIEW, undoStack: [], redoStack: [],
       }))
-      return made.map(c => c.id)
+      // A single contig is shown under the assembly's name.
+      if (made.length === 1) made[0].name = before.name
+      const swap = (out: Assembly, gone: Set<string>, put: Contig[]) => {
+        set(st => {
+          const at = st.contigs.findIndex(c => gone.has(c.id))
+          const kept = st.contigs.filter(c => !gone.has(c.id))
+          const contigs = at === -1 ? [...kept, ...put] : [...kept.slice(0, at), ...put, ...kept.slice(at)]
+          return {
+            assemblies: st.assemblies.map(a => (a.id === id ? out : a)),
+            contigs,
+            activeContigId: gone.has(st.activeContigId ?? '') ? null : st.activeContigId,
+          }
+        })
+        if (wasOpen) get().openAssembly(id)
+      }
+      swap({ ...before, ...run, contigIds: made.map(c => c.id), modifiedAt: now }, oldIds, made)
+      return () => {
+        if (!get().assemblies.some(a => a.id === id)) return
+        swap(before, new Set(made.map(c => c.id)), oldContigs)
+      }
+    },
+
+    extractContig(contigId) {
+      const s = get()
+      const contig = s.contigs.find(c => c.id === contigId)
+      const from = contig && s.assemblies.find(a => a.id === contig.assemblyId)
+      if (!contig || !from || from.contigIds.length <= 1) return null
+      const id = nextAssemblyId()
+      const now = Date.now()
+      const made: Assembly = {
+        id, name: contig.name, createdAt: now, modifiedAt: now, contigIds: [contigId],
+        method: from.method, settings: from.settings,
+        inputs: { readIds: runFromDocs([contig.doc]).inputs.readIds, reference: from.inputs.reference },
+        unplaced: [],
+      }
+      const at = s.assemblies.indexOf(from)
+      set(st => ({
+        assemblies: [
+          ...st.assemblies.slice(0, at),
+          { ...from, contigIds: from.contigIds.filter(x => x !== contigId), modifiedAt: now },
+          made,
+          ...st.assemblies.slice(at + 1),
+        ],
+        contigs: st.contigs.map(c => (c.id === contigId ? { ...c, assemblyId: id } : c)),
+        // Filed where the assembly it came from is.
+        folders: withItem(st.folders, toUid('assembly', id), folderOf(st.folders, toUid('assembly', from.id))),
+      }))
+      return id
+    },
+
+    restoreAssemblies(assemblies, activeAssemblyId) {
+      for (const a of assemblies) {
+        const m = a.id.match(/^asm_(\d+)$/)
+        if (m) assemblyIds.syncTo(parseInt(m[1], 10))
+      }
+      set({ assemblies, activeAssemblyId: null })
+      if (activeAssemblyId && assemblies.some(a => a.id === activeAssemblyId)) get().setActiveAssembly(activeAssemblyId)
+    },
+
+    mergeAssemblies(assemblies) {
+      if (assemblies.length === 0) return
+      for (const a of assemblies) {
+        const m = a.id.match(/^asm_(\d+)$/)
+        if (m) assemblyIds.syncTo(parseInt(m[1], 10))
+      }
+      set(s => ({ assemblies: [...s.assemblies, ...assemblies] }))
     },
 
     updateContig(id, fn, label) {
@@ -3930,20 +4263,29 @@ export const useEditorStore = create<EditorStore>((set, get) => {
     },
 
     removeContig(id) {
-      set(s => {
-        const index = s.contigs.findIndex(c => c.id === id)
-        if (index === -1) return {}
-        return {
-          contigs: s.contigs.filter(c => c.id !== id),
-          activeContigId: s.activeContigId === id ? null : s.activeContigId,
-          folders: withoutItem(s.folders, toUid('contig', id)),
-          recentlyDeleted: pushDeleted(s.recentlyDeleted, {
-            kind: 'contig', index,
-            folderId: folderOf(s.folders, toUid('contig', id)),
-            contig: s.contigs[index],
-          }),
-        }
-      })
+      const s = get()
+      const index = s.contigs.findIndex(c => c.id === id)
+      if (index === -1) return
+      const assembly = s.assemblies.find(a => a.id === s.contigs[index].assemblyId)
+      // An assembly is never left empty: its last contig takes it along.
+      if (!assembly || assembly.contigIds.length <= 1) {
+        if (assembly) get().removeAssembly(assembly.id)
+        else set(st => ({ contigs: st.contigs.filter(c => c.id !== id), activeContigId: st.activeContigId === id ? null : st.activeContigId }))
+        return
+      }
+      const wasActive = s.activeContigId === id
+      set(st => ({
+        contigs: st.contigs.filter(c => c.id !== id),
+        assemblies: st.assemblies.map(a => (a.id === assembly.id
+          ? { ...a, contigIds: a.contigIds.filter(x => x !== id), modifiedAt: Date.now() }
+          : a)),
+        activeContigId: wasActive ? null : st.activeContigId,
+        recentlyDeleted: pushDeleted(st.recentlyDeleted, {
+          kind: 'contig', index, assemblyId: assembly.id, position: assembly.contigIds.indexOf(id), contig: st.contigs[index],
+        }),
+      }))
+      // Deleting the contig on screen lands on the rest of its assembly.
+      if (wasActive) get().openAssembly(assembly.id)
     },
 
     renameContig(id, name) {
@@ -3998,6 +4340,8 @@ export const useEditorStore = create<EditorStore>((set, get) => {
     setActiveContig(id) {
       set({
         activeContigId: id,
+        activeAssemblyId: id ? null : get().activeAssemblyId,
+        activeReadSetId: id ? null : get().activeReadSetId,
         activeTabId: id ? null : get().activeTabId,
         activeGelId: id ? null : get().activeGelId,
         activeCloneId: id ? null : get().activeCloneId,

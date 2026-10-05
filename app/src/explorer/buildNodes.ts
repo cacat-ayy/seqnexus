@@ -77,7 +77,7 @@ const EMPTY_MESSAGE: Partial<Record<ItemKind, string>> = {
 }
 
 const KIND_RANK: Record<ItemKind, number> = {
-  'sequence': 0, 'read': 1, 'alignment': 2, 'contig': 3, 'gel': 4, 'clone': 5, 'oligo': 6,
+  'sequence': 0, 'read': 1, 'readset': 2, 'alignment': 3, 'assembly': 4, 'contig': 5, 'gel': 6, 'clone': 7, 'oligo': 8,
 }
 
 /** Compare two items by the active sort. Name is the tiebreak throughout. */
@@ -136,8 +136,34 @@ export function buildNodes(input: BuildNodesInput, now = Date.now()): BuildNodes
     return (searchText?.[item.uid] ?? '').includes(query)
   }
 
+  /**
+   * Parts (the contigs of an assembly) are drawn under their parent and
+   * nowhere else. A part that matches brings its parent along, and a parent
+   * on screen shows all of its parts: half an assembly would read as a
+   * different one.
+   */
+  const parents = new Set<string>()
+  for (const kind of KIND_ORDER) for (const item of byKind[kind]) if (!item.parentUid) parents.add(item.uid)
+  const partsOf = new Map<string, ExplorerItem[]>()
+  const matchedParts: ExplorerItem[] = []
+  const parentOfMatch = new Set<string>()
+  for (const kind of KIND_ORDER) {
+    for (const item of byKind[kind]) {
+      if (!item.parentUid || !parents.has(item.parentUid)) continue
+      const list = partsOf.get(item.parentUid)
+      if (list) list.push(item)
+      else partsOf.set(item.parentUid, [item])
+      if (matches(item)) { matchedParts.push(item); parentOfMatch.add(item.parentUid) }
+    }
+  }
+
   const visible: ExplorerItem[] = []
-  for (const kind of KIND_ORDER) for (const item of byKind[kind]) if (matches(item)) visible.push(item)
+  for (const kind of KIND_ORDER) {
+    for (const item of byKind[kind]) {
+      if (item.parentUid && parents.has(item.parentUid)) continue
+      if (matches(item) || parentOfMatch.has(item.uid)) visible.push(item)
+    }
+  }
   const matchCount = visible.length
   const visibleByUid = new Map(visible.map(i => [i.uid, i]))
 
@@ -176,11 +202,21 @@ export function buildNodes(input: BuildNodesInput, now = Date.now()): BuildNodes
       const key = `${path}/${item.uid}`
       nodes.push({ type: 'item', key, item, depth })
       itemUids.push(item.uid)
+      if (depth >= MAX_FOLDER_DEPTH) continue
+      // Parts in their parent's own order (an assembly lists its contigs).
+      // They have no parts or derived items of their own.
+      const parts = partsOf.get(item.uid)
+      if (parts) {
+        for (const part of parts) {
+          nodes.push({ type: 'item', key: `${key}/${part.uid}`, item: part, depth: depth + 1 })
+          itemUids.push(part.uid)
+        }
+      }
       // Depth-capped rather than cycle-guarded: a child can only be a
       // non-sequence and a parent can only be a sequence, so a cycle cannot
       // form, but the cap keeps a future change from hanging the tree.
       const children = childrenOfItem.get(item.uid)
-      if (children && depth < MAX_FOLDER_DEPTH) pushItems(children.sort(sort), depth + 1, key)
+      if (children) pushItems(children.sort(sort), depth + 1, key)
     }
   }
 
@@ -193,7 +229,7 @@ export function buildNodes(input: BuildNodesInput, now = Date.now()): BuildNodes
   // --- Favourites, pinned above everything and spanning kinds ---
   // Favourites are always top level: a starred item must be findable there
   // whether or not its parent happens to be on screen.
-  const favorites = visible.filter(i => starred.has(i.uid)).sort(sort)
+  const favorites = [...visible, ...matchedParts].filter(i => starred.has(i.uid)).sort(sort)
   if (favorites.length > 0 && pushGroup(FAVORITES_KEY, 'Favorites', favorites.length)) {
     pushItems(favorites, 1, FAVORITES_KEY)
   }

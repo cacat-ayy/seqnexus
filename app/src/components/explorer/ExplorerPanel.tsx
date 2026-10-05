@@ -34,7 +34,7 @@ import { useExplorerItems } from '../../explorer/useExplorerItems'
 import { useItemActions } from '../../explorer/useItemActions'
 import { buildNodes, collapsedGroupHolding } from '../../explorer/buildNodes'
 import { gelsUsingSequences } from '../../gel/workspace'
-import { groupSelection } from '../../explorer/selection'
+import { exportSelection, groupSelection } from '../../explorer/selection'
 import { ITEM_KINDS, parseUid, type ExplorerItem, type Density, type ItemKind } from '../../explorer/types'
 import { DENSITIES } from '../../explorer/types'
 import {
@@ -61,7 +61,7 @@ interface Props {
   onExportItems?: (items: Partial<Record<ExportItemKind, string[]>>) => void
 }
 
-const IMPORT_ACCEPT = ['.gb', '.gbk', '.genbank', '.fasta', '.fa', '.fna', '.fastq', '.fq', '.txt', '.dna', '.geneious', '.ab1', '.abi', '.abif', '.scf', ...ALN_EXTENSIONS].join(',')
+const IMPORT_ACCEPT = ['.gb', '.gbk', '.genbank', '.fasta', '.fa', '.fna', '.fastq', '.fq', '.gz', '.txt', '.dna', '.geneious', '.ab1', '.abi', '.abif', '.scf', ...ALN_EXTENSIONS].join(',')
 
 /** Stable empty array, so an untagged row's props keep their identity. */
 const EMPTY_TAGS: string[] = []
@@ -419,7 +419,7 @@ function ExplorerPanel({
     setCtxMenu(null)
     // Oligos have their own formats (CSV, FASTA, order sheet); everything
     // else goes through the sequence export dialog.
-    const { oligo: oligoIds, ...grouped } = groupSelection(uids)
+    const { oligo: oligoIds, ...grouped } = exportSelection(uids, id => useEditorStore.getState().assemblies.find(a => a.id === id)?.contigIds ?? [])
     if (oligoIds?.length) setOligoExportIds(oligoIds)
     if (Object.keys(grouped).length === 0) return
     onExportItems?.(grouped)

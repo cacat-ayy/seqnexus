@@ -12,10 +12,10 @@
 
 import type { LucideIcon } from 'lucide-react'
 
-export type ItemKind = 'sequence' | 'read' | 'alignment' | 'contig' | 'gel' | 'clone' | 'oligo'
+export type ItemKind = 'sequence' | 'read' | 'readset' | 'alignment' | 'assembly' | 'contig' | 'gel' | 'clone' | 'oligo'
 
 export const ITEM_KINDS: readonly ItemKind[] = [
-  'sequence', 'read', 'alignment', 'contig', 'gel', 'clone', 'oligo',
+  'sequence', 'read', 'readset', 'alignment', 'assembly', 'contig', 'gel', 'clone', 'oligo',
 ] as const
 
 /**
@@ -83,6 +83,11 @@ export interface ExplorerItem {
    * nesting can be added without touching the adapters again.
    */
   derivedFrom: string[]
+  /**
+   * The item this one is part of, such as a contig's assembly. A part is
+   * always drawn under its parent, never on its own, whatever the grouping.
+   */
+  parentUid?: string
 }
 
 /** Per-item user metadata. Persisted with the session, keyed by uid. */

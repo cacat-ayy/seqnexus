@@ -297,7 +297,7 @@ const ContigCanvas = forwardRef<ContigCanvasHandle, Props>(function ContigCanvas
       onBlur={() => setFocused(false)}
     >
       <div className="cw-sizer" style={{ width: Math.max(contentW, size.w), height: Math.max(contentH, size.h) }}>
-        <div className="cw-stage" style={{ width: size.w, height: size.h }}>
+        <div className="cw-canvas-stage" style={{ width: size.w, height: size.h }}>
           <canvas ref={bodyRef} className="cw-layer" style={{ width: size.w, height: size.h }} />
           <canvas ref={marksRef} className="cw-layer" style={{ width: size.w, height: size.h }} />
         </div>

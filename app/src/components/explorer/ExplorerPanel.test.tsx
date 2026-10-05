@@ -51,8 +51,8 @@ describe('ExplorerPanel', () => {
     useEditorStore.setState({
       itemMeta: {}, recentlyDeleted: [], folders: [],
       sequencingReads: [], activeSequencingReadIds: [],
-      alignments: [], contigs: [],
-      activeAlignmentId: null, activeContigId: null,
+      alignments: [], contigs: [], assemblies: [],
+      activeAlignmentId: null, activeContigId: null, activeAssemblyId: null,
     })
     localStorage.removeItem('seqnexus:explorer-settings')
   })
@@ -68,11 +68,11 @@ describe('ExplorerPanel', () => {
     store().openDocument('ref', 'ATGC')
     store().addSequencingRead(trace('M13F'))
     store().addAlignment(docFromResult(result(), 'dna'))
-    store().addContigs([{ name: 'Assembly', doc: testContig([testRow('a', 0, 'ATGC')]) }])
+    store().addAssembly({ name: 'Assembly', contigs: [{ name: 'Assembly', doc: testContig([testRow('a', 0, 'ATGC')]) }] })
 
     renderPanel()
     expect(groupLabels()).toEqual([
-      'Sequences', 'Sequencing', 'Alignments', 'Contigs',
+      'Sequences', 'Sequencing', 'Alignments', 'Assemblies',
     ])
   })
 
@@ -106,13 +106,32 @@ describe('ExplorerPanel', () => {
   it('opens a contig rather than the document when both have an active id', () => {
     store().openDocument('ref', 'ATGC')
     store().addSequencingRead(trace('M13F'))
-    const [contigId] = store().addContigs([{ name: 'Assembly', doc: testContig([testRow('a', 0, 'ATGC')]) }])
-    act(() => { store().setActiveContig(contigId) })
+    const made = store().addAssembly({ name: 'Assembly', contigs: [{ name: 'Assembly', doc: testContig([testRow('a', 0, 'ATGC')]) }] })!
+    act(() => { store().setActiveContig(made.contigIds[0]) })
 
     renderPanel()
     const open = rows().filter(r => r.className.includes('open'))
     expect(open).toHaveLength(1)
-    expect(open[0].dataset.uid).toBe(toUid('contig', contigId))
+    // A single contig is its assembly's row.
+    expect(open[0].dataset.uid).toBe(toUid('assembly', made.assemblyId))
+  })
+
+  it('draws the contigs of an assembly with several under it', () => {
+    const made = store().addAssembly({
+      name: 'COI',
+      contigs: [
+        { name: 'Contig 1', doc: testContig([testRow('a', 0, 'ATGC')]) },
+        { name: 'Contig 2', doc: testContig([testRow('b', 0, 'GGCC')]) },
+      ],
+    })!
+    renderPanel()
+    expect(rows().map(r => r.dataset.uid)).toEqual([
+      toUid('assembly', made.assemblyId),
+      toUid('contig', made.contigIds[0]),
+      toUid('contig', made.contigIds[1]),
+    ])
+    // It opened on the overview, so the assembly row is the open one.
+    expect(rows().filter(r => r.className.includes('open')).map(r => r.dataset.uid)).toEqual([toUid('assembly', made.assemblyId)])
   })
 
   it('stars an item and pins it to a favorites group', () => {

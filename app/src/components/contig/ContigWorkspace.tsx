@@ -16,7 +16,7 @@ import './ContigWorkspace.css'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   ChevronDown, ChevronLeft, ChevronRight, ClipboardCopy, Columns3, Download, FileOutput, Languages, Layers, Minus,
-  PanelRightClose, PanelRightOpen, Pencil, Plus, Redo2, Search, Table2, Trash2, Undo2, X, Activity, ShieldCheck, Tags,
+  PanelRightClose, PanelRightOpen, Pencil, Plus, Redo2, Search, Table2, Trash2, Undo2, X, Activity, ShieldCheck, Tags, ListTree,
 } from 'lucide-react'
 import { useEditorStore, type Contig, type SequencingRead } from '../../store'
 import { notify } from '../../toast'
@@ -64,6 +64,7 @@ export default function ContigWorkspace({ contig, onClose, onExportPrompt, findR
   const update = useEditorStore(s => s.updateContig)
   const setContigView = useEditorStore(s => s.setContigView)
   const allReads = useEditorStore(s => s.sequencingReads)
+  const assembly = useEditorStore(s => s.assemblies.find(a => a.id === contig.assemblyId) ?? null)
   const canvasRef = useRef<ContigCanvasHandle>(null)
   const onView = useCallback((patch: Partial<ContigView>) => setContigView(contig.id, patch), [setContigView, contig.id])
 
@@ -385,9 +386,15 @@ export default function ContigWorkspace({ contig, onClose, onExportPrompt, findR
     resolveColumn,
   }
 
+  // A single contig is shown as its assembly: one name, renamed together.
+  const single = !assembly || assembly.contigIds.length === 1
   const commitName = () => {
     const name = nameDraft?.trim()
-    if (name && name !== contig.name) useEditorStore.getState().renameContig(contig.id, name)
+    if (name && name !== contig.name) {
+      const store = useEditorStore.getState()
+      if (assembly && single) store.renameAssembly(assembly.id, name)
+      else store.renameContig(contig.id, name)
+    }
     setNameDraft(null)
   }
 
@@ -416,11 +423,18 @@ export default function ContigWorkspace({ contig, onClose, onExportPrompt, findR
     <div className="aw cw">
       <div className="aw-header">
         <Layers size={14} className="aw-header-icon" />
+        {assembly && !single && (
+          <button className="cw-crumb" onClick={() => useEditorStore.getState().setActiveAssembly(assembly.id)}
+            title={`Back to ${assembly.name}: all its contigs and the reads not placed`}>
+            <span className="cw-crumb-name">{assembly.name}</span>
+            <ChevronRight size={12} aria-hidden />
+          </button>
+        )}
         <input
           className="aw-title-input"
           value={nameDraft ?? contig.name}
-          aria-label="Contig name"
-          title="Rename the contig"
+          aria-label={single ? 'Assembly name' : 'Contig name'}
+          title={single ? 'Rename the assembly' : 'Rename the contig'}
           onChange={e => setNameDraft(e.target.value)}
           onBlur={commitName}
           onKeyDown={e => {
@@ -440,6 +454,15 @@ export default function ContigWorkspace({ contig, onClose, onExportPrompt, findR
           title={editing ? 'Stop editing' : 'Edit bases in the contig: type a base, - or Delete for a gap, Space to insert a gap column'}>
           <Pencil size={13} /> {editing ? 'Editing' : 'Edit'}
         </button>
+        {assembly && (
+          <button className="aw-btn" onClick={() => useEditorStore.getState().setActiveAssembly(assembly.id)}
+            title={assembly.unplaced.length
+              ? `The assembly: its contigs, how it was made, and ${assembly.unplaced.length} ${assembly.unplaced.length === 1 ? 'read' : 'reads'} not placed`
+              : 'The assembly: its contigs, how it was made, and Run again'}>
+            <ListTree size={13} /> Overview
+            {assembly.unplaced.length > 0 && <span className="cw-count" aria-label={`${assembly.unplaced.length} not placed`}>{assembly.unplaced.length}</span>}
+          </button>
+        )}
         {doc.reference && (
           <button className={`aw-btn ${verifyOpen ? 'active' : ''}`} onClick={() => setVerifyOpen(true)} title="Check the construct: coverage of every feature and every difference from the design">
             <ShieldCheck size={13} /> Verify clone

@@ -27,3 +27,23 @@ export function countSelectable(selected: Iterable<string>): number {
   for (const uid of selected) if (parseUid(uid)) n++
   return n
 }
+
+/**
+ * The selection grouped for export. An assembly stands for its contigs: the
+ * export dialog writes contigs, and an assembly's data is its contigs.
+ */
+export function exportSelection(
+  selected: Iterable<string>,
+  contigIdsOf: (assemblyId: string) => readonly string[],
+): Partial<Record<ItemKind, string[]>> {
+  const grouped = groupSelection(selected)
+  if (grouped.assembly) {
+    const contigs = new Set(grouped.contig ?? [])
+    for (const id of grouped.assembly) for (const c of contigIdsOf(id)) contigs.add(c)
+    delete grouped.assembly
+    grouped.contig = [...contigs]
+  }
+  // Read sets are exported from their own page, as FASTQ.gz.
+  delete grouped.readset
+  return grouped
+}

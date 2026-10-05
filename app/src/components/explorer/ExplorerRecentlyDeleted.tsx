@@ -21,7 +21,9 @@ function describe(entry: DeletedItem): { name: string; kind: ItemKind } {
   switch (entry.kind) {
     case 'sequence': return { name: entry.tab.doc.name, kind: 'sequence' }
     case 'read': return { name: entry.read.data.name, kind: 'read' }
+    case 'readset': return { name: entry.readSet.name, kind: 'readset' }
     case 'alignment': return { name: entry.alignment.name, kind: 'alignment' }
+    case 'assembly': return { name: entry.assembly.name, kind: 'assembly' }
     case 'contig': return { name: entry.contig.name, kind: 'contig' }
     case 'oligo': return { name: entry.oligo.name, kind: 'oligo' }
     case 'gel': return { name: entry.gel.name, kind: 'gel' }

@@ -18,6 +18,11 @@ export interface ToolRun {
   files: Record<string, string>
   /** Files to read back afterwards. Missing ones come back as null. */
   outputs: string[]
+  /**
+   * The data package some builds preload (fastp ships its test files in
+   * one), handed over instead of letting the glue fetch it with XHR.
+   */
+  dataPackage?: ArrayBuffer
 }
 
 export interface ToolResult {
@@ -83,6 +88,9 @@ export async function runTool(
     // No interactive input: tools that would prompt read end-of-file.
     stdin: () => null,
     locateFile: (p: string) => p,
+    // Copied into a fresh ArrayBuffer: the glue checks instanceof, which fails
+    // for a buffer made in another realm (a test environment, a transfer).
+    ...(run.dataPackage ? { getPreloadedPackage: () => copyBuffer(run.dataPackage!) } : {}),
   })
   for (const [path, content] of Object.entries(run.files)) mod.FS.writeFile(path, content)
   try {
@@ -103,4 +111,10 @@ export async function runTool(
     try { files[path] = mod.FS.readFile(path, { encoding: 'utf8' }) } catch { files[path] = null }
   }
   return { exitCode, stdout: stdout.join('\n'), stderr: stderr.join('\n'), files }
+}
+
+function copyBuffer(src: ArrayBuffer): ArrayBuffer {
+  const out = new ArrayBuffer(src.byteLength)
+  new Uint8Array(out).set(new Uint8Array(src))
+  return out
 }

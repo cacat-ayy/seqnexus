@@ -10,7 +10,7 @@
 import { memo } from 'react'
 import { Star, Pencil, X } from 'lucide-react'
 import type { ItemKind } from '../../explorer/types'
-import { KIND_GROUP_LABEL, KIND_ORDER } from '../../explorer/kinds'
+import { KIND_GROUP_LABEL, KIND_ORDER, PART_KINDS } from '../../explorer/kinds'
 import { filterCount, toggleIn, type ExplorerFilters } from '../../explorer/filters'
 
 interface Props {
@@ -29,7 +29,7 @@ function ExplorerFilterBar({ filters, onChange, availableKinds, allTags, tagColo
   return (
     <div className="ex-filters">
       <div className="ex-filter-row">
-        {KIND_ORDER.filter(k => availableKinds.has(k)).map(kind => (
+        {KIND_ORDER.filter(k => availableKinds.has(k) && !PART_KINDS.has(k)).map(kind => (
           <button
             key={kind}
             className={`ex-chip ${filters.kinds.has(kind) ? 'on' : ''}`}

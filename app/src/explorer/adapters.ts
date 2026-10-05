@@ -10,7 +10,7 @@ import { Lock, TriangleAlert, Globe, FlaskConical, Wand2, Activity, TestTube, Li
 import type { LibraryOligo } from '../primers/oligo'
 import { oligoTm } from '../primers/display'
 import type {
-  DocumentTab, SequencingRead, SavedAlignment, Contig, GelDoc, CloneDoc,
+  DocumentTab, SequencingRead, ReadSet, SavedAlignment, Assembly, Contig, GelDoc, CloneDoc,
 } from '../store'
 import type { DocumentOrigin } from '../models/Document'
 import type { ExplorerItem, ItemBadge, ItemKind } from './types'
@@ -20,6 +20,8 @@ import { readQc } from '../sanger/qc'
 import { METHOD_LABEL, partMatchesSource } from '../cloning/design'
 import { originLabel } from '../msa/model'
 import { summarize } from '../msa/stats'
+import { readSetQc } from '../ngs/qc'
+import { readCountLabel, readShape, technologyLabel } from '../ngs/format'
 
 /**
  * What the centre panel is actually showing.
@@ -189,6 +191,39 @@ export function readToItem(read: SequencingRead, ctx: AdapterContext): ExplorerI
   }
 }
 
+/** A read set: reads (or pairs), their shape, the technology, and its QC verdict. */
+export function readSetToItem(rs: ReadSet, ctx: AdapterContext): ExplorerItem {
+  const badges: ItemBadge[] = []
+  const qc = readSetQc(rs.stats, rs.technology)
+  if (qc.verdict !== 'good') {
+    badges.push({
+      key: qc.verdict === 'fail' ? 'qc-fail' : 'qc-check',
+      label: `${qc.verdict === 'fail' ? 'Failed QC' : 'Check QC'}: ${qc.issues[0]}`,
+      icon: TriangleAlert,
+      tone: qc.verdict === 'fail' ? 'danger' : 'warn',
+    })
+  }
+  if (rs.origin) badges.push({ key: 'origin', label: `Trimmed from ${rs.origin.fromName}`, icon: Scissors, tone: 'neutral' })
+  return {
+    uid: toUid('readset', rs.id),
+    kind: 'readset',
+    id: rs.id,
+    name: rs.name,
+    createdAt: rs.createdAt,
+    modifiedAt: rs.modifiedAt,
+    size: rs.stats.bases,
+    isOpen: isOpen(ctx, 'readset', rs.id),
+    isIncluded: false,
+    isDirty: false,
+    isReadOnly: false,
+    isCircular: false,
+    canDuplicate: false,
+    stats: [readCountLabel(rs), readShape(rs), technologyLabel(rs)],
+    badges,
+    derivedFrom: [],
+  }
+}
+
 export function alignmentToItem(align: SavedAlignment, ctx: AdapterContext): ExplorerItem {
   const summary = summarize(align.doc)
   const stats = [formatCount(summary.rows, 'sequence')]
@@ -213,13 +248,9 @@ export function alignmentToItem(align: SavedAlignment, ctx: AdapterContext): Exp
   }
 }
 
+/** A contig of an assembly with several, drawn under it. */
 export function contigToItem(contig: Contig, ctx: AdapterContext): ExplorerItem {
   const { doc } = contig
-  const stats = [formatCount(doc.rows.length, 'read')]
-  if (doc.reference) stats.push(`vs ${doc.reference.name}`)
-  else stats.push('de novo')
-  stats.push(formatBases(doc.width))
-
   return {
     uid: toUid('contig', contig.id),
     kind: 'contig',
@@ -234,11 +265,69 @@ export function contigToItem(contig: Contig, ctx: AdapterContext): ExplorerItem 
     isReadOnly: false,
     isCircular: false,
     canDuplicate: false,
-    stats,
+    stats: [formatCount(doc.rows.length, 'read'), formatBases(doc.width)],
     badges: [],
+    derivedFrom: [],
+    parentUid: toUid('assembly', contig.assemblyId),
+  }
+}
+
+/**
+ * An assembly as one row. With a single contig the row is that contig: it
+ * opens it, and reads as open while it is. With several, the contigs are
+ * drawn under it and the row opens the assembly's overview.
+ */
+export function assemblyToItem(assembly: Assembly, contigs: readonly Contig[], ctx: AdapterContext): ExplorerItem {
+  const single = contigs.length === 1 ? contigs[0] : null
+  const ngs = assembly.ngs
+  if (ngs && contigs.length === 0) {
+    const r = ngs.report
+    return {
+      uid: toUid('assembly', assembly.id), kind: 'assembly', id: assembly.id, name: assembly.name,
+      createdAt: assembly.createdAt, modifiedAt: assembly.modifiedAt, size: r.reads,
+      isOpen: isOpen(ctx, 'assembly', assembly.id), isIncluded: false, isDirty: false, isReadOnly: false,
+      isCircular: false, canDuplicate: false,
+      stats: [`${r.reads ? Math.round((r.mapped / r.reads) * 100) : 0}% mapped`, `vs ${r.references.map(x => x.name).join(', ')}`, ngs.readSetName],
+      badges: [],
+      derivedFrom: [toUid('readset', ngs.readSetId), ...r.references.flatMap(x => (x.tabId ? [toUid('sequence', x.tabId)] : []))],
+    }
+  }
+  const reads = contigs.reduce((n, c) => n + c.doc.rows.length, 0)
+  const width = contigs.reduce((n, c) => n + c.doc.width, 0)
+  const stats = single ? [formatCount(reads, 'read')] : [formatCount(contigs.length, 'contig'), formatCount(reads, 'read')]
+  const ref = assembly.inputs.reference
+  stats.push(assembly.method === 'reference' && ref ? `vs ${ref.name}` : 'de novo')
+  if (single) stats.push(formatBases(width))
+  const badges: ItemBadge[] = []
+  const left = assembly.unplaced.length
+  if (left > 0) {
+    badges.push({
+      key: 'unplaced',
+      label: `${formatCount(left, 'read')} not placed in any contig`,
+      icon: TriangleAlert,
+      tone: 'warn',
+    })
+  }
+  const modified = contigs.reduce((m, c) => Math.max(m, c.modifiedAt), assembly.modifiedAt)
+  return {
+    uid: toUid('assembly', assembly.id),
+    kind: 'assembly',
+    id: assembly.id,
+    name: assembly.name,
+    createdAt: assembly.createdAt,
+    modifiedAt: modified,
+    size: reads,
+    isOpen: isOpen(ctx, 'assembly', assembly.id) || (!!single && isOpen(ctx, 'contig', single.id)),
+    isIncluded: false,
+    isDirty: !!single && single.undoStack.length > 0,
+    isReadOnly: false,
+    isCircular: false,
+    canDuplicate: false,
+    stats,
+    badges,
     derivedFrom: [
-      ...(doc.reference?.tabId ? [toUid('sequence', doc.reference.tabId)] : []),
-      ...doc.rows.filter(r => r.readId).map(r => toUid('read', r.readId!)),
+      ...(ref?.tabId ? [toUid('sequence', ref.tabId)] : []),
+      ...assembly.inputs.readIds.map(id => toUid('read', id)),
     ],
   }
 }

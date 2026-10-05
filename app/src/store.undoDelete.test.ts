@@ -36,8 +36,8 @@ describe('undoing a delete', () => {
     for (const t of store().tabs) store().closeTab(t.id)
     useEditorStore.setState({
       recentlyDeleted: [], sequencingReads: [], activeSequencingReadIds: [],
-      alignments: [], contigs: [],
-      activeAlignmentId: null, activeContigId: null,
+      alignments: [], contigs: [], assemblies: [],
+      activeAlignmentId: null, activeContigId: null, activeAssemblyId: null,
     })
   })
 
@@ -63,14 +63,92 @@ describe('undoing a delete', () => {
     expect(store().activeAlignmentId).toBe(id)
   })
 
-  it('restores a contig', () => {
-    const [contigId] = store().addContigs([{ name: 'Assembly', doc: testContig([testRow('a', 0, 'ATGC')]) }])
+  const two = () => store().addAssembly({
+    name: 'COI',
+    contigs: [
+      { name: 'Contig 1', doc: testContig([testRow('a', 0, 'ATGC')]) },
+      { name: 'Contig 2', doc: testContig([testRow('b', 0, 'GGCC')]) },
+    ],
+  })!
 
-    store().removeContig(contigId)
+  it('deleting the last contig deletes its assembly, and undo brings both back', () => {
+    const made = store().addAssembly({ name: 'Assembly', contigs: [{ name: 'x', doc: testContig([testRow('a', 0, 'ATGC')]) }] })!
+    expect(store().contigs[0].name).toBe('Assembly')
+
+    store().removeContig(made.contigIds[0])
+    expect(store().contigs).toHaveLength(0)
+    expect(store().assemblies).toHaveLength(0)
+
+    store().undoDelete()
+    expect(store().contigs.map(c => c.id)).toEqual(made.contigIds)
+    expect(store().assemblies.map(a => a.id)).toEqual([made.assemblyId])
+    expect(store().activeContigId).toBe(made.contigIds[0])
+  })
+
+  it('takes one contig out of an assembly with several and puts it back in its place', () => {
+    const made = two()
+    store().setActiveContig(made.contigIds[0])
+    store().removeContig(made.contigIds[0])
+    expect(store().assemblies[0].contigIds).toEqual([made.contigIds[1]])
+    // The rest of the assembly is shown instead.
+    expect(store().activeContigId).toBe(made.contigIds[1])
+
+    store().undoDelete()
+    expect(store().assemblies[0].contigIds).toEqual(made.contigIds)
+  })
+
+  it('restores a deleted contig as an assembly of its own once its assembly is gone', () => {
+    const made = two()
+    const folderId = store().createFolder('Runs')
+    store().moveItemToFolder(`assembly:${made.assemblyId}`, folderId)
+    store().removeContig(made.contigIds[0])
+    // Deleting a folder with its contents is not kept for undo.
+    store().deleteFolderWithContents(folderId)
+    expect(store().assemblies).toHaveLength(0)
     expect(store().contigs).toHaveLength(0)
 
     store().undoDelete()
-    expect(store().contigs.map(c => c.id)).toEqual([contigId])
+    expect(store().assemblies).toHaveLength(1)
+    const own = store().assemblies[0]
+    expect(own.contigIds).toEqual([made.contigIds[0]])
+    expect(own.id).not.toBe(made.assemblyId)
+    expect(store().contigs.find(c => c.id === made.contigIds[0])!.assemblyId).toBe(own.id)
+  })
+
+  it('opens an assembly with several contigs on its overview', () => {
+    const made = two()
+    expect(store().activeAssemblyId).toBe(made.assemblyId)
+    expect(store().activeContigId).toBeNull()
+  })
+
+  it('moves a contig into an assembly of its own, filed beside the first', () => {
+    const made = two()
+    const folderId = store().createFolder('Runs')
+    store().moveItemToFolder(`contig:${made.contigIds[1]}`, folderId)
+    // Filing a contig files its assembly.
+    expect(store().folders.find(f => f.id === folderId)!.itemUids).toEqual([`assembly:${made.assemblyId}`])
+
+    const id = store().extractContig(made.contigIds[1])!
+    expect(store().assemblies.map(a => a.contigIds)).toEqual([[made.contigIds[0]], [made.contigIds[1]]])
+    expect(store().contigs.find(c => c.id === made.contigIds[1])!.assemblyId).toBe(id)
+    expect(store().folders.find(f => f.id === folderId)!.itemUids).toEqual([`assembly:${made.assemblyId}`, `assembly:${id}`])
+  })
+
+  it('replaces the contigs on a re-run, and the returned undo puts them back', () => {
+    const made = two()
+    const run = { method: 'de-novo' as const, settings: { minIdentity: 0.95, minOverlap: 40, k: 12 }, inputs: { readIds: [], reference: null }, unplaced: [] }
+    const undo = store().replaceAssemblyRun(made.assemblyId, run, [{ name: 'Contig 1', doc: testContig([testRow('a', 0, 'ATGCATGC')]) }])!
+    const after = store().assemblies[0]
+    expect(after.settings?.minIdentity).toBe(0.95)
+    expect(after.contigIds).toHaveLength(1)
+    expect(store().contigs).toHaveLength(1)
+    // One contig now: the assembly opens straight onto it, under the assembly's name.
+    expect(store().activeContigId).toBe(after.contigIds[0])
+    expect(store().contigs[0].name).toBe('COI')
+
+    undo()
+    expect(store().assemblies[0].contigIds).toEqual(made.contigIds)
+    expect(store().contigs.map(c => c.id)).toEqual(made.contigIds)
   })
 
   it('undoes deletes of different kinds in reverse order', () => {

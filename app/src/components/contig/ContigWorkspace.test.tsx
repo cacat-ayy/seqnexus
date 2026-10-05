@@ -15,13 +15,13 @@ function Harness() {
 
 function setup() {
   for (const t of store().tabs) store().closeTab(t.id)
-  useEditorStore.setState({ contigs: [], activeContigId: null, sequencingReads: [], folders: [] })
+  useEditorStore.setState({ contigs: [], assemblies: [], activeContigId: null, activeAssemblyId: null, sequencingReads: [], folders: [] })
   const tabId = store().openDocument('pTest', REF)
   store().addAnnotation({ id: 'cds1', name: 'gfp', type: 'CDS', start: 3, end: 18, strand: 1 })
   // Both reads carry AAA→GAA at reference position 7 (K2E); they cover bases 1–20 only.
   const alt = REF.slice(0, 6) + 'G' + REF.slice(7, 20)
   const doc = testContig([testRow('f', 0, alt), testRow('r', 0, alt, { reversed: true })], REF, 'pTest', tabId)
-  store().addContigs([{ name: 'Clone 1', doc }])
+  store().addAssembly({ name: 'Clone 1', contigs: [{ name: 'Clone 1', doc }] })
   return tabId
 }
 

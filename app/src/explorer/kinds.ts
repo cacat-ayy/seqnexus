@@ -6,14 +6,18 @@
  * now; topology is a pip on top of it and a word in the metadata line.
  */
 
-import { Dna, Activity, AlignLeft, Layers, MoveRight, GalleryVertical, Combine, type LucideIcon } from 'lucide-react'
+import { Dna, Activity, AlignLeft, Layers, MoveRight, GalleryVertical, Combine, Rows3, FileStack, type LucideIcon } from 'lucide-react'
 import type { ItemKind } from './types'
 
 export const KIND_ICON: Record<ItemKind, LucideIcon> = {
   'sequence': Dna,
   'read': Activity,
+  // NGS reads: many short records, stacked.
+  'readset': FileStack,
   'alignment': AlignLeft,
-  'contig': Layers,
+  'assembly': Layers,
+  // One contig of an assembly with several: its reads stacked in rows.
+  'contig': Rows3,
   'gel': GalleryVertical,
   // Parts brought together into one construct.
   'clone': Combine,
@@ -24,7 +28,9 @@ export const KIND_ICON: Record<ItemKind, LucideIcon> = {
 export const KIND_LABEL: Record<ItemKind, string> = {
   'sequence': 'Sequence',
   'read': 'Sequencing read',
+  'readset': 'Read set',
   'alignment': 'Alignment',
+  'assembly': 'Assembly',
   'contig': 'Contig',
   'gel': 'Gel',
   'clone': 'Cloning',
@@ -35,7 +41,9 @@ export const KIND_LABEL: Record<ItemKind, string> = {
 export const KIND_GROUP_LABEL: Record<ItemKind, string> = {
   'sequence': 'Sequences',
   'read': 'Sequencing',
+  'readset': 'Read sets',
   'alignment': 'Alignments',
+  'assembly': 'Assemblies',
   'contig': 'Contigs',
   'gel': 'Gels',
   'clone': 'Cloning',
@@ -43,7 +51,7 @@ export const KIND_GROUP_LABEL: Record<ItemKind, string> = {
 }
 
 export const KIND_ORDER: readonly ItemKind[] = [
-  'sequence', 'read', 'alignment', 'contig', 'gel', 'clone', 'oligo',
+  'sequence', 'read', 'readset', 'alignment', 'assembly', 'contig', 'gel', 'clone', 'oligo',
 ] as const
 
 /**
@@ -58,3 +66,9 @@ export const ALWAYS_SHOWN_KINDS: ReadonlySet<ItemKind> = new Set<ItemKind>(['seq
 
 /** Mean Phred below this marks a read as low quality. */
 export const LOW_QUALITY_THRESHOLD = 20
+
+/**
+ * Kinds that are only ever part of another item (a contig of an assembly).
+ * They are drawn under their parent and get no group or filter of their own.
+ */
+export const PART_KINDS: ReadonlySet<ItemKind> = new Set<ItemKind>(['contig'])

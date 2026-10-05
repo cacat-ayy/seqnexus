@@ -18,7 +18,7 @@ function item(
   }
 }
 
-const empty = { sequence: [], read: [], alignment: [], 'read-alignment': [], contig: [], gel: [], clone: [], oligo: [] }
+const empty = { sequence: [], read: [], readset: [], alignment: [], 'read-alignment': [], assembly: [], contig: [], gel: [], clone: [], oligo: [] }
 
 /** A folder with the fields a test does not care about filled in. */
 function folder(over: Partial<ExplorerFolder> & { id: string }): ExplorerFolder {
@@ -498,5 +498,32 @@ describe('collapsedGroupHolding', () => {
 
   it('has nothing to open in the flat list', () => {
     expect(collapsedGroupHolding(input({ groupBy: 'flat' }), gel.uid)).toBeNull()
+  })
+})
+
+describe('buildNodes: parts drawn under their parent', () => {
+  const asm = item('assembly', 'a1', 'COI assembly')
+  const c1 = item('contig', 'c1', 'Contig 1', { parentUid: asm.uid })
+  const c2 = item('contig', 'c2', 'Contig 2', { parentUid: asm.uid })
+  const byKind = { assembly: [asm], contig: [c2, c1] }
+
+  it('lists the contigs under the assembly, in its order, and gives them no group', () => {
+    const { nodes, itemUids } = build({ byKind })
+    expect(nodes.filter(n => n.type === 'group').map(n => (n.type === 'group' ? n.label : ''))).toEqual(['Sequences', 'Assemblies'])
+    expect(itemUids).toEqual([asm.uid, c2.uid, c1.uid])
+    const depth = nodes.flatMap(n => (n.type === 'item' ? [n.depth] : []))
+    expect(depth).toEqual([1, 2, 2])
+  })
+
+  it('brings the assembly along when only a contig matches, with all its contigs', () => {
+    const { itemUids, matchCount } = build({ byKind, query: 'contig 1' })
+    expect(itemUids).toEqual([asm.uid, c2.uid, c1.uid])
+    expect(matchCount).toBe(1)
+  })
+
+  it('draws the contigs in folder and flat modes too', () => {
+    expect(build({ byKind, groupBy: 'flat' }).itemUids).toEqual([asm.uid, c2.uid, c1.uid])
+    const f = folder({ id: 'f1', itemUids: [asm.uid] })
+    expect(build({ byKind, groupBy: 'folder', folders: [f] }).itemUids).toEqual([asm.uid, c2.uid, c1.uid])
   })
 })

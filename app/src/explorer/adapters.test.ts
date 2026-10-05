@@ -1,12 +1,12 @@
 import { describe, it, expect, beforeEach } from 'vitest'
-import { useEditorStore, type SequencingRead, type SavedAlignment, type Contig } from '../store'
+import { useEditorStore, type SequencingRead, type SavedAlignment, type Assembly, type Contig } from '../store'
 import { testContig, testRow } from '../assembly/testing'
 import { DEFAULT_CONTIG_VIEW } from '../assembly/view'
 import { makeDoc } from '../msa/model'
 import { DEFAULT_VIEW } from '../msa/view'
 import type { Ab1Data } from '../io/ab1'
 import {
-  sequenceToItem, readToItem, alignmentToItem, contigToItem,
+  sequenceToItem, readToItem, alignmentToItem, assemblyToItem, contigToItem,
   type AdapterContext,
 } from './adapters'
 
@@ -147,23 +147,45 @@ describe('alignment adapter', () => {
   })
 })
 
-describe('contig adapter', () => {
-  const make = (over: Partial<Contig> = {}): Contig => ({
-    id: 'contig_1', name: 'Assembly',
+describe('assembly adapters', () => {
+  const contig = (over: Partial<Contig> = {}): Contig => ({
+    id: 'contig_1', assemblyId: 'asm_1', name: 'Assembly',
     doc: testContig([testRow('a', 0, 'ACGT', { readId: 'r1' }), testRow('b', 2, 'GTAC', { readId: 'r2' })], 'ACGTAC', 'pUC19', 'tab_ref'),
     createdAt: 9, modifiedAt: 9, view: DEFAULT_CONTIG_VIEW, undoStack: [], redoStack: [],
     ...over,
   })
+  const assembly = (over: Partial<Assembly> = {}): Assembly => ({
+    id: 'asm_1', name: 'Assembly', createdAt: 9, modifiedAt: 9, contigIds: ['contig_1'],
+    method: 'reference', settings: null, unplaced: [],
+    inputs: { readIds: ['r1', 'r2'], reference: { tabId: 'tab_ref', name: 'pUC19' } },
+    ...over,
+  })
 
-  it('reports read count, reference and width', () => {
-    const item = contigToItem(make(), ctx())
+  it('shows a single contig as the assembly: reads, reference and width', () => {
+    const item = assemblyToItem(assembly(), [contig()], ctx())
+    expect(item.uid).toBe('assembly:asm_1')
     expect(item.stats).toEqual(['2 reads', 'vs pUC19', '6 bp'])
     expect(item.derivedFrom).toEqual(['sequence:tab_ref', 'read:r1', 'read:r2'])
   })
 
-  it('says de novo when there is no reference', () => {
-    const item = contigToItem(make({ doc: testContig([testRow('a', 0, 'ACGT')]) }), ctx())
-    expect(item.stats).toEqual(['1 read', 'de novo', '4 bp'])
-    expect(item.derivedFrom).toEqual([])
+  it('reads as open while its single contig is', () => {
+    const open = { open: { kind: 'contig' as const, id: 'contig_1' } }
+    expect(assemblyToItem(assembly(), [contig()], ctx(open)).isOpen).toBe(true)
+  })
+
+  it('counts contigs when there are several, says de novo, and flags reads left out', () => {
+    const two = [contig(), contig({ id: 'contig_2', doc: testContig([testRow('c', 0, 'ACGT')]) })]
+    const item = assemblyToItem(assembly({
+      method: 'de-novo', contigIds: ['contig_1', 'contig_2'], inputs: { readIds: [], reference: null },
+      unplaced: [{ name: 'r3', readId: 'r3', reason: 'Overlaps no other read' }],
+    }), two, ctx())
+    expect(item.stats).toEqual(['2 contigs', '3 reads', 'de novo'])
+    expect(item.badges.map(b => b.key)).toEqual(['unplaced'])
+  })
+
+  it('draws a contig under its assembly', () => {
+    const item = contigToItem(contig(), ctx())
+    expect(item.parentUid).toBe('assembly:asm_1')
+    expect(item.stats).toEqual(['2 reads', '6 bp'])
   })
 })

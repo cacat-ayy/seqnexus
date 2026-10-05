@@ -43,6 +43,12 @@ function previewBases(item: ExplorerItem): string | null {
       const c = s.contigs.find(x => x.id === item.id)
       return c ? consensusSequence(computeConsensus(c.doc, c.view.consensus)).slice(0, 60) : null
     }
+    case 'assembly': {
+      // The first contig stands for the assembly.
+      const id = s.assemblies.find(a => a.id === item.id)?.contigIds[0]
+      const c = id ? s.contigs.find(x => x.id === id) : undefined
+      return c ? consensusSequence(computeConsensus(c.doc, c.view.consensus)).slice(0, 60) : null
+    }
     default:
       return null
   }

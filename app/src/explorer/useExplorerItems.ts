@@ -7,10 +7,10 @@
  */
 
 import { useMemo } from 'react'
-import { useEditorStore } from '../store'
+import { useEditorStore, type Assembly, type Contig } from '../store'
 import type { ExplorerItem, ItemKind } from './types'
 import {
-  sequenceToItem, readToItem, alignmentToItem, contigToItem, oligoToItem, gelToItem, cloneToItem,
+  sequenceToItem, readToItem, readSetToItem, alignmentToItem, assemblyToItem, contigToItem, oligoToItem, gelToItem, cloneToItem,
   type AdapterContext, type OpenTarget,
 } from './adapters'
 import { findBindingSites } from '../primers/binding'
@@ -28,15 +28,16 @@ export interface ExplorerItems {
 // happen inside each group and the groups do not exist yet at this point.
 
 /**
- * Mirror of App's centre-panel precedence: gel, then contig, then read alignment, then
- * sequencing reads, then alignment, then the open document. Keep in step with
- * the chain in App.tsx if that order ever changes.
+ * Mirror of App's centre-panel precedence: clone, gel, contig, assembly
+ * overview, sequencing reads, alignment, then the open document. Keep in step
+ * with the chain in App.tsx if that order ever changes.
  */
 function resolveOpen(s: {
   gels: { id: string }[]; activeGelId: string | null
   clones: { id: string }[]; activeCloneId: string | null
   contigs: { id: string }[]; activeContigId: string | null
-
+  assemblies: { id: string }[]; activeAssemblyId: string | null
+  readSets: { id: string }[]; activeReadSetId: string | null
   activeSequencingReadIds: string[]
   alignments: { id: string }[]; activeAlignmentId: string | null
   activeTabId: string | null
@@ -49,6 +50,12 @@ function resolveOpen(s: {
   }
   if (s.activeContigId && s.contigs.some(c => c.id === s.activeContigId)) {
     return { kind: 'contig', id: s.activeContigId }
+  }
+  if (s.activeAssemblyId && s.assemblies.some(a => a.id === s.activeAssemblyId)) {
+    return { kind: 'assembly', id: s.activeAssemblyId }
+  }
+  if (s.activeReadSetId && s.readSets.some(r => r.id === s.activeReadSetId)) {
+    return { kind: 'readset', id: s.activeReadSetId }
   }
   if (s.activeSequencingReadIds.length > 0) {
     return { kind: 'read', id: s.activeSequencingReadIds[0] }
@@ -68,6 +75,10 @@ export function useExplorerItems(): ExplorerItems {
   const activeAlignmentId = useEditorStore(s => s.activeAlignmentId)
   const contigs = useEditorStore(s => s.contigs)
   const activeContigId = useEditorStore(s => s.activeContigId)
+  const assemblies = useEditorStore(s => s.assemblies)
+  const activeAssemblyId = useEditorStore(s => s.activeAssemblyId)
+  const readSets = useEditorStore(s => s.readSets)
+  const activeReadSetId = useEditorStore(s => s.activeReadSetId)
   const oligos = useEditorStore(s => s.oligos)
   const gels = useEditorStore(s => s.gels)
   const activeGelId = useEditorStore(s => s.activeGelId)
@@ -108,10 +119,15 @@ export function useExplorerItems(): ExplorerItems {
       gels, activeGelId,
       clones, activeCloneId,
       contigs, activeContigId,
+      assemblies, activeAssemblyId,
+      readSets, activeReadSetId,
       activeSequencingReadIds,
       alignments, activeAlignmentId,
       activeTabId,
     })
+
+    const contigById = new Map(contigs.map(c => [c.id, c]))
+    const contigsOf = (a: Assembly) => a.contigIds.map(id => contigById.get(id)).filter((c): c is Contig => !!c)
 
     const ctx: AdapterContext = {
       open,
@@ -125,23 +141,26 @@ export function useExplorerItems(): ExplorerItems {
     const byKind: Record<ItemKind, ExplorerItem[]> = {
       'sequence': tabs.map(t => sequenceToItem(t, ctx)),
       'read': sequencingReads.map(r => readToItem(r, ctx)),
+      'readset': readSets.map(r => readSetToItem(r, ctx)),
       'alignment': alignments.map(a => alignmentToItem(a, ctx)),
-      'contig': contigs.map(c => contigToItem(c, ctx)),
+      'assembly': assemblies.map(a => assemblyToItem(a, contigsOf(a), ctx)),
+      // Only an assembly with several shows its contigs as rows.
+      'contig': assemblies.flatMap(a => a.contigIds.length > 1 ? contigsOf(a).map(c => contigToItem(c, ctx)) : []),
       'gel': gels.map(g => gelToItem(g, ctx)),
       'clone': clones.map(c => cloneToItem(c, ctx)),
       'oligo': oligos.map(o => oligoToItem(o, ctx)),
     }
 
     const items = [
-      ...byKind['sequence'], ...byKind['read'], ...byKind['alignment'],
-      ...byKind['contig'], ...byKind['gel'], ...byKind['clone'], ...byKind['oligo'],
+      ...byKind['sequence'], ...byKind['read'], ...byKind['readset'], ...byKind['alignment'],
+      ...byKind['assembly'], ...byKind['contig'], ...byKind['gel'], ...byKind['clone'], ...byKind['oligo'],
     ]
 
     return { items, byKind, byUid: new Map(items.map(i => [i.uid, i])), open }
   }, [
     tabs, activeTabId, sequencingReads, activeSequencingReadIds,
     alignments, activeAlignmentId,
-    contigs, activeContigId, gels, activeGelId, clones, activeCloneId, oligos, oligosBindingOpen,
+    contigs, activeContigId, assemblies, activeAssemblyId, readSets, activeReadSetId, gels, activeGelId, clones, activeCloneId, oligos, oligosBindingOpen,
     tabSequenceById,
   ])
 }

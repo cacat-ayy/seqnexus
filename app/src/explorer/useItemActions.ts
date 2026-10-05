@@ -35,7 +35,9 @@ export function useItemActions(): ItemActions {
     switch (item.kind) {
       case 'sequence': return s.setActiveTab(item.id)
       case 'read': return s.setActiveSequencingRead(item.id)
+      case 'readset': return s.setActiveReadSet(item.id)
       case 'alignment': return s.setActiveAlignment(item.id)
+      case 'assembly': return s.openAssembly(item.id)
       case 'contig': return s.setActiveContig(item.id)
       case 'gel': return s.setActiveGel(item.id)
       case 'clone': return s.setActiveClone(item.id)
@@ -55,7 +57,9 @@ export function useItemActions(): ItemActions {
     switch (item.kind) {
       case 'sequence': return s.renameTab(item.id, trimmed)
       case 'read': return s.renameSequencingRead(item.id, trimmed)
+      case 'readset': return s.renameReadSet(item.id, trimmed)
       case 'alignment': return s.renameAlignment(item.id, trimmed)
+      case 'assembly': return s.renameAssembly(item.id, trimmed)
       case 'contig': return s.renameContig(item.id, trimmed)
       case 'gel': return s.renameGel(item.id, trimmed)
       case 'clone': return s.renameClone(item.id, trimmed)
@@ -68,7 +72,9 @@ export function useItemActions(): ItemActions {
     switch (item.kind) {
       case 'sequence': return s.closeTab(item.id)
       case 'read': return s.removeSequencingRead(item.id)
+      case 'readset': return s.removeReadSet(item.id)
       case 'alignment': return s.removeAlignment(item.id)
+      case 'assembly': return s.removeAssembly(item.id)
       case 'contig': return s.removeContig(item.id)
       case 'gel': return s.removeGel(item.id)
       case 'clone': return s.removeClone(item.id)

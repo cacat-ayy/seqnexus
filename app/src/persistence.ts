@@ -6,13 +6,14 @@
  * search parameters) is stored in localStorage.
  */
 
-import { useEditorStore, type ExplorerFolder, type ViewMode, type BaseEdit, type SavedAlignment, type Contig, type GelDoc, type CloneDoc } from './store'
+import { useEditorStore, type ExplorerFolder, type ViewMode, type BaseEdit, type SavedAlignment, type Assembly, type Contig, type GelDoc, type CloneDoc } from './store'
 import { sanitizeWorkspace, type GelWorkspaceState } from './gel/workspace'
 import { sanitizeDesign, type CloningDesign } from './cloning/design'
 import type { Ab1Data } from './io/ab1'
 import type { AlignmentResult } from './alignment/types'
 import type { ContigDoc } from './assembly/types'
 import { sanitizeContigView } from './assembly/view'
+import { linkAssemblies, sanitizeAssembly, type AssemblyRecord } from './assembly/container'
 import { sanitizeDoc, type AlnDoc } from './msa/model'
 import { sanitizeView } from './msa/view'
 import { toUid, parseUid, type ItemMeta } from './explorer/types'
@@ -40,8 +41,12 @@ import {
   loadUndoHistory,
   deleteUndoHistory,
   getAllStoredUndoIds,
+  getStoredReadSetIds,
+  deleteReadChunks,
   clearAll as idbClearAll,
 } from './storage/idb'
+import { sanitizeReadSet } from './ngs/record'
+import type { ReadSetRecord } from './ngs/types'
 import { notify } from './toast'
 
 const STORAGE_KEY = 'seqnexus_session'
@@ -139,6 +144,8 @@ interface SerializedContig {
   createdAt: number
   modifiedAt?: number
   view?: unknown
+  /** The assembly that lists it. Absent in sessions from before assemblies. */
+  assemblyId?: string
   /** Written before the assembly rebuild. */
   readAlignmentIds?: string[]
 }
@@ -234,6 +241,15 @@ interface SerializedSessionV2 {
   /** Written before the assembly rebuild; read only to report it. */
   readAlignments?: { id: string }[]
   contigs?: SerializedContig[]
+  /** Assemblies, each listing its contigs. Absent before assemblies: each contig is then wrapped in one. */
+  assemblies?: AssemblyRecord[]
+  activeAssemblyId?: string | null
+  /**
+   * NGS read sets: their descriptions. The reads are in IndexedDB, and stay
+   * out of session files (which hold the reads of nothing this large).
+   */
+  readSets?: ReadSetRecord[]
+  activeReadSetId?: string | null
   /** The primer library. Plain data; optional so older sessions still load. */
   oligos?: LibraryOligo[]
   /** Virtual gels. Optional so older sessions still load. */
@@ -305,6 +321,8 @@ function liveItemMeta(state: ReturnType<typeof useEditorStore.getState>): Record
     ...state.sequencingReads.map(r => toUid('read', r.id)),
     ...state.alignments.map(a => toUid('alignment', a.id)),
     ...state.contigs.map(c => toUid('contig', c.id)),
+    ...state.assemblies.map(a => toUid('assembly', a.id)),
+    ...state.readSets.map(r => toUid('readset', r.id)),
     ...state.oligos.map(o => toUid('oligo', o.id)),
     ...state.gels.map(g => toUid('gel', g.id)),
     ...state.clones.map(c => toUid('clone', c.id)),
@@ -393,6 +411,7 @@ function buildSessionData(theme: string): {
     createdAt: c.createdAt,
     modifiedAt: c.modifiedAt,
     view: c.view,
+    assemblyId: c.assemblyId,
   }))
   const contigData = state.contigs.map(c => ({ alignId: c.id, data: c.doc }))
 
@@ -409,8 +428,12 @@ function buildSessionData(theme: string): {
       activeSequencingReadIds: state.activeSequencingReadIds,
       activeAlignmentId: state.activeAlignmentId,
       activeContigId: state.activeContigId,
+      activeAssemblyId: state.activeAssemblyId,
       alignments: serializedAlignments,
       contigs: serializedContigs.length > 0 ? serializedContigs : undefined,
+      assemblies: state.assemblies.length > 0 ? state.assemblies : undefined,
+      readSets: state.readSets.length > 0 ? state.readSets : undefined,
+      activeReadSetId: state.activeReadSetId,
       oligos: state.oligos.length > 0 ? state.oligos : undefined,
       gels: serializeGels(state.gels),
       clones: serializeClones(state.clones),
@@ -451,8 +474,10 @@ interface Unrestored {
   reads: SerializedSeqRead[]
   alignments: SerializedAlignment[]
   contigs: SerializedContig[]
+  /** The assemblies of unrestored contigs, so the contigs find them again. */
+  assemblies: AssemblyRecord[]
 }
-const noneUnrestored = (): Unrestored => ({ tabs: [], reads: [], alignments: [], contigs: [] })
+const noneUnrestored = (): Unrestored => ({ tabs: [], reads: [], alignments: [], contigs: [], assemblies: [] })
 let unrestored = noneUnrestored()
 
 /**
@@ -472,6 +497,7 @@ function carryUnrestored(meta: SerializedSessionV2): void {
   meta.sequencingReads = keep(meta.sequencingReads, unrestored.reads)
   meta.alignments = keep(meta.alignments, unrestored.alignments)
   if (unrestored.contigs.length > 0) meta.contigs = keep(meta.contigs, unrestored.contigs)
+  if (unrestored.assemblies.length > 0) meta.assemblies = keep(meta.assemblies, unrestored.assemblies)
 }
 
 /**
@@ -496,7 +522,7 @@ function cleanupKeeps(): Set<string> | null {
   if (!parked) return ids
   try {
     const data = JSON.parse((JSON.parse(parked) as { raw: string }).raw) as Partial<SerializedSessionV2>
-    const lists: unknown[] = [data.tabs, data.sequencingReads, data.alignments, data.contigs]
+    const lists: unknown[] = [data.tabs, data.sequencingReads, data.alignments, data.contigs, data.readSets]
     for (const list of lists) {
       if (!Array.isArray(list)) continue
       for (const x of list) {
@@ -593,7 +619,7 @@ export function savedStateChanged(state: EditorState, prev: EditorState): boolea
   const keys: (keyof EditorState)[] = [
     'activeTabId', 'folders', 'itemMeta', 'tagColors', 'sequencingReads', 'activeSequencingReadIds',
     'alignments', 'contigs', 'oligos', 'gels', 'activeGelId', 'activeAlignmentId', 'activeContigId',
-    'clones', 'activeCloneId',
+    'clones', 'activeCloneId', 'assemblies', 'activeAssemblyId', 'readSets', 'activeReadSetId',
     'orfMinCodons', 'orfStartCodons', 'orfAllowInterior',
     'enzymeSubset', 'enzymeSearchQuery', 'enzymeFilterByCount', 'enzymeMinCuts', 'enzymeMaxCuts',
   ]
@@ -763,6 +789,11 @@ export interface RestoredSession {
   activeSequencingReadIds: string[]
   alignments: SavedAlignment[]
   contigs: Contig[]
+  assemblies: Assembly[]
+  activeAssemblyId?: string | null
+  /** Always empty from a session file: read sets stay in the browser. */
+  readSets: ReadSetRecord[]
+  activeReadSetId?: string | null
   oligos: LibraryOligo[]
   gels: GelDoc[]
   clones: CloneDoc[]
@@ -1027,9 +1058,10 @@ async function loadV2(data: SerializedSessionV2): Promise<RestoredSession | null
         if (c) contigs.push(c)
       }
     } catch {
-      // Keep them for the next load (see `unrestored`).
+      // Keep them for the next load (see `unrestored`), with their assemblies.
       contigs.length = 0
       unrestored.contigs = savedContigs
+      unrestored.assemblies = (data.assemblies ?? []).map(sanitizeAssembly).filter((a): a is AssemblyRecord => a !== null)
       const n = savedContigs.length
       loadWarnings.push(`${n} ${n === 1 ? 'contig' : 'contigs'} could not be read from storage. ${n === 1 ? 'It has' : 'They have'} been kept and will be tried again when SeqNexus is next opened.`)
     }
@@ -1052,17 +1084,40 @@ async function loadV2(data: SerializedSessionV2): Promise<RestoredSession | null
     // best-effort cleanup
   }
 
+  // Read sets: descriptions from the index; their reads stay in IndexedDB.
+  // Reads of no listed read set (deleted ones past undo, cancelled imports)
+  // are removed here, and only here: at save time, an import in progress or
+  // a read set in the Recently deleted buffer would look the same.
+  const readSets = (data.readSets ?? []).map(sanitizeReadSet).filter((r): r is ReadSetRecord => r !== null)
+  try {
+    const keeps = cleanupKeeps()
+    if (keeps) {
+      // NGS mappings store their alignments and coverage beside the reads.
+      const mappings = (data.assemblies ?? []).flatMap(a => (a?.ngs?.storageId ? [`${a.ngs.storageId}-aln`, `${a.ngs.storageId}-cov`] : []))
+      const listed = new Set([...readSets.map(r => r.id), ...mappings, ...keeps])
+      const stray = (await getStoredReadSetIds()).filter(id => !listed.has(id))
+      if (stray.length > 0) await deleteReadChunks(stray)
+    }
+  } catch {
+    // best-effort cleanup
+  }
+
+  const linked = linkStoredAssemblies(data.assemblies, contigs, migrateFolders(data.folders), data.itemMeta ?? {})
   return {
+    readSets,
+    activeReadSetId: data.activeReadSetId ?? null,
     tabs,
     activeTabId: data.activeTabId,
-    folders: migrateFolders(data.folders),
-    itemMeta: data.itemMeta ?? {},
+    folders: linked.folders,
+    itemMeta: linked.itemMeta,
     tagColors: data.tagColors ?? {},
     theme: data.theme ?? 'light',
     sequencingReads: seqReads,
     activeSequencingReadIds: data.activeSequencingReadIds ?? [],
     alignments,
-    contigs,
+    contigs: linked.contigs,
+    assemblies: linked.assemblies,
+    activeAssemblyId: data.activeAssemblyId ?? null,
     oligos: data.oligos ?? [],
     gels: deserializeGels(data.gels),
     clones: deserializeClones(data.clones),
@@ -1075,12 +1130,39 @@ async function loadV2(data: SerializedSessionV2): Promise<RestoredSession | null
   }
 }
 
+/**
+ * Pair the stored assemblies with the contigs that loaded. A contig saved
+ * before assemblies existed gets an assembly of its own, and its folder,
+ * star and note move from the contig to that assembly.
+ */
+function linkStoredAssemblies(
+  raw: unknown,
+  contigs: Contig[],
+  folders: ExplorerFolder[],
+  itemMeta: Record<string, ItemMeta>,
+): { assemblies: Assembly[]; contigs: Contig[]; folders: ExplorerFolder[]; itemMeta: Record<string, ItemMeta> } {
+  const stored = Array.isArray(raw) ? raw.map(sanitizeAssembly).filter((a): a is AssemblyRecord => a !== null) : []
+  const linked = linkAssemblies(stored, contigs, newId)
+  if (linked.wrapped.size === 0) return { assemblies: linked.assemblies, contigs: linked.contigs, folders, itemMeta }
+  const move = (uid: string) => linked.wrapped.get(uid) ?? uid
+  const meta: Record<string, ItemMeta> = {}
+  for (const [uid, m] of Object.entries(itemMeta)) meta[move(uid)] = m
+  return {
+    assemblies: linked.assemblies,
+    contigs: linked.contigs,
+    folders: folders.map(f => ({ ...f, itemUids: f.itemUids.map(move) })),
+    itemMeta: meta,
+  }
+}
+
 /** A saved contig, or null when its document is missing or from before the assembly rebuild. */
 function restoreContig(sc: SerializedContig, raw: unknown): Contig | null {
   const doc = raw as ContigDoc | undefined
   if (!doc || typeof doc !== 'object' || typeof doc.width !== 'number' || !Array.isArray(doc.rows) || !('method' in doc)) return null
   return {
     id: sc.id,
+    // Checked against the assemblies by linkStoredAssemblies.
+    assemblyId: sc.assemblyId ?? '',
     name: sc.name,
     doc,
     createdAt: sc.createdAt,
@@ -1197,7 +1279,13 @@ export function exportSessionToJson(theme: string, opts: SessionExportOptions): 
   if (!opts.includeContigs) {
     meta.contigs = undefined
     meta.activeContigId = null
+    meta.assemblies = undefined
+    meta.activeAssemblyId = null
   }
+  // Read sets never go in a session file: their reads would make it huge.
+  // They stay in this browser and are exported as FASTQ instead.
+  meta.readSets = undefined
+  meta.activeReadSetId = null
 
   const alignIds = new Set((meta.alignments ?? []).map(a => a.id))
   const contigIds = new Set((meta.contigs ?? []).map(c => c.id))
@@ -1210,6 +1298,7 @@ export function exportSessionToJson(theme: string, opts: SessionExportOptions): 
       ...(meta.sequencingReads ?? []).map(r => toUid('read', r.id)),
       ...[...alignIds].map(id => toUid('alignment', id)),
       ...(meta.contigs ?? []).map(c => toUid('contig', c.id)),
+      ...(meta.assemblies ?? []).map(a => toUid('assembly', a.id)),
       ...(meta.oligos ?? []).map(o => toUid('oligo', o.id)),
       ...(meta.gels ?? []).map(g => toUid('gel', g.id)),
       ...(meta.clones ?? []).map(c => toUid('clone', c.id)),
@@ -1354,18 +1443,22 @@ export function importSessionFromJson(json: string): RestoredSession {
     const c = restoreContig(sc, alignMap.get(sc.id))
     if (c) contigs.push(c)
   }
+  const linked = linkStoredAssemblies(data.assemblies, contigs, migrateFolders(data.folders), data.itemMeta ?? {})
 
   return {
+    readSets: [],
     tabs,
     activeTabId: data.activeTabId,
-    folders: migrateFolders(data.folders),
-    itemMeta: data.itemMeta ?? {},
+    folders: linked.folders,
+    itemMeta: linked.itemMeta,
     tagColors: data.tagColors ?? {},
     theme: data.theme ?? 'light',
     sequencingReads: seqReads,
     activeSequencingReadIds: data.activeSequencingReadIds ?? [],
     alignments,
-    contigs,
+    contigs: linked.contigs,
+    assemblies: linked.assemblies,
+    activeAssemblyId: data.activeAssemblyId ?? null,
     oligos: data.oligos ?? [],
     gels: deserializeGels(data.gels),
     clones: deserializeClones(data.clones),
@@ -1415,6 +1508,8 @@ export function remapSessionIds(session: RestoredSession): RestoredSession {
   for (const c of session.contigs) {
     contigIdMap.set(c.id, newId())
   }
+  const assemblyIdMap = new Map<string, string>()
+  for (const a of session.assemblies) assemblyIdMap.set(a.id, newId())
   const gelIdMap = new Map<string, string>()
   for (const g of session.gels) gelIdMap.set(g.id, newId())
   const cloneIdMap = new Map<string, string>()
@@ -1431,6 +1526,9 @@ export function remapSessionIds(session: RestoredSession): RestoredSession {
     'read': readIdMap,
     'alignment': alignIdMap,
     'contig': contigIdMap,
+    'assembly': assemblyIdMap,
+    // Read sets are never in a session file, so there is nothing to map.
+    'readset': new Map<string, string>(),
     'gel': gelIdMap,
     'clone': cloneIdMap,
     'oligo': oligoIdMap,
@@ -1489,9 +1587,24 @@ export function remapSessionIds(session: RestoredSession): RestoredSession {
       id: alignIdMap.get(a.id) || a.id,
     })),
     oligos: session.oligos.map(o => ({ ...o, id: oligoIdMap.get(o.id) || o.id })),
+    assemblies: session.assemblies.map(a => ({
+      ...a,
+      id: assemblyIdMap.get(a.id) || a.id,
+      contigIds: a.contigIds.map(id => contigIdMap.get(id) || id),
+      inputs: {
+        readIds: a.inputs.readIds.flatMap(id => (readIdMap.has(id) ? [readIdMap.get(id)!] : [])),
+        reference: a.inputs.reference
+          ? { ...a.inputs.reference, tabId: a.inputs.reference.tabId ? (tabIdMap.get(a.inputs.reference.tabId) ?? null) : null }
+          : null,
+      },
+      unplaced: a.unplaced.map(u => ({ ...u, readId: u.readId ? (readIdMap.get(u.readId) ?? null) : null })),
+    })),
+    activeAssemblyId: session.activeAssemblyId ? (assemblyIdMap.get(session.activeAssemblyId) ?? null) : null,
+    readSets: [],
     contigs: session.contigs.map(c => ({
       ...c,
       id: contigIdMap.get(c.id) || c.id,
+      assemblyId: assemblyIdMap.get(c.assemblyId) || c.assemblyId,
       doc: {
         ...c.doc,
         reference: c.doc.reference ? { ...c.doc.reference, tabId: c.doc.reference.tabId ? (tabIdMap.get(c.doc.reference.tabId) ?? null) : null } : null,
