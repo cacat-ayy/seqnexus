@@ -96,6 +96,7 @@ const AssembleDialog = lazy(() => import('./components/contig/AssembleDialog'))
 const AssemblyOverview = lazy(() => import('./components/contig/AssemblyOverview'))
 const ReadSetWorkspace = lazy(() => import('./components/ngs/ReadSetWorkspace'))
 const ImportReadsDialog = lazy(() => import('./components/ngs/ImportReadsDialog'))
+const ImportAlignmentsDialog = lazy(() => import('./components/ngs/ImportAlignmentsDialog'))
 
 import type { AlnDoc } from './msa/model'
 import { contigToAlignment } from './assembly/export'
@@ -137,11 +138,11 @@ const THEMES: ThemeInfo[] = [
  */
 const SUPPORTED_FORMATS_HINT =
   'Supported: GenBank (.gb), SnapGene (.dna), Geneious (.geneious), FASTA (.fasta, .fa), '
-  + 'FASTQ (.fastq, .fq), AB1 (.ab1), SCF (.scf), plain text (.txt), and alignments in '
+  + 'FASTQ (.fastq, .fq), AB1 (.ab1), SCF (.scf), plain text (.txt), read alignments (.bam, .sam), and alignments in '
   + 'Clustal (.aln), PHYLIP (.phy), NEXUS (.nex), MEGA (.meg), Stockholm (.sto), PIR (.pir) and MSF (.msf).'
 
 /** Everything the Open dialog offers: sequences, reads and alignments. */
-const OPEN_ACCEPT = ['.gb', '.gbk', '.genbank', '.fasta', '.fa', '.fna', '.faa', '.fastq', '.fq', '.gz', '.seq', '.txt', '.dna', '.geneious', '.ab1', '.abi', '.abif', '.scf', ...ALN_EXTENSIONS].join(',')
+const OPEN_ACCEPT = ['.gb', '.gbk', '.genbank', '.fasta', '.fa', '.fna', '.faa', '.fastq', '.fq', '.gz', '.seq', '.txt', '.dna', '.geneious', '.ab1', '.abi', '.abif', '.scf', '.bam', '.sam', ...ALN_EXTENSIONS].join(',')
 
 /**
  * Whether a text file is an alignment rather than sequences: an alignment-only
@@ -419,6 +420,8 @@ export default function App() {
   const [assembleReadIds, setAssembleReadIds] = useState<string[] | null>(null)
   // NGS read files waiting in the import dialog.
   const [readImportFiles, setReadImportFiles] = useState<File[] | null>(null)
+  /** SAM/BAM files waiting to be imported, one dialog at a time. */
+  const [alignmentImports, setAlignmentImports] = useState<File[]>([])
 
   /** Extract trimmed, edited bases from a sequencing read. */
   const getReadBases = useCallback((read: SequencingRead): string => {
@@ -1009,7 +1012,11 @@ export default function App() {
    * Open several files. Sanger traces are imported together, so a plate
    * lands in one folder with one summary instead of a toast per well.
    */
-  const handleFilesOpen = useCallback((files: File[]) => {
+  const handleFilesOpen = useCallback((all: File[]) => {
+    // Read alignments become mappings, through a dialog that picks their references.
+    const mapped = all.filter(f => /\.(bam|sam)$/i.test(f.name))
+    if (mapped.length > 0) setAlignmentImports(q => [...q, ...mapped])
+    const files = all.filter(f => !mapped.includes(f))
     const traces = files.filter(f => isTraceFile(f.name))
     if (traces.length > 0) void importTraceFiles(traces)
     // NGS reads go to the import dialog as read sets. A small uncompressed
@@ -2538,6 +2545,12 @@ export default function App() {
           setAlignInitialEntries(undefined)
         }}
       />
+      {alignmentImports.length > 0 && (
+        <Suspense fallback={null}>
+          <ImportAlignmentsDialog key={`${alignmentImports[0].name}:${alignmentImports.length}`} file={alignmentImports[0]}
+            onClose={() => setAlignmentImports(q => q.slice(1))} />
+        </Suspense>
+      )}
       {readImportFiles && (
         <Suspense fallback={null}>
           <ImportReadsDialog files={readImportFiles} onClose={() => setReadImportFiles(null)} />

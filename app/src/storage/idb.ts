@@ -342,6 +342,17 @@ export async function deleteReadChunks(readSetIds: string[]): Promise<void> {
   await tx.done
 }
 
+/**
+ * Delete everything a mapping stored: every id that starts with its storage
+ * id and a hyphen (pages, coverage, the buckets of a sort cut short).
+ */
+export async function deleteMappingStorage(storageId: string): Promise<void> {
+  const db = await getDB()
+  const tx = db.transaction(READ_CHUNK_STORE, 'readwrite')
+  tx.store.delete(IDBKeyRange.bound(`${storageId}-`, `${storageId}-￿`))
+  await tx.done
+}
+
 /** The read sets that have chunks stored. */
 export async function getStoredReadSetIds(): Promise<string[]> {
   const db = await getDB()

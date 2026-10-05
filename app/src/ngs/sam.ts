@@ -1,118 +1,111 @@
 /**
- * A mapping written out as SAM, sorted by position, for IGV, samtools and
- * the rest.
+ * A stored mapping written out as SAM or BAM (with its BAI index), sorted by
+ * position, for IGV, samtools and the rest.
  *
- * The stored alignments carry no bases (see mapper.ts); each names its read
- * by number. The read set is read through once, in order, and every
- * alignment gets its read's name, bases and qualities back: reverse
- * complemented for a reverse-strand alignment, as SAM stores them, and
- * without the bases a hard clip (H) leaves out. Then the lines are sorted by
- * reference and position.
- *
- * The whole file is built in memory, which suits plasmids, amplicons and
- * small genomes; a bacterial genome at depth wants a streamed, merged sort.
- * On a circular reference, a read across the origin keeps the position
- * where it starts, so its alignment runs past the end of the reference.
+ * The pages are already sorted, so the file is written page by page, each
+ * alignment's bases written back from the reference and its differences
+ * (alignments.ts). Nothing is held whole: SAM text and BAM blocks are
+ * gathered into Blobs as they are made. On a circular reference, a read
+ * across the origin keeps the position where it starts, so its alignment
+ * runs past the end of the reference, as minimap2 itself writes it against
+ * an extended reference.
  */
 
 import { inflateSync } from 'fflate'
-import { decodeChunk } from './codec'
-
-const COMP: Record<string, string> = {
-  A: 'T', C: 'G', G: 'C', T: 'A', N: 'N', R: 'Y', Y: 'R', S: 'S', W: 'W', K: 'M', M: 'K', B: 'V', V: 'B', D: 'H', H: 'D', '=': '=',
-}
-const revComp = (s: string) => { let o = ''; for (let i = s.length - 1; i >= 0; i--) o += COMP[s[i]] ?? 'N'; return o }
-const reverse = (s: string) => s.split('').reverse().join('')
+import { decodePage, sequenceOf, type RefBases, type SamFields } from './alignments'
+import { BaiBuilder, bamHeader, bamRecord, BgzfWriter } from './bam'
+import { mappingStorageIds, type MappingIndex, type MappingReport, type MappingStorage } from './builder'
 
 /** A reference name SAM accepts: no whitespace. */
 export function samName(name: string): string {
   return name.trim().replace(/\s+/g, '_') || 'reference'
 }
 
-/** Bases a CIGAR hard-clips at its start and end. */
-function hardClips(cigar: string): [number, number] {
-  const lead = cigar.match(/^(\d+)H/)
-  const tail = cigar.match(/(\d+)H$/)
-  return [lead ? Number(lead[1]) : 0, tail ? Number(tail[1]) : 0]
+/** SAM names for the references, made unique. */
+export function samNames(names: readonly string[]): string[] {
+  const seen = new Map<string, number>()
+  return names.map(n => {
+    const base = samName(n)
+    const k = (seen.get(base) ?? 0) + 1
+    seen.set(base, k)
+    return k === 1 ? base : `${base}_${k}`
+  })
 }
 
-export async function buildSam(o: {
-  references: readonly { name: string; length: number }[]
-  alignmentChunks: number
-  getAlignments: (index: number) => Promise<Uint8Array | undefined>
-  readChunks: number
-  getReads: (index: number) => Promise<Uint8Array | undefined>
-  /** The minimap2 command line, for the @PG header line. */
-  command: string
-  onProgress?: (done: number, total: number) => void
-}): Promise<string> {
-  const total = o.alignmentChunks + o.readChunks
-  // Alignments, grouped by the read they belong to.
-  const byRead = new Map<number, string[][]>()
-  const unnamed: string[][] = []
-  const dec = new TextDecoder()
-  for (let c = 0; c < o.alignmentChunks; c++) {
-    const packed = await o.getAlignments(c)
-    if (!packed) throw new Error(`Part ${c + 1} of the alignments is missing from storage`)
-    for (const line of dec.decode(inflateSync(packed)).split('\n')) {
-      if (!line) continue
-      const f = line.split('\t')
-      const read = Number(f[2])
-      if (read < 0) { unnamed.push(f); continue }
-      const list = byRead.get(read)
-      if (list) list.push(f)
-      else byRead.set(read, [f])
-    }
-    o.onProgress?.(c + 1, total)
-  }
+export async function readMappingIndex(storage: Pick<MappingStorage, 'get'>, storageId: string): Promise<MappingIndex> {
+  const data = await storage.get(mappingStorageIds(storageId).index, 0)
+  if (!data) throw new Error('The mapping\'s alignments are missing from this browser\'s storage')
+  return JSON.parse(new TextDecoder().decode(inflateSync(data))) as MappingIndex
+}
 
-  const names = o.references.map(r => samName(r.name))
-  const rows: { ref: number; pos: number; text: string }[] = []
-  const emit = (f: string[], qname: string, seq: string, qual: string) => {
-    const ref = Number(f[0])
-    const pos = Number(f[1])
-    const flag = Number(f[3])
-    const cigar = f[5]
-    let s = seq
-    let q = qual
-    if (s !== '*') {
-      if (flag & 0x10) { s = revComp(s); q = q === '*' ? q : reverse(q) }
-      const [lead, tail] = hardClips(cigar)
-      if (lead || tail) {
-        s = s.slice(lead, s.length - tail)
-        if (q !== '*') q = q.slice(lead, q.length - tail)
-      }
-    }
-    const mateRef = f.length > 6 ? Number(f[6]) : -1
-    const rnext = mateRef < 0 ? '*' : mateRef === ref ? '=' : names[mateRef]
-    const pnext = mateRef < 0 ? 0 : Number(f[7]) + 1
-    const tlen = f.length > 8 ? f[8] : '0'
-    rows.push({ ref, pos, text: `${qname}\t${flag}\t${names[ref]}\t${pos + 1}\t${f[4]}\t${cigar}\t${rnext}\t${pnext}\t${tlen}\t${s || '*'}\t${q || '*'}` })
-  }
+export async function readReferenceBases(storage: Pick<MappingStorage, 'get'>, storageId: string, ref: number): Promise<string> {
+  const data = await storage.get(mappingStorageIds(storageId).reference, ref)
+  if (!data) throw new Error('The mapping\'s reference is missing from this browser\'s storage')
+  return new TextDecoder().decode(inflateSync(data))
+}
 
-  let first = 0
-  for (let c = 0; c < o.readChunks; c++) {
-    const packed = await o.getReads(c)
-    if (!packed) throw new Error(`Part ${c + 1} of the reads is missing from storage`)
-    const chunk = decodeChunk(packed)
-    for (let i = 0; i < chunk.count; i++) {
-      const recs = byRead.get(first + i)
-      if (!recs) continue
-      const seq = chunk.seq(i)
-      const qual = chunk.hasQuality ? chunk.qualText(i) : '*'
-      for (const f of recs) emit(f, chunk.ids[i], seq, qual)
-    }
-    first += chunk.count
-    o.onProgress?.(o.alignmentChunks + c + 1, total)
-  }
-  // Alignments stored before read numbers were kept for supplementary ones.
-  for (const f of unnamed) emit(f, 'unknown', '*', '*')
-
-  rows.sort((a, b) => a.ref - b.ref || a.pos - b.pos)
-  const header = [
+export function samHeaderText(names: readonly string[], lengths: readonly number[], program: MappingReport['program']): string {
+  return [
     '@HD\tVN:1.6\tSO:coordinate',
-    ...o.references.map((r, i) => `@SQ\tSN:${names[i]}\tLN:${r.length}`),
-    `@PG\tID:minimap2\tPN:minimap2\tVN:2.22\tCL:${o.command}`,
-  ]
-  return header.join('\n') + '\n' + rows.map(r => r.text).join('\n') + (rows.length ? '\n' : '')
+    ...names.map((n, i) => `@SQ\tSN:${n}\tLN:${lengths[i]}`),
+    `@PG\tID:${program.id || program.name}\tPN:${program.name}${program.version ? `\tVN:${program.version}` : ''}${program.command ? `\tCL:${program.command}` : ''}`,
+  ].join('\n') + '\n'
+}
+
+export async function exportMapping(o: {
+  format: 'sam' | 'bam'
+  storageId: string
+  storage: Pick<MappingStorage, 'get'>
+  references: readonly { name: string; length: number; circular: boolean }[]
+  program: MappingReport['program']
+  onProgress?: (done: number, total: number) => void
+}): Promise<{ file: Blob; index: Blob | null }> {
+  const ids = mappingStorageIds(o.storageId)
+  const index = await readMappingIndex(o.storage, o.storageId)
+  const names = samNames(o.references.map(r => r.name))
+  const header = samHeaderText(names, o.references.map(r => r.length), o.program)
+  const total = index.refs.reduce((n, r) => n + r.pages.length, 0)
+  let done = 0
+
+  const bam = o.format === 'bam'
+  const writer = bam ? new BgzfWriter() : null
+  const bai = bam ? new BaiBuilder(o.references.length) : null
+  const textParts: BlobPart[] = []
+  let lines: string[] = []
+  let lineBytes = 0
+  if (writer) {
+    writer.write(bamHeader(header, names.map((n, i) => ({ name: n, length: o.references[i].length }))))
+    // Records start in a block of their own after the header, as samtools writes it.
+    writer.flush()
+  } else textParts.push(header)
+
+  for (let r = 0; r < index.refs.length; r++) {
+    const ref: RefBases = { bases: await readReferenceBases(o.storage, o.storageId, r), circular: o.references[r].circular }
+    for (const page of index.refs[r].pages) {
+      const data = await o.storage.get(ids.pages, page.index)
+      if (!data) throw new Error(`Page ${page.index + 1} of the alignments is missing from storage`)
+      for (const a of decodePage(data)) {
+        const f: SamFields = {
+          qname: a.name, flag: a.flag, ref: r, pos: a.start, mapq: a.mapq, cigar: a.cigar,
+          mateRef: a.mateRef, matePos: a.matePos, tlen: a.tlen, seq: sequenceOf(ref, a), qual: a.qual || '*',
+        }
+        if (writer && bai) {
+          const vbeg = writer.voffset
+          writer.write(bamRecord(f, a.end))
+          bai.add(r, a.start, a.end, vbeg, writer.voffset)
+        } else {
+          const rnext = f.mateRef < 0 ? '*' : f.mateRef === r ? '=' : names[f.mateRef]
+          const pnext = f.mateRef < 0 || f.matePos < 0 ? 0 : f.matePos + 1
+          const line = `${f.qname}\t${f.flag}\t${names[r]}\t${f.pos + 1}\t${f.mapq}\t${f.cigar}\t${rnext}\t${pnext}\t${f.tlen}\t${f.seq}\t${f.qual}\n`
+          lines.push(line)
+          lineBytes += line.length
+          if (lineBytes > 8_000_000) { textParts.push(lines.join('')); lines = []; lineBytes = 0 }
+        }
+      }
+      o.onProgress?.(++done, total)
+    }
+  }
+  if (writer && bai) return { file: writer.finish(), index: new Blob([bai.finish() as BlobPart], { type: 'application/octet-stream' }) }
+  textParts.push(lines.join(''))
+  return { file: new Blob(textParts, { type: 'text/plain' }), index: null }
 }

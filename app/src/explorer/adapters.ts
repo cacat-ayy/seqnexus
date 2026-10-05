@@ -218,7 +218,7 @@ export function readSetToItem(rs: ReadSet, ctx: AdapterContext): ExplorerItem {
     isReadOnly: false,
     isCircular: false,
     canDuplicate: false,
-    stats: [readCountLabel(rs), readShape(rs), technologyLabel(rs)],
+    stats: [readCountLabel(rs), readShape(rs), technologyLabel(rs), ...(rs.discardedAt ? ['reads discarded'] : [])],
     badges,
     derivedFrom: [],
   }
@@ -289,7 +289,7 @@ export function assemblyToItem(assembly: Assembly, contigs: readonly Contig[], c
       isCircular: false, canDuplicate: false,
       stats: [`${r.reads ? Math.round((r.mapped / r.reads) * 100) : 0}% mapped`, `vs ${r.references.map(x => x.name).join(', ')}`, ngs.readSetName],
       badges: [],
-      derivedFrom: [toUid('readset', ngs.readSetId), ...r.references.flatMap(x => (x.tabId ? [toUid('sequence', x.tabId)] : []))],
+      derivedFrom: [...(ngs.readSetId ? [toUid('readset', ngs.readSetId)] : []), ...r.references.flatMap(x => (x.tabId ? [toUid('sequence', x.tabId)] : []))],
     }
   }
   const reads = contigs.reduce((n, c) => n + c.doc.rows.length, 0)

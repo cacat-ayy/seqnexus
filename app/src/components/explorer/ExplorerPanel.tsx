@@ -61,7 +61,7 @@ interface Props {
   onExportItems?: (items: Partial<Record<ExportItemKind, string[]>>) => void
 }
 
-const IMPORT_ACCEPT = ['.gb', '.gbk', '.genbank', '.fasta', '.fa', '.fna', '.fastq', '.fq', '.gz', '.txt', '.dna', '.geneious', '.ab1', '.abi', '.abif', '.scf', ...ALN_EXTENSIONS].join(',')
+const IMPORT_ACCEPT = ['.gb', '.gbk', '.genbank', '.fasta', '.fa', '.fna', '.fastq', '.fq', '.gz', '.txt', '.dna', '.geneious', '.ab1', '.abi', '.abif', '.scf', '.bam', '.sam', ...ALN_EXTENSIONS].join(',')
 
 /** Stable empty array, so an untagged row's props keep their identity. */
 const EMPTY_TAGS: string[] = []

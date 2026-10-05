@@ -1,21 +1,24 @@
 /**
  * A read set as a workspace: its QC verdict, the headline figures, the QC
  * charts, the first reads, and where it came from. Trimming makes a new read
- * set; export writes gzipped FASTQ.
+ * set; export writes gzipped FASTQ. Discarding the reads frees their storage
+ * and keeps the description and QC; mappings made from them keep the reads
+ * they mapped.
  */
 
 import './ReadSetWorkspace.css'
 import '../alignment/AlignmentWorkspace.css'
 import '../sanger/ReadWorkspace.css'
 import { lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react'
-import { ChevronDown, Download, FileStack, Layers, Scissors, X, CircleCheck, TriangleAlert, OctagonAlert } from 'lucide-react'
+import { ChevronDown, Download, FileStack, Layers, Scissors, Trash2, X, CircleCheck, TriangleAlert, OctagonAlert } from 'lucide-react'
 import { useEditorStore, type ReadSet } from '../../store'
 import { notify } from '../../toast'
 import { readSetQc, QC_LABEL } from '../../ngs/qc'
 import { compactCount, formatBaseCount, formatBytes, readShape } from '../../ngs/format'
 import { isLongRead, TECHNOLOGY_LABEL } from '../../ngs/types'
 import { decodeChunk } from '../../ngs/codec'
-import { getReadChunk } from '../../storage/idb'
+import { deleteReadChunks, getReadChunk } from '../../storage/idb'
+import ConfirmDialog from '../ConfirmDialog'
 import { startExport } from '../../workers/readset'
 import { HistogramChart, PositionQualityChart } from './charts'
 
@@ -45,6 +48,9 @@ export default function ReadSetWorkspace({ readSet: rs, onClose }: Props) {
   const [exporting, setExporting] = useState<number | null>(null)
   const [preview, setPreview] = useState<PreviewRow[] | null>(null)
   const [previewError, setPreviewError] = useState<string | null>(null)
+  const [discardOpen, setDiscardOpen] = useState(false)
+  const discarded = !!rs.discardedAt
+  const mappings = useEditorStore(st => st.assemblies).filter(a => a.ngs?.readSetId === rs.id)
   const menuRef = useRef<HTMLDivElement>(null)
 
   // The first reads, from the first chunk.
@@ -52,6 +58,7 @@ export default function ReadSetWorkspace({ readSet: rs, onClose }: Props) {
     let live = true
     setPreview(null)
     setPreviewError(null)
+    if (discarded) return
     getReadChunk(rs.id, 0).then(packed => {
       if (!live) return
       if (!packed) { setPreviewError('The reads are missing from this browser\'s storage.'); return }
@@ -69,7 +76,7 @@ export default function ReadSetWorkspace({ readSet: rs, onClose }: Props) {
       setPreview(rows)
     }).catch(err => { if (live) setPreviewError(err instanceof Error ? err.message : String(err)) })
     return () => { live = false }
-  }, [rs.id])
+  }, [rs.id, discarded])
 
   useEffect(() => {
     if (!exportMenu) return
@@ -128,15 +135,15 @@ export default function ReadSetWorkspace({ readSet: rs, onClose }: Props) {
         <span className="aw-chip">{rs.paired ? 'Paired' : 'Single reads'}</span>
         <span className="aw-muted">{rs.paired ? `${compactCount(s.reads / 2)} pairs` : `${compactCount(s.reads)} reads`} · {formatBaseCount(s.bases)} · {readShape(rs)}</span>
         <span className="aw-spacer" />
-        <button className="aw-btn" onClick={() => setTrimOpen(true)}
+        <button className="aw-btn" onClick={() => setTrimOpen(true)} disabled={discarded}
           title={long ? 'Filter reads by length and read quality, into a new read set' : 'Trim adapters and low-quality ends with fastp, into a new read set'}>
           <Scissors size={13} /> {long ? 'Filter…' : 'Trim & filter…'}
         </button>
-        <button className="aw-btn" onClick={() => setMapOpen(true)} title="Map the reads to open sequences with minimap2">
+        <button className="aw-btn" onClick={() => setMapOpen(true)} disabled={discarded} title="Map the reads to open sequences with minimap2">
           <Layers size={13} /> Map to reference…
         </button>
         <div className="aw-export" ref={menuRef}>
-          <button className="aw-btn" onClick={() => setExportMenu(o => !o)} aria-expanded={exportMenu} disabled={exporting !== null}>
+          <button className="aw-btn" onClick={() => setExportMenu(o => !o)} aria-expanded={exportMenu} disabled={exporting !== null || discarded}>
             <Download size={13} /> {exporting !== null ? `Exporting ${Math.round(exporting * 100)}%` : 'Export'} <ChevronDown size={12} />
           </button>
           {exportMenu && (
@@ -223,7 +230,7 @@ export default function ReadSetWorkspace({ readSet: rs, onClose }: Props) {
             binLabel={lo => `${lo}% GC`} tickLabel={v => `${v}%`} />
         </div>
 
-        <div className="ngs-card">
+        {!discarded && <div className="ngs-card">
           <div className="ngs-card-title">First reads</div>
           {previewError && <p className="aw-note">{previewError}</p>}
           {preview && (
@@ -243,7 +250,7 @@ export default function ReadSetWorkspace({ readSet: rs, onClose }: Props) {
               </table>
             </div>
           )}
-        </div>
+        </div>}
 
         <div className="ngs-card">
           <div className="ngs-card-title">Files and storage</div>
@@ -251,13 +258,56 @@ export default function ReadSetWorkspace({ readSet: rs, onClose }: Props) {
             <dt>Imported from</dt>
             <dd>{rs.files.length ? rs.files.map(f => `${f.name} (${formatBytes(f.bytes)})`).join(', ') : 'Made in SeqNexus'}</dd>
             <dt>Stored</dt>
-            <dd>{formatBytes(rs.storedBytes)} in this browser, compressed, in {nf.format(rs.chunks)} {rs.chunks === 1 ? 'part' : 'parts'}</dd>
+            <dd>
+              {discarded
+                ? <>Reads discarded {new Date(rs.discardedAt!).toLocaleString()}; the figures and charts here are kept.</>
+                : <>{formatBytes(rs.storedBytes)} in this browser, compressed, in {nf.format(rs.chunks)} {rs.chunks === 1 ? 'part' : 'parts'}</>}
+            </dd>
+            {mappings.length > 0 && (
+              <>
+                <dt>Mapped in</dt>
+                <dd>
+                  {mappings.map((a, i) => (
+                    <span key={a.id}>{i > 0 && ', '}
+                      <button className="ngs-link" onClick={() => useEditorStore.getState().setActiveAssembly(a.id)}>{a.name}</button>
+                    </span>
+                  ))}
+                  <span className="aw-muted"> (each keeps the reads it mapped)</span>
+                </dd>
+              </>
+            )}
             <dt>Backups</dt>
             <dd className="aw-muted">Read sets are not part of session files. Export them as FASTQ to keep a copy elsewhere.</dd>
           </dl>
+          {!discarded && (
+            <div className="ngs-actions ngs-card-actions">
+              <button className="aw-btn" onClick={() => setDiscardOpen(true)}
+                title="Delete the reads from this browser's storage, keeping this page's figures">
+                <Trash2 size={13} /> Discard reads…
+              </button>
+            </div>
+          )}
         </div>
       </div>
 
+      <ConfirmDialog
+        open={discardOpen}
+        title="Discard the reads"
+        message={`Delete the reads of ${rs.name} from this browser, freeing ${formatBytes(rs.storedBytes)}? The QC figures stay${mappings.length ? ', and the mappings made from them keep every read they mapped' : ''}. Trimming, mapping and FASTQ export need the reads, and reads not mapped are lost. This cannot be undone: export the reads as FASTQ first to keep a copy.`}
+        buttons={[
+          { label: 'Cancel', value: 'cancel' },
+          { label: 'Discard reads', value: 'discard', variant: 'danger' },
+        ]}
+        onResult={value => {
+          setDiscardOpen(false)
+          if (value !== 'discard') return
+          const freed = rs.storedBytes
+          useEditorStore.getState().discardReads(rs.id)
+          deleteReadChunks([rs.id])
+            .then(() => notify.success(`Discarded the reads, freeing ${formatBytes(freed)}`))
+            .catch(err => notify.error('Could not delete the reads', { detail: err instanceof Error ? err.message : String(err) }))
+        }}
+      />
       {mapOpen && (
         <Suspense fallback={null}>
           <MapReadsDialog readSet={rs} onClose={() => setMapOpen(false)} />

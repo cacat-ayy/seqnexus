@@ -89,7 +89,8 @@ of each build.
 - **Sequence alignment** - pairwise (global/local) and multiple sequence alignment
 - **In-silico cloning** - digest/ligation, Gibson assembly, Golden Gate assembly
 - **NGS read sets** - FASTQ(.gz) import with R1/R2 pairing, QC charts and
-  verdicts, fastp trimming and minimap2 mapping (WebAssembly), FASTQ.gz export
+  verdicts, fastp trimming and minimap2 mapping (WebAssembly), FASTQ.gz export;
+  mappings exported as BAM (with its index) or SAM, and imported from either
 - **Sanger sequencing** - chromatograms, trimming, mapping to a reference or de
   novo assembly kept as assemblies with their contigs, variants, clone
   verification
@@ -643,15 +644,113 @@ The result is an assembly holding the mapping.
   depth, the share of bases covered once and ten times, coverage along each
   reference in up to 400 windows, fragment lengths of proper pairs (60 bins up
   to the 99th percentile, longer ones in the last bin), and mapping qualities.
-- **Storage:** the alignments are kept (reference, position, read number,
-  flag, mapping quality, CIGAR) without their bases, which stay in the read
-  set; a record names its read by its place in the read set. Full per-base
-  coverage is stored too. Both serve the read viewer to come.
+- **Storage:** see [Stored mappings](#stored-mappings) below.
 - **Speed:** minimap2's SIMD build is used wherever the browser runs
   WebAssembly SIMD (current Chrome, Edge, Firefox and Safari), the plain build
   otherwise. On 40,000 reads of 150 bp against 8 kb the two give identical
   alignments, in under a second with SIMD and about 20 seconds without:
   minimap2's alignment extension (ksw2) is written for SIMD.
+- **Run again** maps the same reads into the same assembly, starting from the
+  references and read type used last; a reference whose sequence is no longer
+  open is offered from the copy the mapping kept. The new mapping is stored
+  apart until it is done, so a failed or stopped run leaves the old one whole,
+  and Undo puts the old one back.
+
+### Stored mappings
+
+A mapping keeps everything a BAM file holds for its mapped reads, so it stands
+on its own: the read set can be discarded, and the mapping can still be viewed
+and exported. Each alignment keeps the read's name, flag, mapping quality,
+CIGAR, mate (reference, position, template length), its qualities, and its
+bases. The bases are written as their differences from the reference, in the
+style of minimap2's `cs` tag: `:n` for n matching bases, `*xy` for reference
+base x read as y, `+bases` inserted, `-bases` deleted, `~n` skipped, plus the
+soft-clipped bases at each end. A read that matches the reference is then a
+few characters (`:150`), and the viewer and the pileup read the differences
+directly. For export the bases are written back from the reference, which is
+stored with the mapping. The differences are computed from SAM's SEQ and
+CIGAR rather than asked of minimap2 (`--cs`), so imported SAM and BAM files,
+which rarely carry a `cs` tag, are stored the same way.
+
+- **Pages:** alignments are kept in pages of at most 4,000 alignments or 2 Mb
+  of read bases, sorted by position on one reference, with an index of each
+  page's first and last start and furthest end, so a view of one region loads
+  only the pages over it. A page is three deflated sections: the fields as
+  text (starts as differences from the line before), the names, and the
+  qualities, each kept apart because they compress best among their own kind.
+- **Sorting at scale:** alignments arrive in read order. Each goes to a bucket
+  by reference and position, the buckets sized to hold about 20 million read
+  bases at the depth the read set would give (its bases over the references'
+  length). When the buckets together hold about 64 MB they are written to
+  storage as they are. At the end each bucket is read back, sorted and written
+  as pages, so a bacterial genome at depth is sorted one bucket at a time,
+  never whole in memory. A synthetic test of 600,000 reads of 150 bp on 3 Mb
+  (Node, one thread) stores in about 8 seconds and writes a BAM in about 6.
+- **Coverage:** per base, and summarized at 16, 256 and 4096 bases per bin
+  (mean, highest, and mean on the forward strand), for drawing coverage at any
+  zoom without reading a whole genome's per-base values.
+- **Candidate sites:** while the pages are written, every aligned base is
+  counted at its position by what the read shows there (A, C, G, T, a
+  deletion, or an insertion after it) and by strand. A position is kept when
+  something other than the reference is seen in at least two reads and in at
+  least 5% of the reads there (10% for insertions and deletions, which
+  sequencers, Nanopore above all, get wrong far more often than single bases).
+  Bases below Q13 are not counted, as `samtools mpileup` leaves them out by
+  default; the depth of a site is the bases counted plus the deletions.
+  Variant calling starts from these sites, so a genome's variant table does
+  not need every alignment read again. Counts are kept in blocks of 4,096
+  positions, and a block is written out once no alignment still to come can
+  reach it; on a circular reference the first blocks stay open to the end,
+  for the alignments across the origin.
+- **Secondary alignments** are not kept (minimap2 runs with
+  `--secondary=no`; an imported file's are counted and left out).
+- **Discarding reads:** a read set's reads can be discarded to free storage.
+  Its QC page stays; trimming, mapping, FASTQ export and Run again need the
+  reads, and reads that mapped nowhere are lost. Mappings made from it keep
+  every read they mapped.
+- Mappings made before this format kept no bases; their report is kept, and
+  they say to run them again.
+
+### SAM and BAM
+
+A mapping exports as **BAM with its BAI index** (for IGV, samtools and
+variant callers) or as **SAM**, sorted by position, with an `@PG` line naming
+the program and its command. Both are written in JavaScript as the pages are
+read, not by samtools compiled to WebAssembly: a page opened from disk cannot
+load WebAssembly, and the formats are simple enough to write directly (SAMv1
+specification, sections 4 and 5):
+
+- BAM is binary records in **BGZF** blocks: gzip members of at most 64 KB that
+  say their own size. Blocks are filled to 65,280 bytes so even
+  incompressible data stays under the limit, and the file ends with the
+  standard empty block.
+- The **index** lists, for each bin of the reference (the five-level binning
+  scheme), the stretches of the file holding alignments in it, merging
+  stretches that follow each other, plus the linear index of the first
+  alignment in each 16 kb window and the pseudo-bin with the reference's
+  extent and alignment count that samtools writes.
+- A CIGAR of more than 65,535 operations (an ultra-long Nanopore read) goes in
+  a `CG` tag behind the placeholder `<read length>S<span>N`, as the
+  specification says.
+- On a circular reference a read across the origin keeps the position where it
+  starts, so its alignment runs past the end of the reference, as minimap2
+  writes it against the extended reference.
+- Reads without qualities get `*` (in BAM, 0xFF).
+
+Checked against samtools 1.10: `quickcheck` passes, `view -c` and `idxstats`
+count every record, region queries through the index (including regions at
+bin edges and at the end of the reference) return the same records as a
+scan, and `samtools view` prints the BAM exactly as the SAM export.
+
+**Import:** a SAM or BAM file (dropped or opened) becomes a mapping. Its
+header names its references; each is matched to an open sequence by name,
+then by a unique length, and can be changed or left out. A reference of a
+different length is flagged, since the stored bases are differences from the
+sequence given. The file is read as a stream (BAM's blocks inflated one at a
+time), need not be sorted, and goes through the same storage as a minimap2
+run, so it gets the same report, pages, coverage and sites. Alignments on a
+reference left out are counted and skipped. An imported mapping has no read
+set, so it cannot be run again.
 
 ---
 
@@ -848,6 +947,8 @@ clutter.
 | AB1 (.ab1) | Yes | - | Sanger chromatogram traces with quality scores. |
 | SCF (.scf) | Yes | - | Sanger chromatogram traces. |
 | GFF3 (.gff, .gff3) | Yes | - | Feature annotations with embedded FASTA. |
+| BAM (.bam, .bai) | Yes | Yes | Read alignments, imported as a mapping onto open sequences; written with its index. See [SAM and BAM](#sam-and-bam). |
+| SAM (.sam) | Yes | Yes | The same as text. |
 | Clustal (.aln) | - | Yes | Alignment export. |
 | PDF (.pdf) | - | Yes | The sequence as the text view draws it, with an optional map page and feature and enzyme tables. See [PDF Export](#pdf-export). |
 | CSV | - | Yes | Feature table export. |
@@ -1301,7 +1402,16 @@ faint marks on white. Selection and search highlights are off by default.
   *Bioinformatics* 34:3094-3100.
 
 - Li H, Handsaker B, Wysoker A, et al. (2009) "The Sequence Alignment/Map
-  format and SAMtools." *Bioinformatics* 25:2078-2079. (The 4-bit base code.)
+  format and SAMtools." *Bioinformatics* 25:2078-2079. (The 4-bit base code,
+  BAM and its binning index.)
+
+- The SAM/BAM Format Specification Working Group. "Sequence Alignment/Map
+  Format Specification" (SAMv1), sections 4 (BGZF, BAM) and 5 (BAI).
+  https://samtools.github.io/hts-specs/SAMv1.pdf
+
+- Danecek P, Bonfield JK, Liddle J, et al. (2021) "Twelve years of SAMtools
+  and BCFtools." *GigaScience* 10:giab008. (`mpileup`, whose default base
+  quality threshold of 13 the candidate sites follow.)
 
 ## License
 

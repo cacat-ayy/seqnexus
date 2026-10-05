@@ -118,4 +118,6 @@ export interface ReadSetRecord {
   /** Bytes the chunks take in storage. */
   storedBytes: number
   origin?: ReadSetOrigin
+  /** When its reads were discarded to free storage; the description and QC are kept. */
+  discardedAt?: number
 }

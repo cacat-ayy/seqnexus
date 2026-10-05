@@ -9,7 +9,7 @@ import type { ReadSetMessage } from './readset.worker'
 import { CancelledError, runReadSetJob, type ReadSetJob } from '../ngs/jobs'
 import type { ImportResult } from '../ngs/importer'
 import type { TrimResult } from '../ngs/trimmer'
-import type { MappingReport } from '../ngs/mapper'
+import type { MappingReport } from '../ngs/builder'
 
 export { CancelledError } from '../ngs/jobs'
 
@@ -88,6 +88,10 @@ export function startMap(job: Extract<ReadSetJob, { type: 'map' }>, onProgress?:
   return run<MappingReport>(job, onProgress)
 }
 
-export function startSam(job: Extract<ReadSetJob, { type: 'sam' }>, onProgress?: (done: number, total: number) => void) {
-  return run<Blob>(job, onProgress)
+export function startExportMapping(job: Extract<ReadSetJob, { type: 'export-mapping' }>, onProgress?: (done: number, total: number) => void) {
+  return run<{ file: Blob; index: Blob | null }>(job, onProgress)
+}
+
+export function startImportAlignments(job: Extract<ReadSetJob, { type: 'import-alignments' }>, onProgress?: (done: number, total: number) => void) {
+  return run<MappingReport>(job, onProgress)
 }

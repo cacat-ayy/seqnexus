@@ -19,6 +19,7 @@ import { computeConsensus, consensusSequence } from '../../assembly/consensus'
 import MappingReport from '../ngs/MappingReport'
 
 const AssembleDialog = lazy(() => import('./AssembleDialog'))
+const MapReadsDialog = lazy(() => import('../ngs/MapReadsDialog'))
 
 interface Props {
   assembly: Assembly
@@ -34,6 +35,8 @@ export default function AssemblyOverview({ assembly, onClose }: Props) {
   const tabs = useEditorStore(s => s.tabs)
   const [nameDraft, setNameDraft] = useState<string | null>(null)
   const [dialog, setDialog] = useState<{ readIds: string[]; rerun: boolean } | null>(null)
+  const [remap, setRemap] = useState(false)
+  const mappedSet = useEditorStore(st => (assembly.ngs?.readSetId ? st.readSets.find(r => r.id === assembly.ngs!.readSetId) ?? null : null))
 
   const contigs = useMemo(() => {
     const byId = new Map(allContigs.map(c => [c.id, c]))
@@ -79,7 +82,7 @@ export default function AssemblyOverview({ assembly, onClose }: Props) {
           }}
           size={Math.max(6, (nameDraft ?? assembly.name).length)}
         />
-        <span className="aw-chip">{assembly.method === 'reference' ? `Mapped to ${ref?.name ?? 'a reference'}` : 'De novo'}</span>
+        <span className="aw-chip">{assembly.ngs?.report.importedFrom ? 'Imported' : assembly.method === 'reference' ? `Mapped to ${ref?.name ?? 'a reference'}` : 'De novo'}</span>
         <span className="aw-muted">
           {assembly.ngs
             ? `${nf.format(assembly.ngs.report.mapped)} of ${nf.format(assembly.ngs.report.reads)} reads mapped`
@@ -91,6 +94,14 @@ export default function AssemblyOverview({ assembly, onClose }: Props) {
           title={present === 0 ? 'None of the reads that went in are in the session any more' : 'Assemble the same reads again, with changed settings. The new contigs replace these.'}>
           <RotateCcw size={13} /> Run again…
         </button>}
+        {assembly.ngs && !assembly.ngs.report.importedFrom && (
+          <button className="aw-btn" onClick={() => setRemap(true)} disabled={!mappedSet || !!mappedSet.discardedAt}
+            title={!mappedSet ? 'The read set that was mapped has been deleted'
+              : mappedSet.discardedAt ? 'The reads that were mapped have been discarded'
+                : 'Map the same reads again, with changed references or read type. The new mapping replaces this one.'}>
+            <RotateCcw size={13} /> Run again…
+          </button>
+        )}
         <button className="aw-icon-btn" onClick={onClose} title="Close the assembly" aria-label="Close the assembly"><X size={15} /></button>
       </div>
 
@@ -219,6 +230,11 @@ export default function AssemblyOverview({ assembly, onClose }: Props) {
         </section>
       </div>}
 
+      {remap && mappedSet && (
+        <Suspense fallback={null}>
+          <MapReadsDialog readSet={mappedSet} rerun={assembly} onClose={() => setRemap(false)} />
+        </Suspense>
+      )}
       {dialog && (
         <Suspense fallback={null}>
           <AssembleDialog

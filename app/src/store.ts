@@ -1309,6 +1309,11 @@ interface EditorStore {
   renameReadSet: (id: string, name: string) => void
   /** Delete a read set into the Recently deleted buffer. */
   removeReadSet: (id: string) => void
+  /**
+   * Mark a read set's reads as discarded: its description and QC stay, its
+   * reads are gone (the caller deletes the stored chunks).
+   */
+  discardReads: (id: string) => void
   setActiveReadSet: (id: string | null) => void
   restoreReadSets: (readSets: ReadSet[], activeReadSetId: string | null) => void
 
@@ -1322,6 +1327,8 @@ interface EditorStore {
   newAssemblyId: () => string
   /** Add an NGS mapping (an assembly with no Sanger contigs) and open its overview. */
   addMapping: (assembly: Assembly) => void
+  /** Put a new mapping in place of an assembly's mapping (Run again). Returns a function that puts the old one back. */
+  replaceMapping: (id: string, ngs: NonNullable<Assembly['ngs']>, inputs: Assembly['inputs']) => (() => void) | null
   /** Open an assembly: its one contig straight away, or the overview of several. */
   openAssembly: (id: string) => void
   setActiveAssembly: (id: string | null) => void
@@ -4018,6 +4025,12 @@ export const useEditorStore = create<EditorStore>((set, get) => {
       })
     },
 
+    discardReads(id) {
+      set(s => ({
+        readSets: s.readSets.map(r => (r.id === id ? { ...r, chunks: 0, storedBytes: 0, discardedAt: Date.now(), modifiedAt: Date.now() } : r)),
+      }))
+    },
+
     setActiveReadSet(id) {
       set({
         activeReadSetId: id,
@@ -4078,6 +4091,16 @@ export const useEditorStore = create<EditorStore>((set, get) => {
     addMapping(assembly) {
       set(s => ({ assemblies: [...s.assemblies, assembly] }))
       get().setActiveAssembly(assembly.id)
+    },
+
+    replaceMapping(id, ngs, inputs) {
+      const before = get().assemblies.find(a => a.id === id)
+      if (!before?.ngs) return null
+      const swap = (out: Assembly) => set(s => ({ assemblies: s.assemblies.map(a => (a.id === id ? out : a)) }))
+      swap({ ...before, ngs, inputs, modifiedAt: Date.now() })
+      return () => {
+        if (get().assemblies.some(a => a.id === id)) swap(before)
+      }
     },
 
     openAssembly(id) {
@@ -4199,8 +4222,11 @@ export const useEditorStore = create<EditorStore>((set, get) => {
 
     restoreAssemblies(assemblies, activeAssemblyId) {
       for (const a of assemblies) {
-        const m = a.id.match(/^asm_(\d+)$/)
-        if (m) assemblyIds.syncTo(parseInt(m[1], 10))
+        // A mapping run again is stored under a fresh id from the same counter.
+        for (const id of [a.id, a.ngs?.storageId ?? '']) {
+          const m = id.match(/^asm_(\d+)$/)
+          if (m) assemblyIds.syncTo(parseInt(m[1], 10))
+        }
       }
       set({ assemblies, activeAssemblyId: null })
       if (activeAssemblyId && assemblies.some(a => a.id === activeAssemblyId)) get().setActiveAssembly(activeAssemblyId)
@@ -4209,8 +4235,11 @@ export const useEditorStore = create<EditorStore>((set, get) => {
     mergeAssemblies(assemblies) {
       if (assemblies.length === 0) return
       for (const a of assemblies) {
-        const m = a.id.match(/^asm_(\d+)$/)
-        if (m) assemblyIds.syncTo(parseInt(m[1], 10))
+        // A mapping run again is stored under a fresh id from the same counter.
+        for (const id of [a.id, a.ngs?.storageId ?? '']) {
+          const m = id.match(/^asm_(\d+)$/)
+          if (m) assemblyIds.syncTo(parseInt(m[1], 10))
+        }
       }
       set(s => ({ assemblies: [...s.assemblies, ...assemblies] }))
     },

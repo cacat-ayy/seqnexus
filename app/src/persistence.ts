@@ -46,6 +46,7 @@ import {
   clearAll as idbClearAll,
 } from './storage/idb'
 import { sanitizeReadSet } from './ngs/record'
+import { mappingStorageList } from './ngs/builder'
 import type { ReadSetRecord } from './ngs/types'
 import { notify } from './toast'
 
@@ -1093,7 +1094,7 @@ async function loadV2(data: SerializedSessionV2): Promise<RestoredSession | null
     const keeps = cleanupKeeps()
     if (keeps) {
       // NGS mappings store their alignments and coverage beside the reads.
-      const mappings = (data.assemblies ?? []).flatMap(a => (a?.ngs?.storageId ? [`${a.ngs.storageId}-aln`, `${a.ngs.storageId}-cov`] : []))
+      const mappings = (data.assemblies ?? []).flatMap(a => (a?.ngs?.storageId ? mappingStorageList(a.ngs.storageId) : []))
       const listed = new Set([...readSets.map(r => r.id), ...mappings, ...keeps])
       const stray = (await getStoredReadSetIds()).filter(id => !listed.has(id))
       if (stray.length > 0) await deleteReadChunks(stray)

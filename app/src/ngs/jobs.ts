@@ -12,9 +12,11 @@
 import { importReads, type ReadLayout } from './importer'
 import { trimReads, type FastpRunner } from './trimmer'
 import { exportFastq, type ExportLayout } from './exporter'
-import { mapReads, minimap2Args, type MapPreset, type MapReference } from './mapper'
-import { buildSam } from './sam'
-import { getReadChunk, putReadChunk } from '../storage/idb'
+import { mapReads, type MapPreset, type MapReference } from './mapper'
+import { exportMapping } from './sam'
+import { importAlignments } from './alignmentImport'
+import type { MappingReport, MappingStorage } from './builder'
+import { deleteReadChunks, getReadChunk, putReadChunk } from '../storage/idb'
 import { runTool } from '../msa/engines/emscripten'
 import { isLongRead, type Technology, type TrimSettings } from './types'
 
@@ -24,20 +26,26 @@ export type ReadSetJob =
   | { type: 'export'; id: string; chunks: number; paired: boolean; layout: ExportLayout }
   | {
       type: 'map'
-      /** Where the alignments and coverage are stored (see mappingStorageIds). */
+      /** Where the mapping is stored (see mappingStorageIds in builder.ts). */
       storageId: string
-      readSet: { id: string; chunks: number; paired: boolean; technology: Technology; maxLength: number }
+      readSet: { id: string; chunks: number; paired: boolean; technology: Technology; maxLength: number; bases: number }
       refs: MapReference[]
       preset: MapPreset
       wasmBase: string
     }
   | {
-      type: 'sam'
+      type: 'export-mapping'
+      format: 'sam' | 'bam'
       storageId: string
-      references: { name: string; length: number }[]
-      alignmentChunks: number
-      readSet: { id: string; chunks: number; paired: boolean }
-      preset: MapPreset
+      references: { name: string; length: number; circular: boolean }[]
+      program: MappingReport['program']
+    }
+  | {
+      type: 'import-alignments'
+      file: File
+      storageId: string
+      /** Per reference in the file's header: the sequence to use, or null. */
+      refs: (MapReference | null)[]
     }
 
 export class CancelledError extends Error {
@@ -49,10 +57,8 @@ export function openedAsFile(): boolean {
   return typeof location !== 'undefined' && location.protocol === 'file:'
 }
 
-/** The read set ids under which a mapping stores its alignments and its coverage. */
-export function mappingStorageIds(storageId: string): { alignments: string; coverage: string } {
-  return { alignments: `${storageId}-aln`, coverage: `${storageId}-cov` }
-}
+/** A mapping's storage: the read chunk store in IndexedDB. */
+const idbStorage: MappingStorage = { put: putReadChunk, get: getReadChunk, remove: deleteReadChunks }
 
 export const NEEDS_WEB = (tool: string) => `${tool} cannot run while SeqNexus is opened as a file (file://): the browser does not let such a page load the program. Start serve.bat in the SeqNexus folder and open http://localhost:8080/app.html, or open SeqNexus from its web address.`
 
@@ -138,30 +144,36 @@ export async function runReadSetJob(
   }
   if (job.type === 'map') {
     const minimap2 = await minimap2Runner(job.wasmBase)
-    const ids = mappingStorageIds(job.storageId)
     return mapReads({
+      storageId: job.storageId,
       readSet: job.readSet,
       refs: job.refs,
       preset: job.preset,
       minimap2,
       getChunk: i => { check(); return getReadChunk(job.readSet.id, i) },
-      putAlignments: (i, d) => putReadChunk(ids.alignments, i, d),
-      putCoverage: (i, d) => putReadChunk(ids.coverage, i, d),
+      storage: idbStorage,
       onProgress: progress,
     })
   }
-  if (job.type === 'sam') {
-    const ids = mappingStorageIds(job.storageId)
-    const text = await buildSam({
-      references: job.references,
-      alignmentChunks: job.alignmentChunks,
-      getAlignments: i => { check(); return getReadChunk(ids.alignments, i) },
-      readChunks: job.readSet.chunks,
-      getReads: i => { check(); return getReadChunk(job.readSet.id, i) },
-      command: ['minimap2', ...minimap2Args(job.preset, job.readSet.paired)].join(' '),
+  if (job.type === 'import-alignments') {
+    return importAlignments({
+      file: job.file,
+      fileName: job.file.name,
+      storageId: job.storageId,
+      storage: idbStorage,
+      refs: job.refs,
       onProgress: progress,
     })
-    return new Blob([text], { type: 'text/plain' })
+  }
+  if (job.type === 'export-mapping') {
+    return exportMapping({
+      format: job.format,
+      storageId: job.storageId,
+      storage: { get: (id, i) => { check(); return getReadChunk(id, i) } },
+      references: job.references,
+      program: job.program,
+      onProgress: progress,
+    })
   }
   const files = await exportFastq({
     chunks: job.chunks,

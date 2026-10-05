@@ -14,7 +14,7 @@
  */
 
 import type { AssemblyReport, AssemblySettings, ContigDoc } from './types'
-import type { MappingReport } from '../ngs/mapper'
+import type { MappingReport } from '../ngs/builder'
 
 /** What went into an assembly. */
 export interface AssemblyInputs {
@@ -37,16 +37,47 @@ export interface AssemblyRun {
 }
 
 /**
- * NGS reads mapped to references (Phase 3): the read set, where the
- * alignments and coverage are stored, and the report. The reads stay in the
- * read set; the alignments name them by index.
+ * NGS reads mapped to references: the read set mapped (null for alignments
+ * imported from a SAM or BAM file), where the mapping is stored, and its
+ * report. The stored alignments keep their reads' bases and qualities, so
+ * the mapping needs the read set only to be run again.
  */
 export interface NgsMapping {
-  readSetId: string
+  readSetId: string | null
+  /** The read set's name when mapped, or the file's name when imported. */
   readSetName: string
-  /** See mappingStorageIds in ngs/jobs.ts. */
+  /** See mappingStorageIds in ngs/builder.ts. */
   storageId: string
   report: MappingReport
+}
+
+/**
+ * A mapping's report read back. Mappings stored before pages (version 1)
+ * kept their alignments without bases; their report is kept and given the
+ * fields it lacks, and they are marked so the overview offers Run again.
+ */
+function sanitizeMapping(raw: unknown): NgsMapping | undefined {
+  if (!raw || typeof raw !== 'object') return undefined
+  const x = raw as Partial<NgsMapping>
+  const r = x.report as (Partial<MappingReport> & { version?: number }) | undefined
+  if (!isString(x.storageId) || !(x.readSetId === null || isString(x.readSetId)) || !r || !Array.isArray(r.references)) return undefined
+  if (r.version === 2) return x as NgsMapping
+  const report: MappingReport = {
+    version: 1,
+    preset: r.preset ?? 'sr',
+    program: { id: 'minimap2', name: 'minimap2', version: '2.22', command: '' },
+    reads: r.reads ?? 0,
+    mapped: r.mapped ?? 0,
+    supplementary: 0,
+    properlyPaired: r.properlyPaired ?? null,
+    mapq: r.mapq ?? { edges: [], counts: [] },
+    insertSizes: r.insertSizes ?? null,
+    references: r.references.map(ref => ({ ...ref, sites: 0 })),
+    pages: 0,
+    storedBytes: r.storedBytes ?? 0,
+    skipped: { secondary: 0, otherReference: 0 },
+  }
+  return { readSetId: x.readSetId, readSetName: isString(x.readSetName) ? x.readSetName : 'Reads', storageId: x.storageId, report }
 }
 
 /** The stored part of an assembly; the store adds nothing else. */
@@ -148,8 +179,7 @@ export function sanitizeAssembly(raw: unknown): AssemblyRecord | null {
   const x = raw as Partial<AssemblyRecord>
   if (!isString(x.id) || !Array.isArray(x.contigIds)) return null
   const contigIds = x.contigIds.filter(isString)
-  const ngs = x.ngs && typeof x.ngs === 'object' && isString(x.ngs.storageId) && isString(x.ngs.readSetId)
-    && x.ngs.report && Array.isArray(x.ngs.report.references) ? x.ngs : undefined
+  const ngs = sanitizeMapping(x.ngs)
   if (contigIds.length === 0 && !ngs) return null
   const inputs = (x.inputs ?? {}) as Partial<AssemblyInputs>
   const ref = inputs.reference

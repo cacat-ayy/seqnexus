@@ -154,9 +154,17 @@
 }
 
 /* ---- Trim dialog ---- */
-.ngs-trim { width: min(460px, 94vw); }
-.ngs-trim-body { padding: var(--space-3); align-items: stretch; }
+/* Sized to the content, not the figure dialog's fixed height. */
+.ngs-trim { width: min(460px, 94vw); height: auto; max-height: 90vh; }
+.ngs-trim-body { padding: var(--space-3); align-items: stretch; overflow: auto; }
 .ngs-check { display: flex; align-items: center; gap: var(--space-1-5); font-size: var(--text-sm); color: var(--text); }
 .ngs-warn-note { color: var(--warning); }
 .ngs-ref-list { display: flex; flex-direction: column; gap: var(--space-1); max-height: 180px; overflow: auto; }
 .ngs-actions { display: flex; gap: var(--space-2); }
+/* The mapping report's export menu sits at the left, so it opens rightwards. */
+.ngs-actions .aw-menu { left: 0; right: auto; }
+.ngs-card-actions { margin-top: var(--space-3); }
+/* SAM/BAM import: one row per reference in the file, with the open sequence to use. */
+.ngs-ref-row { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.2fr); align-items: center; gap: var(--space-1) var(--space-2); font-size: var(--text-sm); }
+.ngs-ref-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ngs-ref-warn { grid-column: 1 / -1; font-size: var(--text-xs); }
