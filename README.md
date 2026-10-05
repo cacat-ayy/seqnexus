@@ -647,8 +647,11 @@ The result is an assembly holding the mapping.
   flag, mapping quality, CIGAR) without their bases, which stay in the read
   set; a record names its read by its place in the read set. Full per-base
   coverage is stored too. Both serve the read viewer to come.
-- **Speed:** 40,000 reads of 150 bp map to 8 kb in about 25 seconds in the
-  browser (single-threaded WebAssembly).
+- **Speed:** minimap2's SIMD build is used wherever the browser runs
+  WebAssembly SIMD (current Chrome, Edge, Firefox and Safari), the plain build
+  otherwise. On 40,000 reads of 150 bp against 8 kb the two give identical
+  alignments, in under a second with SIMD and about 20 seconds without:
+  minimap2's alignment extension (ksw2) is written for SIMD.
 
 ---
 

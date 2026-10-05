@@ -114,16 +114,18 @@ export class SamAccumulator {
 
   /**
    * Read one batch of SAM. Primary records come in input order, one per read,
-   * so the n-th primary record is read `firstRead + n`. Returns the stored
-   * form of the batch's alignments (tab-separated: reference, position,
-   * read index, flag, mapping quality, CIGAR).
+   * so the n-th primary record is read `firstRead + n`; minimap2 writes a
+   * read's supplementary alignments straight after its primary one, so they
+   * take the same read. Returns the stored form of the batch's alignments
+   * (tab-separated: reference, position, read index, flag, mapping quality,
+   * CIGAR, mate's reference or -1, mate's position, template length).
    */
   addSam(sam: string, firstRead: number): string {
     const out: string[] = []
     let readIndex = firstRead - 1
     for (const line of sam.split('\n')) {
       if (!line || line[0] === '@') continue
-      const f = line.split('\t', 11)
+      const f = line.split('\t', 9)
       const flag = Number(f[1])
       const primary = (flag & 0x900) === 0
       if (primary) { readIndex++; this.reads++ }
@@ -158,7 +160,10 @@ export class SamAccumulator {
         n = 0
       }
       const start = (Number(f[3]) - 1) % L
-      out.push(`${ref}\t${start}\t${primary ? readIndex : -1}\t${flag}\t${mq}\t${cigar}`)
+      const mateRef = f[6] === '=' ? ref : f[6] === '*' ? -1 : Number(f[6].slice(3))
+      const mateL = this.lengths[mateRef]
+      const matePos = mateL ? (Number(f[7]) - 1) % mateL : -1
+      out.push(`${ref}\t${start}\t${readIndex}\t${flag}\t${mq}\t${cigar}\t${mateRef}\t${matePos}\t${f[8]}`)
     }
     return out.join('\n')
   }

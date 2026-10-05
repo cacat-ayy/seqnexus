@@ -11,7 +11,7 @@ its own origin instead of a CDN. They run in Web Workers, one job at a time; see
 | MUSCLE | 5 (biowasm `5.1.0`) | `muscle/5.1.0/muscle.{js,wasm}` | GPL-3.0 | https://github.com/rcedgar/muscle |
 | Kalign | 3.3.1 | `kalign/3.3.1/kalign.{js,wasm}` | GPL-3.0 | https://github.com/TimoLassmann/kalign |
 | fastp | 0.20.1 | `fastp/0.20.1/fastp.{js,wasm,data}` | MIT | https://github.com/OpenGene/fastp |
-| minimap2 | 2.22 | `minimap2/2.22/minimap2.{js,wasm,data}` | MIT | https://github.com/lh3/minimap2 |
+| minimap2 | 2.22 | `minimap2/2.22/minimap2{,-simd}.{js,wasm}`, `minimap2.data` (shared) | MIT | https://github.com/lh3/minimap2 |
 
 fastp.data and minimap2.data are the tools' own test files, which the builds preload; they are handed
 to the glue as is (see `dataPackage` in `app/src/msa/engines/emscripten.ts`).

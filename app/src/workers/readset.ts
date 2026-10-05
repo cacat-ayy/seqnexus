@@ -87,3 +87,7 @@ export function startExport(job: Extract<ReadSetJob, { type: 'export' }>, onProg
 export function startMap(job: Extract<ReadSetJob, { type: 'map' }>, onProgress?: (done: number, total: number) => void) {
   return run<MappingReport>(job, onProgress)
 }
+
+export function startSam(job: Extract<ReadSetJob, { type: 'sam' }>, onProgress?: (done: number, total: number) => void) {
+  return run<Blob>(job, onProgress)
+}

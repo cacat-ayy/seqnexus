@@ -5,6 +5,7 @@ import { inflateSync } from 'fflate'
 import { mapReads, minimap2Args, referenceFasta, SamAccumulator, type ToolRunner } from './mapper'
 import { encodeChunk } from './codec'
 import { runTool } from '../msa/engines/emscripten'
+import { buildSam } from './sam'
 
 const dir = resolve(process.cwd(), '..', 'wasm', 'minimap2', '2.22')
 const glue = readFileSync(resolve(dir, 'minimap2.js'), 'utf8')
@@ -35,7 +36,9 @@ describe('SamAccumulator', () => {
     expect([...acc.coverage[0]]).toEqual([2, 2, 1, 0, 1, 2, 1, 0, 1, 1])
     expect(acc.reads).toBe(3)
     expect(acc.mapped).toBe(2)
-    expect(stored.split('\n').map(l => l.split('\t')[2])).toEqual(['100', '101', '-1'])
+    // The supplementary alignment belongs to the read before it.
+    expect(stored.split('\n').map(l => l.split('\t')[2])).toEqual(['100', '101', '102'])
+    expect(stored.split('\n')[0].split('\t').slice(6)).toEqual(['0', '4', '9'])
   })
 
   it('builds minimap2 arguments and extends circular references', () => {
@@ -77,5 +80,24 @@ describe('mapReads with minimap2', () => {
     expect(report.alignmentChunks).toBeGreaterThan(1)
     const first = new TextDecoder().decode(inflateSync(stored[0])).split('\n')[0].split('\t')
     expect(first[2]).toBe('0')
+
+    // SAM: sorted, and every full-length alignment's bases are the reference's at its position.
+    const sam = await buildSam({
+      references: [{ name: 'p X', length: 5000 }], alignmentChunks: report.alignmentChunks,
+      getAlignments: async i => stored[i], readChunks: 2, getReads: async i => chunks[i], command: 'minimap2 -a',
+    })
+    const lines = sam.split('\n').filter(Boolean)
+    expect(lines[1]).toBe('@SQ\tSN:p_X\tLN:5000')
+    const recs = lines.filter(l => l[0] !== '@').map(l => l.split('\t'))
+    expect(recs.map(r => Number(r[3]))).toEqual([...recs.map(r => Number(r[3]))].sort((a, b) => a - b))
+    let checked = 0
+    for (const r of recs) {
+      if (r[5] !== '100M') continue
+      const at = Number(r[3]) - 1
+      expect(r[9]).toBe((genome + genome).slice(at, at + 100))
+      checked++
+    }
+    expect(checked).toBeGreaterThan(300)
+    expect(recs.some(r => Number(r[1]) & 16)).toBe(true)
   }, 60_000)
 })

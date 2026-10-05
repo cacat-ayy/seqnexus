@@ -159,3 +159,4 @@
 .ngs-check { display: flex; align-items: center; gap: var(--space-1-5); font-size: var(--text-sm); color: var(--text); }
 .ngs-warn-note { color: var(--warning); }
 .ngs-ref-list { display: flex; flex-direction: column; gap: var(--space-1); max-height: 180px; overflow: auto; }
+.ngs-actions { display: flex; gap: var(--space-2); }

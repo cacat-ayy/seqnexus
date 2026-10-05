@@ -12,7 +12,8 @@
 import { importReads, type ReadLayout } from './importer'
 import { trimReads, type FastpRunner } from './trimmer'
 import { exportFastq, type ExportLayout } from './exporter'
-import { mapReads, type MapPreset, type MapReference } from './mapper'
+import { mapReads, minimap2Args, type MapPreset, type MapReference } from './mapper'
+import { buildSam } from './sam'
 import { getReadChunk, putReadChunk } from '../storage/idb'
 import { runTool } from '../msa/engines/emscripten'
 import { isLongRead, type Technology, type TrimSettings } from './types'
@@ -29,6 +30,14 @@ export type ReadSetJob =
       refs: MapReference[]
       preset: MapPreset
       wasmBase: string
+    }
+  | {
+      type: 'sam'
+      storageId: string
+      references: { name: string; length: number }[]
+      alignmentChunks: number
+      readSet: { id: string; chunks: number; paired: boolean }
+      preset: MapPreset
     }
 
 export class CancelledError extends Error {
@@ -60,13 +69,34 @@ async function fetchOk(url: string): Promise<Response> {
   return r
 }
 
-async function toolRunner(base: string, dir: string, program: string): Promise<FastpRunner> {
+async function toolRunner(base: string, dir: string, program: string, dataName = program): Promise<FastpRunner> {
   const [glue, wasm, data] = await Promise.all([
     fetchOk(`${base}${dir}${program}.js`).then(r => r.text()),
     fetchOk(`${base}${dir}${program}.wasm`).then(r => r.arrayBuffer()),
-    fetchOk(`${base}${dir}${program}.data`).then(r => r.arrayBuffer()),
+    fetchOk(`${base}${dir}${dataName}.data`).then(r => r.arrayBuffer()),
   ])
   return (args, files, outputs) => runTool(glue, wasm, { args, files, outputs, dataPackage: data })
+}
+
+/**
+ * Can this browser run WebAssembly SIMD? A minimal module using a v128
+ * instruction, as wasm-feature-detect tests it.
+ */
+export function wasmSimd(): boolean {
+  try {
+    return WebAssembly.validate(new Uint8Array([0, 97, 115, 109, 1, 0, 0, 0, 1, 5, 1, 96, 0, 1, 123, 3, 2, 1, 0, 10, 10, 1, 8, 0, 65, 0, 253, 15, 253, 98, 11]))
+  } catch {
+    return false
+  }
+}
+
+/**
+ * minimap2's SIMD build where the browser has SIMD: the same alignments
+ * (tested identical) about thirty times faster on short reads, its ksw2
+ * extension being written for SIMD. Both builds share one data package.
+ */
+function minimap2Runner(base: string): Promise<FastpRunner> {
+  return toolRunner(base, 'minimap2/2.22/', wasmSimd() ? 'minimap2-simd' : 'minimap2', 'minimap2')
 }
 
 function fastpRunner(base: string): Promise<FastpRunner> {
@@ -107,7 +137,7 @@ export async function runReadSetJob(
     })
   }
   if (job.type === 'map') {
-    const minimap2 = await toolRunner(job.wasmBase, 'minimap2/2.22/', 'minimap2')
+    const minimap2 = await minimap2Runner(job.wasmBase)
     const ids = mappingStorageIds(job.storageId)
     return mapReads({
       readSet: job.readSet,
@@ -119,6 +149,19 @@ export async function runReadSetJob(
       putCoverage: (i, d) => putReadChunk(ids.coverage, i, d),
       onProgress: progress,
     })
+  }
+  if (job.type === 'sam') {
+    const ids = mappingStorageIds(job.storageId)
+    const text = await buildSam({
+      references: job.references,
+      alignmentChunks: job.alignmentChunks,
+      getAlignments: i => { check(); return getReadChunk(ids.alignments, i) },
+      readChunks: job.readSet.chunks,
+      getReads: i => { check(); return getReadChunk(job.readSet.id, i) },
+      command: ['minimap2', ...minimap2Args(job.preset, job.readSet.paired)].join(' '),
+      onProgress: progress,
+    })
+    return new Blob([text], { type: 'text/plain' })
   }
   const files = await exportFastq({
     chunks: job.chunks,

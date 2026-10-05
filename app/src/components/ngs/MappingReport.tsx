@@ -6,7 +6,11 @@
  */
 
 import './ReadSetWorkspace.css'
+import { useState } from 'react'
+import { Download } from 'lucide-react'
 import { useEditorStore } from '../../store'
+import { notify } from '../../toast'
+import { startSam } from '../../workers/readset'
 import type { NgsMapping } from '../../assembly/container'
 import { PRESET_LABEL } from '../../ngs/mapper'
 import { HistogramChart } from './charts'
@@ -18,8 +22,37 @@ export default function MappingReport({ ngs }: { ngs: NgsMapping }) {
   const r = ngs.report
   const readSet = useEditorStore(s => s.readSets.find(x => x.id === ngs.readSetId) ?? null)
   const one = r.references.length === 1 ? r.references[0] : null
+  const [exporting, setExporting] = useState<number | null>(null)
+  const exportSam = () => {
+    if (!readSet) return
+    setExporting(0)
+    const h = startSam({
+      type: 'sam', storageId: ngs.storageId,
+      references: r.references.map(x => ({ name: x.name, length: x.length })),
+      alignmentChunks: r.alignmentChunks,
+      readSet: { id: readSet.id, chunks: readSet.chunks, paired: readSet.paired },
+      preset: r.preset,
+    }, (d, t) => setExporting(t ? d / t : 0))
+    h.promise.then(blob => {
+      const name = `${ngs.readSetName.replace(/[\\/:*?"<>|\s]+/g, '_')}_vs_${r.references.map(x => x.name).join('_').replace(/[\\/:*?"<>|\s]+/g, '_')}.sam`
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = name
+      a.click()
+      setTimeout(() => URL.revokeObjectURL(url), 10_000)
+      notify.success(`Exported ${name}`)
+    }).catch(err => notify.error('SAM export failed', { detail: err instanceof Error ? err.message : String(err) }))
+      .finally(() => setExporting(null))
+  }
   return (
     <>
+      <div className="ngs-actions">
+        <button className="aw-btn" onClick={exportSam} disabled={!readSet || exporting !== null}
+          title={readSet ? 'The alignments as a SAM file sorted by position, with the reads\' bases, for IGV or samtools' : 'The read set this mapping came from has been deleted, so its bases are gone'}>
+          <Download size={13} /> {exporting !== null ? `Exporting ${Math.round(exporting * 100)}%` : 'Export SAM'}
+        </button>
+      </div>
       <div className="ngs-tiles">
         <Tile label="Reads mapped" value={pct(r.reads ? r.mapped / r.reads : 0)} detail={`${nf.format(r.mapped)} of ${nf.format(r.reads)}`} />
         {r.properlyPaired !== null && <Tile label="Properly paired" value={pct(r.properlyPaired)} detail="of mapped reads" />}
