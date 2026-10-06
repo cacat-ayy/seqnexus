@@ -10,7 +10,8 @@ import './ReadSetWorkspace.css'
 import '../alignment/AlignmentWorkspace.css'
 import '../sanger/ReadWorkspace.css'
 import { lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react'
-import { ChevronDown, Download, FileStack, Layers, Scissors, Trash2, X, CircleCheck, TriangleAlert, OctagonAlert } from 'lucide-react'
+import { ChevronDown, Download, FileStack, Layers, Route, Scissors, Trash2, X, CircleCheck, TriangleAlert, OctagonAlert } from 'lucide-react'
+import { openAnalyse } from './analyseRequest'
 import { useEditorStore, type ReadSet } from '../../store'
 import { notify } from '../../toast'
 import { readSetQc, QC_LABEL } from '../../ngs/qc'
@@ -141,6 +142,10 @@ export default function ReadSetWorkspace({ readSet: rs, onClose }: Props) {
         </button>
         <button className="aw-btn" onClick={() => setMapOpen(true)} disabled={discarded} title="Map the reads to open sequences with minimap2">
           <Layers size={13} /> Map to reference…
+        </button>
+        <button className="aw-btn" onClick={() => openAnalyse([rs.id])} disabled={discarded}
+          title="Trim, map and find variants in one go, for this read set and any others">
+          <Route size={13} /> Analyse…
         </button>
         <div className="aw-export" ref={menuRef}>
           <button className="aw-btn" onClick={() => setExportMenu(o => !o)} aria-expanded={exportMenu} disabled={exporting !== null || discarded}>

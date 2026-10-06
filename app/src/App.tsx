@@ -42,6 +42,7 @@ import { getTraceView, subscribeTraceView, updateTraceView, ZOOM_WIDTHS } from '
 import { CONTIG_ZOOM } from './assembly/view'
 import { parseFastq, meanQuality } from './io/fastq'
 import { countRecords, isNgsByName, NGS_FEW_RECORDS } from './ngs/peek'
+import { closeAnalyse, openAnalyse, useAnalyseRequest } from './components/ngs/analyseRequest'
 import { isReadFile } from './ngs/detect'
 import { libraryMatches } from './primers/library'
 import { notify } from './toast'
@@ -69,7 +70,7 @@ import {
   Undo2, Redo2, Search, TextSearch, Scissors, FlaskConical,
   BarChart3, ZoomOut, ZoomIn, Scan, PanelLeftOpen,
   X, ChevronDown as ChevronDownSmall,
-  SunMoon, Info, List, Lock, LockOpen, Tag, Globe, GalleryVertical, AlignLeft, ArrowLeft, Wand2,
+  SunMoon, Info, List, Lock, LockOpen, Tag, Globe, GalleryVertical, AlignLeft, ArrowLeft, Wand2, Route,
   Combine,
   SlidersHorizontal,
 } from 'lucide-react'
@@ -93,6 +94,7 @@ const ReadSetView = lazy(() => import('./components/sanger/ReadSetView'))
 
 const ContigWorkspace = lazy(() => import('./components/contig/ContigWorkspace'))
 const AssembleDialog = lazy(() => import('./components/contig/AssembleDialog'))
+const AnalyseReadsDialog = lazy(() => import('./components/ngs/AnalyseReadsDialog'))
 const AssemblyOverview = lazy(() => import('./components/contig/AssemblyOverview'))
 const ReadSetWorkspace = lazy(() => import('./components/ngs/ReadSetWorkspace'))
 const ImportReadsDialog = lazy(() => import('./components/ngs/ImportReadsDialog'))
@@ -418,6 +420,8 @@ export default function App() {
   const setContigView = useEditorStore(s => s.setContigView)
   // Reads waiting to be assembled (the assemble dialog is open while set).
   const [assembleReadIds, setAssembleReadIds] = useState<string[] | null>(null)
+  // The guided NGS pipeline, asked for from the read set page or the command palette.
+  const analyseRequest = useAnalyseRequest()
   // NGS read files waiting in the import dialog.
   const [readImportFiles, setReadImportFiles] = useState<File[] | null>(null)
   /** SAM/BAM files waiting to be imported, one dialog at a time. */
@@ -1538,6 +1542,7 @@ export default function App() {
     { id: 'primers', label: 'Design Primers', group: 'Analyse', icon: FlaskConical, keywords: 'pcr tm oligo', disabled: noDoc, run: openPrimerDesign },
     { id: 'blast', label: 'BLAST Search', group: 'Analyse', icon: Globe, keywords: 'ncbi homology', disabled: noDoc, run: () => setBlastModalOpen(true) },
     { id: 'align', label: 'Align Sequences', group: 'Analyse', icon: AlignLeft, keywords: 'msa pairwise clustal', run: () => setAlignModalOpen(true) },
+    { id: 'analyse-reads', label: 'Analyse NGS Reads…', group: 'Analyse', icon: Route, keywords: 'pipeline map variants trim fastq samples consensus', run: () => openAnalyse() },
     { id: 'gel', label: 'Virtual Gel', group: 'Analyse', icon: GalleryVertical, keywords: 'electrophoresis digest agarose', run: openGel },
     { id: 'new-gel', label: 'New Gel', group: 'Analyse', icon: GalleryVertical, keywords: 'electrophoresis digest agarose', run: () => useEditorStore.getState().createGel() },
     { id: 'codon-optimize', label: 'Codon Optimization', group: 'Analyse', icon: Wand2, keywords: 'codon usage rare harmonize express host', disabled: noDoc, run: () => setCodonModalOpen(true) },
@@ -2557,6 +2562,11 @@ export default function App() {
       {readImportFiles && (
         <Suspense fallback={null}>
           <ImportReadsDialog files={readImportFiles} onClose={() => setReadImportFiles(null)} />
+        </Suspense>
+      )}
+      {analyseRequest && (
+        <Suspense fallback={null}>
+          <AnalyseReadsDialog readSetIds={analyseRequest.readSetIds} onClose={closeAnalyse} />
         </Suspense>
       )}
       {assembleReadIds && (

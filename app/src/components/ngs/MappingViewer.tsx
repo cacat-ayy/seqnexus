@@ -21,7 +21,7 @@
 import './MappingViewer.css'
 import { memo, useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
 import {
-  ArrowDownUp, ChevronDown, ClipboardCopy, Crosshair, Diff, Scissors, Maximize2, Minus, PanelRightClose, PanelRightOpen, Plus, Search, X,
+  ArrowDownUp, ChevronDown, ClipboardCopy, Crosshair, Diff, Image as ImageIcon, Scissors, Maximize2, Minus, PanelRightClose, PanelRightOpen, Plus, Search, X,
 } from 'lucide-react'
 import { useEditorStore } from '../../store'
 import { notify } from '../../toast'
@@ -35,6 +35,7 @@ import {
 import { writeVcf } from '../../assembly/vcf'
 import VariantTable, { VariantCard, type CallState } from './VariantTable'
 import ConsensusDialog from './ConsensusDialog'
+import MappingFigureDialog from './MappingFigureDialog'
 import JunctionTable from './JunctionTable'
 import { takeReveal } from './reveal'
 import { startFindJunctions } from '../../workers/readset'
@@ -261,6 +262,7 @@ export default function MappingViewer({ ngs, assemblyId, name, refIndex, onRefIn
   const passing = useMemo(() => variants.filter(v => variantFilters(v, vstate.settings).length === 0).sort((a, b) => a.c0 - b.c0), [variants, vstate.settings])
   const [selVariant, setSelVariant] = useState<string | null>(null)
   const [consensusOpen, setConsensusOpen] = useState(false)
+  const [figure, setFigure] = useState<{ view: [number, number] } | null>(null)
 
   // ---- Junctions ----
   const [juncOpen, setJuncOpen] = useState(false)
@@ -560,6 +562,12 @@ export default function MappingViewer({ ngs, assemblyId, name, refIndex, onRefIn
           <Scissors size={13} /> Junctions{junc && junc.ref === ref ? ` (${nf.format(junc.list.length)})` : ''}
         </button>
         <span className="aw-spacer" />
+        <button className="aw-tool-btn" onClick={() => {
+          const s0 = scale.get()
+          setFigure({ view: [Math.max(0, s0.start), Math.min(R.length, s0.start + plotW * s0.bpPerPx)] })
+        }} disabled={!refData} title="Export this stretch as a figure: SVG, PNG or PDF">
+          <ImageIcon size={13} /> Figure
+        </button>
         <ZoomControls scale={scale} plotW={plotW} length={R.length} canvas={canvasRef} />
         <button className="aw-icon-btn" onClick={() => setPanel(o => !o)} title={panel ? 'Hide the side panel' : 'Show the side panel'} aria-label={panel ? 'Hide the side panel' : 'Show the side panel'}>
           {panel ? <PanelRightClose size={15} /> : <PanelRightOpen size={15} />}
@@ -718,6 +726,17 @@ export default function MappingViewer({ ngs, assemblyId, name, refIndex, onRefIn
         )}
       </div>
 
+      {figure && (
+        <MappingFigureDialog
+          input={{ ...input, layout: shownLayout, variants: showVariants ? passing : null }}
+          view={figure.view}
+          loaded={loaded && loaded.ref === ref && shownLayout ? [loaded.from, loaded.to] : null}
+          colorBy={display.colorBy}
+          strands={display.strands}
+          name={`${name}_${R.name}`}
+          onClose={() => setFigure(null)}
+        />
+      )}
       {consensusOpen && (
         <ConsensusDialog source={source} refIndex={ref} name={name} assemblyId={assemblyId} onClose={() => setConsensusOpen(false)} />
       )}

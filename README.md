@@ -95,6 +95,7 @@ of each build.
   variants with live thresholds and technology presets, VCF, consensus;
   several samples per mapping with a samples x variants matrix and clone
   verification per sample; primer clipping for amplicons; soft-clip junctions;
+  a guided pipeline from reads to variants; figures as SVG, PNG or PDF;
   mappings exported as BAM (with its index) or SAM, and imported from either
 - **Sanger sequencing** - chromatograms, trimming, mapping to a reference or de
   novo assembly kept as assemblies with their contigs, variants, clone
@@ -610,9 +611,8 @@ throughout.
 ### Limits
 
 - Tested in the browser with 20,000 Illumina pairs and 2,000 Nanopore reads
-  (import about a second, fastp trimming about two). The design is meant to
-  reach bacterial genomes (millions of reads); timings at that scale are still
-  to be measured.
+  (import about a second, fastp trimming about two), and measured at
+  bacterial-genome scale (1.7 million reads on 5 Mb, see Scale below).
 - Phred+64 qualities (Illumina 1.3 to 1.7) are not detected, as in the FASTQ
   reader for sequences.
 - Opened as a file (`file://`), Chrome starts no module workers, so import,
@@ -966,6 +966,59 @@ bases between, back on the same strand as a duplication, the other strand as
 an inversion, another reference as a join to it. These are suggestions to
 look at, not calls. The result is kept with the mapping; a junction in the
 table opens the view there with the soft-clipped bases shown.
+
+### Guided pipeline
+
+"Analyse reads" (on a read set's page, and "Analyse NGS Reads" in the
+command palette) goes from read sets to a mapping with its variants in one
+go. For each read set chosen, in turn: trim and filter with the default
+settings (fastp for short reads, length and quality for long ones) into a
+new read set, unless turned off or the read set was made by trimming
+already; map to the references chosen, with minimap2 set for the kind of
+read and, for amplicons, primer clipping; then find the variants, and the
+soft-clip junctions if asked. Every read set becomes a sample of one
+mapping, which opens at the end. Each step is the same background job the
+separate dialogs run, so the results are the same; a step that fails stops
+only its own sample, and the table of steps says which and why.
+
+### Figures
+
+The mapping view exports a stretch as a figure: the view as it is, or a
+stretch typed in, as SVG (vector, for Illustrator or Inkscape), PNG at 2x or
+4x, or PDF through the print dialog. Tracks: ruler, coverage (optionally by
+strand), variants with their coding changes where there is room, the
+reference's bases when they are wide enough to tell apart, and the reads in
+the view's colours, order and downsampling (up to a chosen number of rows).
+It is drawn on white with print colours whatever the app's theme, with
+colours as hex plus fill-opacity, which vector editors read reliably,
+rather than rgba(). Reads are drawn for stretches of 20 kb or less, and
+where the view has them loaded; wider, the figure is coverage and variants.
+
+### Scale
+
+Measured on a simulated bacterial genome (5 Mb, 850,000 read pairs of 150
+bases, about 50x, 0.3% sequencing errors, 2,000 SNPs), on one core of a
+laptop in Node, which runs the same JavaScript and WebAssembly as the
+browser (`src/ngs/scale.bench.test.ts`, run with `SEQNEXUS_BENCH=1`):
+
+| Step | Time | Memory held |
+|------|------|-------------|
+| Import 1.7 million reads (stats, compressed chunks) | 29 s, read generation included | 210 MB; read set stored in 77 MB |
+| minimap2 (SIMD build), extrapolated from 20,000 pairs | under a minute | |
+| Store the mapping (sort, pages, coverage, candidate sites) | 28 s | 360 MB; 33 MB stored |
+| Call variants (recount the 2,630 candidate sites) | 2 s | all 2,000 SNPs found |
+| Find soft-clip junctions (every page) | 2 s | |
+| Export BAM with index | 17 s | 42 MB file |
+| Open the view; load 300 kb (100,000 reads) around a 100 kb view, its pileup and rows | under half a second | |
+
+IndexedDB holds this comfortably (about 110 MB for reads and mapping), so
+the Origin Private File System, kept in reserve for larger data, was not
+needed. One step was too slow at this scale and was rewritten: the tandem
+repeat search used for every indel scanned with string slices; it now
+compares character codes along stretches where each base equals the one a
+unit length before (one pass per unit length), 12 times faster with the
+same results: a 5 Mb genome in 0.14 s, and 60,000 Nanopore-like indel sites
+described in 0.5 s instead of 3.9 s on the page.
 
 ### SAM and BAM
 

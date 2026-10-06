@@ -1326,7 +1326,7 @@ interface EditorStore {
   /** An id for an NGS mapping about to run (its alignments are stored under it first). */
   newAssemblyId: () => string
   /** Add an NGS mapping (an assembly with no Sanger contigs) and open its overview. */
-  addMapping: (assembly: Assembly) => void
+  addMapping: (assembly: Assembly, open?: boolean) => void
   /** Put a new mapping in place of an assembly's mapping (Run again). Returns a function that puts the old one back. */
   /** Put a sample mapped again in place of the one stored under `storageId`; returns undo. */
   replaceSample: (id: string, storageId: string, sample: NgsMapping, inputs?: Assembly['inputs']) => (() => void) | null
@@ -4100,9 +4100,9 @@ export const useEditorStore = create<EditorStore>((set, get) => {
       return nextAssemblyId()
     },
 
-    addMapping(assembly) {
+    addMapping(assembly, open = true) {
       set(s => ({ assemblies: [...s.assemblies, assembly] }))
-      get().setActiveAssembly(assembly.id)
+      if (open) get().setActiveAssembly(assembly.id)
     },
 
     replaceSample(id, storageId, sample, inputs) {
