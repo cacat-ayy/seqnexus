@@ -736,9 +736,39 @@ reads, from a whole genome down to single bases.
 - **Semantic zoom:** at every scale the coverage track; from 10 bases per
   pixel in, mismatches as ticks in their base's colour; from 2 bases per pixel
   in, insertions as marks between bases (longer ones at any zoom), deletions
-  as a line through the gap; from 8 pixels per base, mismatched bases as
-  letters, the reference's bases, and the length of insertions and deletions.
-  Matching bases are not drawn, so what differs stands out.
+  as a line through the gap; from 10 pixels per base (an 8 px font, the
+  smallest that stays legible), the reads' bases as letters, the reference's
+  bases, and the length of insertions and deletions.
+- **Bases on the reads:** every base of a read is known without storing it
+  again: where the read matches the reference it is the reference's base, and
+  the stored differences give the rest. Close in, the bases are drawn one of
+  four ways. *Highlight disagreements* (the default, as Geneious highlights
+  disagreements) draws every base, the agreeing ones muted and each
+  disagreeing one in its base's colour on a tint of it. *Dots where they
+  agree* draws an agreeing base as `.` on the forward strand and `,` on the
+  reverse, as `samtools tview` does, so a column of disagreements reads at a
+  glance. *All in base colours* fills every base with its colour (from 2
+  pixels per base, as coloured cells before letters fit), as Geneious colours
+  nucleotides. *Only differences* draws what IGV draws: the read as a bar with
+  only the differing bases on it. Disagreement is judged against the
+  reference or against the consensus row; against the consensus, a variant
+  every read carries fades and the minority reads stand out (a mixed clone, a
+  second allele). Differing bases are always faded by base quality; every
+  base can be too.
+- **Consensus row:** under the reference, the majority of the loaded reads at
+  each base (A, C, G, T or a deletion, the reference's base winning a tie),
+  tinted where it differs from the reference; zoomed out, only those
+  positions, as ticks. Where most of the reads covering a base insert bases
+  after it, the row marks the insertion between the bases as the reads do. Every loaded read counts, as in the coverage track, so
+  it is what the reads drawn say, before the thresholds of the variant
+  settings; the consensus that is exported (see Variants) applies those.
+- **Features and translation:** when the reference's sequence is open, its
+  features are drawn above it in their own colours, packed into up to four
+  lanes (a feature across the origin of a circular reference in two parts).
+  Close in (from 3 pixels per base), a CDS or ORF shows its translation in
+  place of its name: each amino acid centred on its codon, in the frame of
+  the feature's start (its end on the reverse strand), with the standard
+  genetic code, so a variant can be read against the codon it falls in.
 - **Coverage track:** one bar per base when bases are a pixel or wider, else
   one per pixel column, from the best source at hand: the loaded reads (which
   also give the strands and the alleles), per-base coverage up to 256 bases per
@@ -823,7 +853,24 @@ VCF can name the thresholds a variant failed.
   there with its length, an insertion after it with its bases, its strand.
   Pages with no site in their stretch are skipped. As `samtools mpileup`
   counts, bases below Q13 are left out; a read whose deletion runs across a
-  site counts in its depth but for no base. This runs in the background (on
+  site counts in its depth but for no base. Reads of mapping quality 0 are
+  not counted: the aligner found another place they fit as well (a repeat,
+  an rRNA operon, an IS element), so which copy they came from is a guess,
+  and counting them turns the other copies' differences into false
+  low-frequency variants. This is what Geneious's mapper does with "Map
+  multiple best matches: to none"; GATK goes further and leaves out reads
+  below MAPQ 20. Such reads are still drawn and still count in the coverage,
+  so in a repeat the called depth can be lower than the coverage track.
+  Indels are counted where the aligner put them, without left-normalising
+  them first. An indel inside a repeat could be written at any of several
+  equivalent positions, and if reads disagreed its evidence would be split
+  between them; Geneious realigns reads to each other around indels for
+  this reason. Checked with minimap2 2.22 (`sr` and `map-ont`) on a CAG
+  repeat deletion, an AT repeat insertion, a homopolymer deletion and a
+  deletion next to a near-repeat, with reads on both strands at every offset:
+  every read that spans the indel places it at the same position, so no
+  realignment step is needed for mappings made here. Imported BAM files
+  from other aligners are taken as they are. This runs in the background (on
   the page when opened from disk) and the counts are stored with the mapping,
   so the table opens at once afterwards. Each site gives at most one variant
   of each kind: the strongest other base, the strongest deletion starting

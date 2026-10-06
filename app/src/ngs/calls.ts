@@ -207,6 +207,18 @@ export function decodeCalls(data: Uint8Array): SiteCall[] {
 }
 
 /**
+ * Lowest mapping quality of a read counted for variants. MAPQ 0 means the
+ * aligner found another place the read fits as well (a repeat, an rRNA
+ * operon, an IS element), so which copy it came from is a guess; counting
+ * such reads puts the other copies' differences in as false low-frequency
+ * variants. They are left out of the counts, as Geneious's mapper leaves
+ * them unplaced with "Map multiple best matches: to none" (GATK goes
+ * further and leaves out reads below MAPQ 20). They are still drawn and
+ * still counted in the coverage.
+ */
+export const CALL_MIN_MAPQ = 1
+
+/**
  * Recount every candidate site of a stored mapping and store the counts
  * (under the mapping's `calls` id, one entry per reference).
  */
@@ -215,7 +227,10 @@ export async function callMapping(o: {
   storage: Pick<MappingStorage, 'get' | 'put'>
   references: readonly { name: string; length: number; circular: boolean }[]
   onProgress?: (done: number, total: number) => void
+  /** Reads placed with less confidence are not counted (CALL_MIN_MAPQ when left out). */
+  minMapq?: number
 }): Promise<{ sites: number }> {
+  const minMapq = o.minMapq ?? CALL_MIN_MAPQ
   const ids = mappingStorageIds(o.storageId)
   const index = await readMappingIndex(o.storage, o.storageId)
   const plan = await Promise.all(o.references.map(async (ref, r) => {
@@ -245,7 +260,7 @@ export async function callMapping(o: {
     for (const pg of pages) {
       const data = await o.storage.get(ids.pages, pg.index)
       if (!data) throw new Error('Part of the mapping is missing from this browser\'s storage')
-      for (const a of decodePage(data)) countAlignment(a, ref, sp, accs)
+      for (const a of decodePage(data)) if (a.mapq >= minMapq) countAlignment(a, ref, sp, accs)
       o.onProgress?.(++done, total)
     }
     const calls = finishSites(sp, accs, ref.length || 1)

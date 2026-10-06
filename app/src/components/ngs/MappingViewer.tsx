@@ -61,8 +61,8 @@ import {
 import { HistogramChart } from './charts'
 import MappingCanvas, { type MapHover, type MappingCanvasHandle } from './MappingCanvas'
 import {
-  ALLELE_FRACTION, clampScale, depthOver, LETTER_PX, mapGeometry, MAX_PX_PER_BASE, PAIR_LABEL, readColors,
-  type ColorBy, type MapOptions, type MapPaintInput, type MapScale, type RowMode,
+  ALLELE_FRACTION, clampScale, depthOver, layFeatures, LETTER_PX, mapGeometry, MAX_PX_PER_BASE, PAIR_LABEL, readColors,
+  type BaseMode, type ColorBy, type CompareTo, type MapOptions, type MapPaintInput, type MapScale, type RowMode,
 } from './mappingPaint'
 import { readAlnTheme, useThemeVersion } from '../alignment/theme'
 import { drawCaption } from '../minimap/theme'
@@ -78,6 +78,11 @@ interface Display {
   minMapq: number
   lowOn: boolean
   lowCoverage: number
+  bases: BaseMode
+  compareTo: CompareTo
+  baseQuality: boolean
+  consensus: boolean
+  features: boolean
 }
 
 /** Where each mapping was left, for coming back to it in this session. */
@@ -140,10 +145,12 @@ export default function MappingViewer({ ngs, assemblyId, name, refIndex, onRefIn
   const R = refs[ref]
   const paired = report.properlyPaired !== null
   const saved = memory.get(ngs.storageId)
-  const [display, setDisplay] = useState<Display>(() => saved?.display ?? {
+  const [display, setDisplay] = useState<Display>(() => ({
     colorBy: paired ? 'pair' : 'strand', rowMode: 'expanded', softClips: false, strands: false,
     downsample: true, minMapq: 0, lowOn: false, lowCoverage: 10,
-  })
+    bases: 'disagree', compareTo: 'reference', baseQuality: false, consensus: true, features: true,
+    ...saved?.display,
+  }))
   const [panel, setPanel] = useState(saved?.panel ?? true)
   const technology = technologyOfPreset(report.preset)
   const [vstate, setVstate] = useState(() => saved?.variants ?? {
@@ -347,11 +354,16 @@ export default function MappingViewer({ ngs, assemblyId, name, refIndex, onRefIn
   const opts: MapOptions = useMemo(() => ({
     colorBy: display.colorBy, softClips: display.softClips, strands: display.strands,
     lowCoverage: display.lowOn ? display.lowCoverage : 0, brush, expected,
+    bases: display.bases, compareTo: display.compareTo, baseQuality: display.baseQuality,
   }), [display, brush, expected])
   // Only whether bases are drawn as letters changes the layout; the rest of the scale is read by the canvas.
   const letters = useSyncExternalStore(scale.subscribe, () => 1 / scale.get().bpPerPx >= LETTER_PX)
   const showVariants = call.kind === 'ready'
-  const geo = useMemo(() => mapGeometry(display.rowMode, letters ? 8 : 1, showVariants), [display.rowMode, letters, showVariants])
+  const showConsensus = display.consensus && loaded !== null
+  const laidFeatures = useMemo(() => (display.features ? layFeatures(features, R.length) : { laid: [], lanes: 0 }),
+    [display.features, features, R.length])
+  const geo = useMemo(() => mapGeometry(display.rowMode, letters ? LETTER_PX : 1, showVariants, showConsensus, laidFeatures.lanes),
+    [display.rowMode, letters, showVariants, showConsensus, laidFeatures.lanes])
   const input: MapPaintInput = useMemo(() => ({
     geo, refIndex: ref, refName: R.name, length: R.length, circular: R.circular,
     bases: refData?.ref === ref ? refData.bases : null,
@@ -363,7 +375,8 @@ export default function MappingViewer({ ngs, assemblyId, name, refIndex, onRefIn
     opts,
     variants: showVariants ? passing : null,
     selectedVariant: selVariant,
-  }), [geo, ref, R, refData, loaded, shownLayout, opts, showVariants, passing, selVariant])
+    features: laidFeatures.laid,
+  }), [geo, ref, R, refData, loaded, shownLayout, opts, showVariants, passing, selVariant, laidFeatures])
 
   // ---- Navigation ----
   const changeRef = useCallback((i: number, center?: number) => {
@@ -672,6 +685,41 @@ export default function MappingViewer({ ngs, assemblyId, name, refIndex, onRefIn
                     </button>
                   ))}
                 </div>
+                <div className="mv-inline">
+                  <span className="mv-inline-label" title="How the reads' bases are drawn once you zoom in far enough for letters">Bases</span>
+                  <select className="select aw-select" value={display.bases} aria-label="How bases are drawn"
+                    onChange={e => setDisplay(d => ({ ...d, bases: e.target.value as BaseMode }))}>
+                    <option value="disagree">Highlight disagreements</option>
+                    <option value="dots">Dots where they agree</option>
+                    <option value="all">All in base colours</option>
+                    <option value="off">Only differences</option>
+                  </select>
+                </div>
+                {display.bases !== 'off' && (
+                  <div className="aw-seg" role="radiogroup" aria-label="Disagreements with">
+                    {(['reference', 'consensus'] as const).map(m => (
+                      <button key={m} role="radio" aria-checked={display.compareTo === m} className={display.compareTo === m ? 'active' : ''}
+                        onClick={() => setDisplay(d => ({ ...d, compareTo: m }))}
+                        title={m === 'reference' ? 'Highlight bases that differ from the reference'
+                          : 'Highlight bases that differ from the majority of the reads: a variant every read carries fades, minority reads stand out'}>
+                        {m === 'reference' ? 'Against reference' : 'Against consensus'}
+                      </button>
+                    ))}
+                  </div>
+                )}
+                <label className="aw-check small" title="Fade every base by its quality, not only the ones that differ (faint at Q5 and below, full from Q20)">
+                  <input type="checkbox" checked={display.baseQuality} onChange={e => setDisplay(d => ({ ...d, baseQuality: e.target.checked }))} />
+                  Shade bases by quality
+                </label>
+                <label className="aw-check small" title="A row under the reference with the majority base of the loaded reads, tinted where it differs from the reference">
+                  <input type="checkbox" checked={display.consensus} onChange={e => setDisplay(d => ({ ...d, consensus: e.target.checked }))} />
+                  Consensus row
+                </label>
+                <label className="aw-check small" title={refTab ? 'The reference\'s features above it; coding features show their translation when you zoom in'
+                  : 'The reference\'s features, once its sequence is open'}>
+                  <input type="checkbox" checked={display.features} disabled={!refTab} onChange={e => setDisplay(d => ({ ...d, features: e.target.checked }))} />
+                  Features and translation
+                </label>
                 <label className="aw-check small" title="Draw the bases the aligner left unaligned at a read's ends, faintly">
                   <input type="checkbox" checked={display.softClips} onChange={e => setDisplay(d => ({ ...d, softClips: e.target.checked }))} />
                   Soft-clipped bases

@@ -226,11 +226,13 @@ export interface ReadDiff {
   deletions: { pos: number; len: number }[]
   /** Skipped reference (CIGAR N). */
   skips: { pos: number; len: number }[]
+  /** Stretches where the read matches the reference, with the offset of their first base in the read's qualities. */
+  matches: { pos: number; len: number; qp: number }[]
 }
 
 /** Positions are the alignment's own (add the read's shift to draw them). */
 export function readDiff(a: StoredAlignment): ReadDiff {
-  const out: ReadDiff = { mismatches: [], insertions: [], deletions: [], skips: [] }
+  const out: ReadDiff = { mismatches: [], insertions: [], deletions: [], skips: [], matches: [] }
   const d = a.diff
   if (d === '*') return out
   const q = a.qual
@@ -243,8 +245,10 @@ export function readDiff(a: StoredAlignment): ReadDiff {
     if (op === ':' || op === '~') {
       let n = 0
       while (i < d.length && d.charCodeAt(i) >= 48 && d.charCodeAt(i) <= 57) n = n * 10 + d.charCodeAt(i++) - 48
-      if (op === ':') qp += n
-      else out.skips.push({ pos: p, len: n })
+      if (op === ':') {
+        out.matches.push({ pos: p, len: n, qp })
+        qp += n
+      } else out.skips.push({ pos: p, len: n })
       p += n
     } else if (op === '*') {
       out.mismatches.push({ pos: p, base: d[i + 1].toUpperCase(), qual: qualAt(qp) })

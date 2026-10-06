@@ -445,7 +445,7 @@ export function inFeature(f: RefFeature, p: number, L: number): boolean {
   return f.start <= f.end ? p >= f.start && p < f.end : p >= f.start || p < f.end
 }
 
-const CODING = new Set(['CDS', 'ORF'])
+export const CODING = new Set(['CDS', 'ORF'])
 
 function featureLength(f: RefFeature, L: number): number {
   return f.start <= f.end ? f.end - f.start : L - f.start + f.end

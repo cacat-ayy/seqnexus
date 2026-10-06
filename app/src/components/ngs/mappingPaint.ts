@@ -9,7 +9,8 @@
  * - reads as bars in their colour mode, mismatches as ticks in their base's
  *   colour faded by base quality (from 10 bases per pixel in), insertions as
  *   marks between bases, deletions as a line through the gap;
- * - from LETTER_PX pixels per base: mismatched bases as letters, the
+ * - from LETTER_PX pixels per base: the reads' bases as letters (every base or
+ *   only the differing ones, see BaseMode), the
  *   reference's bases, insertion lengths, deletion lengths;
  * - soft clips, when shown, as faint extensions with their bases coloured.
  *
@@ -21,15 +22,17 @@ import { baseColor, tracePalette, withAlpha, type TracePalette } from '../sanger
 import { paintPositionRuler, truncate } from '../tracks/draw'
 import type { CoverageLevel } from '../../ngs/alignments'
 import type { PileupSite } from '../../ngs/pileup'
-import { variantKey, type Variant } from '../../assembly/variants'
+import { CODING, variantKey, type RefFeature, type Variant } from '../../assembly/variants'
+import { complementBase } from '../../models/complement'
+import { translateCodon } from '../../utils/codon'
 import {
   firstInRow, pairClass, readDiff, summaryLevel,
   type PairClass, type ReadLayout, type ViewRead, type WindowPileup,
 } from '../../ngs/view'
 
 export const MAP_GUTTER = 92
-/** Pixels per base from which bases are drawn as letters. */
-export const LETTER_PX = 8
+/** Pixels per base from which bases are drawn as letters (an 8 px font, the smallest that stays legible). */
+export const LETTER_PX = 10
 /** Mismatches are ticked from this many bases per pixel in. */
 const MISMATCH_BPP = 10
 const RULER_H = 20
@@ -42,6 +45,16 @@ export const ALLELE_FRACTION = 0.2
 
 export type ColorBy = 'none' | 'strand' | 'pair'
 export type RowMode = 'expanded' | 'squished'
+/**
+ * How the reads' bases are drawn once they are wide enough for letters:
+ * 'off' only the bases that differ (as IGV does), 'disagree' every base with
+ * the agreeing ones muted (as Geneious highlights disagreements), 'dots'
+ * agreeing bases as . (forward) or , (reverse) as samtools tview does,
+ * 'all' every base in its base colour.
+ */
+export type BaseMode = 'off' | 'disagree' | 'dots' | 'all'
+/** What a read's base disagrees with: the reference, or the consensus of the reads shown. */
+export type CompareTo = 'reference' | 'consensus'
 
 export interface MapGeometry {
   gutter: number
@@ -50,23 +63,65 @@ export interface MapGeometry {
   /** The variant track, when variants have been called. */
   vars: [number, number] | null
   ref: [number, number]
+  /** The reference's features, in lanes, when it has any. */
+  feats: [number, number] | null
+  /** The consensus of the loaded reads, when shown. */
+  cons: [number, number] | null
   sampled: [number, number]
   headerH: number
   rowH: number
   pitch: number
 }
 
-export function mapGeometry(rowMode: RowMode, pxPerBase: number, variants = false): MapGeometry {
+export function mapGeometry(rowMode: RowMode, pxPerBase: number, variants = false, consensus = false, featureLanes = 0): MapGeometry {
   let y = 0
   const band = (h: number): [number, number] => { const b: [number, number] = [y, y + h]; y += h; return b }
   const ruler = band(RULER_H)
   const cov = band(COV_H)
   const vars = variants ? band(VARS_H) : null
+  const feats = featureLanes > 0 ? band(featureLanes * FEATURE_LANE_H + 2) : null
   const ref = band(REF_H)
+  const cons = consensus ? band(REF_H) : null
   const sampled = band(SAMPLED_H)
   y += 3
   const rowH = rowMode === 'squished' ? 3 : pxPerBase >= LETTER_PX ? 14 : 9
-  return { gutter: MAP_GUTTER, ruler, cov, vars, ref, sampled, headerH: y, rowH, pitch: rowH + (rowMode === 'squished' ? 1 : 2) }
+  return { gutter: MAP_GUTTER, ruler, cov, vars, feats, ref, cons, sampled, headerH: y, rowH, pitch: rowH + (rowMode === 'squished' ? 1 : 2) }
+}
+
+const FEATURE_LANE_H = 14
+/** Most feature lanes drawn; features that do not fit share the last. */
+const MAX_FEATURE_LANES = 4
+
+/** A stretch of a feature in one lane; a feature across the origin of a circular reference is two. */
+export interface LaidFeature {
+  f: RefFeature
+  start: number
+  end: number
+  lane: number
+}
+
+/** Features packed into lanes so overlapping ones do not cover each other. */
+export function layFeatures(features: readonly RefFeature[], L: number): { laid: LaidFeature[]; lanes: number } {
+  const parts: Omit<LaidFeature, 'lane'>[] = []
+  for (const f of features) {
+    if (f.type === 'source') continue
+    if (f.end > f.start && f.end <= L) parts.push({ f, start: f.start, end: f.end })
+    else {
+      // Across the origin: from start to the end of the reference, then from 0.
+      parts.push({ f, start: f.start, end: L })
+      const tail = f.end > L ? f.end - L : f.end
+      if (tail > 0) parts.push({ f, start: 0, end: tail })
+    }
+  }
+  parts.sort((a, b) => a.start - b.start || b.end - a.end)
+  const ends: number[] = []
+  const laid = parts.map(p => {
+    let lane = ends.findIndex(e => e <= p.start)
+    if (lane < 0) lane = ends.length < MAX_FEATURE_LANES ? ends.length : MAX_FEATURE_LANES - 1
+    ends[lane] = Math.max(ends[lane] ?? 0, p.end)
+    return { ...p, lane }
+  })
+  return { laid, lanes: ends.length }
 }
 
 export interface MapScale {
@@ -85,6 +140,11 @@ export interface MapOptions {
   brush: readonly [number, number] | null
   /** Fragment lengths expected (from the report), for colouring by pair. */
   expected: readonly [number, number] | null
+  /** How bases are drawn at letter zoom; 'off' when left out. */
+  bases?: BaseMode
+  compareTo?: CompareTo
+  /** Shade every drawn base by its quality, not only the differing ones. */
+  baseQuality?: boolean
 }
 
 export interface MapPaintInput {
@@ -104,6 +164,8 @@ export interface MapPaintInput {
   variants: readonly Variant[] | null
   /** Key of the variant picked in the table (variantKey). */
   selectedVariant: string | null
+  /** The reference's features in lanes (layFeatures), when its sequence is open. */
+  features?: readonly LaidFeature[]
 }
 
 export interface MapState {
@@ -294,6 +356,53 @@ export function qualityAlpha(q: number): number {
   return Math.max(0.15, Math.min(1, (q - 5) / 15))
 }
 
+/** Consensus codes per position from `from`: a base's char code, 45 (-) for a deletion, 0 where no read is loaded. */
+export interface WindowConsensus {
+  from: number
+  codes: Uint8Array
+  /** 1 after a base where most of the reads covering it carry an insertion. */
+  insertAfter: Uint8Array
+}
+
+const CONS_CODES = [65, 67, 71, 84, 45]
+
+/**
+ * The majority of the loaded reads at each position of [from, to): A, C, G,
+ * T or a deletion, the reference's base winning a tie, and where most of the
+ * reads covering a base insert bases after it. Every loaded read
+ * counts, as in the coverage track, so it is the consensus of what is drawn
+ * (before downsampling), not the called consensus, which applies the
+ * quality and depth thresholds of the variant settings.
+ */
+export function windowConsensus(pu: WindowPileup, bases: string | null, from: number, to: number): WindowConsensus | null {
+  const lo = Math.max(from, pu.from)
+  const hi = Math.min(to, pu.to)
+  if (hi <= lo) return null
+  const codes = new Uint8Array(hi - lo)
+  const insertAfter = new Uint8Array(hi - lo)
+  const L = bases?.length ?? 0
+  for (let q = lo; q < hi; q++) {
+    const k = (q - pu.from) * 6
+    const refCode = L ? bases!.charCodeAt(q % L) & 0xdf : 0
+    let best = -1
+    let n = 0
+    for (let a = 0; a < 5; a++) {
+      const c = pu.counts[k + a]
+      if (c > n || (c === n && c > 0 && CONS_CODES[a] === refCode)) { n = c; best = a }
+    }
+    codes[q - lo] = best < 0 ? 0 : CONS_CODES[best]
+    const covering = pu.counts[k] + pu.counts[k + 1] + pu.counts[k + 2] + pu.counts[k + 3] + pu.counts[k + 4]
+    if (covering > 0 && pu.counts[k + 5] * 2 > covering) insertAfter[q - lo] = 1
+  }
+  return { from: lo, codes, insertAfter }
+}
+
+function consAt(c: WindowConsensus | null, pos: number): number {
+  if (!c) return 0
+  const k = pos - c.from
+  return k >= 0 && k < c.codes.length ? c.codes[k] : 0
+}
+
 export function inBrush(r: ViewRead, p: Pick<MapPaintInput, 'refIndex' | 'length' | 'circular' | 'opts'>): boolean {
   const b = p.opts.brush
   if (!b) return true
@@ -326,6 +435,9 @@ export function paintMapping(ctx: CanvasRenderingContext2D, p: MapPaintInput, th
   for (const c of cols) if (c.d.max > top) top = c.d.max
   top = niceMax(top)
   const low = p.opts.lowCoverage > 0 ? lowSpans(cols, p.opts.lowCoverage) : []
+  const wantCons = g.cons !== null || (p.opts.compareTo === 'consensus' && (p.opts.bases ?? 'off') !== 'off')
+  const cons = wantCons && p.pileup && s.bpPerPx <= MISMATCH_BPP
+    ? windowConsensus(p.pileup, p.bases, Math.floor(v0), Math.ceil(v1)) : null
 
   // ---- Reads ----
   ctx.save()
@@ -346,7 +458,7 @@ export function paintMapping(ctx: CanvasRenderingContext2D, p: MapPaintInput, th
     for (let i = r0; i < r1; i++) {
       const row = p.layout.rows[i]
       const y = rowTop(i, g, st)
-      for (let k = firstInRow(row, v0); k < row.length && row[k].x0 < v1; k++) paintRead(ctx, row[k], y, p, st, theme, pal, colors)
+      for (let k = firstInRow(row, v0); k < row.length && row[k].x0 < v1; k++) paintRead(ctx, row[k], y, p, st, theme, pal, colors, cons, v0, v1)
     }
   }
   ctx.restore()
@@ -369,6 +481,8 @@ export function paintMapping(ctx: CanvasRenderingContext2D, p: MapPaintInput, th
   }
   paintCoverage(ctx, p, theme, st, cols, top, low, pal)
   paintReference(ctx, p, theme, st, pal)
+  paintConsensus(ctx, p, theme, st, pal, cons)
+  paintFeatures(ctx, p, theme, st)
   paintVariants(ctx, p, theme, st, pal)
   if (p.layout?.sampled.length) {
     ctx.fillStyle = theme.text
@@ -403,6 +517,9 @@ export function paintMapping(ctx: CanvasRenderingContext2D, p: MapPaintInput, th
   ctx.fillStyle = theme.muted
   ctx.font = `600 11px ${theme.sans}`
   ctx.fillText(truncate(ctx, p.refName, g.gutter - 14), 8, (g.ref[0] + g.ref[1]) / 2 + 0.5)
+  ctx.font = `500 10px ${theme.sans}`
+  if (g.cons) ctx.fillText('Consensus', 8, (g.cons[0] + g.cons[1]) / 2 + 0.5)
+  if (g.feats) ctx.fillText('Features', 8, g.feats[0] + FEATURE_LANE_H / 2 + 1)
   if (g.vars) {
     ctx.font = `500 10px ${theme.sans}`
     ctx.fillText(`Variants (${(p.variants?.length ?? 0).toLocaleString()})`, 8, (g.vars[0] + g.vars[1]) / 2 + 0.5)
@@ -600,6 +717,102 @@ function paintReference(ctx: CanvasRenderingContext2D, p: MapPaintInput, theme: 
   }
 }
 
+/**
+ * The reference's features as bars in their own colour (data colours, kept
+ * as the user chose them), with their names where they fit. Close in, a
+ * coding feature shows its translation instead: each amino acid centred on
+ * its codon, in the reading frame of the feature's start (or end, on the
+ * reverse strand), with the standard genetic code.
+ */
+function paintFeatures(ctx: CanvasRenderingContext2D, p: MapPaintInput, theme: AlnTheme, st: MapState) {
+  const g = p.geo
+  if (!g.feats || !p.features?.length) return
+  const s = st.scale
+  const [v0, v1] = visibleRange(st, g, p.length)
+  const pxPerBase = 1 / s.bpPerPx
+  const L = p.bases?.length ?? 0
+  const at = (i: number) => p.bases![((i % L) + L) % L]
+  for (const lf of p.features) {
+    if (lf.end <= v0 || lf.start >= v1) continue
+    const f = lf.f
+    const y = g.feats[0] + 1 + lf.lane * FEATURE_LANE_H
+    const h = FEATURE_LANE_H - 3
+    const x0 = Math.max(g.gutter, xOf(lf.start, g, s))
+    const x1 = Math.min(st.w, xOf(lf.end, g, s))
+    const color = f.color ?? theme.accent
+    ctx.globalAlpha = 0.35
+    ctx.fillStyle = color
+    ctx.fillRect(x0, y, Math.max(1, x1 - x0), h)
+    ctx.globalAlpha = 1
+    ctx.fillRect(x0, y + h - 2, Math.max(1, x1 - x0), 2)
+    const codons = CODING.has(f.type) && f.strand !== 0 && L > 0 && pxPerBase * 3 >= 9
+    if (codons) {
+      ctx.font = `600 ${Math.min(12, Math.floor(pxPerBase * 3 * 0.6))}px ${theme.mono}`
+      ctx.fillStyle = theme.text
+      // Codon k covers [c, c + 3), c counted in the feature's unwrapped coordinates
+      // (f.start to fEnd); the stretch after the origin of a wrapped feature is drawn L to the left.
+      const fEnd = f.end > f.start ? f.end : f.end + L
+      const n = Math.floor((fEnd - f.start) / 3)
+      const o = lf.start < f.start ? L : 0
+      const lo = Math.max(v0, lf.start) + o - 3
+      const hi = Math.min(v1, lf.end) + o
+      const k0 = Math.max(0, f.strand === 1 ? Math.ceil((lo - f.start) / 3) : Math.ceil((fEnd - 3 - hi) / 3))
+      const k1 = Math.min(n - 1, f.strand === 1 ? Math.floor((hi - f.start) / 3) : Math.floor((fEnd - 3 - lo) / 3))
+      for (let k = k0; k <= k1; k++) {
+        const c = f.strand === 1 ? f.start + k * 3 : fEnd - 3 - k * 3
+        const codon = f.strand === 1 ? at(c) + at(c + 1) + at(c + 2) : complementBase(at(c + 2)) + complementBase(at(c + 1)) + complementBase(at(c))
+        ctx.fillText(translateCodon(codon.toUpperCase()), xOf(c - o + 1.5, g, s), y + h / 2)
+      }
+    } else if (x1 - x0 > 30) {
+      ctx.font = `600 10px ${theme.sans}`
+      ctx.fillStyle = theme.text
+      ctx.textAlign = 'left'
+      ctx.fillText(truncate(ctx, f.name || f.type, x1 - x0 - 8), x0 + 4, y + h / 2)
+      ctx.textAlign = 'center'
+    }
+  }
+}
+
+/** The consensus row: letters close in, each base that differs from the reference on a warning tint; further out only those, as ticks. */
+function paintConsensus(ctx: CanvasRenderingContext2D, p: MapPaintInput, theme: AlnTheme, st: MapState, pal: TracePalette, cons: WindowConsensus | null) {
+  const g = p.geo
+  if (!g.cons || !cons) return
+  const s = st.scale
+  const [y0, y1] = g.cons
+  const pxPerBase = 1 / s.bpPerPx
+  const letters = pxPerBase >= LETTER_PX
+  const L = p.bases?.length ?? 0
+  ctx.font = `600 ${Math.min(13, Math.floor(pxPerBase * 0.85))}px ${theme.mono}`
+  const w = Math.max(1, pxPerBase - (pxPerBase > 3 ? 1 : 0))
+  for (let k = 0; k < cons.codes.length; k++) {
+    const c = cons.codes[k]
+    if (!c) continue
+    const q = cons.from + k
+    const differs = L > 0 && c !== (p.bases!.charCodeAt(q % L) & 0xdf)
+    const x = xOf(q, g, s)
+    const ch = String.fromCharCode(c)
+    if (differs) {
+      ctx.fillStyle = withAlpha(theme.warning, letters ? 0.3 : 0.9)
+      ctx.fillRect(x, y0 + 2, w, y1 - y0 - 4)
+    }
+    if (letters) {
+      ctx.fillStyle = c === 45 ? theme.muted : baseColor(pal, ch)
+      ctx.fillText(ch, x + pxPerBase / 2, (y0 + y1) / 2 + 0.5)
+    }
+  }
+  // Insertions most reads carry, as the reads mark theirs: a bar between the bases.
+  ctx.fillStyle = theme.accent
+  for (let k = 0; k < cons.insertAfter.length; k++) {
+    if (!cons.insertAfter[k]) continue
+    const x = Math.round(xOf(cons.from + k + 1, g, s))
+    ctx.fillRect(x - 1, y0 + 1, 2, y1 - y0 - 2)
+    if (pxPerBase >= 4) {
+      ctx.fillRect(x - 3, y0 + 1, 6, 1.5)
+      ctx.fillRect(x - 3, y1 - 2.5, 6, 1.5)
+    }
+  }
+}
+
 export function readFill(r: ViewRead, p: Pick<MapPaintInput, 'refIndex' | 'length' | 'circular' | 'opts'>, colors: ReadColors): string {
   const a = r.a
   switch (p.opts.colorBy) {
@@ -611,7 +824,7 @@ export function readFill(r: ViewRead, p: Pick<MapPaintInput, 'refIndex' | 'lengt
 
 function paintRead(
   ctx: CanvasRenderingContext2D, r: ViewRead, y: number, p: MapPaintInput, st: MapState,
-  theme: AlnTheme, pal: TracePalette, colors: ReadColors,
+  theme: AlnTheme, pal: TracePalette, colors: ReadColors, cons: WindowConsensus | null, v0: number, v1: number,
 ) {
   const g = p.geo
   const s = st.scale
@@ -695,7 +908,65 @@ function paintRead(
       }
     }
   }
-  if (s.bpPerPx <= MISMATCH_BPP) {
+  const mode = p.opts.bases ?? 'off'
+  const full = letters && mode !== 'off'
+  const cells = mode === 'all' && pxPerBase >= 2
+  if ((full || cells) && s.bpPerPx <= MISMATCH_BPP) {
+    // Every base: those matching the reference come from it, the rest from the differences.
+    const w = Math.max(1, pxPerBase - (pxPerBase > 3 ? 1 : 0))
+    const byCons = p.opts.compareTo === 'consensus' && cons !== null
+    const allQ = p.opts.baseQuality ?? false
+    const fwd = (a.flag & 0x10) === 0
+    const q = a.qual
+    const muted = withAlpha(theme.text, 0.5)
+    // Dots are small glyphs: drawn stronger than muted letters to be seen at all.
+    const dot = withAlpha(theme.text, 0.85)
+    if (letters) ctx.font = `700 ${Math.min(13, Math.floor(pxPerBase * 0.85))}px ${theme.mono}`
+    const drawBase = (pos: number, ch: string, qual: number, differs: boolean) => {
+      const x = xOf(pos, g, s)
+      const qa = alpha * (allQ || differs ? qualityAlpha(qual) : 1)
+      if (mode === 'all') {
+        ctx.globalAlpha = qa * (differs ? 0.9 : 0.35)
+        ctx.fillStyle = baseColor(pal, ch)
+        ctx.fillRect(x, y, w, rowH)
+        if (!letters) return
+        ctx.globalAlpha = qa
+        ctx.fillStyle = differs ? theme.text : withAlpha(theme.text, 0.75)
+        ctx.fillText(ch, x + pxPerBase / 2, y + rowH / 2 + 0.5)
+        return
+      }
+      if (differs) {
+        ctx.globalAlpha = qa * 0.3
+        ctx.fillStyle = baseColor(pal, ch)
+        ctx.fillRect(x, y, w, rowH)
+        ctx.globalAlpha = qa
+        ctx.fillText(ch, x + pxPerBase / 2, y + rowH / 2 + 0.5)
+      } else {
+        ctx.globalAlpha = qa
+        ctx.fillStyle = mode === 'dots' ? dot : muted
+        ctx.fillText(mode === 'dots' ? (fwd ? '.' : ',') : ch, x + pxPerBase / 2, y + rowH / 2 + 0.5)
+      }
+    }
+    if (p.bases) {
+      const L = p.bases.length
+      for (const m of d.matches) {
+        const q0 = Math.max(m.pos, Math.floor(v0) - sh)
+        const q1 = Math.min(m.pos + m.len, Math.ceil(v1) - sh)
+        for (let k = q0; k < q1; k++) {
+          const code = p.bases.charCodeAt(k % L) & 0xdf
+          const c = byCons ? consAt(cons, k + sh) : 0
+          const qi = m.qp + k - m.pos
+          drawBase(k + sh, String.fromCharCode(code), qi < q.length ? q.charCodeAt(qi) - 33 : -1, c !== 0 && c !== code)
+        }
+      }
+    }
+    for (const m of d.mismatches) {
+      if (m.pos + sh < v0 - 1 || m.pos + sh > v1) continue
+      const c = byCons ? consAt(cons, m.pos + sh) : 0
+      drawBase(m.pos + sh, m.base, m.qual, c === 0 || c !== m.base.charCodeAt(0))
+    }
+    ctx.globalAlpha = alpha
+  } else if (s.bpPerPx <= MISMATCH_BPP) {
     const w = Math.max(1, pxPerBase - (pxPerBase > 3 ? 1 : 0))
     if (letters) ctx.font = `700 ${Math.min(13, Math.floor(pxPerBase * 0.85))}px ${theme.mono}`
     for (const m of d.mismatches) {
