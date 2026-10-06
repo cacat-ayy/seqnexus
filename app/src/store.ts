@@ -42,7 +42,7 @@ import type { ORFResult } from './workers/orf-finder'
 import type { DesignResult } from './primers/design/types'
 import type { ContigDoc } from './assembly/types'
 import { DEFAULT_CONTIG_VIEW, type ContigView } from './assembly/view'
-import { runFromDocs, type AssemblyRecord, type AssemblyRun } from './assembly/container'
+import { runFromDocs, type AssemblyRecord, type AssemblyRun, type NgsMapping } from './assembly/container'
 import type { ReadSetRecord } from './ngs/types'
 import type { AlnDoc } from './msa/model'
 import { DEFAULT_VIEW, type AlnView } from './msa/view'
@@ -1328,7 +1328,12 @@ interface EditorStore {
   /** Add an NGS mapping (an assembly with no Sanger contigs) and open its overview. */
   addMapping: (assembly: Assembly) => void
   /** Put a new mapping in place of an assembly's mapping (Run again). Returns a function that puts the old one back. */
-  replaceMapping: (id: string, ngs: NonNullable<Assembly['ngs']>, inputs: Assembly['inputs']) => (() => void) | null
+  /** Put a sample mapped again in place of the one stored under `storageId`; returns undo. */
+  replaceSample: (id: string, storageId: string, sample: NgsMapping, inputs?: Assembly['inputs']) => (() => void) | null
+  /** Add samples to an NGS mapping; returns undo. */
+  addSamples: (id: string, samples: NgsMapping[]) => (() => void) | null
+  /** Take a sample out of an NGS mapping (not its last one); returns undo. */
+  removeSample: (id: string, storageId: string) => (() => void) | null
   /** Open an assembly: its one contig straight away, or the overview of several. */
   openAssembly: (id: string) => void
   setActiveAssembly: (id: string | null) => void
@@ -1534,6 +1539,13 @@ function displaySnapshot(s: EditorStore): DisplaySettings {
 export const useEditorStore = create<EditorStore>((set, get) => {
   /** The toast a blocked edit raised, so unlocking can take it down. */
   let readOnlyToastId: string | null = null
+
+  /** Put `after` in place of assembly `id`; the function returned puts `before` back, if the assembly is still there. */
+  function swapAssembly(id: string, before: Assembly, after: Assembly): () => void {
+    const swap = (out: Assembly) => set(st => ({ assemblies: st.assemblies.map(a => (a.id === id ? out : a)) }))
+    swap(after)
+    return () => { if (get().assemblies.some(a => a.id === id)) swap(before) }
+  }
 
   function getActiveTab(): DocumentTab | null {
     const { tabs, activeTabId } = get()
@@ -4093,14 +4105,23 @@ export const useEditorStore = create<EditorStore>((set, get) => {
       get().setActiveAssembly(assembly.id)
     },
 
-    replaceMapping(id, ngs, inputs) {
+    replaceSample(id, storageId, sample, inputs) {
       const before = get().assemblies.find(a => a.id === id)
-      if (!before?.ngs) return null
-      const swap = (out: Assembly) => set(s => ({ assemblies: s.assemblies.map(a => (a.id === id ? out : a)) }))
-      swap({ ...before, ngs, inputs, modifiedAt: Date.now() })
-      return () => {
-        if (get().assemblies.some(a => a.id === id)) swap(before)
-      }
+      if (!before?.samples?.some(x => x.storageId === storageId)) return null
+      const samples = before.samples.map(x => (x.storageId === storageId ? sample : x))
+      return swapAssembly(id, before, { ...before, samples, ...(inputs ? { inputs } : {}), modifiedAt: Date.now() })
+    },
+
+    addSamples(id, added) {
+      const before = get().assemblies.find(a => a.id === id)
+      if (!before?.samples || added.length === 0) return null
+      return swapAssembly(id, before, { ...before, samples: [...before.samples, ...added], modifiedAt: Date.now() })
+    },
+
+    removeSample(id, storageId) {
+      const before = get().assemblies.find(a => a.id === id)
+      if (!before?.samples || before.samples.length <= 1) return null
+      return swapAssembly(id, before, { ...before, samples: before.samples.filter(x => x.storageId !== storageId), modifiedAt: Date.now() })
     },
 
     openAssembly(id) {
@@ -4223,7 +4244,7 @@ export const useEditorStore = create<EditorStore>((set, get) => {
     restoreAssemblies(assemblies, activeAssemblyId) {
       for (const a of assemblies) {
         // A mapping run again is stored under a fresh id from the same counter.
-        for (const id of [a.id, a.ngs?.storageId ?? '']) {
+        for (const id of [a.id, ...(a.samples ?? []).map(x => x.storageId)]) {
           const m = id.match(/^asm_(\d+)$/)
           if (m) assemblyIds.syncTo(parseInt(m[1], 10))
         }
@@ -4236,7 +4257,7 @@ export const useEditorStore = create<EditorStore>((set, get) => {
       if (assemblies.length === 0) return
       for (const a of assemblies) {
         // A mapping run again is stored under a fresh id from the same counter.
-        for (const id of [a.id, a.ngs?.storageId ?? '']) {
+        for (const id of [a.id, ...(a.samples ?? []).map(x => x.storageId)]) {
           const m = id.match(/^asm_(\d+)$/)
           if (m) assemblyIds.syncTo(parseInt(m[1], 10))
         }

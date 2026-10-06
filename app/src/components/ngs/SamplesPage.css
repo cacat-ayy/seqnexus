@@ -1,0 +1,74 @@
+/* The samples page of an NGS mapping. Classes are prefixed sp-. */
+
+.sp { gap: var(--space-4); }
+.sp-head { display: flex; align-items: center; flex-wrap: wrap; gap: var(--space-2); margin-bottom: var(--space-2); }
+.sp-head .ngs-card-title { margin-bottom: 0; }
+.sp-find {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin-top: var(--space-2);
+  padding: var(--space-2);
+  border-radius: var(--radius-sm);
+  background: var(--accent-bg);
+}
+.sp-find .ngs-progress { width: 240px; margin-top: 0; }
+.sp-verify {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-1-5);
+  margin-top: var(--space-2);
+  font-size: var(--text-xs);
+  color: var(--text-secondary);
+}
+.sp-verify svg { color: var(--accent); }
+.sp-verdict {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  padding: 1px var(--space-1-5);
+  border-radius: var(--radius-pill);
+  font-size: var(--text-xs);
+  font-weight: 600;
+  white-space: nowrap;
+}
+.sp-verdict.verified { background: var(--success-bg); color: var(--success); }
+.sp-verdict.differences { background: var(--danger-bg); color: var(--danger); }
+.sp-verdict.incomplete { background: var(--warning-bg); color: var(--warning); }
+
+.sp-matrix-wrap { overflow: auto; max-height: 520px; border: 1px solid var(--border-light); border-radius: var(--radius-sm); }
+.sp-matrix { border-collapse: separate; border-spacing: 0; font-size: var(--text-xs); font-variant-numeric: tabular-nums; }
+.sp-matrix th {
+  position: sticky;
+  top: 0;
+  z-index: var(--z-sticky);
+  padding: var(--space-1) var(--space-2);
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-alt);
+  font-weight: 600;
+  text-align: left;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+.sp-matrix th.num, .sp-matrix td.num { text-align: right; }
+.sp-matrix th.sp-sample { max-width: 120px; overflow: hidden; text-overflow: ellipsis; text-align: center; }
+.sp-matrix td { padding: 2px var(--space-2); border-bottom: 1px solid var(--border-light); color: var(--text); white-space: nowrap; }
+.sp-change { font-family: var(--font-mono); }
+.sp-effect { max-width: 220px; overflow: hidden; text-overflow: ellipsis; color: var(--text-secondary); }
+/* --freq is set inline on each cell (its frequency); the fallback is a cell without one. */
+.sp-cell {
+  min-width: 64px;
+  text-align: center;
+  cursor: pointer;
+  color: var(--text-muted);
+  background: color-mix(in srgb, var(--accent) calc(var(--freq, 0%) * 0.35), transparent);
+}
+.sp-cell.passes {
+  color: var(--text);
+  font-weight: 600;
+  background: color-mix(in srgb, var(--accent) calc(var(--freq, 0%) * 0.7), transparent);
+}
+.sp-cell.blank { background: repeating-linear-gradient(45deg, transparent 0 4px, color-mix(in srgb, var(--text-muted) 12%, transparent) 4px 5px); }
+.sp-cell:hover { outline: 1px solid var(--accent); outline-offset: -1px; }

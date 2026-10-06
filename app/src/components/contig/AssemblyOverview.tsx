@@ -6,6 +6,12 @@
  * it with changed settings. An assembly with several contigs opens here; one
  * with a single contig opens on the contig and reaches this page from the
  * contig's header.
+ *
+ * An NGS mapping has three pages: the reads of one sample along a
+ * reference, that sample's report, and its samples side by side (with the
+ * samples x variants matrix). A mapping of one sample and one reference
+ * opens on its reads; otherwise on its report, or its samples when it has
+ * several.
  */
 
 import '../alignment/AlignmentWorkspace.css'
@@ -17,9 +23,17 @@ import { useEditorStore, type Assembly } from '../../store'
 import { contigSummary } from '../../assembly/container'
 import { computeConsensus, consensusSequence } from '../../assembly/consensus'
 import MappingReport from '../ngs/MappingReport'
+import { revealOnOpen } from '../ngs/reveal'
 
 const AssembleDialog = lazy(() => import('./AssembleDialog'))
+const MappingViewer = lazy(() => import('../ngs/MappingViewer'))
+const SamplesPage = lazy(() => import('../ngs/SamplesPage'))
+const AddSamplesDialog = lazy(() => import('../ngs/AddSamplesDialog'))
 const MapReadsDialog = lazy(() => import('../ngs/MapReadsDialog'))
+
+type MappingPageId = 'reads' | 'report' | 'samples'
+/** Which page of each mapping was open, on which reference and sample, for coming back to it. */
+const mappingPage = new Map<string, { page: MappingPageId; ref: number; sample: string | null }>()
 
 interface Props {
   assembly: Assembly
@@ -36,7 +50,27 @@ export default function AssemblyOverview({ assembly, onClose }: Props) {
   const [nameDraft, setNameDraft] = useState<string | null>(null)
   const [dialog, setDialog] = useState<{ readIds: string[]; rerun: boolean } | null>(null)
   const [remap, setRemap] = useState(false)
-  const mappedSet = useEditorStore(st => (assembly.ngs?.readSetId ? st.readSets.find(r => r.id === assembly.ngs!.readSetId) ?? null : null))
+  const [adding, setAdding] = useState(false)
+  const samples = assembly.samples ?? []
+  const [mapping, setMapping] = useState<{ page: MappingPageId; ref: number; sample: string | null }>(() => mappingPage.get(assembly.id) ?? {
+    page: samples.length > 1 ? 'samples' : samples[0]?.report.version === 2 && samples[0].report.references.length === 1 ? 'reads' : 'report',
+    ref: 0,
+    sample: null,
+  })
+  const showMapping = (next: Partial<typeof mapping>) => {
+    const n = { ...mapping, ...next }
+    mappingPage.set(assembly.id, n)
+    setMapping(n)
+  }
+  // The sample shown on the reads and report pages.
+  const ngs = samples.find(x => x.storageId === mapping.sample) ?? samples[0]
+  const mappedSet = useEditorStore(st => (ngs?.readSetId ? st.readSets.find(r => r.id === ngs.readSetId) ?? null : null))
+  const viewable = ngs?.report.version === 2
+  const page: MappingPageId = !ngs ? 'report' : !viewable && mapping.page === 'reads' ? 'report' : mapping.page
+  const openSample = (storageId: string, pg: 'reads' | 'report', refIndex?: number, pos?: number) => {
+    if (pos !== undefined) revealOnOpen(storageId, refIndex ?? 0, pos)
+    showMapping({ page: pg, sample: storageId, ...(refIndex !== undefined ? { ref: refIndex } : {}) })
+  }
 
   const contigs = useMemo(() => {
     const byId = new Map(allContigs.map(c => [c.id, c]))
@@ -82,30 +116,62 @@ export default function AssemblyOverview({ assembly, onClose }: Props) {
           }}
           size={Math.max(6, (nameDraft ?? assembly.name).length)}
         />
-        <span className="aw-chip">{assembly.ngs?.report.importedFrom ? 'Imported' : assembly.method === 'reference' ? `Mapped to ${ref?.name ?? 'a reference'}` : 'De novo'}</span>
+        <span className="aw-chip">{ngs && samples.length === 1 && ngs.report.importedFrom ? 'Imported' : assembly.method === 'reference' ? `Mapped to ${ref?.name ?? 'a reference'}` : 'De novo'}</span>
         <span className="aw-muted">
-          {assembly.ngs
-            ? `${nf.format(assembly.ngs.report.mapped)} of ${nf.format(assembly.ngs.report.reads)} reads mapped`
+          {ngs
+            ? samples.length > 1
+              ? `${nf.format(samples.length)} samples`
+              : `${nf.format(ngs.report.mapped)} of ${nf.format(ngs.report.reads)} reads mapped`
             : <>{nf.format(contigs.length)} {contigs.length === 1 ? 'contig' : 'contigs'} · {nf.format(placed)} of {nf.format(inputCount || placed)} reads placed</>}
         </span>
+        {ngs && (
+          <div className="aw-seg mv-switch" role="radiogroup" aria-label="Page">
+            {(['reads', 'report', 'samples'] as const).map(pg => (
+              <button key={pg} role="radio" aria-checked={page === pg} className={page === pg ? 'active' : ''} disabled={pg === 'reads' && !viewable}
+                onClick={() => showMapping({ page: pg })}
+                title={pg === 'reads' ? 'The reads along the reference' : pg === 'report' ? 'Figures, coverage charts, how it was made, and export' : 'Every sample side by side: figures, verification and variants'}>
+                {pg === 'reads' ? 'Reads' : pg === 'report' ? 'Report' : `Samples${samples.length > 1 ? ` (${samples.length})` : ''}`}
+              </button>
+            ))}
+          </div>
+        )}
+        {ngs && samples.length > 1 && page !== 'samples' && (
+          <select className="select aw-select" value={ngs.storageId} aria-label="Sample" title="The sample shown"
+            onChange={e => showMapping({ sample: e.target.value })}>
+            {samples.map(x => <option key={x.storageId} value={x.storageId}>{x.readSetName}</option>)}
+          </select>
+        )}
         <span className="aw-spacer" />
-        {!assembly.ngs && <button className="aw-btn" onClick={() => setDialog({ readIds: assembly.inputs.readIds, rerun: true })}
+        {!ngs && <button className="aw-btn" onClick={() => setDialog({ readIds: assembly.inputs.readIds, rerun: true })}
           disabled={present === 0}
           title={present === 0 ? 'None of the reads that went in are in the session any more' : 'Assemble the same reads again, with changed settings. The new contigs replace these.'}>
           <RotateCcw size={13} /> Run again…
         </button>}
-        {assembly.ngs && !assembly.ngs.report.importedFrom && (
+        {ngs && !ngs.report.importedFrom && page !== 'samples' && (
           <button className="aw-btn" onClick={() => setRemap(true)} disabled={!mappedSet || !!mappedSet.discardedAt}
             title={!mappedSet ? 'The read set that was mapped has been deleted'
               : mappedSet.discardedAt ? 'The reads that were mapped have been discarded'
-                : 'Map the same reads again, with changed references or read type. The new mapping replaces this one.'}>
+                : samples.length > 1 ? `Map ${ngs.readSetName} again, with a changed read type or primer clipping. The new mapping replaces this sample.`
+                  : 'Map the same reads again, with changed references or read type. The new mapping replaces this one.'}>
             <RotateCcw size={13} /> Run again…
           </button>
         )}
         <button className="aw-icon-btn" onClick={onClose} title="Close the assembly" aria-label="Close the assembly"><X size={15} /></button>
       </div>
 
-      {assembly.ngs ? <div className="ao-body"><MappingReport ngs={assembly.ngs} /></div> : <div className="ao-body">
+      {ngs && page === 'reads' ? (
+        <div className="ao-body-flush">
+          <Suspense fallback={null}>
+            <MappingViewer key={ngs.storageId} ngs={ngs} assemblyId={assembly.id}
+              name={samples.length > 1 ? `${assembly.name} ${ngs.readSetName}` : assembly.name}
+              refIndex={mapping.ref} onRefIndex={i => showMapping({ ref: i })} />
+          </Suspense>
+        </div>
+      ) : ngs && page === 'samples' ? (
+        <Suspense fallback={null}>
+          <SamplesPage assembly={assembly} onOpen={openSample} onAdd={() => setAdding(true)} />
+        </Suspense>
+      ) : ngs ? <div className="ao-body"><MappingReport key={ngs.storageId} ngs={ngs} onOpenReference={viewable ? i => showMapping({ page: 'reads', ref: i }) : undefined} /></div> : <div className="ao-body">
         <section className="ao-section">
           <h3 className="ao-title">Contigs</h3>
           <div className="ao-table-wrap">
@@ -230,9 +296,14 @@ export default function AssemblyOverview({ assembly, onClose }: Props) {
         </section>
       </div>}
 
-      {remap && mappedSet && (
+      {remap && mappedSet && ngs && (
         <Suspense fallback={null}>
-          <MapReadsDialog readSet={mappedSet} rerun={assembly} onClose={() => setRemap(false)} />
+          <MapReadsDialog readSet={mappedSet} rerun={{ assembly, sample: ngs }} onClose={() => setRemap(false)} />
+        </Suspense>
+      )}
+      {adding && samples.length > 0 && (
+        <Suspense fallback={null}>
+          <AddSamplesDialog assembly={assembly} onClose={() => setAdding(false)} />
         </Suspense>
       )}
       {dialog && (

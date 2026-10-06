@@ -279,17 +279,20 @@ export function contigToItem(contig: Contig, ctx: AdapterContext): ExplorerItem 
  */
 export function assemblyToItem(assembly: Assembly, contigs: readonly Contig[], ctx: AdapterContext): ExplorerItem {
   const single = contigs.length === 1 ? contigs[0] : null
-  const ngs = assembly.ngs
-  if (ngs && contigs.length === 0) {
+  const samples = assembly.samples ?? []
+  if (samples.length && contigs.length === 0) {
+    const ngs = samples[0]
     const r = ngs.report
+    const mapped = samples.reduce((n, x) => n + x.report.mapped, 0)
+    const reads = samples.reduce((n, x) => n + x.report.reads, 0)
     return {
       uid: toUid('assembly', assembly.id), kind: 'assembly', id: assembly.id, name: assembly.name,
-      createdAt: assembly.createdAt, modifiedAt: assembly.modifiedAt, size: r.reads,
+      createdAt: assembly.createdAt, modifiedAt: assembly.modifiedAt, size: reads,
       isOpen: isOpen(ctx, 'assembly', assembly.id), isIncluded: false, isDirty: false, isReadOnly: false,
       isCircular: false, canDuplicate: false,
-      stats: [`${r.reads ? Math.round((r.mapped / r.reads) * 100) : 0}% mapped`, `vs ${r.references.map(x => x.name).join(', ')}`, ngs.readSetName],
+      stats: [`${reads ? Math.round((mapped / reads) * 100) : 0}% mapped`, `vs ${r.references.map(x => x.name).join(', ')}`, samples.length > 1 ? formatCount(samples.length, 'sample') : ngs.readSetName],
       badges: [],
-      derivedFrom: [...(ngs.readSetId ? [toUid('readset', ngs.readSetId)] : []), ...r.references.flatMap(x => (x.tabId ? [toUid('sequence', x.tabId)] : []))],
+      derivedFrom: [...samples.flatMap(x => (x.readSetId ? [toUid('readset', x.readSetId)] : [])), ...r.references.flatMap(x => (x.tabId ? [toUid('sequence', x.tabId)] : []))],
     }
   }
   const reads = contigs.reduce((n, c) => n + c.doc.rows.length, 0)

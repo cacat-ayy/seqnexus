@@ -191,3 +191,7 @@
   cursor: pointer;
 }
 .ao-link:hover { text-decoration: underline; }
+
+/* An NGS mapping: switch between its reads and its report. */
+.mv-switch { margin-left: var(--space-1); }
+.ao-body-flush { flex: 1; min-height: 0; display: flex; flex-direction: column; }

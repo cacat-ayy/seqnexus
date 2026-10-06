@@ -11,7 +11,7 @@
 
 import { forwardRef, useCallback, useEffect, useImperativeHandle, useLayoutEffect, useRef, useState } from 'react'
 import type { Signal } from '../alignment/signal'
-import { readAlnTheme, useThemeVersion, type AlnTheme } from '../alignment/theme'
+import { useCanvasLayers, type StageSize } from '../tracks/useCanvasLayers'
 import {
   GUTTER, ROW_H, paintContig, paintMarks, rowTop, type ContigSelection, type Geometry, type MarkState, type PaintInput, type PaintState,
 } from './paint'
@@ -50,77 +50,32 @@ const ContigCanvas = forwardRef<ContigCanvasHandle, Props>(function ContigCanvas
   const { input } = props
   const g = input.geo
   const scrollerRef = useRef<HTMLDivElement>(null)
-  const bodyRef = useRef<HTMLCanvasElement>(null)
-  const marksRef = useRef<HTMLCanvasElement>(null)
-  const themeVersion = useThemeVersion(scrollerRef)
-  const theme = useRef<AlnTheme | null>(null)
-  const [size, setSize] = useState({ w: 0, h: 0 })
   const [focused, setFocused] = useState(false)
   const drag = useRef<Drag | null>(null)
   const zoomAnchor = useRef<{ col: number; px: number } | null>(null)
   const live = useRef(props)
+  const focusedRef = useRef(focused)
   live.current = props
-
-  useLayoutEffect(() => {
-    const el = scrollerRef.current
-    if (!el) return
-    const measure = () => setSize({ w: el.clientWidth, h: el.clientHeight })
-    measure()
-    const ro = new ResizeObserver(measure)
-    ro.observe(el)
-    return () => ro.disconnect()
-  }, [])
-
-  const state = useCallback((): PaintState => {
-    const el = scrollerRef.current
-    return { scrollX: el?.scrollLeft ?? 0, scrollY: el?.scrollTop ?? 0, w: size.w, h: size.h }
-  }, [size])
+  focusedRef.current = focused
 
   // ---- Painting ----
-  const frame = useRef(0)
-  const dirty = useRef({ body: true, marks: true })
-  const paint = useCallback(() => {
-    frame.current = 0
-    const t = theme.current
-    if (!t || size.w === 0) return
-    const dpr = window.devicePixelRatio || 1
-    const prep = (c: HTMLCanvasElement | null) => {
-      if (!c) return null
-      const W = Math.max(1, Math.round(size.w * dpr))
-      const H = Math.max(1, Math.round(size.h * dpr))
-      if (c.width !== W || c.height !== H) { c.width = W; c.height = H }
-      const ctx = c.getContext('2d')
-      ctx?.setTransform(dpr, 0, 0, dpr, 0, 0)
-      return ctx
-    }
-    const p = live.current
-    const st = state()
-    if (dirty.current.body) {
-      const ctx = prep(bodyRef.current)
-      if (ctx) paintContig(ctx, p.input, t, st)
-    }
-    if (dirty.current.marks) {
-      const ctx = prep(marksRef.current)
+  const scrollState = (sz: StageSize): PaintState => {
+    const el = scrollerRef.current
+    return { scrollX: el?.scrollLeft ?? 0, scrollY: el?.scrollTop ?? 0, w: sz.w, h: sz.h }
+  }
+  const { size, bodyRef, marksRef, schedule } = useCanvasLayers(scrollerRef, {
+    body: (ctx, t, sz) => paintContig(ctx, live.current.input, t, scrollState(sz)),
+    marks: (ctx, t, sz) => {
+      const p = live.current
+      const f = focusedRef.current
       const m: MarkState = {
-        selection: p.selection, caret: p.caret, hover: p.hover.get(), editing: p.editing, focused,
+        selection: p.selection, caret: p.caret, hover: p.hover.get(), editing: p.editing, focused: f,
         hits: p.hits, currentHit: p.currentHit,
       }
-      if (ctx) paintMarks(ctx, p.input.doc, p.input.geo, t, st, m)
-    }
-    dirty.current = { body: false, marks: false }
-  }, [size, state, focused])
-
-  const schedule = useCallback((body: boolean) => {
-    if (body) dirty.current.body = true
-    dirty.current.marks = true
-    if (!frame.current) frame.current = requestAnimationFrame(paint)
-  }, [paint])
-  useEffect(() => () => { if (frame.current) cancelAnimationFrame(frame.current) }, [])
-  useLayoutEffect(() => {
-    if (scrollerRef.current) theme.current = readAlnTheme(scrollerRef.current)
-    schedule(true)
-  }, [themeVersion, schedule])
-  useLayoutEffect(() => { schedule(true) }, [input, size, schedule])
+      paintMarks(ctx, p.input.doc, p.input.geo, t, scrollState(sz), m)
+    },
+  })
+  useLayoutEffect(() => { schedule(true) }, [input, schedule])
   useLayoutEffect(() => { schedule(false) }, [props.selection, props.caret, props.editing, props.hits, props.currentHit, focused, schedule])
   useEffect(() => props.hover.subscribe(() => schedule(false)), [props.hover, schedule])
 

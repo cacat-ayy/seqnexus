@@ -92,6 +92,14 @@ export function startExportMapping(job: Extract<ReadSetJob, { type: 'export-mapp
   return run<{ file: Blob; index: Blob | null }>(job, onProgress)
 }
 
+export function startCallVariants(job: Extract<ReadSetJob, { type: 'call-variants' }>, onProgress?: (done: number, total: number) => void) {
+  return run<{ sites: number }>(job, onProgress)
+}
+
+export function startFindJunctions(job: Extract<ReadSetJob, { type: 'find-junctions' }>, onProgress?: (done: number, total: number) => void) {
+  return run<{ junctions: number }>(job, onProgress)
+}
+
 export function startImportAlignments(job: Extract<ReadSetJob, { type: 'import-alignments' }>, onProgress?: (done: number, total: number) => void) {
   return run<MappingReport>(job, onProgress)
 }

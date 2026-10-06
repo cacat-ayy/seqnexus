@@ -17,6 +17,7 @@ import { complementBase } from '../../models/complement'
 import { peakTable } from '../../sanger/peaks'
 import type { AlnTheme } from '../alignment/theme'
 import { baseColor, CHANNELS, rulerStep, tracePalette, withAlpha } from '../sanger/paint'
+import { truncate } from '../tracks/draw'
 
 export const GUTTER = 200
 const RULER_H = 18
@@ -492,18 +493,6 @@ function paintRowTrace(
   ctx.globalAlpha = 1
   ctx.restore()
   void view
-}
-
-function truncate(ctx: CanvasRenderingContext2D, text: string, max: number): string {
-  if (ctx.measureText(text).width <= max) return text
-  let lo = 0
-  let hi = text.length
-  while (lo < hi) {
-    const mid = (lo + hi + 1) >> 1
-    if (ctx.measureText(text.slice(0, mid) + '…').width <= max) lo = mid
-    else hi = mid - 1
-  }
-  return text.slice(0, lo) + '…'
 }
 
 // ---------------------------------------------------------------------------

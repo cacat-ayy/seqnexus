@@ -116,6 +116,14 @@ interface SerializedAlignment {
  * An alignment from its metadata and stored data: a document, or (saved
  * before the rebuild) an engine result, which sanitizeDoc converts.
  */
+/** Storage ids of a saved assembly's NGS samples, in either saved shape (samples, or one 'ngs' before samples). */
+function storedSampleIds(a: unknown): string[] {
+  if (!a || typeof a !== 'object') return []
+  const x = a as { samples?: unknown; ngs?: unknown }
+  const list = Array.isArray(x.samples) ? x.samples : x.ngs ? [x.ngs] : []
+  return list.flatMap(m => (m && typeof m === 'object' && typeof (m as { storageId?: unknown }).storageId === 'string' ? [(m as { storageId: string }).storageId] : []))
+}
+
 function restoreAlignment(sa: SerializedAlignment, raw: unknown): SavedAlignment | null {
   const doc = sanitizeDoc(raw, { seqType: sa.seqType, at: sa.createdAt })
   if (!doc) {
@@ -1094,7 +1102,7 @@ async function loadV2(data: SerializedSessionV2): Promise<RestoredSession | null
     const keeps = cleanupKeeps()
     if (keeps) {
       // NGS mappings store their alignments and coverage beside the reads.
-      const mappings = (data.assemblies ?? []).flatMap(a => (a?.ngs?.storageId ? mappingStorageList(a.ngs.storageId) : []))
+      const mappings = (data.assemblies ?? []).flatMap(a => storedSampleIds(a).flatMap(id => mappingStorageList(id)))
       const listed = new Set([...readSets.map(r => r.id), ...mappings, ...keeps])
       const stray = (await getStoredReadSetIds()).filter(id => !listed.has(id))
       if (stray.length > 0) await deleteReadChunks(stray)

@@ -30,7 +30,7 @@ function download(blob: Blob, name: string) {
   setTimeout(() => URL.revokeObjectURL(url), 10_000)
 }
 
-export default function MappingReport({ ngs }: { ngs: NgsMapping }) {
+export default function MappingReport({ ngs, onOpenReference }: { ngs: NgsMapping; onOpenReference?: (i: number) => void }) {
   const r = ngs.report
   const readSet = useEditorStore(s => (ngs.readSetId ? s.readSets.find(x => x.id === ngs.readSetId) ?? null : null))
   const one = r.references.length === 1 ? r.references[0] : null
@@ -119,8 +119,10 @@ export default function MappingReport({ ngs }: { ngs: NgsMapping }) {
             </tr>
           </thead>
           <tbody>
-            {r.references.map(x => (
-              <tr key={x.name} className="ngs-static">
+            {r.references.map((x, i) => (
+              <tr key={x.name} className={onOpenReference ? 'ngs-open-row' : 'ngs-static'}
+                onClick={onOpenReference ? () => onOpenReference(i) : undefined}
+                title={onOpenReference ? 'Show the reads along this reference' : undefined}>
                 <td className="rs-name">{x.name}{x.circular ? <span className="aw-muted"> circular</span> : null}</td>
                 <td className="num">{nf.format(x.length)} bp</td>
                 <td className="num">{nf.format(x.mappedReads)}</td>

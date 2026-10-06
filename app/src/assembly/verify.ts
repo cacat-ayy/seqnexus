@@ -8,7 +8,7 @@
  * "Verified" only when every feature checked is fully covered and matches.
  */
 
-import { callVariants, referenceIndex, type RefFeature, type Variant } from './variants'
+import { callVariants, DEFAULT_VARIANT_SETTINGS, referenceIndex, type RefFeature, type Variant } from './variants'
 import type { ContigDoc } from './types'
 
 export interface VerifySettings {
@@ -66,7 +66,39 @@ export function verifyClone(doc: ContigDoc, consensus: string, features: readonl
       else fwd[p] = 1
     }
   }
-  const ok = (p: number) => depth[p] >= s.minDepth && (!s.bothStrands || (fwd[p] && rev[p]))
+  // Differences: what most reads say, whatever the quality (low-confidence ones are flagged by their P-value).
+  const differences = callVariants(doc, consensus, features, {
+    ...DEFAULT_VARIANT_SETTINGS, minFrequency: 0.5, maxPValue: 1,
+  })
+  return verifyPileup({
+    reference: { name: doc.reference.name, length: L, circular: doc.reference.circular },
+    reads: doc.rows.length,
+    depth,
+    bothStrands: p => fwd[p] === 1 && rev[p] === 1,
+    differences,
+    features,
+    settings: s,
+  })
+}
+
+/**
+ * The verdict from a pileup, whatever made it: depth at each reference
+ * position, whether both strands cover it, and the differences most reads
+ * show. Shared by Sanger contigs (verifyClone) and NGS samples, whose depth
+ * comes from the stored coverage.
+ */
+export function verifyPileup(o: {
+  reference: VerifyReport['reference']
+  reads: number
+  depth: ArrayLike<number>
+  bothStrands: (p: number) => boolean
+  differences: Variant[]
+  features: readonly RefFeature[]
+  settings: VerifySettings
+}): VerifyReport {
+  const { depth, settings: s, differences } = o
+  const L = o.reference.length
+  const ok = (p: number) => depth[p] >= s.minDepth && (!s.bothStrands || o.bothStrands(p))
   let covered = 0
   let both = 0
   const uncovered: { from: number; to: number }[] = []
@@ -74,15 +106,10 @@ export function verifyClone(doc: ContigDoc, consensus: string, features: readonl
     if (ok(p)) covered++
     else if (uncovered.length && uncovered[uncovered.length - 1].to === p) uncovered[uncovered.length - 1].to = p + 1
     else uncovered.push({ from: p + 1, to: p + 1 })
-    if (fwd[p] && rev[p]) both++
+    if (o.bothStrands(p)) both++
   }
 
-  // Differences: what most reads say, whatever the quality (low-confidence ones are flagged by their P-value).
-  const differences = callVariants(doc, consensus, features, {
-    minCoverage: 1, minFrequency: 0.5, maxPValue: 1, codingOnly: false, excludeStrandBias: false,
-  })
-
-  const chosen = features.filter(f => (s.featureIds ? s.featureIds.includes(f.id) : f.type !== 'source'))
+  const chosen = o.features.filter(f => (s.featureIds ? s.featureIds.includes(f.id) : f.type !== 'source' && f.type !== 'variation'))
   const checks: FeatureCheck[] = chosen.map(f => {
     const positions = featurePositions(f, L)
     let cov = 0
@@ -90,7 +117,7 @@ export function verifyClone(doc: ContigDoc, consensus: string, features: readonl
     let min = Infinity
     for (const p of positions) {
       if (ok(p)) cov++
-      if (fwd[p] && rev[p]) bs++
+      if (o.bothStrands(p)) bs++
       if (depth[p] < min) min = depth[p]
     }
     const n = positions.length || 1
@@ -108,8 +135,8 @@ export function verifyClone(doc: ContigDoc, consensus: string, features: readonl
 
   return {
     verdict,
-    reference: { name: doc.reference.name, length: L, circular: doc.reference.circular },
-    reads: doc.rows.length,
+    reference: o.reference,
+    reads: o.reads,
     covered: L ? covered / L : 0,
     bothStrands: L ? both / L : 0,
     uncovered,

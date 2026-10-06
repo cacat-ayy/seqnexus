@@ -90,6 +90,11 @@ of each build.
 - **In-silico cloning** - digest/ligation, Gibson assembly, Golden Gate assembly
 - **NGS read sets** - FASTQ(.gz) import with R1/R2 pairing, QC charts and
   verdicts, fastp trimming and minimap2 mapping (WebAssembly), FASTQ.gz export;
+  mappings viewed from a whole genome down to single bases (coverage, reads
+  coloured by strand or pair, downsampling, sorting, fragment-length brushing),
+  variants with live thresholds and technology presets, VCF, consensus;
+  several samples per mapping with a samples x variants matrix and clone
+  verification per sample; primer clipping for amplicons; soft-clip junctions;
   mappings exported as BAM (with its index) or SAM, and imported from either
 - **Sanger sequencing** - chromatograms, trimming, mapping to a reference or de
   novo assembly kept as assemblies with their contigs, variants, clone
@@ -710,6 +715,257 @@ which rarely carry a `cs` tag, are stored the same way.
   every read they mapped.
 - Mappings made before this format kept no bases; their report is kept, and
   they say to run them again.
+
+### Viewing a mapping
+
+A mapping stored in full opens on its reads when it has one reference and on
+its report when it has several (a reference's row in the report opens its
+reads); a switch in the header goes between the two. The view is drawn in the
+style of IGV's alignment track: coverage, the reference's bases, and rows of
+reads, from a whole genome down to single bases.
+
+- **Loading:** only the pages over the stretch around the view are read: the
+  visible stretch and as much again on each side, so panning does not reload
+  at every step. Reads are drawn when the visible stretch is at most 150 kb
+  (IGV's default visibility window is 30 kb) and the pages over it hold at
+  most 200,000 alignments; further out the view shows coverage alone, from the
+  stored summaries. Decoded pages are cached (24 at a time). Along the
+  reference the view keeps its own position and scale rather than a native
+  scrollbar, because a genome at a readable zoom is far wider than a browser
+  lays out an element; the rows scroll natively.
+- **Semantic zoom:** at every scale the coverage track; from 10 bases per
+  pixel in, mismatches as ticks in their base's colour; from 2 bases per pixel
+  in, insertions as marks between bases (longer ones at any zoom), deletions
+  as a line through the gap; from 8 pixels per base, mismatched bases as
+  letters, the reference's bases, and the length of insertions and deletions.
+  Matching bases are not drawn, so what differs stands out.
+- **Coverage track:** one bar per base when bases are a pixel or wider, else
+  one per pixel column, from the best source at hand: the loaded reads (which
+  also give the strands and the alleles), per-base coverage up to 256 bases per
+  pixel, then the coarsest summary whose bins are no wider than a pixel. The
+  mean is drawn, with the highest depth in the column faintly behind it, on a
+  scale rounded up from the highest depth in view. A base where at least 20%
+  of the reads differ from the reference (IGV's allele-fraction default) is
+  split by base, A, C, G, T and deletions; zoomed out, such positions are
+  ticked along the top from the stored candidate sites. Optionally split into
+  forward (lower) and reverse strand, and shaded where the depth is below a
+  chosen value; the shading and its threshold line follow the value as it is
+  typed.
+- **Downsampling:** where reads pile up, at most 100 reads starting in any 50
+  bases are drawn (IGV's defaults). Which are kept depends only on a hash of
+  the read's name (FNV-1a), so the same reads are drawn every time and the two
+  mates of a pair are kept or dropped together. A band under the reference
+  marks where reads were left out and a note says how many; coverage and the
+  pileup always count every read, and downsampling can be turned off.
+- **Layout:** reads in order of start, each into the first row where it fits
+  after the last read there plus a gap of 2 bases (or 3 pixels' worth when
+  loaded zoomed out). The first row with room is found with a segment tree
+  over the rows' ends, so packing is O(n log rows) however deep the reads
+  are; at most 3,000 rows, and reads beyond them are counted. Rows can be
+  sorted by their read at a position (the centre of the view, or where the
+  menu was opened): by base (reads that differ from the reference first,
+  grouped A, C, G, T, other, deletions, best quality first in a group), by
+  strand, mapping quality, fragment length or start.
+- **Colours:** one colour, by strand (forward and reverse as in the Sanger
+  contig view), or by pair. By pair, as IGV colours insert size and pair
+  orientation: mates facing each other at the expected distance are plain;
+  further apart than expected (a deletion between the mates in the sample),
+  closer (an insertion), facing the wrong way or on the same strand (an
+  inversion or rearrangement), with the mate on another reference, or with the
+  mate unmapped (outlined) each have their own colour. The expected distance
+  is the 0.5th to 99.5th percentile of the proper pairs' fragment lengths, as
+  IGV computes it. On a circular reference, distances and orientation are
+  taken the short way round the origin, so pairs across it are not flagged.
+  Mismatches are faded by base quality, faint at Q5 and below and full from
+  Q20 (IGV's shading), and reads of mapping quality 0 are drawn faint.
+- **Fragment lengths:** the side panel shows the proper pairs' fragment
+  lengths; dragging across the bars keeps the pairs of those lengths at full
+  strength and fades the rest, to find the reads behind a shoulder or a
+  second peak in the distribution.
+- **Reads:** hovering a read shows its position, strand, length, mapping
+  quality, differences (mismatched, inserted and deleted bases), soft clips,
+  whether it is part of a split read, its mate and fragment, and the base
+  under the pointer with its quality and its position in the read as
+  sequenced. Clicking selects it and outlines its mate and the other parts of
+  a split read wherever they are drawn; the side panel then offers Go to the
+  mate (on another reference too), and copying the read as FASTA or FASTQ in
+  its sequenced orientation.
+- **Soft clips** can be drawn as faint extensions past the read's ends, their
+  bases coloured.
+- **Circular references:** a read across the origin is drawn at its start
+  near the end and again from position 0, so both of its parts are in view.
+- The view's position, zoom and display settings are kept for each mapping
+  while the page is open.
+
+### Variants
+
+Sanger contigs and NGS mappings call variants with one shared core
+(`assembly/variants.ts`). Each gathers its evidence its own way: where the
+variant is, what it changes, how many reads cover the position and how many
+carry the change on each strand, and how likely that many reads would show
+it by sequencing error alone. One function then describes every variant the
+same way: its codon and protein change inside a coding feature of the
+reference, the features it is in, Fisher's exact test for strand bias, the
+short tandem repeat it falls in, and the homopolymer an insertion or deletion
+touches. Calling and judging are separate: every candidate is kept, and the
+thresholds are applied on top, so the table changes as they are typed and
+VCF can name the thresholds a variant failed.
+
+- **Sanger evidence:** per contig column, each read's call counts as an
+  allele (a gap too; a two-base IUPAC call counts half for each base).
+  Neighbouring gap columns carried by the same reads merge into one insertion
+  or deletion. The P-value is the exact Poisson-binomial chance that the
+  carrying reads are all errors, from their base qualities.
+- **NGS evidence:** calling starts from the candidate sites stored with the
+  mapping (positions where at least 5% of reads, 10% for indels, differ). The
+  pages over them are read once, in order, and every read is counted again in
+  full at each site: its base and the base's quality, a deletion starting
+  there with its length, an insertion after it with its bases, its strand.
+  Pages with no site in their stretch are skipped. As `samtools mpileup`
+  counts, bases below Q13 are left out; a read whose deletion runs across a
+  site counts in its depth but for no base. This runs in the background (on
+  the page when opened from disk) and the counts are stored with the mapping,
+  so the table opens at once afterwards. Each site gives at most one variant
+  of each kind: the strongest other base, the strongest deletion starting
+  there, the strongest insertion after it.
+- **NGS P-value:** the chance of that many reads showing the allele by error,
+  as a Poisson tail. For a base, the expected number of error reads is the
+  sum of the error chances of the bases counted there (from their
+  qualities), a third of it for one particular wrong base. For an indel,
+  base qualities say little, so a per-read indel error rate is assumed: 1e-4
+  for Illumina, 1e-3 for PacBio HiFi, 0.03 for Nanopore, 0.01 otherwise.
+  The Poisson stands in for the exact Poisson-binomial, which costs O(n^2)
+  at depths of thousands; with small error chances the two are close (Le
+  Cam's theorem). The tail is summed term by term in log space, so very
+  certain calls get a P-value rather than 0 until it underflows; quality is
+  shown as -10 log10 P (Phred), capped at 999.
+- **Homopolymers:** an insertion or deletion of one base kind is flagged with
+  the length of the reference's run of that base where it happens (a
+  deletion of A in AAAAA gives 5). Nanopore reads miscount the bases of such
+  runs, so their indels there are mostly errors.
+- **Thresholds** (presets, then editable): depth, share of reads carrying
+  the variant, number of reads carrying it, quality, leaving out strand-biased
+  calls (Fisher p below 1e-5), leaving out indels in homopolymers of a given
+  length, coding only.
+
+| Preset | Depth | Frequency | Reads | Quality | Strand bias | Homopolymer indels |
+|--------|-------|-----------|-------|---------|-------------|--------------------|
+| Sanger | 1 | 25% | - | Q40 | kept | kept |
+| Illumina | 10 | 20% | 3 | Q60 | left out | kept |
+| Nanopore | 10 | 30% | 5 | Q60 | kept | left out from 4 |
+| PacBio HiFi | 5 | 20% | 3 | Q60 | kept | kept |
+
+  Illumina's artefacts are often on one strand, so strand-biased calls are
+  left out there; Nanopore has real strand-specific errors and HiFi reads
+  both strands of one molecule, so they keep them. The mapping's minimap2
+  preset chooses the starting preset (an imported file starts on Illumina).
+- **In the mapping view:** variants that pass show as a track under the
+  coverage (a SNP in its new base's colour, insertions and deletions marked
+  apart, fainter the rarer they are) and in a table docked under the reads.
+  The two are linked: a row moves the view to the variant (close enough to
+  read the bases), pointing at the track lights up the row, and both show the
+  evidence (the alleles seen with their strands and mean quality, and what
+  any failed threshold was). The table is drawn only where it is scrolled to,
+  so a genome's thousands of variants stay quick.
+- **Saving:** "Add to the reference" adds a `variation` feature for each
+  variant listed to the reference sequence, or, when it is not open, opens
+  the copy stored with the mapping with them. Variation features are left out
+  when variants are described, so a variant is never reported as being in
+  itself.
+- **VCF 4.2:** the variants that pass, or every candidate with the thresholds
+  it failed in FILTER, for every reference of the mapping. An insertion or
+  deletion is anchored on the base before it (at the first base, on the base
+  after), as the specification requires. QUAL is the Phred-scaled P-value;
+  INFO carries depth (DP), reads carrying it (AO), frequency (AF), strand
+  counts (DP4, as samtools writes them), the strand bias P (SB), the type,
+  the homopolymer length (HP), the repeat (REP), the features (FEAT) and the
+  coding effect (EFF). Sanger contigs export the same VCF, against the
+  reference, or along the consensus for a de novo contig.
+- **Consensus:** the sample's sequence, as `ivar consensus` builds it. At a
+  site the alleles (bases and deletions) are taken, commonest first, until
+  together they reach the threshold (50% by default): one base is written as
+  itself, several as their IUPAC code (or the commonest, if codes are
+  turned off); a deletion that comes first removes its bases; an insertion
+  carried by at least the threshold share is written in. Positions covered by
+  fewer reads than the minimum depth (10 by default) are written as N; at a
+  site the depth counts the reads deleting it too, since per-base coverage
+  counts aligned bases only and would otherwise mask a deletion most reads
+  carry. Away from the candidate sites at least 95% of the counted reads
+  match the reference, so the reference base stands there for any threshold
+  up to 95%. Mapped back from the test reads to a copy of their genome with
+  two bases changed, three bases added and two removed, the consensus gives
+  the original genome back base for base, apart from its poorly covered
+  ends.
+
+### Samples
+
+A mapping holds one or more samples: read sets (or an imported SAM or BAM
+file) mapped to the same references. "Add samples" maps more read sets to
+the copies of the references the mapping keeps, so every sample is mapped to
+exactly the same bases, each with minimap2 set for its kind of reads. The
+reads and report pages show one sample at a time; the samples page shows
+them side by side. Mappings saved before samples load as mappings of one
+sample.
+
+- **Samples x variants matrix:** one row per variant that passes the
+  thresholds in at least one sample, one column per sample. A cell is the
+  share of that sample's reads carrying the variant, strong where it passes
+  there. A blank cell means fewer reads than the depth threshold cover the
+  position, so the sample cannot say; that is kept apart from 0%. A sample in
+  which the position was not even a candidate site (fewer than 5% of reads
+  differed) shows 0% at its stored depth. "Only where samples differ" keeps
+  the rows some sample carries and another, covering it, does not. A cell
+  opens that sample's reads at the variant. The matrix exports as CSV, with a
+  frequency and a depth per sample.
+- **Clone verification per sample:** the same verdict as for a Sanger
+  contig (`assembly/verify.ts`, now shared through `verifyPileup`): every
+  feature of the reference (or the whole reference when it has none open) is
+  checked for coverage by at least a set number of reads, optionally on both
+  strands, and for differences, the variants most of the sample's reads carry
+  (at least half, from at least two reads, at a covered position). Depth
+  comes from the stored per-base coverage; both strands from the 16-base
+  coverage summary, so a bin with reads on each strand counts for every base
+  in it, an approximation that matters only at the very edge of coverage.
+  `variation` features (variants saved earlier) are not checked as features,
+  for Sanger contigs too.
+
+### Primer clipping
+
+For amplicon sequencing (tiled PCR panels, amplicon-based virus
+sequencing), every read starts with a primer, whose bases come from the
+oligo rather than the sample: a mutation under a primer is hidden by reads
+that copy the primer, and a primer's mismatch to the sample looks like a
+variant. With "Clip primers" on, the oligos of the primer library are
+looked for on the references (the same binding search as primer display,
+`primers/binding.ts`), and while the mapping is stored each alignment whose
+5' end (its start on the forward strand, its end on the reverse strand)
+lies inside a binding site, give or take 3 bases, has the aligned bases up
+to the far side of the site turned into a soft clip, as `ivar trim` does.
+The bases are kept (they still export and can be shown) but no longer count
+for coverage, variants or the consensus. An insertion or deletion left at
+the new edge goes into the clip too; an alignment left with nothing aligned
+counts as not mapped. Only the 5' end is clipped: a read running through to
+the opposite primer at its 3' end keeps those bases, as with ivar's
+defaults. The report says how many alignments were clipped.
+
+### Junctions
+
+Positions where many reads stop aligning at the same base mark where the
+sample's sequence leaves the reference: the edges of deletions too long to
+align through, inversions, inserted DNA, a plasmid's junction with its
+vector. "Find junctions" reads every stored alignment once (in the
+background) and counts, at each end, alignments with 10 or more bases
+soft-clipped there, by side. A junction is kept when at least 3 reads and at
+least 10% of the reads covering the position are clipped there (at most 500
+per reference, the best supported). Its clipped sequence is the majority
+base at each distance from the junction while two or more reads reach that
+far. The 20 bases next to the junction are then looked for on every
+reference, both strands, and where they are found exactly once is where the
+sequence continues: further on the same strand reads as a deletion of the
+bases between, back on the same strand as a duplication, the other strand as
+an inversion, another reference as a join to it. These are suggestions to
+look at, not calls. The result is kept with the mapping; a junction in the
+table opens the view there with the soft-clipped bases shown.
 
 ### SAM and BAM
 
@@ -1412,6 +1668,25 @@ faint marks on white. Selection and search highlights are off by default.
 - Danecek P, Bonfield JK, Liddle J, et al. (2021) "Twelve years of SAMtools
   and BCFtools." *GigaScience* 10:giab008. (`mpileup`, whose default base
   quality threshold of 13 the candidate sites follow.)
+
+- Robinson JT, Thorvaldsdóttir H, Winckler W, et al. (2011) "Integrative
+  genomics viewer." *Nature Biotechnology* 29:24-26; and Thorvaldsdóttir H,
+  Robinson JT, Mesirov JP (2013) "Integrative Genomics Viewer (IGV):
+  high-performance genomics data visualization and exploration." *Briefings in
+  Bioinformatics* 14:178-192. (The mapping view's downsampling, insert-size and
+  pair-orientation colours, base-quality shading and allele-fraction defaults.)
+
+- Grubaugh ND, Gangavarapu K, Quick J, et al. (2019) "An amplicon-based
+  sequencing framework for accurately measuring intrahost virus diversity
+  using PrimalSeq and iVar." *Genome Biology* 20:8. (The consensus: alleles
+  taken until they reach a threshold, IUPAC codes, a minimum depth; primer
+  clipping at the 5' end of reads, as ivar trim does.)
+
+- The Global Alliance for Genomics and Health. "The Variant Call Format
+  (VCF) Version 4.2 Specification." https://samtools.github.io/hts-specs/VCFv4.2.pdf
+
+- Le Cam L (1960) "An approximation theorem for the Poisson binomial
+  distribution." *Pacific Journal of Mathematics* 10:1181-1197.
 
 ## License
 

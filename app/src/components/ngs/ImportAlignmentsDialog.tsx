@@ -86,7 +86,7 @@ export default function ImportAlignmentsDialog({ file, onClose }: Props) {
         contigIds: [], method: 'reference', settings: null,
         inputs: { readIds: [], reference: { tabId: first.tabId, name: first.name } },
         unplaced: [],
-        ngs: { readSetId: null, readSetName: file.name.replace(/\.(bam|sam)$/i, ''), storageId: id, report },
+        samples: [{ readSetId: null, readSetName: file.name.replace(/\.(bam|sam)$/i, ''), storageId: id, report }],
       })
       notify.success(`Imported ${nf.format(report.mapped + report.supplementary)} alignments from ${file.name}`)
       onClose()

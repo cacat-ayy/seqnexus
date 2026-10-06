@@ -75,5 +75,8 @@ function sanitizeVariants(v: unknown): VariantSettings {
     maxPValue: num(x.maxPValue, 1e-12, 1, d.maxPValue),
     codingOnly: typeof x.codingOnly === 'boolean' ? x.codingOnly : d.codingOnly,
     excludeStrandBias: typeof x.excludeStrandBias === 'boolean' ? x.excludeStrandBias : d.excludeStrandBias,
+    minAltReads: Math.round(num(x.minAltReads, 0, 100000, d.minAltReads)),
+    excludeHomopolymerIndels: typeof x.excludeHomopolymerIndels === 'boolean' ? x.excludeHomopolymerIndels : d.excludeHomopolymerIndels,
+    homopolymerLength: Math.round(num(x.homopolymerLength, 2, 50, d.homopolymerLength)),
   }
 }

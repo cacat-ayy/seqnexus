@@ -43,6 +43,7 @@ import ContigCanvas, { type ContigCanvasHandle, type HoverCell } from './ContigC
 import ContigInspector, { type ContigActions } from './ContigInspector'
 import VerifyDialog from './VerifyDialog'
 import { callVariants, referenceBases, variantsCsv, type Variant } from '../../assembly/variants'
+import { writeVcf } from '../../assembly/vcf'
 import { featuresInColumns, refFeatures, repeatAnnotations, variantAnnotations } from '../../assembly/features'
 import { findTandemRepeats } from '../../assembly/repeats'
 import type { AnnotationData } from '../../models/Annotation'
@@ -380,6 +381,16 @@ export default function ContigWorkspace({ contig, onClose, onExportPrompt, findR
     annotateVariants: () => annotateReference(variantAnnotations(variants, doc.reference?.length ?? 0), variants.length === 1 ? 'variant' : 'variants'),
     annotateRepeats: () => annotateReference(repeatAnnotations(repeats), repeats.length === 1 ? 'tandem repeat' : 'tandem repeats'),
     exportVariants: () => download(variantsCsv(variants), `${fileBase}_variants.csv`),
+    exportVcf: () => download(writeVcf({
+      references: [{
+        name: doc.reference?.name ?? `${contig.name} consensus`,
+        // Positions count along the reference, or (de novo) along the consensus without its gaps.
+        bases: doc.reference ? referenceBases(doc) : consensusBases(),
+        variants: variants.map(v => ({ v, filters: [] })),
+      }],
+      source: contig.name,
+      referenceName: doc.reference?.name ?? `${contig.name} consensus`,
+    }), `${fileBase}_variants.vcf`),
     removeRows: removeReads,
     selectRow: i => { setSelection({ r0: i, r1: i + 1, c0: 0, c1: doc.width }); canvasRef.current?.revealColumn(doc.rows[i].start, i) },
     openRow,

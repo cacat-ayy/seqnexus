@@ -88,7 +88,17 @@ export interface AssemblyRecord extends AssemblyRun {
   modifiedAt: number
   /** Its contigs, in the order shown. Empty only for an NGS mapping. */
   contigIds: string[]
-  ngs?: NgsMapping
+  /**
+   * An NGS mapping's samples: each a read set (or an imported file) mapped to
+   * the same references, the first being the one the mapping was made with.
+   * Absent for a Sanger assembly. (Saved before samples, as one 'ngs' field.)
+   */
+  samples?: NgsMapping[]
+}
+
+/** The first sample of an NGS mapping, or undefined for a Sanger assembly. */
+export function firstSample(a: Pick<AssemblyRecord, 'samples'>): NgsMapping | undefined {
+  return a.samples?.[0]
 }
 
 /** The fields of a contig that linking looks at. */
@@ -149,7 +159,7 @@ export function linkAssemblies<A extends AssemblyRecord, C extends LinkableConti
       if (c.assemblyId && c.assemblyId !== a.id && assemblies.some(x => x.id === c.assemblyId)) return false
       return true
     })
-    if (own.length === 0 && !a.ngs) continue
+    if (own.length === 0 && !a.samples?.length) continue
     for (const id of own) owner.set(id, a.id)
     linked.push({ ...a, contigIds: own })
   }
@@ -179,8 +189,10 @@ export function sanitizeAssembly(raw: unknown): AssemblyRecord | null {
   const x = raw as Partial<AssemblyRecord>
   if (!isString(x.id) || !Array.isArray(x.contigIds)) return null
   const contigIds = x.contigIds.filter(isString)
-  const ngs = sanitizeMapping(x.ngs)
-  if (contigIds.length === 0 && !ngs) return null
+  // Saved before samples: one mapping in 'ngs'.
+  const rawSamples = Array.isArray(x.samples) ? x.samples : (x as { ngs?: unknown }).ngs ? [(x as { ngs?: unknown }).ngs] : []
+  const samples = rawSamples.map(sanitizeMapping).filter((m): m is NgsMapping => !!m)
+  if (contigIds.length === 0 && samples.length === 0) return null
   const inputs = (x.inputs ?? {}) as Partial<AssemblyInputs>
   const ref = inputs.reference
   const s = x.settings as Partial<AssemblySettings> | null | undefined
@@ -206,7 +218,7 @@ export function sanitizeAssembly(raw: unknown): AssemblyRecord | null {
         .filter(u => u && isString(u.name) && isString(u.reason))
         .map(u => ({ name: u.name, reason: u.reason, readId: isString(u.readId) ? u.readId : null }))
       : [],
-    ...(ngs ? { ngs } : {}),
+    ...(samples.length ? { samples } : {}),
   }
 }
 

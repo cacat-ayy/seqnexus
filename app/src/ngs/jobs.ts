@@ -15,6 +15,9 @@ import { exportFastq, type ExportLayout } from './exporter'
 import { mapReads, type MapPreset, type MapReference } from './mapper'
 import { exportMapping } from './sam'
 import { importAlignments } from './alignmentImport'
+import { callMapping } from './calls'
+import { findJunctions } from './junctions'
+import type { PrimerSite } from './primerClip'
 import type { MappingReport, MappingStorage } from './builder'
 import { deleteReadChunks, getReadChunk, putReadChunk } from '../storage/idb'
 import { runTool } from '../msa/engines/emscripten'
@@ -32,6 +35,8 @@ export type ReadSetJob =
       refs: MapReference[]
       preset: MapPreset
       wasmBase: string
+      /** Clip primers at these sites, per reference (primerClip.ts). */
+      primerSites?: PrimerSite[][]
     }
   | {
       type: 'export-mapping'
@@ -39,6 +44,16 @@ export type ReadSetJob =
       storageId: string
       references: { name: string; length: number; circular: boolean }[]
       program: MappingReport['program']
+    }
+  | {
+      type: 'call-variants'
+      storageId: string
+      references: { name: string; length: number; circular: boolean }[]
+    }
+  | {
+      type: 'find-junctions'
+      storageId: string
+      references: { name: string; length: number; circular: boolean }[]
     }
   | {
       type: 'import-alignments'
@@ -149,6 +164,7 @@ export async function runReadSetJob(
       readSet: job.readSet,
       refs: job.refs,
       preset: job.preset,
+      primerSites: job.primerSites,
       minimap2,
       getChunk: i => { check(); return getReadChunk(job.readSet.id, i) },
       storage: idbStorage,
@@ -162,6 +178,22 @@ export async function runReadSetJob(
       storageId: job.storageId,
       storage: idbStorage,
       refs: job.refs,
+      onProgress: progress,
+    })
+  }
+  if (job.type === 'call-variants') {
+    return callMapping({
+      storageId: job.storageId,
+      storage: { get: (id, i) => { check(); return getReadChunk(id, i) }, put: putReadChunk },
+      references: job.references,
+      onProgress: progress,
+    })
+  }
+  if (job.type === 'find-junctions') {
+    return findJunctions({
+      storageId: job.storageId,
+      storage: { get: (id, i) => { check(); return getReadChunk(id, i) }, put: putReadChunk },
+      references: job.references,
       onProgress: progress,
     })
   }

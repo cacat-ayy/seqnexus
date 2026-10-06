@@ -1577,6 +1577,9 @@ export default function App() {
       data-theme={theme}
       onDrop={e => {
         dragCounterRef.current = 0
+        // The explorer imports files dropped on it itself; opening them here
+        // as well added every dropped sequence twice.
+        if (e.defaultPrevented) { setDragOver(false); return }
         handleDrop(e)
       }}
       onDragEnter={e => {

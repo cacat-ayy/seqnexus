@@ -25,6 +25,7 @@ import { decodePage, encodePage, storeAlignment, summarizeCoverage, encodeSummar
 import { encodeSites, PileupCounter } from './pileup'
 import type { Histogram } from './types'
 import type { MapPreset } from './mapper'
+import { clipPrimer, type PrimerSite } from './primerClip'
 
 export interface MapReference {
   name: string
@@ -74,6 +75,8 @@ export interface MappingReport {
   storedBytes: number
   /** Alignments left out: secondary ones, and (imports) ones on a reference that was not given. */
   skipped: { secondary: number; otherReference: number }
+  /** Primer clipping (primerClip.ts), when asked for: primer sites on the references, alignments clipped, and those left with nothing aligned. */
+  primers?: { sites: number; clipped: number; emptied: number }
 }
 
 export interface PageInfo {
@@ -101,6 +104,10 @@ export function mappingStorageIds(storageId: string) {
     summary: `${storageId}-sum`,
     sites: `${storageId}-var`,
     reference: `${storageId}-ref`,
+    // Recounted candidate sites, written when variants are first called (calls.ts).
+    calls: `${storageId}-calls`,
+    // Soft-clip junctions, written when they are first looked for (junctions.ts).
+    junctions: `${storageId}-junc`,
   }
 }
 
@@ -141,6 +148,8 @@ export class MappingBuilder {
   private readonly inserts = new Map<number, number>()
   private readonly spillBytes: number
   private buffered = 0
+  private readonly primerSites: readonly (readonly PrimerSite[])[] | null
+  private readonly primerCounts = { clipped: 0, emptied: 0 }
   private stored = 0
   reads = 0
   mapped = 0
@@ -156,11 +165,14 @@ export class MappingBuilder {
     storage: MappingStorage
     /** Read bases expected, for sizing the buckets. */
     expectedBases: number
+    /** Primer sites per reference, sorted: each alignment's primer is clipped (primerClip.ts). */
+    primerSites?: readonly (readonly PrimerSite[])[]
     /** Tests: smaller buckets and spills. */
     bucketBases?: number
     spillBytes?: number
   }) {
     this.spillBytes = o.spillBytes ?? SPILL_BYTES
+    this.primerSites = o.primerSites ?? null
     this.refs = o.refs
     this.upper = o.refs.map(r => ({ bases: r.bases.toUpperCase(), circular: r.circular }))
     this.storage = o.storage
@@ -197,6 +209,12 @@ export class MappingBuilder {
     if (f.flag & 0x1) this.paired = true
     const primary = (f.flag & 0x800) === 0
     if (primary) this.reads++
+    const sites = this.primerSites && f.ref >= 0 && f.ref < this.refs.length ? this.primerSites[f.ref] : null
+    if (sites?.length) {
+      const up = this.upper[f.ref]
+      const r = clipPrimer(f, sites, up.circular ? up.bases.length : 0)
+      if (r !== 'kept') this.primerCounts[r]++
+    }
     if (f.flag & 0x4 || f.ref < 0 || f.cigar === '*') return
     if (f.ref >= this.refs.length) { this.otherReference++; return }
     const ref = f.ref
@@ -368,6 +386,7 @@ export class MappingBuilder {
       pages,
       storedBytes: this.stored,
       skipped: { secondary: this.secondary, otherReference: this.otherReference },
+      ...(this.primerSites ? { primers: { sites: this.primerSites.reduce((n, x) => n + x.length, 0), ...this.primerCounts } } : {}),
     }
   }
 }

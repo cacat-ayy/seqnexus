@@ -96,10 +96,31 @@ interface HistogramProps {
   /** Show each bin's share of the total (off when the values are not counts). */
   share?: boolean
   format?: (v: number) => string
+  /**
+   * A range of values picked by dragging across the bars (low edge of the
+   * first bin to the high edge of the last, Infinity when the last bin is
+   * in it, since it holds everything longer). Bars outside it are faded.
+   */
+  brush?: readonly [number, number] | null
+  onBrush?: (range: [number, number] | null) => void
 }
 
-export function HistogramChart({ title, subtitle, hist, binLabel, tickLabel = v => nf.format(v), unit = 'reads', share = true, format = v => nf.format(v) }: HistogramProps) {
+/** The bins a brushed range covers, first and last. */
+function brushedBins(hist: Histogram, brush: readonly [number, number]): [number, number] {
+  const n = hist.counts.length
+  let a = 0
+  while (a < n - 1 && hist.edges[a + 1] <= brush[0]) a++
+  let b = n - 1
+  while (b > a && hist.edges[b] > brush[1]) b--
+  return [a, b]
+}
+
+export function HistogramChart({ title, subtitle, hist, binLabel, tickLabel = v => nf.format(v), unit = 'reads', share = true, format = v => nf.format(v), brush = null, onBrush }: HistogramProps) {
   const [hover, setHover] = useState<number | null>(null)
+  const [dragging, setDragging] = useState<[number, number] | null>(null)
+  // The drag as it goes, read by the pointer handlers between renders.
+  const drag = useRef<[number, number] | null>(null)
+  const setDrag = (d: [number, number] | null) => { drag.current = d; setDragging(d) }
   const total = useMemo(() => hist.counts.reduce((a, b) => a + b, 0), [hist])
   const max = Math.max(1, ...hist.counts)
   const ticks = niceTicks(max)
@@ -129,11 +150,30 @@ export function HistogramChart({ title, subtitle, hist, binLabel, tickLabel = v 
         const bw = Math.min(24, Math.max(0.5, band - gap))
         const y = (v: number) => PAD.top + ph - (v / top) * ph
         const every = Math.max(1, Math.ceil(n / Math.max(2, Math.floor(pw / 70))))
-        const onMove = (e: React.PointerEvent<SVGRectElement>) => {
+        const binAt = (e: React.PointerEvent<SVGRectElement>) => {
           const r = e.currentTarget.getBoundingClientRect()
-          const i = Math.floor(((e.clientX - r.left) / r.width) * n)
-          setHover(i >= 0 && i < n ? i : null)
+          return Math.floor(((e.clientX - r.left) / r.width) * n)
         }
+        const onMove = (e: React.PointerEvent<SVGRectElement>) => {
+          const i = binAt(e)
+          setHover(i >= 0 && i < n ? i : null)
+          if (drag.current) setDrag([drag.current[0], Math.max(0, Math.min(n - 1, i))])
+        }
+        const onDown = (e: React.PointerEvent<SVGRectElement>) => {
+          if (!onBrush || e.button !== 0) return
+          const i = Math.max(0, Math.min(n - 1, binAt(e)))
+          e.currentTarget.setPointerCapture(e.pointerId)
+          setDrag([i, i])
+        }
+        const onUp = () => {
+          const d = drag.current
+          if (!d || !onBrush) return
+          const a = Math.min(...d)
+          const b = Math.max(...d)
+          setDrag(null)
+          onBrush([hist.edges[a], b === n - 1 ? Infinity : hist.edges[b + 1] - 1])
+        }
+        const picked = dragging ? [Math.min(...dragging), Math.max(...dragging)] : brush && n ? brushedBins(hist, brush) : null
         const hx = hover !== null ? PAD.left + hover * band + band / 2 : 0
         return (
           <div className="ngs-plot">
@@ -144,16 +184,20 @@ export function HistogramChart({ title, subtitle, hist, binLabel, tickLabel = v 
                   <text className="ngs-axis" x={PAD.left - 6} y={y(t)} dy="0.32em" textAnchor="end">{compact.format(t)}</text>
                 </g>
               ))}
+              {picked && (
+                <rect className="ngs-brush" x={PAD.left + picked[0] * band} y={PAD.top} width={(picked[1] - picked[0] + 1) * band} height={ph} />
+              )}
               {hist.counts.map((c, i) => c > 0 && (
-                <path key={i} className={`ngs-bar${hover === i ? ' hot' : ''}`}
+                <path key={i} className={`ngs-bar${hover === i ? ' hot' : ''}${picked && (i < picked[0] || i > picked[1]) ? ' dim' : ''}`}
                   d={barPath(PAD.left + i * band + (band - bw) / 2, y(c), bw, PAD.top + ph - y(c))} />
               ))}
               <line className="ngs-baseline" x1={PAD.left} x2={width - PAD.right} y1={PAD.top + ph} y2={PAD.top + ph} />
               {hist.edges.map((e, i) => (i % every === 0 && i < n) && (
                 <text key={i} className="ngs-axis" x={PAD.left + i * band} y={H - 8} textAnchor={i === 0 ? 'start' : 'middle'}>{tickLabel(e)}</text>
               ))}
-              <rect className="ngs-hit" x={PAD.left} y={PAD.top} width={pw} height={ph}
-                onPointerMove={onMove} onPointerLeave={() => setHover(null)} />
+              <rect className={`ngs-hit${onBrush ? ' brushable' : ''}`} x={PAD.left} y={PAD.top} width={pw} height={ph}
+                onPointerMove={onMove} onPointerLeave={() => setHover(null)} onPointerDown={onDown} onPointerUp={onUp}
+                onPointerCancel={() => setDrag(null)} />
             </svg>
             {hover !== null && (
               <div className="ngs-tip" style={{ left: Math.min(width - 150, Math.max(0, hx - 75)) }}>

@@ -108,12 +108,15 @@
 .ngs-axis { fill: var(--text-muted); font-size: var(--text-2xs); font-variant-numeric: tabular-nums; }
 .ngs-bar { fill: var(--accent); }
 .ngs-bar.hot { fill: var(--accent-dark); }
+.ngs-bar.dim { opacity: 0.3; }
+.ngs-brush { fill: color-mix(in srgb, var(--accent) 12%, transparent); }
 .ngs-band.p80 { fill: color-mix(in srgb, var(--accent) 20%, transparent); }
 .ngs-band.iqr { fill: color-mix(in srgb, var(--accent) 45%, transparent); }
 .ngs-median { fill: none; stroke: var(--accent); stroke-width: 2; stroke-linejoin: round; }
 .ngs-cross { stroke: var(--text-muted); stroke-width: 1; }
 .ngs-dot { fill: var(--accent); stroke: var(--bg); stroke-width: 2; }
 .ngs-hit { fill: transparent; cursor: crosshair; }
+.ngs-hit.brushable { cursor: col-resize; touch-action: none; }
 .ngs-tip {
   position: absolute;
   top: 0;
@@ -168,3 +171,5 @@
 .ngs-ref-row { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.2fr); align-items: center; gap: var(--space-1) var(--space-2); font-size: var(--text-sm); }
 .ngs-ref-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .ngs-ref-warn { grid-column: 1 / -1; font-size: var(--text-xs); }
+/* A report row that opens something (named apart from the import dialog's .ngs-ref-row grid). */
+.ngs-open-row { cursor: pointer; }

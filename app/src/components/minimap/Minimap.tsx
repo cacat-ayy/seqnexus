@@ -23,7 +23,7 @@ import { readTheme } from './theme'
 
 export interface MinimapProps {
   /** Which view this is; the collapsed state is remembered per kind. */
-  kind: 'sequence' | 'alignment' | 'chromatogram'
+  kind: 'sequence' | 'alignment' | 'chromatogram' | 'mapping'
   /** Total length in units (bases or columns). */
   length: number
   tracks: readonly MinimapTrack[]

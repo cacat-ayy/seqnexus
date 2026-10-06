@@ -50,7 +50,7 @@ export default function ReadSetWorkspace({ readSet: rs, onClose }: Props) {
   const [previewError, setPreviewError] = useState<string | null>(null)
   const [discardOpen, setDiscardOpen] = useState(false)
   const discarded = !!rs.discardedAt
-  const mappings = useEditorStore(st => st.assemblies).filter(a => a.ngs?.readSetId === rs.id)
+  const mappings = useEditorStore(st => st.assemblies).filter(a => a.samples?.some(x => x.readSetId === rs.id))
   const menuRef = useRef<HTMLDivElement>(null)
 
   // The first reads, from the first chunk.

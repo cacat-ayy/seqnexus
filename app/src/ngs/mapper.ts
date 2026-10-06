@@ -17,6 +17,7 @@
 
 import { decodeChunk } from './codec'
 import { MappingBuilder, type MappingReport, type MappingStorage, type MapReference } from './builder'
+import type { PrimerSite } from './primerClip'
 import type { SamFields } from './alignments'
 import type { Technology } from './types'
 
@@ -97,6 +98,8 @@ export interface MapOptions {
   getChunk: (index: number) => Promise<Uint8Array | undefined>
   storage: MappingStorage
   batchBases?: number
+  /** Primer sites per reference: each alignment's primer is clipped (primerClip.ts). */
+  primerSites?: PrimerSite[][]
   onProgress?: (done: number, total: number) => void
 }
 
@@ -105,7 +108,7 @@ export async function mapReads(o: MapOptions): Promise<MappingReport> {
   if (refs.length === 0) throw new Error('Choose a reference to map to')
   const extend = Math.max(1000, rs.maxLength + 100)
   const refText = referenceFasta(refs, extend)
-  const builder = new MappingBuilder({ storageId: o.storageId, refs, paired: rs.paired, storage: o.storage, expectedBases: rs.bases })
+  const builder = new MappingBuilder({ storageId: o.storageId, refs, paired: rs.paired, storage: o.storage, expectedBases: rs.bases, primerSites: o.primerSites })
   const total = rs.chunks + builder.bucketCount
   let r1: string[] = []
   let r2: string[] = []

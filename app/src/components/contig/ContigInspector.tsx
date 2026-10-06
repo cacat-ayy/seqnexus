@@ -30,6 +30,7 @@ export interface ContigActions {
   annotateVariants: () => void
   annotateRepeats: () => void
   exportVariants: () => void
+  exportVcf: () => void
 }
 
 interface Props {
@@ -283,7 +284,7 @@ function VariantsPanel({ doc, view, variants, canAnnotate, repeatCount, onView, 
               <span className="cw-variant-pos">{nf.format(v.position)}</span>
               <span className="cw-variant-change">{variantLabel(v)}</span>
               <span className="cw-variant-freq">{Math.round(v.frequency * 100)}%</span>
-              <span className={`cw-variant-effect ${effectClass(v)}`}>{v.coding ? `${v.coding.protein} · ${v.coding.effect}` : v.features[0] ?? ''}{v.repeat ? ` · ${v.repeat}` : ''}</span>
+              <span className={`cw-variant-effect ${effectClass(v)}`}>{v.coding ? `${v.coding.protein} · ${v.coding.effect}` : v.features[0] ?? ''}{v.repeat ? ` · ${v.repeat}` : ''}{v.homopolymer ? ` · run of ${v.homopolymer}` : ''}</span>
             </button>
           ))}
         </div>
@@ -298,6 +299,7 @@ function VariantsPanel({ doc, view, variants, canAnnotate, repeatCount, onView, 
           title="Add a repeat_region feature for each short tandem repeat in the reference">
           <Repeat2 size={13} /> Annotate {repeatCount ? nf.format(repeatCount) : ''} tandem repeats
         </button>
+        <button className="aw-action" onClick={actions.exportVcf} disabled={!variants.length}><Download size={13} /> Export as VCF</button>
         <button className="aw-action" onClick={actions.exportVariants} disabled={!variants.length}><Download size={13} /> Export as CSV</button>
       </div>
     </div>
@@ -313,6 +315,7 @@ function variantTitle(v: Variant): string {
     ...(v.coding ? [`${v.coding.feature}: ${v.coding.cdna}, ${v.coding.protein} (${v.coding.effect})`] : []),
     ...(v.features.length ? [`In ${v.features.join(', ')}`] : []),
     ...(v.repeat ? [`Inside tandem repeat ${v.repeat}`] : []),
+    ...(v.homopolymer ? [`In a run of ${v.homopolymer} of the same base`] : []),
   ].join('\n')
 }
 

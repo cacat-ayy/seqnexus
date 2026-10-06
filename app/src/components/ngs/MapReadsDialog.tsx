@@ -14,9 +14,12 @@
 import './ReadSetWorkspace.css'
 import '../alignment/AlignmentWorkspace.css'
 import '../sanger/ReadWorkspace.css'
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { Layers, X } from 'lucide-react'
 import { useEditorStore, type Assembly, type ReadSet } from '../../store'
+import type { NgsMapping } from '../../assembly/container'
+import PrimerClipField from './PrimerClipField'
+import { usePrimerClip } from './usePrimerClip'
 import { notify } from '../../toast'
 import { useFocusTrap } from '../../hooks/useFocusTrap'
 import { PRESET_LABEL, presetFor, type MapPreset, type MappingReport, type MapReference } from '../../ngs/mapper'
@@ -27,8 +30,8 @@ import { deleteMappingStorage, getReadChunk } from '../../storage/idb'
 
 interface Props {
   readSet: ReadSet
-  /** Run this mapping again, in place. */
-  rerun?: Assembly
+  /** Map this sample of a mapping again, in place. */
+  rerun?: { assembly: Assembly; sample: NgsMapping }
   onClose: () => void
 }
 
@@ -43,7 +46,7 @@ interface Choice {
 export default function MapReadsDialog({ readSet: rs, rerun, onClose }: Props) {
   const allTabs = useEditorStore(s => s.tabs)
   const tabs = allTabs.filter(t => t.doc.sequence.length >= 100)
-  const last = rerun?.ngs?.report
+  const last = rerun?.sample.report
   const [kept, setKept] = useState<Choice[]>([])
   const [picked, setPicked] = useState<Set<string>>(() => {
     if (last) return new Set(last.references.flatMap(r => (r.tabId && tabs.some(t => t.id === r.tabId) ? [r.tabId] : [])))
@@ -56,11 +59,13 @@ export default function MapReadsDialog({ readSet: rs, rerun, onClose }: Props) {
   useFocusTrap(ref, true)
   useEffect(() => () => handle.current?.cancel(), [])
   const blocked = openedAsFile()
+  // Samples of one mapping share its references.
+  const locked = (rerun?.assembly.samples?.length ?? 0) > 1
   const running = progress !== null
 
   // References of the last run that are no longer open: offer the copies the mapping kept.
   useEffect(() => {
-    const ngs = rerun?.ngs
+    const ngs = rerun?.sample
     if (!ngs || ngs.report.version !== 2) return
     const missing = ngs.report.references.flatMap((r, i) => (r.tabId && allTabs.some(t => t.id === r.tabId) ? [] : [{ r, i }]))
     if (missing.length === 0) return
@@ -85,12 +90,15 @@ export default function MapReadsDialog({ readSet: rs, rerun, onClose }: Props) {
     })),
     ...kept,
   ]
+  const pickedKey = [...picked].sort().join('|') + '|' + kept.length
+  const pickedRefs = useMemo(() => choices.filter(c => picked.has(c.key)).map(c => c.ref), [pickedKey]) // eslint-disable-line react-hooks/exhaustive-deps
+  const clip = usePrimerClip(pickedRefs)
 
   const run = () => {
     const store = useEditorStore.getState()
     const refs = choices.filter(c => picked.has(c.key)).map(c => c.ref)
     if (refs.length === 0) { notify.info('Choose a reference sequence, or open one first'); return }
-    const assemblyId = rerun?.id ?? store.newAssemblyId()
+    const assemblyId = rerun?.assembly.id ?? store.newAssemblyId()
     // A run again is stored apart until it is done, so the old mapping stays whole if it fails.
     const storageId = rerun ? store.newAssemblyId() : assemblyId
     setProgress(0)
@@ -98,6 +106,7 @@ export default function MapReadsDialog({ readSet: rs, rerun, onClose }: Props) {
       type: 'map', storageId,
       readSet: { id: rs.id, chunks: rs.chunks, paired: rs.paired, technology: rs.technology, maxLength: rs.stats.maxLength, bases: rs.stats.bases },
       refs, preset, wasmBase: wasmBase(),
+      ...(clip.on && clip.info ? { primerSites: clip.info.sites } : {}),
     }, (d, t) => setProgress(t ? d / t : 0))
     handle.current = h
     h.promise.then(report => {
@@ -107,12 +116,14 @@ export default function MapReadsDialog({ readSet: rs, rerun, onClose }: Props) {
       const pct = report.reads ? (report.mapped / report.reads) * 100 : 0
       const msg = `Mapped ${pct.toFixed(1)}% of ${nf.format(report.reads)} reads`
       if (rerun) {
-        const undo = store.replaceMapping(rerun.id, ngs, inputs)
+        // The first sample sets what the mapping says it was mapped to.
+        const first = rerun.assembly.samples?.[0]?.storageId === rerun.sample.storageId
+        const undo = store.replaceSample(rerun.assembly.id, rerun.sample.storageId, ngs, first ? inputs : undefined)
         notify.success(msg, undo ? { action: { label: 'Undo', onClick: undo } } : undefined)
       } else {
         store.addMapping({
           id: assemblyId, name: `${rs.name} vs ${refs.map(r => r.name).join(', ')}`, createdAt: now, modifiedAt: now,
-          contigIds: [], method: 'reference', settings: null, inputs, unplaced: [], ngs,
+          contigIds: [], method: 'reference', settings: null, inputs, unplaced: [], samples: [ngs],
         })
         notify.success(msg)
       }
@@ -154,7 +165,7 @@ export default function MapReadsDialog({ readSet: rs, rerun, onClose }: Props) {
             <div className="ngs-ref-list">
               {choices.map(c => (
                 <label key={c.key} className="ngs-check">
-                  <input type="checkbox" checked={picked.has(c.key)} disabled={running} onChange={() => toggle(c.key)} />
+                  <input type="checkbox" checked={picked.has(c.key)} disabled={running || locked} onChange={() => toggle(c.key)} />
                   {c.ref.name}{' '}
                   <span className="aw-muted">
                     {nf.format(c.ref.bases.length)} bp{c.ref.circular ? ', circular' : ''}{c.ref.tabId ? '' : ', the copy kept with the mapping'}
@@ -169,7 +180,8 @@ export default function MapReadsDialog({ readSet: rs, rerun, onClose }: Props) {
               {(Object.keys(PRESET_LABEL) as MapPreset[]).map(p => <option key={p} value={p}>{PRESET_LABEL[p]}</option>)}
             </select>
           </label>
-          {rerun && <p className="aw-note">The new mapping replaces this one. Undo puts it back.</p>}
+          <PrimerClipField clip={clip} disabled={running} />
+          {rerun && <p className="aw-note">{locked ? 'The references are shared by every sample of the mapping, so they stay as they are. ' : ''}The new mapping of {rs.name} replaces the old one. Undo puts it back.</p>}
           {blocked && <p className="aw-note ngs-warn-note">{NEEDS_WEB('minimap2')}</p>}
           {running && (
             <div className="ngs-progress" role="progressbar" aria-valuenow={Math.round(progress! * 100)} aria-valuemin={0} aria-valuemax={100}>
