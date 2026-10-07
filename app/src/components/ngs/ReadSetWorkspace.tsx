@@ -10,7 +10,7 @@ import './ReadSetWorkspace.css'
 import '../alignment/AlignmentWorkspace.css'
 import '../sanger/ReadWorkspace.css'
 import { lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react'
-import { ChevronDown, Download, FileStack, Layers, Route, Scissors, Trash2, X, CircleCheck, TriangleAlert, OctagonAlert } from 'lucide-react'
+import { ChevronDown, Download, FileStack, Layers, Route, Scissors, Shapes, Trash2, X, CircleCheck, TriangleAlert, OctagonAlert } from 'lucide-react'
 import { openAnalyse } from './analyseRequest'
 import { useEditorStore, type ReadSet } from '../../store'
 import { notify } from '../../toast'
@@ -20,11 +20,13 @@ import { isLongRead, TECHNOLOGY_LABEL } from '../../ngs/types'
 import { decodeChunk } from '../../ngs/codec'
 import { deleteReadChunks, getReadChunk } from '../../storage/idb'
 import ConfirmDialog from '../ConfirmDialog'
-import { startExport } from '../../workers/readset'
+import { startExport, startSpectrum } from '../../workers/readset'
+import KmerSpectrumCard from './KmerSpectrumCard'
 import { HistogramChart, PositionQualityChart } from './charts'
 
 const TrimReadsDialog = lazy(() => import('./TrimReadsDialog'))
 const MapReadsDialog = lazy(() => import('./MapReadsDialog'))
+const AssembleReadsDialog = lazy(() => import('./AssembleReadsDialog'))
 
 interface Props {
   readSet: ReadSet
@@ -45,6 +47,7 @@ export default function ReadSetWorkspace({ readSet: rs, onClose }: Props) {
   const [nameDraft, setNameDraft] = useState<string | null>(null)
   const [trimOpen, setTrimOpen] = useState(false)
   const [mapOpen, setMapOpen] = useState(false)
+  const [assembleOpen, setAssembleOpen] = useState(false)
   const [exportMenu, setExportMenu] = useState(false)
   const [exporting, setExporting] = useState<number | null>(null)
   const [preview, setPreview] = useState<PreviewRow[] | null>(null)
@@ -112,6 +115,16 @@ export default function ReadSetWorkspace({ readSet: rs, onClose }: Props) {
       .finally(() => setExporting(null))
   }
 
+  const [counting, setCounting] = useState<number | null>(null)
+  const countKmers = () => {
+    setCounting(0)
+    const id = rs.id
+    startSpectrum({ type: 'kmer-spectrum', id, chunks: rs.chunks, bases: s.bases }, (d, t) => setCounting(t ? d / t : 0))
+      .promise.then(spectrum => useEditorStore.getState().setReadSetSpectrum(id, spectrum))
+      .catch(err => notify.error('Counting the k-mers failed', { detail: err instanceof Error ? err.message : String(err) }))
+      .finally(() => setCounting(null))
+  }
+
   const VerdictIcon = qc.verdict === 'good' ? CircleCheck : qc.verdict === 'check' ? TriangleAlert : OctagonAlert
   const mates = s.positionQuality.length
 
@@ -142,6 +155,10 @@ export default function ReadSetWorkspace({ readSet: rs, onClose }: Props) {
         </button>
         <button className="aw-btn" onClick={() => setMapOpen(true)} disabled={discarded} title="Map the reads to open sequences with minimap2">
           <Layers size={13} /> Map to reference…
+        </button>
+        <button className="aw-btn" onClick={() => setAssembleOpen(true)} disabled={discarded}
+          title="Make contigs from the reads alone, with no reference: whole plasmids and amplicons from long reads">
+          <Shapes size={13} /> Assemble de novo…
         </button>
         <button className="aw-btn" onClick={() => openAnalyse([rs.id])} disabled={discarded}
           title="Trim, map and find variants in one go, for this read set and any others">
@@ -235,6 +252,8 @@ export default function ReadSetWorkspace({ readSet: rs, onClose }: Props) {
             binLabel={lo => `${lo}% GC`} tickLabel={v => `${v}%`} />
         </div>
 
+        {(rs.kmers || !discarded) && <KmerSpectrumCard spectrum={rs.kmers} counting={counting} onCount={discarded ? undefined : countKmers} />}
+
         {!discarded && <div className="ngs-card">
           <div className="ngs-card-title">First reads</div>
           {previewError && <p className="aw-note">{previewError}</p>}
@@ -316,6 +335,11 @@ export default function ReadSetWorkspace({ readSet: rs, onClose }: Props) {
       {mapOpen && (
         <Suspense fallback={null}>
           <MapReadsDialog readSet={rs} onClose={() => setMapOpen(false)} />
+        </Suspense>
+      )}
+      {assembleOpen && (
+        <Suspense fallback={null}>
+          <AssembleReadsDialog readSet={rs} onClose={() => setAssembleOpen(false)} />
         </Suspense>
       )}
       {trimOpen && (

@@ -18,6 +18,10 @@ import { importAlignments } from './alignmentImport'
 import { callMapping } from './calls'
 import { findJunctions } from './junctions'
 import type { PrimerSite } from './primerClip'
+import { assembleReadSet, type DeNovoReadSet } from './denovo/run'
+import { readSetSpectrum } from './denovo/spectrum'
+import type { DeNovoSettings } from './denovo/types'
+import type { LineUpTarget } from './denovo/lineup'
 import type { MappingReport, MappingStorage } from './builder'
 import { deleteReadChunks, getReadChunk, putReadChunk } from '../storage/idb'
 import { runTool } from '../msa/engines/emscripten'
@@ -38,6 +42,19 @@ export type ReadSetJob =
       /** Clip primers at these sites, per reference (primerClip.ts). */
       primerSites?: PrimerSite[][]
     }
+  | {
+      type: 'assemble'
+      /** Where the mapping back to the contigs is stored. */
+      storageId: string
+      readSet: DeNovoReadSet
+      settings: DeNovoSettings
+      /** Open sequences to line the contigs up with. */
+      lineUp?: LineUpTarget[]
+      /** Long-read genomes: short reads of the same sample to polish with. */
+      shortReads?: DeNovoReadSet & { name: string }
+      wasmBase: string
+    }
+  | { type: 'kmer-spectrum'; id: string; chunks: number; bases: number }
   | {
       type: 'export-mapping'
       format: 'sam' | 'bam'
@@ -170,6 +187,23 @@ export async function runReadSetJob(
       storage: idbStorage,
       onProgress: progress,
     })
+  }
+  if (job.type === 'assemble') {
+    const minimap2 = await minimap2Runner(job.wasmBase)
+    return assembleReadSet({
+      storageId: job.storageId,
+      readSet: job.readSet,
+      settings: job.settings,
+      lineUp: job.lineUp,
+      shortReads: job.shortReads ? { readSet: job.shortReads, getChunk: i => { check(); return getReadChunk(job.shortReads!.id, i) } } : undefined,
+      minimap2,
+      getChunk: i => { check(); return getReadChunk(job.readSet.id, i) },
+      storage: idbStorage,
+      onProgress: progress,
+    })
+  }
+  if (job.type === 'kmer-spectrum') {
+    return readSetSpectrum({ chunks: job.chunks, bases: job.bases, getChunk: i => { check(); return getReadChunk(job.id, i) }, onProgress: progress })
   }
   if (job.type === 'import-alignments') {
     return importAlignments({

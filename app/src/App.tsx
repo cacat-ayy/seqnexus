@@ -70,7 +70,7 @@ import {
   Undo2, Redo2, Search, TextSearch, Scissors, FlaskConical,
   BarChart3, ZoomOut, ZoomIn, Scan, PanelLeftOpen,
   X, ChevronDown as ChevronDownSmall,
-  SunMoon, Info, List, Lock, LockOpen, Tag, Globe, GalleryVertical, AlignLeft, ArrowLeft, Wand2, Route,
+  SunMoon, Info, List, Lock, LockOpen, Tag, Globe, GalleryVertical, AlignLeft, ArrowLeft, Wand2, Route, Shapes,
   Combine,
   SlidersHorizontal,
 } from 'lucide-react'
@@ -1543,6 +1543,7 @@ export default function App() {
     { id: 'blast', label: 'BLAST Search', group: 'Analyse', icon: Globe, keywords: 'ncbi homology', disabled: noDoc, run: () => setBlastModalOpen(true) },
     { id: 'align', label: 'Align Sequences', group: 'Analyse', icon: AlignLeft, keywords: 'msa pairwise clustal', run: () => setAlignModalOpen(true) },
     { id: 'analyse-reads', label: 'Analyse NGS Reads…', group: 'Analyse', icon: Route, keywords: 'pipeline map variants trim fastq samples consensus', run: () => openAnalyse() },
+    { id: 'assemble-reads', label: 'Assemble NGS Reads de novo…', group: 'Analyse', icon: Shapes, keywords: 'de novo assembly contig plasmid amplicon nanopore long reads whole plasmid sequencing', run: () => openAnalyse([], true) },
     { id: 'gel', label: 'Virtual Gel', group: 'Analyse', icon: GalleryVertical, keywords: 'electrophoresis digest agarose', run: openGel },
     { id: 'new-gel', label: 'New Gel', group: 'Analyse', icon: GalleryVertical, keywords: 'electrophoresis digest agarose', run: () => useEditorStore.getState().createGel() },
     { id: 'codon-optimize', label: 'Codon Optimization', group: 'Analyse', icon: Wand2, keywords: 'codon usage rare harmonize express host', disabled: noDoc, run: () => setCodonModalOpen(true) },
@@ -2566,7 +2567,7 @@ export default function App() {
       )}
       {analyseRequest && (
         <Suspense fallback={null}>
-          <AnalyseReadsDialog readSetIds={analyseRequest.readSetIds} onClose={closeAnalyse} />
+          <AnalyseReadsDialog readSetIds={analyseRequest.readSetIds} denovo={analyseRequest.denovo} onClose={closeAnalyse} />
         </Suspense>
       )}
       {assembleReadIds && (

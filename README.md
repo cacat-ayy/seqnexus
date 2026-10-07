@@ -1028,6 +1028,486 @@ mapping, which opens at the end. Each step is the same background job the
 separate dialogs run, so the results are the same; a step that fails stops
 only its own sample, and the table of steps says which and why.
 
+Switched to "Assemble de novo" (also "Assemble NGS Reads de novo" in the
+command palette), each read set is instead cleaned up (long reads: reads
+below Q10 left out, reads kept down to 100 bp so a short amplicon keeps its
+reads; short reads: fastp as for mapping), assembled with the method for its
+reads, mapped back to its own contigs with their variants, and made an
+assembly of its own.
+
+### De novo assembly
+
+"Assemble de novo" (on a read set's page, or in the guided pipeline) makes
+contigs from the reads alone, with no reference. The result is an assembly
+like a mapping: every read is mapped back to the contigs with minimap2, and
+the candidate variant sites are recounted, so the contigs open in the same
+reads view with coverage, variants, report, BAM export and figures. Reads
+that disagree with a contig are its variants, which is how a minority of
+the population (a point mutation in some clones) shows up. The contigs are
+kept with the mapping as its references; a Contigs page lists them and opens
+each as a sequence or exports them all as FASTA.
+
+**Whole plasmids and amplicons from long reads (seed and polish).** When a
+plasmid or an amplicon is sequenced whole on nanopore or PacBio, many reads
+are its full length: a plasmid opened at a random place by the library
+preparation, an amplicon end to end. They make a sharp peak in the read
+lengths, standing out from the broad spread of broken molecules and stray
+DNA. Each peak is taken as a product.
+
+1. **Peaks.** For every read length x, the reads within 2% of it are counted,
+   and the flanks (the next two window widths on either side, counted over
+   all reads) give how many the window would hold by chance. A peak must hold
+   at least the fewest reads per product (5 by default) more than that, and
+   so many that a Poisson tail puts the chance of it below one in a million.
+   The strict test matters because thousands of windows are looked at: at
+   the usual 5% a broad spread of broken molecules would show peaks
+   everywhere. The peak with the most reads is taken, its reads set aside,
+   and the next one looked for (up to 8).
+2. **Seed.** Of the peak's reads within half a percent of its median length,
+   the one with the best mean quality (from error probabilities) is the
+   first draft.
+3. **First round, alone.** Each seed is polished with its own peak's reads
+   only (the 200 best). Two raw reads differ by several percent, so a read
+   cannot yet tell its own product's seed from a related one's (a plasmid
+   with and without an insert, a dimer); against every seed at once the
+   reads of one product were found to scatter over the others.
+4. **Judging.** In that round each draft is aligned to as if circular (its
+   start appended, as for a circular reference). It is **circular** when at
+   least two reads, and a fifth of the median depth, run across its origin
+   with 100 bases (or a tenth of its length) on both sides; otherwise
+   **linear**. It is dropped when fewer reads than the fewest per product line
+   up with it over 90% of its length (a peak of broken molecules that only
+   share a length). Once polished, drafts are compared by canonical 15-mers:
+   when each has at least 90% of the other's and the longer is at least 1.6
+   times as long, the longer is a **dimer** (or longer repeat) and is
+   dropped; when their lengths also agree within 1%, they are the **same
+   sequence** and the second is dropped; a linear draft inside a longer one
+   is a **piece** of it. The thresholds are high because polished contigs
+   keep nearly all their k-mers, while a plasmid with an 800 bp deletion still
+   has 85% of the full one's and must stay a product of its own (a mixed
+   clone). Shortest first, so a monomer is kept over its dimer.
+5. **Polishing rounds.** The best reads (all of them, or the highest-quality
+   ones up to 20 Mb of bases) are aligned to every draft at once
+   (`minimap2 -a -x map-ont` or `map-hifi`, no secondary alignments), so each
+   read goes to the product it came from, and each draft becomes the reads'
+   majority consensus: at each position the commonest base, the position
+   left out where more reads delete it than show any one base, and an
+   insertion written in where at least half the reads across that gap insert
+   something (the commonest length, then the commonest base at each place).
+   This is samtools consensus's simple mode, counted from the SAM records
+   directly. Rounds repeat until one changes nothing, up to 5.
+6. **Closing the circle.** A seed read rarely is exactly one circle: it may
+   repeat a few bases at its ends or lack a few. Reads across the origin of
+   the extended draft delete the repeated bases or insert the missing ones,
+   so the consensus closes the circle in the first round. Its start stays
+   where the seed read began.
+7. **Linear ends.** A linear contig's ends are trimmed back to where at
+   least 3 reads, and a tenth of the median depth, cover them, and extended
+   where the reads that reach an end go on past it (as soft clips) and agree
+   on what follows: as far as half of them go, column by column, stopping
+   where fewer than 70% agree over 10 bases, at most 200 bases a round.
+
+Each contig reports its length, shape, its full-length reads and their share
+of all full-length reads (the product's share of the sample), its depth, and
+how many positions each round changed. On simulated nanopore reads (1%
+substitutions, 1% insertions, 1.2% deletions) the first round takes a seed
+from a few hundred errors to none, and the contigs match the true plasmid and
+its deletion variant exactly; the tests in `ngs/denovo` check this, and a
+dimer and a broad spread of broken molecules.
+
+**Why seed and polish.** A plasmid sequenced whole needs no overlap graph:
+its full-length reads already span it, so one of them is a draft with the
+right structure from the start, and polishing only fixes its bases. That
+reuses the mapper and needs no assembler compiled to WebAssembly (none is in
+the biowasm catalogue). It also makes mixed products easy to keep apart,
+since each starts from its own peak. A genome (much longer than the reads)
+needs an overlap graph instead, below.
+
+**Limits.** The contigs are a majority consensus of raw reads. On nanopore
+reads that leaves errors most reads make the same way, mainly homopolymer
+runs a base short or long, which a model-based polisher such as medaka would
+correct (see Polishing elsewhere below); check those against an expected
+sequence when they matter. Two products whose lengths are within about 2% of
+each other fall in one peak and come out as one contig, the other's
+differences as variants. A circular contig starts wherever its seed read
+began. minimap2 is WebAssembly, so like mapping this needs SeqNexus opened
+from a web address (or serve.bat), not from disk.
+
+**A genome from long reads (overlaps, layout, consensus).** When nanopore or
+PacBio reads come from a genome, no read spans it. They are assembled by
+their overlaps, as miniasm does, and the result polished by the reads.
+
+1. **Reads.** The longest reads of at least 1 kb, leaving out the tenth with
+   the lowest mean quality, up to 40x of the genome length when the dialog
+   is given one, or up to 200 Mb of reads when not. Longer reads span longer
+   repeats, and past about 40x more reads add overlaps to compute but no
+   contiguity (Flye and Canu also start from the longest reads). The 200 Mb
+   cap keeps minimap2's index of the reads inside WebAssembly's memory: a
+   5 Mb genome at 30x (150 Mb of reads) was overlapped in one run of 71
+   seconds and fitted.
+2. **Overlaps.** minimap2 aligns every read against every other in one run
+   (`-x ava-ont`, or `ava-pb` for PacBio). Overlaps with fewer than 100
+   matching bases, or shorter than half the shortest overlap, are dropped.
+   The shortest overlap is 2 kb, as in miniasm, or a fifth of the reads' N50
+   when that is less (at least 500 bases).
+3. **Trimming.** Each read keeps its longest stretch covered by at least 3
+   other reads. That cuts off low-quality ends and adapters the others do
+   not share, and a chimeric read (two pieces of the genome joined) keeps
+   only its longer piece, since few reads span the false join.
+4. **Classing overlaps.** On the trimmed reads each overlap is internal (an
+   overhang over 1 kb, or the overlap under 80% of the stretch it would
+   join: two reads sharing a repeat and going on into different places,
+   dropped), a containment (one read inside the other: the inner read adds
+   nothing to the layout and is set aside, though it still polishes), or a
+   dovetail (the end of one read runs into the start of the other). A
+   dovetail is an arc of the string graph, which has a vertex for each
+   strand of each read: an arc v to w of length l says v's first l bases
+   come before w starts, and every arc has its mirror between the reverse
+   complements (Myers 2005).
+5. **Cleaning**, in miniasm's order: transitive reduction (an arc v to x is
+   dropped when v to w to x reaches x as far along, within 1 kb), tips (dead
+   ends of up to 4 reads off a branch), short overlaps at a branch (an arc
+   whose overlap is under 70%, then 80%, of the longest there: a repeat
+   shared with another place), and bubbles up to 50 kb across (two paths
+   between the same reads: the path through more reads stays).
+6. **Unitigs.** The paths without a branch, each read giving the bases
+   before the next one starts; a path that comes back to its start is a
+   circle. A linear unitig whose end repeats its start (the reads ran on
+   past the origin of a circle the graph did not close) is cut to one turn:
+   the 15-mers seen once in its first 5 kb vote for the offset where they
+   occur again in its second half, and when the best offset has at least 20
+   votes and the match runs to the end, the unitig is cut there and made
+   circular. The overlap can be as long as a read (35 kb on the benchmark's
+   chromosome), so when it is longer than the probe its last 5 kb are checked
+   too, against the bases one period earlier. Unitigs with fewer reads behind them (those inside them
+   counted) than the fewest per contig (5) stay in the graph but are not
+   contigs.
+7. **Consensus.** The unitigs are raw read sequence, with the reads' errors.
+   The same reads are aligned to them (`minimap2 -a -x map-ont`, in batches
+   of 40 Mb of reads) and each becomes the reads' majority consensus, as for
+   whole products, for up to the rounds set (5), stopping once a round
+   changes fewer than 10 positions per megabase. After the first round,
+   drafts that are copies of another are dropped: a high-copy plasmid's
+   reads lie in and across each other every way round, and the graph can lay
+   it out several times. Each draft is aligned to the others
+   (`minimap2 -x asm20`, which tolerates what errors the first round
+   leaves; exact k-mers would not, two raw copies sharing too few), and one
+   covered over 90% of its length by another it gives way to goes: a circle
+   wins over a linear copy of about its length (the copy's extra bases are
+   the overlap left at its ends), a linear draft holds a circle only when
+   more than twice as long, and otherwise the longer wins, then the one more
+   reads went to. This runs again after the last round and step 8, when
+   copies too rough to align at first have been polished and the linear
+   copies of a plasmid lie inside its closed circle. Left in, the copies split
+   the plasmid's reads between them, stayed full of errors and kept
+   polishing from settling. A genome's pileup is kept
+   compact: counts in 16 bits (saturating at 65,535) and single-base
+   insertions counted by base in an array; only longer insertions are kept
+   as strings.
+8. **Small plasmids.** A plasmid shorter than the shortest overlap cannot be
+   laid out: its reads lie inside each other or overlap too little. When the
+   read lengths show peaks (a rapid library opens each plasmid once, so its
+   reads are full length), those products are assembled by seed and polish
+   and added, unless an overlap contig already holds 90% of their 15-mers.
+   An overlap contig that is the same replicon but did not close (linear,
+   and at most 1.6 times as long) is replaced by the closed product.
+9. **Short reads (optional).** An Illumina read set of the same sample can
+   polish the contigs (hybrid polishing): about 80x of its reads are mapped
+   (`-x sr`, mates together), and a position changes where more than half
+   of at least 5 reads disagree with it, for up to 3 rounds. Long reads
+   share their homopolymer errors, so their consensus keeps them; short reads
+   do not. A higher bar (60%) was tried first and failed where a missing
+   base and an extra one lie a few bases apart: some short reads align the
+   stretch between as two gaps and others as a run of mismatches, both
+   right, each about half of the reads, so neither reached the bar; an
+   absolute majority takes one of them whole. Linear ends stay as the long
+   reads have them, since short reads would trim them back.
+
+**Whole products or a genome.** By default the read lengths decide: when at
+least 15% of the read bases are in length peaks (full-length copies of a
+product), the run is assembled as whole products, otherwise as a genome. A
+whole-plasmid run has most of its bases in its peaks; a genome library's
+reads are broken at random, with at most a small plasmid's peak among them.
+The dialog can set either, and the Contigs page says which was used and why.
+
+On simulated nanopore reads (1% each of substitutions, insertions and
+deletions) of a 300 kb chromosome with three copies of a 1.5 kb element and
+a 30 kb plasmid at twice the depth, both come out as circles with no
+difference from the true sequences, in about 27 seconds (Node, one thread);
+a 1.5 kb plasmid with full-length reads comes from its peak; and noisy reads
+at 14x (4 to 5% each of substitutions, insertions and deletions) leave 667
+differences in a 60 kb chromosome, which short reads at 60x take to none
+(`ngs/denovo/genome.test.ts`). On the simulated test files of a small
+genome (183.9 kb chromosome, 8 kb plasmid at three copies, nanopore reads
+at 50x with a base lost in most reads at each long homopolymer), the
+plasmid comes out as a circle one homopolymer base short, and exact once
+the Illumina reads of the same genome polish it; the chromosome comes out
+as two contigs overlapping each other by 19 and 12 kb at their ends, which
+together are the whole circle. On the benchmark's 5 Mb genome (described
+under Short reads below; nanopore reads at 40x, read N50 about 20 kb, 1%
+each of substitutions, insertions and deletions) assembly takes about 5
+minutes on one core in Node, 4.5 of them in minimap2 (2.5 overlapping,
+the rest polishing), and holds up to about 1.1 GB, WebAssembly included:
+6 contigs, an N50 of 3.4 Mb, both plasmids circular (six copies of the
+small one dropped), and about 40 errors in 5.2 Mb, most at the ends of
+the two smaller chromosome pieces, where they overlap the larger ones
+(`ngs/denovo/denovo.bench.test.ts`).
+
+**Why overlaps for long reads.** A de Bruijn graph needs exact k-mers, which
+reads with a few percent of errors seldom share over long stretches;
+overlaps tolerate the errors, and a string graph keeps each read's whole
+length to span repeats. minimap2 already computes the overlaps in
+WebAssembly, so the layout is the only new part (plain JavaScript), and the
+consensus reuses seed and polish's. Correcting the reads before the layout
+(Canu) or building a repeat graph from them (Flye) gives longer contigs on
+real data, but would need those assemblers compiled to WebAssembly, which
+none is.
+
+**Limits.** Simulated reads have random errors; real nanopore reads also
+have systematic ones (homopolymer lengths), which a majority consensus
+keeps without short reads or medaka. Repeats longer than the reads that
+would span them break contigs. Two contigs that meet at a branch overlap by
+as much as the reads that joined them (several kilobases), as miniasm's
+unitigs do; the Graph page links them, and the reads mapped back show the
+overlap at both ends. Two strains in one sample merge where they
+are alike. The reads laid out are capped at 200 Mb by minimap2's memory. A
+mixed plasmid population (a clone with a deletion in part of it) is better
+assembled as whole products, which keeps the variants apart.
+
+**Short reads (de Bruijn graph).** Illumina reads are far shorter than a
+plasmid, so no read spans it; they are assembled from their k-mers instead,
+as Velvet and SPAdes do.
+
+1. **Genome length.** The read set's 21-mer spectrum (see k-mer spectrum
+   below) gives the genome's length and coverage.
+2. **Sampling.** Reads are taken at random (by a hash of their index, so a
+   run is repeatable) down to about 100x of that length, at most 300 Mb of
+   bases (60x of a 5 Mb genome): past that, more reads add error k-mers but
+   no contiguity, and each k costs a pass over them.
+3. **Counting.** At each k, every canonical k-mer of the sampled reads is
+   counted, packed two bits a base in typed arrays (k up to 127 in four to
+   eight 32-bit words) in an open-addressing hash table. A Bloom filter in
+   front lets a k-mer in only from its second sighting, since in short reads
+   most distinct k-mers are sequencing errors seen once (the approach of
+   BFCounter). k-mers below the **solid threshold** are dropped: the bottom
+   of the valley between the error k-mers and the genome's peak in that k's
+   own spectrum, at least 2 and at most a third of the peak, so a stretch
+   covered at a third of the usual depth stays in.
+
+   The Bloom filter is blocked (Putze, Sanders and Singler): a k-mer's seven
+   bits lie in one 512-bit block, one cache line, instead of seven places
+   far apart, and the k-mer is hashed once for the filter and the table, then
+   looked up once (found and counted, or inserted at 2). On 30 Mb of reads
+   that took counting from 5.1 to 3.8 seconds, the filter's own share from
+   2.0 to 0.5. Both are sized once from the spectrum: the filter for the
+   genome's k-mers and the error k-mers the sampled reads bring (the 21-mers
+   below the trough, times k / 21, since each error makes up to k), the
+   table for the genome's k-mers and a few percent of the errors. The table
+   takes any capacity, not a power of two (a key's first slot is its hash
+   scaled to the capacity), and is filled to 70%, so a 5 Mb genome at k 99
+   takes about 300 MB instead of twice that.
+4. **Unitigs.** Solid k-mers that follow one another without a branch are
+   chained into unitigs, walking with the k-mer and its reverse complement
+   both rolled a base at a time, so a neighbour costs a shift and a table
+   lookup. A unitig whose end leads back to its own start in the same
+   orientation is a **circle** (a plasmid resolved whole) and loses the k-1
+   bases it repeats.
+5. **Cleaning**, until nothing changes: a short unitig (under 2k bases) with
+   a dead end and under a quarter of its neighbours' coverage is an error
+   **tip**; of two short unitigs between the same neighbours (a **bubble**)
+   the less covered goes, whatever the ratio, so a mixed site takes the
+   majority and the minority shows up as a variant when the reads are mapped
+   back; any short unitig under a tenth of its neighbours' coverage goes.
+6. **Choosing k.** k = 21, 33, 55, 77, 99 and 127 are tried, those up to 80%
+   of the mean read length where k-mer coverage (depth x (L - k + 1) / L)
+   stays at least 10. A larger k spans longer repeats but needs more
+   coverage. The k giving the best N50, then the fewest contigs, then the
+   larger k, is kept (SPAdes and Unicycler also weigh several k). On a
+   genome of 1 Mb or more, k under 55 is skipped when two larger k qualify:
+   a bacterial genome's repeats break a small-k graph into many more pieces,
+   and each k is a pass over all the sampled reads. Unitigs of at least
+   200 bp (a setting) are the contigs, longest first.
+7. **Joining with the pairs.** A pair is two reads from the ends of one
+   fragment of known size, so mates on two contigs say the contigs follow
+   each other, on which strands, and how far apart. Reads are placed by a
+   sparse index of the unitigs: their canonical 31-mers whose hash falls in
+   one eighth of hashes (31-mers in two places left out), so a read and a
+   unitig sample the same 31-mers and the first hit places the read, its
+   strand and its 5' end. 31 rather than the graph's k because a mate lying
+   mostly over a repeat is still placed by a short unique stretch: with k 99
+   a mate would need over 100 unique bases and a 350 bp insert would span
+   repeats of about 130 bp at most, against about 230 bp. Pairs with both
+   mates on one unitig, facing each other, give the insert's median and
+   spread (median absolute deviation times 1.4826). A pair with its mates on
+   two anchors (unitigs at least as long as the insert) links the ends they
+   face, estimating the gap as the insert less each mate's distance to its
+   end. An end whose strongest link (at least 5 pairs, and 4 times the next)
+   is returned in kind is joined to the other end when exactly one path of
+   shorter unitigs between them has the gap's length within 1.5 standard
+   deviations (at least 30 bases); the path is the sequence between, so a
+   repeat's copy goes into each join it lies in. Chains of joins become
+   contigs, a chain closing on itself a circle. The unitigs inside joins are
+   no longer contigs of their own. This resolves repeats shorter than the
+   insert, as SPAdes's and ABySS's paired stages do; longer ones still break
+   contigs, and ends linked with no single path that fits stay apart.
+
+**Why not minimizer partitioning.** The plan was to count k-mers in
+partitions by minimizer, as KMC and BCALM do, for cache locality and memory.
+Measured, most of the counting time was the Bloom filter's seven scattered
+probes, which the blocked filter removed; what remains is one table probe per
+k-mer. Partitioning keeps super-k-mers, about three times the read bases at
+these k, which on disk is cheap but in a browser's memory is not, and the
+graph walk needs every solid k-mer in one table anyway.
+
+On simulated 2x150 reads of a plasmid prep (a 6.2 kb plasmid at 300x, a
+2.1 kb plasmid at 1500x, host DNA at 3x) both plasmids come out as exact
+circles in a few seconds; a 200 kb genome at 100x in about 15 seconds (Node,
+one thread) as one exact contig. On a 93 kb genome with two short repeats
+(160 and 180 bp) twice each and a 1.2 kb repeat twice, k 99 gives six
+contigs and the repeats; the pairs (380 bp inserts) join them through the
+short repeats into two exact contigs, broken only at the long repeat
+(`ngs/denovo/pairs.test.ts`). On the benchmark's simulated bacterial genome
+(a 5 Mb chromosome with seven 5 kb rRNA operons, ten 1.3 kb insertion
+elements and twenty short repeats of 120 to 215 bp twice each, a 60 kb
+plasmid at two copies and a 4 kb one at ten; 2x150 reads with 350 bp
+inserts at 60x and 0.3% substitutions), assembly takes about 3 minutes on
+one core in Node and holds up to about 1.5 GB: k 77 is kept (N50 87 kb),
+the pairs make 40 joins through the short repeats, and the result is 22
+contigs with an N50 of 348 kb, both plasmids circular and no contig 31-mer
+missing from the true sequence; the rRNA operons and insertion elements,
+longer than the insert, still break the chromosome
+(`ngs/denovo/denovo.bench.test.ts`). Genomes estimated above 15 Mb
+are refused (memory of the k-mer tables).
+
+**Assembly graph.** A de novo assembly keeps its graph (stored with its
+mapping, deflated with the sequences) and draws it on a Graph page, as
+Bandage does. For short reads the segments are every unitig left after
+cleaning, the contigs and the shorter pieces between them, and a link joins
+the end of one to the start of another in either orientation (`+` or `-`),
+overlapping by k-1 bases (a contig the pairs joined is several segments,
+"Contig 2, part 1" and so on); for long reads of whole products each contig
+is a segment, a circle linked to itself; for long reads of a genome every
+unitig of the string graph is a segment, linked where reads overlap from one
+into the next, each link with its own overlap. The graph says why contigs end where they do: a repeat is
+a short segment several contigs lead into and out of, usually at a multiple
+of the usual coverage (on a small genome with three copies of a 1.3 kb
+insertion element, the three stretches of the chromosome are loops leaving
+the element and coming back to it, the element at 3x); a circle is a
+replicon resolved whole; a dead end is where coverage ran out or a linear
+molecule ends.
+
+- **Layout:** each segment is a chain of points, more the longer it is
+  (about 700 in all, 2 to 90 a segment, a circle at least 8), so a stroke's
+  length shows the sequence's. Springs of rest length 1 hold chains
+  together and, stiffer and shorter, join the ends links join; every point
+  pushes the others apart with a force falling as 1/distance (all pairs up
+  to 1,200 points, a grid of near neighbours above), which opens a loop
+  that leaves a repeat and returns to it instead of folding it in two; each
+  inner point is pulled toward the middle of its neighbours, which keeps
+  strokes smooth; a weak pull to the middle keeps a component together.
+  500 steps with a shrinking step size (Fruchterman and Reingold's scheme),
+  from a start where segments are placed breadth-first next to a placed
+  neighbour, seeded so the same graph is drawn the same way. Components are
+  laid out apart and packed in rows, largest first.
+- **Colour:** coverage against the assembly's usual coverage (the
+  length-weighted median over the segments), mixed from the theme's colours:
+  warning at a quarter or less, accent at the usual, success at three times
+  or more (a repeat in three copies, a plasmid at three copies per cell).
+  Or contigs against pieces.
+- **Use:** drag to move, wheel to zoom, click a segment for its length,
+  coverage, joins and neighbours, to open or copy its sequence, or (a
+  contig) to show its reads. Graphs of more than 4,000 segments are not
+  drawn; Export GFA (GFA 1, with `LN` and `KC` or `DP` tags Bandage reads)
+  works for any.
+
+**Compare to expected.** A contig can be checked against the sequence it
+was expected to be (the designed plasmid, the reference an amplicon comes
+from), as a clone verification report.
+
+1. **Strand and start.** Every 15-mer of the expected sequence that occurs
+   at most four times is indexed; each 15-mer of the contig, read forwards
+   and as its reverse complement, votes for the diagonal it lands on
+   (around the circle for a circular expected sequence). The strand with
+   the most votes wins. A circular contig is reverse complemented if need
+   be and turned so that its base at the expected start comes first, taken
+   from the anchor nearest after that start (a deletion elsewhere moves the
+   diagonal, so the commonest diagonal alone would put the start wrong). A
+   linear contig stays as it is; a circular expected sequence is turned so
+   the contig lies inside it.
+2. **Alignment.** The turned contig is aligned to the expected sequence with
+   affine gaps (match 2, mismatch -4, gap open 6 plus 2 a base, the
+   assembler's banded aligner): end to end for a circular contig, with free
+   ends on the expected side for a linear one. Only a band of diagonals is
+   filled, all those the anchors voted for and 60 more on each side, so an
+   800 bp deletion is spanned in one alignment at the cost of a band 900
+   wide rather than the whole matrix (at most 60 million cells).
+3. **Differences.** Mismatched columns are substitutions and runs of gaps
+   deletions or insertions, in expected coordinates. Each is described as
+   the variant caller describes variants (protein change, tandem repeat
+   around it), and the verdict comes from the clone verification check used
+   for mapped reads: a feature is verified when every base of it is in the
+   contig, with at least the chosen number of reads over it (the reads'
+   depth on the contig, carried across the alignment), and has no
+   difference. The contig is the reads' consensus, so these are differences
+   in the clone; a minority of the reads disagreeing (a mixed clone) shows
+   in the contig's variants instead.
+4. **Lining it up.** "Open lined up" opens the turned contig as a sequence
+   with the expected features carried over: each end of a feature goes to
+   the contig base it aligns to, or the nearest one inside the feature when
+   it was deleted; a feature with no base left is left out, one whose length
+   changed is moved and named in the message (spliced features lose their
+   exon list). The differences can be added as variation features. "Turn
+   the contig to match" also maps the reads again to the turned contig,
+   linked to that sequence, so the Reads page shows its features and
+   translation over the reads (with an Undo).
+
+**Lined up as it is assembled.** The same steps run on their own while an
+assembly is made, between the assembler and mapping the reads back: each
+contig is scored against every open sequence of 100 bp to 2 Mb (or the one
+chosen in the dialog, or none) by its anchor votes alone, the best match
+above the threshold is aligned, and the contig takes its strand and (when
+circular) its start. When the contig is then the same length with no
+insertion or deletion against it, substitutions at most, the two share
+coordinates, so the contig is linked to that sequence and the Reads page
+draws its features and translation over the reads from the start. A
+contig that differs in length (a deletion clone) is lined up but not
+linked; Compare to expected opens it with the features carried over. The
+Contigs page marks lined-up contigs with the sequence's name.
+
+On the simulated whole-plasmid run the full plasmid is verified against
+the expected sequence with no difference (on the other strand, its start 865
+bases on), and the minority product shows the 800 bp deletion.
+
+**Depth against GC.** With two or more contigs the Contigs page plots each
+by GC content and read depth, sized by length (as BlobTools plots
+assemblies, without the taxonomy). One genome's contigs gather in one
+cloud; a plasmid at more copies per cell sits higher at the same GC, DNA
+from another organism usually at its own GC, a collapsed repeat at a
+multiple of the depth. Depth is on a log scale when it spans more than
+eight-fold.
+
+**k-mer spectrum.** On a read set's page "Count k-mers" counts its 21-mers:
+how many occur once, twice, and so on. Errors make a steep fall at the left,
+the genome a peak at its k-mer coverage, and the genome's length is the
+k-mers at or past the valley, each counted as often as it occurs, divided by
+the peak (GenomeScope's simplest estimate; a repeat or a high-copy plasmid
+counts once per copy). Large read sets are sampled by k-mer, not by read:
+only k-mers whose hash falls in the lowest share are counted, so each is
+counted every time or never, the spectrum keeps its shape and the length is
+scaled back by the share (the idea of FracMinHash sketches). The share keeps
+about 8 million distinct k-mers at most. The chart weights each count by
+itself, so the genome's peak is not dwarfed by the error k-mers seen once.
+
+**Polishing elsewhere.** medaka is the usual way to correct nanopore
+contigs, but SeqNexus cannot include it: its licence (Oxford Nanopore
+Technologies PLC. Public License 1.0) allows research use only and is
+incompatible with the GNU licences SeqNexus is under, and it runs on Linux
+and macOS only. The Contigs page gives the command to run it on the exported
+contigs and reads, and "Import polished contigs" reads its consensus FASTA
+(or Polypolish's or Pilon's) back: contigs are matched by name, or in order
+when no name matches and the counts agree; the reads are mapped to the
+polished contigs, which replace the old ones, with an Undo.
+
 ### Figures
 
 The mapping view exports a stretch as a figure: the view as it is, or a
@@ -1735,6 +2215,83 @@ faint marks on white. Selection and search highlights are off by default.
 - Hoover DM, Lubkowski J. (2002) "DNAWorks: an automated method for designing
   oligonucleotides for PCR-based gene synthesis."
   *Nucleic Acids Res* 30(10):e43.
+
+- Pevzner PA, Tang H, Waterman MS. (2001) "An Eulerian path approach to DNA
+  fragment assembly." *Proc Natl Acad Sci USA* 98:9748-9753.
+
+- Zerbino DR, Birney E. (2008) "Velvet: algorithms for de novo short read
+  assembly using de Bruijn graphs." *Genome Res* 18:821-829.
+
+- Bankevich A, Nurk S, Antipov D, et al. (2012) "SPAdes: a new genome
+  assembly algorithm and its applications to single-cell sequencing."
+  *J Comput Biol* 19:455-477.
+
+- Wick RR, Judd LM, Gorrie CL, Holt KE. (2017) "Unicycler: resolving
+  bacterial genome assemblies from short and long sequencing reads."
+  *PLoS Comput Biol* 13:e1005595.
+
+- Wick RR, Schultz MB, Zobel J, Holt KE. (2015) "Bandage: interactive
+  visualization of de novo genome assemblies." *Bioinformatics*
+  31:3350-3352.
+
+- Fruchterman TMJ, Reingold EM. (1991) "Graph drawing by force-directed
+  placement." *Softw Pract Exp* 21:1129-1164.
+
+- GFA Format Specification Working Group. "Graphical Fragment Assembly (GFA)
+  format specification, version 1." https://github.com/GFA-spec/GFA-spec
+
+- Laetsch DR, Blaxter ML. (2017) "BlobTools: interrogation of genome
+  assemblies." *F1000Research* 6:1287.
+
+- Melsted P, Pritchard JK. (2011) "Efficient counting of k-mers in DNA
+  sequences using a Bloom filter." *BMC Bioinformatics* 12:333.
+
+- Putze F, Sanders P, Singler J. (2007) "Cache-, hash- and space-efficient
+  Bloom filters." *Proc 6th Workshop on Experimental Algorithms (WEA)*,
+  LNCS 4525:108-121. (Blocked Bloom filters.)
+
+- Kokot M, Dlugosz M, Deorowicz S. (2017) "KMC 3: counting and manipulating
+  k-mer statistics." *Bioinformatics* 33:2759-2761. (Minimizer-partitioned
+  counting, considered and not used.)
+
+- Simpson JT, Wong K, Jackman SD, et al. (2009) "ABySS: a parallel assembler
+  for short read sequence data." *Genome Res* 19:1117-1123. (Joining contigs
+  with read pairs.)
+
+- Li H. (2016) "Minimap and miniasm: fast mapping and de novo assembly for
+  noisy long sequences." *Bioinformatics* 32:2103-2110. (The string graph,
+  its overlap classes and cleaning steps.)
+
+- Myers EW. (2005) "The fragment assembly string graph." *Bioinformatics*
+  21 Suppl 2:ii79-ii85. (Transitive reduction.)
+
+- Kolmogorov M, Yuan J, Lin Y, Pevzner PA. (2019) "Assembly of long,
+  error-prone reads using repeat graphs." *Nat Biotechnol* 37:540-546.
+  (Flye; starting from the longest reads.)
+
+- Koren S, Walenz BP, Berlin K, et al. (2017) "Canu: scalable and accurate
+  long-read assembly via adaptive k-mer weighting and repeat separation."
+  *Genome Res* 27:722-736.
+
+- Walker BJ, Abeel T, Shea T, et al. (2014) "Pilon: an integrated tool for
+  comprehensive microbial variant detection and genome assembly
+  improvement." *PLoS One* 9:e112963.
+
+- Wick RR, Holt KE. (2022) "Polypolish: short-read polishing of long-read
+  bacterial genome assemblies." *PLoS Comput Biol* 18:e1009802. (Short-read
+  polishing by majority with a least depth.)
+
+- Vurture GW, Sedlazeck FJ, Nattestad M, et al. (2017) "GenomeScope: fast
+  reference-free genome profiling from short reads." *Bioinformatics*
+  33:2202-2204.
+
+- Irber L, Brooks PT, Reiter T, et al. (2022) "Lightweight compositional
+  analysis of metagenomes with FracMinHash and minimum metagenome covers."
+  *bioRxiv* 2022.01.11.475838.
+
+- Oxford Nanopore Technologies. medaka: sequence correction provided by ONT
+  Research. https://github.com/nanoporetech/medaka (the model-based polisher
+  the de novo contigs' homopolymer limit refers to).
 
 - ISO 32000-1:2008. *Document management - Portable document format -
   Part 1: PDF 1.7.* Standard Type 1 fonts (9.6.2.2) and replacement text,

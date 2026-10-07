@@ -9,6 +9,9 @@
  * 3. find the variants, and the soft-clip junctions if asked.
  *
  * Every read set becomes a sample of one mapping, which opens at the end.
+ * Assembling de novo instead, step 2 makes contigs from each read set's own
+ * reads and maps them back (variants included), and each read set becomes
+ * an assembly of its own.
  * Each step is the same job the separate dialogs run; a step that fails
  * stops only its own sample. Mounted by the app, so it stays open while
  * the read sets and the mapping it makes appear behind it.
@@ -27,7 +30,10 @@ import { presetFor, PRESET_LABEL, type MapReference } from '../../ngs/mapper'
 import { readSetQc, QC_LABEL } from '../../ngs/qc'
 import { DEFAULT_LONG_TRIM, DEFAULT_TRIM, isLongRead, TECHNOLOGY_LABEL } from '../../ngs/types'
 import type { NgsMapping } from '../../assembly/container'
-import { startCallVariants, startFindJunctions, startMap, startTrim, wasmBase, CancelledError, type JobHandle } from '../../workers/readset'
+import { startAssemble, startCallVariants, startFindJunctions, startMap, startTrim, wasmBase, CancelledError, type JobHandle } from '../../workers/readset'
+import { assembledMessage, defaultDeNovoSettings, denovoBlocked, denovoMethodFor, denovoReadSet } from '../../ngs/denovo/run'
+import { DENOVO_LONG_FILTER } from '../../ngs/denovo/types'
+import { lineUpTargets } from '../../ngs/denovo/lineup'
 import { deleteMappingStorage, deleteReadChunks } from '../../storage/idb'
 import PrimerClipField from './PrimerClipField'
 import { usePrimerClip } from './usePrimerClip'
@@ -46,7 +52,7 @@ interface SampleRun {
   message?: string
 }
 
-export default function AnalyseReadsDialog({ readSetIds, onClose }: { readSetIds: string[]; onClose: () => void }) {
+export default function AnalyseReadsDialog({ readSetIds, denovo: startDenovo = false, onClose }: { readSetIds: string[]; denovo?: boolean; onClose: () => void }) {
   const readSets = useEditorStore(s => s.readSets).filter(r => !r.discardedAt)
   const allTabs = useEditorStore(s => s.tabs)
   const tabs = useMemo(() => allTabs.filter(t => t.doc.sequence.length >= 100), [allTabs])
@@ -56,6 +62,8 @@ export default function AnalyseReadsDialog({ readSetIds, onClose }: { readSetIds
   const [trim, setTrim] = useState(true)
   const [variants, setVariants] = useState(true)
   const [junctions, setJunctions] = useState(false)
+  // Map to references, or assemble each read set de novo.
+  const [denovo, setDenovo] = useState(startDenovo)
   const [name, setName] = useState('')
   const [runs, setRuns] = useState<SampleRun[] | null>(null)
   const [finished, setFinished] = useState<string | null>(null)
@@ -73,7 +81,10 @@ export default function AnalyseReadsDialog({ readSetIds, onClose }: { readSetIds
   const asFile = openedAsFile()
   // minimap2 (and fastp) cannot be loaded by a page opened from disk.
   const blocked = asFile
-  const defaultName = chosen.length === 1 && refs.length
+  const unfit = denovo ? chosen.filter(r => denovoBlocked(r)) : []
+  const defaultName = denovo
+    ? chosen.length === 1 ? `${chosen[0].name} assembly` : 'one assembly per read set'
+    : chosen.length === 1 && refs.length
     ? `${chosen[0].name} vs ${refs.map(r => r.name).join(', ')}`
     : refs.length ? `${refs.map(r => r.name).join(', ')} samples` : 'Samples'
   const running = runs !== null && !finished
@@ -82,7 +93,8 @@ export default function AnalyseReadsDialog({ readSetIds, onClose }: { readSetIds
     setRuns(rs => rs && rs.map((r, k) => (k === i ? { ...r, ...extra, steps: { ...r.steps, [step]: state } } : r)))
 
   const run = async () => {
-    if (!chosen.length || !refs.length) return
+    if (!chosen.length || (!denovo && !refs.length)) return
+    if (denovo) { await runDeNovo(); return }
     const store = useEditorStore.getState()
     const list: SampleRun[] = chosen.map(rs => ({
       readSet: rs,
@@ -186,6 +198,103 @@ export default function AnalyseReadsDialog({ readSetIds, onClose }: { readSetIds
     }
   }
 
+  /** Each read set filtered, assembled (mapped back, variants counted) and made an assembly of its own. */
+  const runDeNovo = async () => {
+    const store = useEditorStore.getState()
+    const list: SampleRun[] = chosen.map(rs => ({
+      readSet: rs,
+      frac: 0,
+      steps: { trim: trim && !rs.origin ? 'wait' : 'skip', map: 'wait', variants: 'wait', junctions: junctions ? 'wait' : 'skip' },
+    }))
+    setRuns(list)
+    stop.current = false
+    const job = async <T,>(h: JobHandle<T>): Promise<T> => {
+      handle.current = h as JobHandle<unknown>
+      try { return await h.promise } finally { handle.current = null }
+    }
+    const progress = (i: number) => (d: number, t: number) => setRuns(rs => rs && rs.map((r, k) => (k === i ? { ...r, frac: t ? d / t : 0 } : r)))
+    let last: string | null = null
+    let made = 0
+    for (let i = 0; i < list.length && !stop.current; i++) {
+      let rs = list[i].readSet
+      let step: StepId = 'map'
+      try {
+        const why = denovoBlocked(rs)
+        if (why) { setStep(i, 'map', 'fail', { message: why }); continue }
+        if (list[i].steps.trim === 'wait') {
+          step = 'trim'
+          setStep(i, 'trim', 'run', { frac: 0 })
+          const toId = store.newReadSetId()
+          try {
+            // Long reads: quality, keeping short amplicons' reads; short reads: fastp as for mapping.
+            const long = denovoMethodFor(rs) !== 'short-dbg'
+            const settings = long ? DENOVO_LONG_FILTER : DEFAULT_TRIM
+            const res = await job(startTrim({ type: 'trim', fromId: rs.id, toId, chunks: rs.chunks, paired: rs.paired, technology: rs.technology, settings, wasmBase: wasmBase() }, progress(i)))
+            const now = Date.now()
+            const record: ReadSet = {
+              id: toId, name: `${rs.name} ${long ? 'filtered' : 'trimmed'}`, createdAt: now, modifiedAt: now,
+              technology: rs.technology, paired: rs.paired, files: [],
+              stats: res.stats, chunks: res.chunks, storedBytes: res.storedBytes,
+              origin: {
+                fromId: rs.id, fromName: rs.name, method: long ? 'filter' : 'fastp', settings,
+                readsBefore: res.readsBefore, readsAfter: res.stats.reads, basesBefore: res.basesBefore, basesAfter: res.stats.bases,
+                ...(res.adapterTrimmedReads !== undefined ? { adapterTrimmedReads: res.adapterTrimmedReads } : {}),
+              },
+            }
+            useEditorStore.getState().addReadSet(record, false)
+            rs = record
+          } catch (err) {
+            void deleteReadChunks([toId])
+            throw err
+          }
+          setStep(i, 'trim', 'done')
+        }
+        step = 'map'
+        setStep(i, 'map', 'run', { frac: 0 })
+        const assemblyId = store.newAssemblyId()
+        let res
+        try {
+          res = await job(startAssemble({
+            type: 'assemble', storageId: assemblyId, settings: defaultDeNovoSettings(rs), wasmBase: wasmBase(),
+            // Lined up with whichever open sequence each contig matches.
+            lineUp: lineUpTargets(useEditorStore.getState().tabs, 'auto'),
+            readSet: denovoReadSet(rs),
+          }, progress(i)))
+        } catch (err) {
+          void deleteMappingStorage(assemblyId)
+          throw err
+        }
+        const now = Date.now()
+        const given = name.trim()
+        const title = given ? (chosen.length > 1 ? `${given} ${list[i].readSet.name}` : given) : `${list[i].readSet.name} assembly`
+        useEditorStore.getState().addMapping({
+          id: assemblyId, name: title, createdAt: now, modifiedAt: now,
+          contigIds: [], method: 'de-novo', settings: null, inputs: { readIds: [], reference: null }, unplaced: [],
+          samples: [{ readSetId: rs.id, readSetName: rs.name, storageId: assemblyId, report: res.mapping }], denovo: res.denovo,
+        }, false)
+        last = assemblyId
+        made++
+        setStep(i, 'map', 'done', { message: assembledMessage(res) })
+        setStep(i, 'variants', 'done')
+        if (junctions) {
+          step = 'junctions'
+          setStep(i, 'junctions', 'run', { frac: 0 })
+          const references = res.mapping.references.map(r => ({ name: r.name, length: r.length, circular: r.circular }))
+          await job(startFindJunctions({ type: 'find-junctions', storageId: assemblyId, references }, progress(i)))
+          setStep(i, 'junctions', 'done')
+        }
+      } catch (err) {
+        if (err instanceof CancelledError) { setStep(i, step, 'fail', { message: 'Stopped' }); break }
+        setStep(i, step, 'fail', { message: err instanceof Error ? err.message : String(err) })
+      }
+    }
+    setFinished(last ?? 'none')
+    if (last) {
+      useEditorStore.getState().setActiveAssembly(last)
+      notify.success(made === 1 ? 'Made 1 assembly' : `Made ${made} assemblies`)
+    }
+  }
+
   const cancel = () => {
     if (handle.current) { stop.current = true; handle.current.cancel(); return }
     onClose()
@@ -202,9 +311,11 @@ export default function AnalyseReadsDialog({ readSetIds, onClose }: { readSetIds
         </div>
         {runs ? (
           <div className="ngs-trim-body aw-stack">
-            <p className="aw-note">{finished ? (finished === 'none' ? 'Nothing was made.' : 'Done: the mapping is open behind this window.') : 'Each read set in turn; the mapping opens when they are done.'}</p>
+            <p className="aw-note">{finished
+              ? (finished === 'none' ? 'Nothing was made.' : denovo ? 'Done: the last assembly is open behind this window.' : 'Done: the mapping is open behind this window.')
+              : denovo ? 'Each read set in turn, each into an assembly of its own.' : 'Each read set in turn; the mapping opens when they are done.'}</p>
             <table className="rs-table ap-runs">
-              <thead><tr><th>Read set</th>{(Object.keys(STEP_LABEL) as StepId[]).map(s => <th key={s}>{STEP_LABEL[s]}</th>)}</tr></thead>
+              <thead><tr><th>Read set</th>{(Object.keys(STEP_LABEL) as StepId[]).map(s => <th key={s}>{denovo && s === 'map' ? 'Assemble' : STEP_LABEL[s]}</th>)}</tr></thead>
               <tbody>
                 {runs.map(r => (
                   <tr key={r.readSet.id} className="ngs-static">
@@ -227,9 +338,11 @@ export default function AnalyseReadsDialog({ readSetIds, onClose }: { readSetIds
           </div>
         ) : (
           <div className="ngs-trim-body aw-stack">
-            <p className="aw-note">From read sets to a mapping with its variants in one go: each read set is cleaned up, mapped and searched for variants, and becomes a sample of one mapping.</p>
+            <p className="aw-note">{denovo
+              ? 'From read sets to contigs in one go: each read set is cleaned up and assembled on its own, its reads mapped back to its contigs with their variants.'
+              : 'From read sets to a mapping with its variants in one go: each read set is cleaned up, mapped and searched for variants, and becomes a sample of one mapping.'}</p>
             <div className="aw-field">
-              <span>1. Read sets (samples)</span>
+              <span>{denovo ? '1. Read sets' : '1. Read sets (samples)'}</span>
               {readSets.length === 0 && <p className="aw-note">Import reads first: drop FASTQ files on the window.</p>}
               <div className="ngs-ref-list">
                 {readSets.map(r => {
@@ -245,10 +358,31 @@ export default function AnalyseReadsDialog({ readSetIds, onClose }: { readSetIds
                 })}
               </div>
             </div>
-            <label className="ngs-check" title="fastp for short reads (adapters, low-quality ends, short reads); length and quality for long reads. Each into a new read set, keeping the original.">
+            <label className="ngs-check" title={denovo
+              ? 'Long reads: reads below Q10 left out, reads kept down to 100 bp (a short amplicon must keep its reads). Short reads: fastp, as for mapping. Into a new read set, keeping the original.'
+              : 'fastp for short reads (adapters, low-quality ends, short reads); length and quality for long reads. Each into a new read set, keeping the original.'}>
               <input type="checkbox" checked={trim} onChange={e => setTrim(e.target.checked)} />
-              2. Trim and filter first, with the default settings
+              {denovo ? '2. Trim and filter first' : '2. Trim and filter first, with the default settings'}
             </label>
+            <div className="aw-seg" role="radiogroup" aria-label="Step 3">
+              <button role="radio" aria-checked={!denovo} className={!denovo ? 'active' : ''} onClick={() => setDenovo(false)}
+                title="Map every read set to the same references, as samples of one mapping">Map to references</button>
+              <button role="radio" aria-checked={denovo} className={denovo ? 'active' : ''} onClick={() => setDenovo(true)}
+                title="Make contigs from each read set's own reads, with no reference: whole plasmids, amplicons and genomes">Assemble de novo</button>
+            </div>
+            {denovo ? (
+              <div className="aw-field">
+                <span>3. Assemble de novo</span>
+                <p className="aw-note">
+                  Each read set on its own, its reads then mapped back to its contigs with their variants. Long reads: every peak
+                  in the read lengths becomes a contig (a plasmid, an amplicon, a second product), polished by the reads; without
+                  such peaks the reads are taken for a genome and assembled by their overlaps. Short reads: a de Bruijn graph of
+                  their k-mers, its contigs joined across short repeats by the read pairs (plasmids, amplicons, phages, bacterial
+                  genomes). Contigs matching an open sequence are lined up with it (its strand, its start).
+                </p>
+                {unfit.length > 0 && <p className="aw-note ngs-warn-note">{unfit.map(r => r.name).join(', ')}: {denovoBlocked(unfit[0])}</p>}
+              </div>
+            ) : (<>
             <div className="aw-field">
               <span>3. Map to</span>
               {tabs.length === 0 && <p className="aw-note">Open the reference sequence first (it needs at least 100 bp).</p>}
@@ -263,21 +397,22 @@ export default function AnalyseReadsDialog({ readSetIds, onClose }: { readSetIds
               {chosen.length > 0 && <p className="aw-note">minimap2 {[...new Set(chosen.map(r => PRESET_LABEL[presetFor(r.technology)]))].join(', ')}.</p>}
             </div>
             <PrimerClipField clip={clip} />
+            </>)}
             <div className="aw-field">
               <span>4. Then</span>
-              <label className="ngs-check"><input type="checkbox" checked={variants} onChange={e => setVariants(e.target.checked)} /> Find variants</label>
+              {!denovo && <label className="ngs-check"><input type="checkbox" checked={variants} onChange={e => setVariants(e.target.checked)} /> Find variants</label>}
               <label className="ngs-check" title="Positions where many reads stop aligning together: long deletions, inversions, inserted DNA. Reads every alignment once.">
                 <input type="checkbox" checked={junctions} onChange={e => setJunctions(e.target.checked)} /> Find soft-clip junctions
               </label>
             </div>
             <label className="aw-field">
-              <span>Name of the mapping</span>
+              <span>{denovo ? 'Name of the assembly' : 'Name of the mapping'}</span>
               <input className="aw-text" value={name} placeholder={defaultName} onChange={e => setName(e.target.value)} />
             </label>
             {blocked && <p className="aw-note ngs-warn-note">{NEEDS_WEB('minimap2')}</p>}
             <div className="tw-trim-actions">
               <button className="btn btn-sm" onClick={onClose}>Cancel</button>
-              <button className="btn btn-sm btn-primary" disabled={blocked || chosen.length === 0 || refs.length === 0} onClick={() => void run()}>
+              <button className="btn btn-sm btn-primary" disabled={blocked || chosen.length === 0 || (denovo ? unfit.length === chosen.length : refs.length === 0)} onClick={() => void run()}>
                 {chosen.length > 1 ? `Analyse ${chosen.length} read sets` : 'Analyse'}
               </button>
             </div>

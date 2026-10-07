@@ -43,6 +43,8 @@ import type { DesignResult } from './primers/design/types'
 import type { ContigDoc } from './assembly/types'
 import { DEFAULT_CONTIG_VIEW, type ContigView } from './assembly/view'
 import { runFromDocs, type AssemblyRecord, type AssemblyRun, type NgsMapping } from './assembly/container'
+import type { DeNovoReport } from './ngs/denovo/types'
+import type { KmerSpectrum } from './ngs/denovo/spectrum'
 import type { ReadSetRecord } from './ngs/types'
 import type { AlnDoc } from './msa/model'
 import { DEFAULT_VIEW, type AlnView } from './msa/view'
@@ -1307,6 +1309,8 @@ interface EditorStore {
   /** Add a read set whose reads are stored; open it unless `open` is false. */
   addReadSet: (record: ReadSet, open?: boolean) => void
   renameReadSet: (id: string, name: string) => void
+  /** Keep a read set's k-mer spectrum once counted. */
+  setReadSetSpectrum: (id: string, kmers: KmerSpectrum) => void
   /** Delete a read set into the Recently deleted buffer. */
   removeReadSet: (id: string) => void
   /**
@@ -1330,6 +1334,8 @@ interface EditorStore {
   /** Put a new mapping in place of an assembly's mapping (Run again). Returns a function that puts the old one back. */
   /** Put a sample mapped again in place of the one stored under `storageId`; returns undo. */
   replaceSample: (id: string, storageId: string, sample: NgsMapping, inputs?: Assembly['inputs']) => (() => void) | null
+  /** Put a new run of a de novo assembly in place of the old one (its contigs, and any samples mapped to them); returns undo. */
+  replaceDeNovo: (id: string, sample: NgsMapping, denovo: DeNovoReport) => (() => void) | null
   /** Add samples to an NGS mapping; returns undo. */
   addSamples: (id: string, samples: NgsMapping[]) => (() => void) | null
   /** Take a sample out of an NGS mapping (not its last one); returns undo. */
@@ -4021,6 +4027,10 @@ export const useEditorStore = create<EditorStore>((set, get) => {
       set(s => ({ readSets: s.readSets.map(r => (r.id === id ? { ...r, name } : r)) }))
     },
 
+    setReadSetSpectrum(id, kmers) {
+      set(s => ({ readSets: s.readSets.map(r => (r.id === id ? { ...r, kmers } : r)) }))
+    },
+
     removeReadSet(id) {
       set(s => {
         const index = s.readSets.findIndex(r => r.id === id)
@@ -4110,6 +4120,12 @@ export const useEditorStore = create<EditorStore>((set, get) => {
       if (!before?.samples?.some(x => x.storageId === storageId)) return null
       const samples = before.samples.map(x => (x.storageId === storageId ? sample : x))
       return swapAssembly(id, before, { ...before, samples, ...(inputs ? { inputs } : {}), modifiedAt: Date.now() })
+    },
+
+    replaceDeNovo(id, sample, denovo) {
+      const before = get().assemblies.find(a => a.id === id)
+      if (!before?.denovo) return null
+      return swapAssembly(id, before, { ...before, samples: [sample], denovo, modifiedAt: Date.now() })
     },
 
     addSamples(id, added) {

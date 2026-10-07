@@ -108,6 +108,8 @@ export function mappingStorageIds(storageId: string) {
     calls: `${storageId}-calls`,
     // Soft-clip junctions, written when they are first looked for (junctions.ts).
     junctions: `${storageId}-junc`,
+    // A de novo assembly's graph (denovo/graph.ts), when the mapping is of reads to their own contigs.
+    graph: `${storageId}-gfa`,
   }
 }
 

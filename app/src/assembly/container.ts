@@ -15,6 +15,7 @@
 
 import type { AssemblyReport, AssemblySettings, ContigDoc } from './types'
 import type { MappingReport } from '../ngs/builder'
+import type { DeNovoReport } from '../ngs/denovo/types'
 
 /** What went into an assembly. */
 export interface AssemblyInputs {
@@ -94,6 +95,12 @@ export interface AssemblyRecord extends AssemblyRun {
    * Absent for a Sanger assembly. (Saved before samples, as one 'ngs' field.)
    */
   samples?: NgsMapping[]
+  /**
+   * NGS de novo: how the contigs were made from the reads. The contigs are
+   * the references of the first sample's mapping (its reads mapped back to
+   * them), stored with it.
+   */
+  denovo?: DeNovoReport
 }
 
 /** The first sample of an NGS mapping, or undefined for a Sanger assembly. */
@@ -183,6 +190,17 @@ export function linkAssemblies<A extends AssemblyRecord, C extends LinkableConti
 
 const isString = (x: unknown): x is string => typeof x === 'string'
 
+/** True for a de novo report this version can show. */
+function sanitizeDeNovo(raw: unknown): boolean {
+  if (!raw || typeof raw !== 'object') return false
+  const x = raw as Partial<DeNovoReport>
+  if (x.version !== 1 || !Array.isArray(x.contigs) || !x.settings) return false
+  // Long reads keep their peaks and lengths (a genome its layout), short reads how the graph was built.
+  if (x.settings.method === 'short-dbg') return !!x.short
+  if (x.settings.method === 'long-olc') return !!x.genome
+  return Array.isArray(x.peaks) && !!x.lengths
+}
+
 /** A stored assembly read back, or null when it is too damaged to use. */
 export function sanitizeAssembly(raw: unknown): AssemblyRecord | null {
   if (!raw || typeof raw !== 'object') return null
@@ -219,6 +237,7 @@ export function sanitizeAssembly(raw: unknown): AssemblyRecord | null {
         .map(u => ({ name: u.name, reason: u.reason, readId: isString(u.readId) ? u.readId : null }))
       : [],
     ...(samples.length ? { samples } : {}),
+    ...(samples.length && sanitizeDeNovo(x.denovo) ? { denovo: x.denovo as DeNovoReport } : {}),
   }
 }
 

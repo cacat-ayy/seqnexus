@@ -6,12 +6,18 @@
 
 import { useSyncExternalStore } from 'react'
 
-let request: { readSetIds: string[] } | null = null
+export interface AnalyseRequest {
+  readSetIds: string[]
+  /** Start on assembling de novo rather than mapping. */
+  denovo?: boolean
+}
+
+let request: AnalyseRequest | null = null
 const listeners = new Set<() => void>()
 const emit = () => listeners.forEach(l => l())
 
-export function openAnalyse(readSetIds: string[] = []): void {
-  request = { readSetIds }
+export function openAnalyse(readSetIds: string[] = [], denovo = false): void {
+  request = { readSetIds, denovo }
   emit()
 }
 
@@ -20,6 +26,6 @@ export function closeAnalyse(): void {
   emit()
 }
 
-export function useAnalyseRequest(): { readSetIds: string[] } | null {
+export function useAnalyseRequest(): AnalyseRequest | null {
   return useSyncExternalStore(l => { listeners.add(l); return () => { listeners.delete(l) } }, () => request)
 }

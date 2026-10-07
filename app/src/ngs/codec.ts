@@ -16,6 +16,17 @@
 import { deflateSync, inflateSync } from 'fflate'
 
 export const BAM_NIBBLES = '=ACMGRSVTWYHKDBN'
+const NIBBLE_ASCII = Uint8Array.from(BAM_NIBBLES, c => c.charCodeAt(0))
+const latin1 = new TextDecoder('latin1')
+
+/**
+ * ASCII bytes as one flat string. Adding a character at a time leaves V8 a
+ * chain of one-character pieces (about 30 bytes a base until something
+ * flattens it): 160 Mb of long reads held 4.7 GB of heap that way.
+ */
+function asciiText(bytes: Uint8Array): string {
+  return bytes.length <= 4096 ? String.fromCharCode.apply(null, bytes as unknown as number[]) : latin1.decode(bytes)
+}
 const N_CODE = 15
 const CODE = new Uint8Array(128).fill(N_CODE)
 for (let i = 0; i < BAM_NIBBLES.length; i++) {
@@ -59,16 +70,18 @@ export class ReadChunk {
   length(i: number): number { return this.offsets[i + 1] - this.offsets[i] }
 
   seq(i: number): string {
-    let s = ''
-    for (let p = this.offsets[i]; p < this.offsets[i + 1]; p++) s += BAM_NIBBLES[this.codes[p]]
-    return s
+    const from = this.offsets[i]
+    const out = new Uint8Array(this.offsets[i + 1] - from)
+    for (let k = 0; k < out.length; k++) out[k] = NIBBLE_ASCII[this.codes[from + k]]
+    return asciiText(out)
   }
 
   /** Phred+33 text, as FASTQ writes it ('!' throughout without quality). */
   qualText(i: number): string {
-    let s = ''
-    for (let p = this.offsets[i]; p < this.offsets[i + 1]; p++) s += String.fromCharCode(this.qual[p] + 33)
-    return s
+    const from = this.offsets[i]
+    const out = new Uint8Array(this.offsets[i + 1] - from)
+    for (let k = 0; k < out.length; k++) out[k] = this.qual[from + k] + 33
+    return asciiText(out)
   }
 }
 

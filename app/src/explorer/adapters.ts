@@ -290,7 +290,9 @@ export function assemblyToItem(assembly: Assembly, contigs: readonly Contig[], c
       createdAt: assembly.createdAt, modifiedAt: assembly.modifiedAt, size: reads,
       isOpen: isOpen(ctx, 'assembly', assembly.id), isIncluded: false, isDirty: false, isReadOnly: false,
       isCircular: false, canDuplicate: false,
-      stats: [`${reads ? Math.round((mapped / reads) * 100) : 0}% mapped`, `vs ${r.references.map(x => x.name).join(', ')}`, samples.length > 1 ? formatCount(samples.length, 'sample') : ngs.readSetName],
+      stats: assembly.denovo
+        ? [formatCount(assembly.denovo.contigs.length, 'contig'), 'de novo', formatBases(assembly.denovo.contigs.reduce((n, c) => n + c.length, 0)), ngs.readSetName]
+        : [`${reads ? Math.round((mapped / reads) * 100) : 0}% mapped`, `vs ${r.references.map(x => x.name).join(', ')}`, samples.length > 1 ? formatCount(samples.length, 'sample') : ngs.readSetName],
       badges: [],
       derivedFrom: [...samples.flatMap(x => (x.readSetId ? [toUid('readset', x.readSetId)] : [])), ...r.references.flatMap(x => (x.tabId ? [toUid('sequence', x.tabId)] : []))],
     }

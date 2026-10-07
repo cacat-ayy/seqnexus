@@ -8,6 +8,8 @@
  * millions of reads never has to be held in memory.
  */
 
+import type { KmerSpectrum } from './denovo/spectrum'
+
 export type Technology = 'illumina' | 'nanopore' | 'pacbio' | 'other'
 
 export const TECHNOLOGY_LABEL: Record<Technology, string> = {
@@ -120,4 +122,6 @@ export interface ReadSetRecord {
   origin?: ReadSetOrigin
   /** When its reads were discarded to free storage; the description and QC are kept. */
   discardedAt?: number
+  /** Its k-mer spectrum and genome length estimate, once counted (denovo/spectrum.ts). */
+  kmers?: KmerSpectrum
 }

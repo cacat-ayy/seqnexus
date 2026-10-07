@@ -64,6 +64,25 @@ describe('sanitizeAssembly', () => {
     expect(a!.unplaced).toEqual([{ name: 'r', reason: 'why', readId: null }])
   })
 
+  it('keeps an NGS de novo report with its mapping, and drops a damaged one', () => {
+    const report = {
+      version: 2, preset: 'map-ont', program: { id: 'minimap2', name: 'minimap2', version: '2.22', command: '' },
+      reads: 10, mapped: 10, supplementary: 0, properlyPaired: null, mapq: { edges: [], counts: [] }, insertSizes: null,
+      references: [], pages: 1, storedBytes: 1, skipped: { secondary: 0, otherReference: 0 },
+    }
+    const denovo = {
+      version: 1, settings: { method: 'long-seed', minReads: 5, rounds: 5 }, reads: 10, polishReads: 10,
+      lengths: { edges: [0, 100], counts: [10] }, peaks: [], contigs: [],
+    }
+    const samples = [{ readSetId: 'rs', readSetName: 'R', storageId: 'asm_1', report }]
+    expect(sanitizeAssembly({ ...assembly('x', []), samples, denovo })!.denovo).toEqual(denovo)
+    expect(sanitizeAssembly({ ...assembly('x', []), samples, denovo: { version: 9 } })!.denovo).toBeUndefined()
+    // A long-read genome keeps its layout instead of peaks.
+    const genome = { version: 1, settings: { method: 'long-olc', minReads: 5, rounds: 5 }, reads: 10, contigs: [], genome: { readsUsed: 10 } }
+    expect(sanitizeAssembly({ ...assembly('x', []), samples, denovo: genome })!.denovo).toEqual(genome)
+    expect(sanitizeAssembly({ ...assembly('x', []), samples, denovo: { ...genome, genome: undefined } })!.denovo).toBeUndefined()
+  })
+
   it('keeps complete settings', () => {
     const a = sanitizeAssembly({ ...assembly('x', ['1']), settings: { minIdentity: 0.9, minOverlap: 30, k: 12 } })
     expect(a!.settings).toEqual({ minIdentity: 0.9, minOverlap: 30, k: 12 })

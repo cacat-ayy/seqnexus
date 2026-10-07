@@ -10,6 +10,8 @@ import { CancelledError, runReadSetJob, type ReadSetJob } from '../ngs/jobs'
 import type { ImportResult } from '../ngs/importer'
 import type { TrimResult } from '../ngs/trimmer'
 import type { MappingReport } from '../ngs/builder'
+import type { DeNovoResult } from '../ngs/denovo/run'
+import type { KmerSpectrum } from '../ngs/denovo/spectrum'
 
 export { CancelledError } from '../ngs/jobs'
 
@@ -86,6 +88,14 @@ export function startExport(job: Extract<ReadSetJob, { type: 'export' }>, onProg
 
 export function startMap(job: Extract<ReadSetJob, { type: 'map' }>, onProgress?: (done: number, total: number) => void) {
   return run<MappingReport>(job, onProgress)
+}
+
+export function startAssemble(job: Extract<ReadSetJob, { type: 'assemble' }>, onProgress?: (done: number, total: number) => void) {
+  return run<DeNovoResult>(job, onProgress)
+}
+
+export function startSpectrum(job: Extract<ReadSetJob, { type: 'kmer-spectrum' }>, onProgress?: (done: number, total: number) => void) {
+  return run<KmerSpectrum>(job, onProgress)
 }
 
 export function startExportMapping(job: Extract<ReadSetJob, { type: 'export-mapping' }>, onProgress?: (done: number, total: number) => void) {
