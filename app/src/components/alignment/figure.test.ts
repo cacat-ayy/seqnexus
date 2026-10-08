@@ -46,3 +46,22 @@ describe('alignment figures', () => {
     expect(figureCells(pm, { ...base, c1: MAX_FIGURE_CELLS })).toBeGreaterThan(MAX_FIGURE_CELLS)
   })
 })
+
+describe('alignment figure as PDF', () => {
+  it('keeps names, residues, the logo and the uppercased track labels', async () => {
+    const { svgToPdf } = await import('../../pdf/svg-pdf')
+    const { unzlibSync } = await import('fflate')
+    const fig = buildFigure(buildPaintModel(doc, DEFAULT_VIEW), { ...base, title: 'Fig. 1' })
+    const bytes = svgToPdf(fig.svg, { title: 'Fig. 1' })
+    const text = Array.from(bytes, c => String.fromCharCode(c)).join('')
+    const at = text.indexOf('stream\n') + 7
+    const content = Array.from(unzlibSync(bytes.subarray(at, at + Number(/\/Length (\d+)/.exec(text)![1]))), c => String.fromCharCode(c)).join('')
+    expect(content).toContain('(Fig. 1) Tj')
+    expect(content).toContain('(Homo <sapiens>) Tj')
+    expect(content).toContain('(LOGO) Tj')
+    // Logo letters are scaled glyphs: a transform per letter.
+    expect(content).toMatch(/[\d.]+ 0 0 [\d.]+ 0 0 cm/)
+    // Residues set in Courier.
+    expect(content).toContain('/F3')
+  })
+})

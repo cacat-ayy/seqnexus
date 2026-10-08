@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest'
-import { render, screen } from '@testing-library/react'
+import { fireEvent, render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import ContextMenuPopup, { MenuItem, MenuSeparator, Submenu } from './ContextMenuPopup'
 
@@ -23,6 +23,27 @@ function setup() {
 }
 
 describe('ContextMenuPopup', () => {
+  it('closes on a click outside, not on a click inside or a lone release', () => {
+    const { onClose } = setup()
+    // The release of the right click that opened it.
+    fireEvent.mouseUp(document.body)
+    expect(onClose).not.toHaveBeenCalled()
+    const item = screen.getByRole('menuitem', { name: 'Select Annotation' })
+    fireEvent.mouseDown(item)
+    fireEvent.mouseUp(item)
+    expect(onClose).not.toHaveBeenCalled()
+    fireEvent.mouseDown(document.body)
+    fireEvent.mouseUp(document.body)
+    expect(onClose).toHaveBeenCalledTimes(1)
+  })
+
+  it('closes when the page scrolls or the window loses focus', () => {
+    const { onClose } = setup()
+    fireEvent.scroll(document.body)
+    fireEvent.blur(window)
+    expect(onClose).toHaveBeenCalledTimes(2)
+  })
+
   it('takes focus on open so the keyboard works at once', () => {
     setup()
     expect(screen.getByRole('menu', { name: 'Test actions' })).toHaveFocus()

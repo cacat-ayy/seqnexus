@@ -50,6 +50,7 @@ describe('PDF fonts', () => {
     expect(pdfFontFor('500 11px Inter, sans-serif')).toEqual({ id: 'F1', size: 11 })
     expect(pdfFontFor('600 10px Inter')).toEqual({ id: 'F2', size: 10 })
     expect(pdfFontFor('bold 12px Helvetica')).toEqual({ id: 'F2', size: 12 })
+    expect(pdfFontFor('700 12px Menlo, monospace')).toEqual({ id: 'F4', size: 12 })
     expect(pdfMeasure('10px Helvetica', 'AA')).toBeCloseTo(13.34)
   })
 })

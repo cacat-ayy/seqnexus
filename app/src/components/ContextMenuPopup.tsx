@@ -68,7 +68,10 @@ function moveFocus(e: React.KeyboardEvent, container: HTMLElement): boolean {
 export default function ContextMenuPopup({ x, y, onClose, label, children }: {
   x: number
   y: number
-  /** Escape closes the menu when given. */
+  /**
+   * When given, Escape, a click outside, scrolling, resizing the window or
+   * leaving it close the menu.
+   */
   onClose?: () => void
   label?: string
   children: ReactNode
@@ -99,6 +102,38 @@ export default function ContextMenuPopup({ x, y, onClose, label, children }: {
     el.current?.focus({ preventScroll: true })
     return () => { if (previous?.isConnected) previous.focus({ preventScroll: true }) }
   }, [])
+
+  // Close on a click outside, on scrolling anything but the menu, and when
+  // the window loses focus or changes size. A click needs its press after
+  // the menu opened, so the release of the right click that opened it (which
+  // comes after the contextmenu event on some systems) does not close it.
+  // Presses inside reach none of this: the menu stops their propagation.
+  const closeRef = useRef(onClose)
+  closeRef.current = onClose
+  const closable = !!onClose
+  useEffect(() => {
+    if (!closable) return
+    const close = () => closeRef.current?.()
+    let downOutside = false
+    const down = () => { downOutside = true }
+    const up = () => { if (downOutside) close(); downOutside = false }
+    const scroll = (e: Event) => {
+      if (e.target instanceof Element && e.target.closest('.ctx-menu')) return
+      close()
+    }
+    window.addEventListener('mousedown', down)
+    window.addEventListener('mouseup', up)
+    window.addEventListener('scroll', scroll, true)
+    window.addEventListener('resize', close)
+    window.addEventListener('blur', close)
+    return () => {
+      window.removeEventListener('mousedown', down)
+      window.removeEventListener('mouseup', up)
+      window.removeEventListener('scroll', scroll, true)
+      window.removeEventListener('resize', close)
+      window.removeEventListener('blur', close)
+    }
+  }, [closable])
 
   const onKeyDown = (e: React.KeyboardEvent) => {
     if (!el.current) return

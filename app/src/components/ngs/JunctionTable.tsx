@@ -6,7 +6,7 @@
  */
 
 import { memo } from 'react'
-import { X } from 'lucide-react'
+import { Tags, X } from 'lucide-react'
 import { describeJunction, MIN_CLIP, MIN_READS, MIN_SHARE, type Junction } from '../../ngs/junctions'
 import type { CallState } from './VariantTable'
 
@@ -20,6 +20,9 @@ interface Props {
   selected: number | null
   refIndex: number
   refNames: readonly string[]
+  canAnnotate: boolean
+  annotateTitle: string
+  onAnnotate: (js: readonly Junction[]) => void
   onClose: () => void
 }
 
@@ -32,6 +35,10 @@ function JunctionTable(p: Props) {
           {p.junctions ? `${nf.format(p.junctions.length)} where ${MIN_READS} or more reads (and ${Math.round(MIN_SHARE * 100)}% of those covering) are clipped by ${MIN_CLIP}+ bases` : ''}
         </span>
         <span className="aw-spacer" />
+        <button className="aw-tool-btn" onClick={() => p.junctions && p.onAnnotate(p.junctions)}
+          disabled={p.state.kind !== 'ready' || !p.junctions?.length || !p.canAnnotate} title={p.annotateTitle}>
+          <Tags size={13} /> Add to the reference
+        </button>
         <button className="aw-icon-btn" onClick={p.onClose} title="Hide the junctions" aria-label="Hide the junctions"><X size={14} /></button>
       </div>
       {p.state.kind === 'none' && (

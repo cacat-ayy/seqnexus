@@ -207,6 +207,10 @@ export default function TrimCallDialog({ readIds, onClose }: Props) {
                 {vectorTab && <p className="aw-note">Vector sequence read at either end, before or after the insert, is trimmed.</p>}
 
                 <label className="aw-field">
+                  <span title="Reads with no qualities (FASTA reads, or traces saved without them) cannot be trimmed by quality: they keep their longest stretch with at most this many N or other ambiguous calls">Reads without qualities: most ambiguous calls kept</span>
+                  <input className="aw-text" type="number" min={0} max={100} value={t.maxAmbiguities} onChange={e => setTrim({ maxAmbiguities: clamp(Math.round(Number(e.target.value)), 0, 100) })} />
+                </label>
+                <label className="aw-field">
                   <span>Warn when fewer bases are left than</span>
                   <input className="aw-text" type="number" min={0} max={2000} value={t.minLength} onChange={e => setTrim({ minLength: clamp(Math.round(Number(e.target.value)), 0, 5000) })} />
                 </label>

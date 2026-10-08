@@ -85,6 +85,7 @@ export function loadProcessSettings(): ProcessSettings {
     const v = JSON.parse(raw) as Partial<ProcessSettings>
     const t = { ...DEFAULT_TRIM, ...(v.trim ?? {}), vector: null }
     if (!['error', 'quality', 'keep'].includes(t.method)) t.method = DEFAULT_TRIM.method
+    if (!Number.isFinite(t.maxAmbiguities) || t.maxAmbiguities < 0) t.maxAmbiguities = DEFAULT_TRIM.maxAmbiguities
     t.primers = Array.isArray(t.primers) ? t.primers.filter(p => p && typeof p.sequence === 'string' && typeof p.name === 'string') : []
     return {
       trimEnabled: typeof v.trimEnabled === 'boolean' ? v.trimEnabled : true,

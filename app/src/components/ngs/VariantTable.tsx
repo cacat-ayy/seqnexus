@@ -17,7 +17,7 @@ import { memo, useEffect, useMemo, useRef, useState } from 'react'
 import { ArrowDown, ArrowUp, ChevronDown, Download, FileOutput, Plus, Tags, TriangleAlert, X } from 'lucide-react'
 import HoverCard from '../HoverCard'
 import {
-  FILTERS, PRESET_NAME, STRAND_BIAS_P, VARIANT_PRESETS, variantFilters, variantKey, variantLabel, variantQual,
+  FILTERS, PRESET_NAME, STRAND_BIAS_P, VARIANT_PRESETS, referenceFrequency, substitutionKind, variantFilters, variantKey, variantLabel, variantQual,
   type FilterId, type Variant, type VariantPreset, type VariantSettings, type VariantType,
 } from '../../assembly/variants'
 
@@ -316,13 +316,13 @@ export function VariantCard({ v, x, y, failed }: { v: Variant; x: number; y: num
   return (
     <HoverCard x={x + 14} y={y + 14} pinKey={`variant:${variantKey(v)}`}>
       <div className="ft-tooltip-name">
-        <span className="hc-name">{v.type} {variantLabel(v)} at {nf.format(v.position)}</span>
+        <span className="hc-name">{v.type} {variantLabel(v)} at {nf.format(v.position)}{substitutionKind(v) ? `, ${substitutionKind(v)!.toLowerCase()}` : ''}</span>
         <span className="hc-chip">{Math.round(v.frequency * 100)}%</span>
       </div>
       <table className="ft-tooltip-table">
         <tbody>
           <tr><td>Reads</td><td>{nf.format(v.count)} of {nf.format(v.coverage)}: {v.forward.alt} forward, {v.reverse.alt} reverse</td></tr>
-          <tr><td>Reference reads</td><td>{v.forward.ref} forward, {v.reverse.ref} reverse</td></tr>
+          <tr><td>Reference reads</td><td>{Math.round(referenceFrequency(v) * 100)}%: {v.forward.ref} forward, {v.reverse.ref} reverse</td></tr>
           <tr><td>Quality</td><td>{q >= 999 ? 'Q999 or more' : `Q${Math.round(q)}`} (P {v.pValue > 0 ? v.pValue.toExponential(1) : '< 1e-300'} by error alone)</td></tr>
           <tr><td>Strand bias</td><td>p {v.strandBiasP.toPrecision(2)}{v.strandBiasP < STRAND_BIAS_P ? ': seen mostly on one strand' : ''}</td></tr>
           {v.meanQuality >= 0 && v.type !== 'Deletion' && <tr><td>Base quality</td><td>Q{Math.round(v.meanQuality)} on average</td></tr>}

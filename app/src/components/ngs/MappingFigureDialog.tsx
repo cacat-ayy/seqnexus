@@ -1,7 +1,7 @@
 /**
  * Export a stretch of a mapping as a figure (mappingFigure.ts): the view as
  * it is, or a stretch typed in, with a choice of tracks and size; then SVG,
- * PNG or (through the print dialog) PDF. Reads are drawn as laid out on
+ * PNG or PDF. Reads are drawn as laid out on
  * screen, so their colours, sorting and downsampling follow the view.
  */
 
@@ -10,7 +10,7 @@ import { Image as ImageIcon, X } from 'lucide-react'
 import { downloadBlob, downloadText } from '../../utils/download'
 import { notify } from '../../toast'
 import { useFocusTrap } from '../../hooks/useFocusTrap'
-import { figureToPng, printFigure } from '../alignment/figure'
+import { figureToPng, figureToPdf } from '../alignment/figure'
 import { buildMappingFigure, MAX_READ_SPAN, type MappingFigureInput } from './mappingFigure'
 import type { ColorBy } from './mappingPaint'
 
@@ -62,7 +62,9 @@ export default function MappingFigureDialog({ input, view, loaded, colorBy, stra
   const savePng = (scale: number) => fig && figureToPng(fig, scale).then(bl => downloadBlob(bl, `${base}${scale >= 4 ? '-print' : ''}.png`))
     .catch(err => notify.error('Could not make the PNG', { detail: err instanceof Error ? err.message : String(err) }))
   const savePdf = () => {
-    if (fig && !printFigure(fig, title.trim() || name)) notify.error('Could not open the print window', { detail: 'Allow pop-ups for this site to save a PDF.' })
+    if (!fig) return
+    try { downloadBlob(figureToPdf(fig, title.trim() || name), `${base}.pdf`) }
+    catch (err) { notify.error('Could not make the PDF', { detail: err instanceof Error ? err.message : String(err) }) }
   }
   const check = (k: keyof typeof tracks, label: string, disabled = false, hint?: string) => (
     <label className="aw-check" title={hint}><input type="checkbox" checked={tracks[k] && !disabled} disabled={disabled} onChange={e => setTracks(t => ({ ...t, [k]: e.target.checked }))} /> {label}</label>
@@ -127,7 +129,7 @@ export default function MappingFigureDialog({ input, view, loaded, colorBy, stra
               <button className="btn btn-sm btn-primary" disabled={!fig} onClick={saveSvg} title="Vector; edit in Illustrator or Inkscape">SVG</button>
               <button className="btn btn-sm" disabled={!fig} onClick={() => savePng(2)} title="Image at 2× resolution">PNG</button>
               <button className="btn btn-sm" disabled={!fig} onClick={() => savePng(4)} title="Image at 4× resolution, for print">PNG 4×</button>
-              <button className="btn btn-sm" disabled={!fig} onClick={savePdf} title="Opens the print dialog; choose Save as PDF">PDF</button>
+              <button className="btn btn-sm" disabled={!fig} onClick={savePdf} title="Vector, one page at the figure's size">PDF</button>
             </div>
             {fig && <p className="aw-note">{nf.format(fig.width)} × {nf.format(fig.height)} px</p>}
           </div>

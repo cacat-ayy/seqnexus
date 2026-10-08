@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import type { TraceData } from '../io/trace'
 import { reverseComplement } from '../models/complement'
-import { DEFAULT_TRIM, errorTrim, findPrimer, planTrim, vectorEnds } from './trim'
+import { ambiguityTrim, DEFAULT_TRIM, errorTrim, findPrimer, planTrim, vectorEnds } from './trim'
 
 /** Deterministic pseudo-random DNA. */
 function dna(n: number, seed = 7): string {
@@ -114,9 +114,28 @@ describe('trim plan', () => {
     expect(plan.tooShort).toBe(true)
   })
 
-  it('does not quality-trim a file without qualities', () => {
+  it('keeps all of a clean read without qualities', () => {
     const r = { ...read(dna(200), new Array(200).fill(0)), metadata: { qualityMissing: true } }
     const plan = planTrim(r, [10, 150], DEFAULT_TRIM)
     expect([plan.start, plan.end]).toEqual([0, 200])
+  })
+
+  it('trims a read without qualities to its longest stretch with few ambiguities', () => {
+    // Noisy ends full of N, a clean middle with two N.
+    const bases = 'NNANNCN' + dna(100).slice(0, 40) + 'N' + dna(100).slice(40, 80) + 'N' + dna(100).slice(80) + 'NGNNTN'
+    const r = { ...read(bases, new Array(bases.length).fill(0)), metadata: { qualityMissing: true } }
+    const plan = planTrim(r, [0, bases.length], DEFAULT_TRIM)
+    expect(plan.end - plan.start).toBeGreaterThanOrEqual(102)
+    expect(bases.slice(plan.start, plan.end).split('N').length - 1).toBeLessThanOrEqual(2)
+    expect(plan.notes[0]).toMatch(/at most 2 ambiguous calls/)
+  })
+})
+
+describe('ambiguity trimming', () => {
+  it('finds the longest stretch with at most so many ambiguous calls', () => {
+    expect(ambiguityTrim('NACGTNACN', 0)).toEqual([1, 5])
+    expect(ambiguityTrim('NACGTNACN', 1)).toEqual([1, 8])
+    expect(ambiguityTrim('NNN', 0)).toEqual([0, 0])
+    expect(ambiguityTrim('ACRYGT', 2)).toEqual([0, 6])
   })
 })

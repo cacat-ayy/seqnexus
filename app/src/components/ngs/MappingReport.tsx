@@ -12,9 +12,10 @@ import { useEditorStore } from '../../store'
 import { notify } from '../../toast'
 import { startExportMapping } from '../../workers/readset'
 import type { NgsMapping } from '../../assembly/container'
-import { PRESET_LABEL } from '../../ngs/mapper'
 import { formatBytes } from '../../ngs/format'
-import { MIN_BASE_QUALITY, MIN_INDEL_FRACTION, MIN_SNV_FRACTION } from '../../ngs/pileup'
+import { mappingBedGraph } from '../../ngs/coverageExport'
+import { getReadChunk } from '../../storage/idb'
+import { COVERAGE_NOTE, mapperText, mappingReportPdf, sitesNote, skippedText } from './mappingReportPdf'
 import { HistogramChart } from './charts'
 
 const nf = new Intl.NumberFormat()
@@ -30,7 +31,12 @@ function download(blob: Blob, name: string) {
   setTimeout(() => URL.revokeObjectURL(url), 10_000)
 }
 
-export default function MappingReport({ ngs, onOpenReference }: { ngs: NgsMapping; onOpenReference?: (i: number) => void }) {
+export default function MappingReport({ ngs, name, onOpenReference }: {
+  ngs: NgsMapping
+  /** What the mapping is called, for the PDF report's title and file name. */
+  name: string
+  onOpenReference?: (i: number) => void
+}) {
   const r = ngs.report
   const readSet = useEditorStore(s => (ngs.readSetId ? s.readSets.find(x => x.id === ngs.readSetId) ?? null : null))
   const one = r.references.length === 1 ? r.references[0] : null
@@ -65,40 +71,65 @@ export default function MappingReport({ ngs, onOpenReference }: { ngs: NgsMappin
       .finally(() => setExporting(null))
   }
 
-  const mapper = r.importedFrom
-    ? `${r.program.name}${r.program.version ? ` ${r.program.version}` : ''}, imported from ${r.importedFrom}`
-    : `minimap2 2.22, ${r.preset ? PRESET_LABEL[r.preset] : ''}, primary and supplementary alignments, no secondary`
-  const skipped = [
-    r.skipped.secondary ? `${nf.format(r.skipped.secondary)} secondary` : '',
-    r.skipped.otherReference ? `${nf.format(r.skipped.otherReference)} on references not given` : '',
-  ].filter(Boolean).join(', ')
+  const saveCoverage = () => {
+    setMenu(false)
+    const stem = r.importedFrom ? safe(ngs.readSetName) : `${safe(ngs.readSetName)}_vs_${safe(r.references.map(x => x.name).join('_'))}`
+    mappingBedGraph({ get: getReadChunk }, ngs.storageId, r.references.map(x => x.name), `${name} depth`)
+      .then(blob => { download(blob, `${stem}_depth.bedgraph`); notify.success(`Exported ${stem}_depth.bedgraph`) })
+      .catch(err => notify.error('Could not export the coverage', { detail: err instanceof Error ? err.message : String(err) }))
+  }
+
+  const savePdf = () => {
+    setMenu(false)
+    try {
+      const bytes = mappingReportPdf(ngs, { title: `${name} mapping report`, readsName: r.importedFrom ?? readSet?.name ?? ngs.readSetName })
+      download(new Blob([bytes], { type: 'application/pdf' }), `${safe(name)}_report.pdf`)
+    } catch (err) {
+      notify.error('Could not make the PDF', { detail: err instanceof Error ? err.message : String(err) })
+    }
+  }
+
+  const mapper = mapperText(r)
+  const skipped = skippedText(r)
 
   return (
     <>
-      {stored ? (
-        <div className="ngs-actions">
-          <div className="aw-export" ref={menuRef}>
-            <button className="aw-btn" onClick={() => setMenu(o => !o)} aria-expanded={menu} disabled={exporting !== null}>
-              <Download size={13} /> {exporting !== null ? `Exporting ${Math.round(exporting * 100)}%` : 'Export'} <ChevronDown size={12} />
-            </button>
-            {menu && (
-              <div className="aw-menu" role="menu">
-                <button role="menuitem" className="aw-menu-item" onClick={() => runExport('bam')}>
-                  <span className="aw-menu-label">BAM with index (.bam, .bai)</span>
-                  <span className="aw-menu-desc">Sorted by position, for IGV, samtools and variant callers</span>
-                </button>
-                <button role="menuitem" className="aw-menu-item" onClick={() => runExport('sam')}>
-                  <span className="aw-menu-label">SAM</span>
-                  <span className="aw-menu-desc">The same alignments as text</span>
-                </button>
-              </div>
-            )}
-          </div>
+      <div className="ngs-actions">
+        <div className="aw-export" ref={menuRef}>
+          <button className="aw-btn" onClick={() => setMenu(o => !o)} aria-expanded={menu} disabled={exporting !== null}>
+            <Download size={13} /> {exporting !== null ? `Exporting ${Math.round(exporting * 100)}%` : 'Export'} <ChevronDown size={12} />
+          </button>
+          {menu && (
+            <div className="aw-menu" role="menu">
+              <button role="menuitem" className="aw-menu-item" onClick={savePdf}>
+                <span className="aw-menu-label">Report as PDF</span>
+                <span className="aw-menu-desc">This page: figures, charts and how it was made</span>
+              </button>
+              {stored && (
+                <>
+                  <div className="aw-menu-sep" />
+                  <button role="menuitem" className="aw-menu-item" onClick={() => runExport('bam')}>
+                    <span className="aw-menu-label">BAM with index (.bam, .bai)</span>
+                    <span className="aw-menu-desc">Sorted by position, for IGV, samtools and variant callers</span>
+                  </button>
+                  <button role="menuitem" className="aw-menu-item" onClick={() => runExport('sam')}>
+                    <span className="aw-menu-label">SAM</span>
+                    <span className="aw-menu-desc">The same alignments as text</span>
+                  </button>
+                  <button role="menuitem" className="aw-menu-item" onClick={saveCoverage}>
+                    <span className="aw-menu-label">Coverage as bedGraph</span>
+                    <span className="aw-menu-desc">Read depth at every base, for IGV, bedtools or a spreadsheet</span>
+                  </button>
+                </>
+              )}
+            </div>
+          )}
         </div>
-      ) : (
+      </div>
+      {!stored && (
         <p className="aw-note ngs-warn-note">
-          This mapping was made by an earlier version of SeqNexus, which kept its figures but not its reads&apos; bases, so it cannot be
-          viewed or exported. Run it again to store it in full.
+          This mapping was made by an earlier version of SeqNexus, which kept its figures but not its reads&apos; bases, so its reads
+          cannot be viewed or exported. Run it again to store it in full.
         </p>
       )}
       <div className="ngs-tiles">
@@ -166,14 +197,11 @@ export default function MappingReport({ ngs, onOpenReference }: { ngs: NgsMappin
           <dt>Mapper</dt><dd>{mapper}</dd>
           {r.supplementary > 0 && <><dt>Split reads</dt><dd>{nf.format(r.supplementary)} supplementary alignments (the other parts of reads that map in pieces)</dd></>}
           {skipped && <><dt>Left out</dt><dd>{skipped}</dd></>}
-          <dt>Coverage</dt><dd className="aw-muted">Aligned bases of every alignment, whatever its mapping quality; deletions not counted.</dd>
+          <dt>Coverage</dt><dd className="aw-muted">{COVERAGE_NOTE}</dd>
           {stored && (
             <>
               <dt>Sites</dt>
-              <dd className="aw-muted">
-                Positions where at least two reads, and {Math.round(MIN_SNV_FRACTION * 100)}% of the reads there ({Math.round(MIN_INDEL_FRACTION * 100)}% for
-                insertions and deletions), differ from the reference; bases below Q{MIN_BASE_QUALITY} not counted.
-              </dd>
+              <dd className="aw-muted">{sitesNote()}</dd>
               <dt>Stored</dt>
               <dd>{formatBytes(r.storedBytes)} in this browser, in {nf.format(r.pages)} {r.pages === 1 ? 'page' : 'pages'}, with each read&apos;s name, bases and qualities</dd>
             </>

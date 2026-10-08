@@ -166,6 +166,10 @@
   font-weight: 600;
 }
 .aw-seg button:disabled { opacity: 0.45; cursor: not-allowed; }
+/* A side panel stretches the control to its width; the options share it
+   rather than leaving an empty end inside the frame. */
+.aw-panel > .aw-seg { display: flex; }
+.aw-panel > .aw-seg button { flex: 1 1 0; }
 
 .aw-tool-btn {
   display: inline-flex;

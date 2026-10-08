@@ -1,5 +1,5 @@
 /**
- * The PDF's fonts: three of the standard 14 that every PDF reader has built
+ * The PDF's fonts: four of the standard 14 that every PDF reader has built
  * in, so nothing is embedded and the files stay small.
  *
  * Their glyph widths are fixed by the format (the Adobe font metrics), which
@@ -9,13 +9,14 @@
  * ("beta-lactamase"); anything else outside the set prints as "?".
  */
 
-export type PdfFontId = 'F1' | 'F2' | 'F3'
+export type PdfFontId = 'F1' | 'F2' | 'F3' | 'F4'| 'F2' | 'F3'
 
 /** Resource name to base font. */
 export const PDF_FONTS: Record<PdfFontId, string> = {
   F1: 'Helvetica',
   F2: 'Helvetica-Bold',
   F3: 'Courier',
+  F4: 'Courier-Bold',
 }
 
 /** Helvetica advance widths for codes 32..126, in 1/1000 em (Adobe AFM). */
@@ -82,7 +83,7 @@ export function encodeWinAnsi(text: string): string {
 
 /** Width of one encoded byte in a font, in 1/1000 em. */
 function charWidth(font: PdfFontId, code: number): number {
-  if (font === 'F3') return 600
+  if (font === 'F3' || font === 'F4') return 600
   const table = font === 'F2' ? HELVETICA_BOLD : HELVETICA
   if (code >= 32 && code <= 126) return table[code - 32]
   const extra = EXTRA_WIDTH_BY_CODE.get(code)
@@ -110,15 +111,15 @@ export interface PdfFont {
 /**
  * The PDF font for a CSS font shorthand, as the canvas code writes them
  * ("500 11px Inter, sans-serif", "10.5px 'SF Mono', monospace"). Monospaced
- * families become Courier; everything else Helvetica, bold from weight 600.
+ * families become Courier, the rest Helvetica, each bold from weight 600.
  */
 export function pdfFontFor(css: string): PdfFont {
   const m = /(?:^|\s)([\d.]+)px\s+(.*)$/.exec(css)
   const size = m ? parseFloat(m[1]) : 10
   const family = (m ? m[2] : css).toLowerCase()
   const prefix = m ? css.slice(0, m.index).toLowerCase() : ''
-  if (/mono|courier|consolas|menlo/.test(family)) return { id: 'F3', size }
   const weight = /\bbold\b/.test(prefix) ? 700 : parseInt(/\b(\d{3})\b/.exec(prefix)?.[1] ?? '400', 10)
+  if (/mono|courier|consolas|menlo/.test(family)) return { id: weight >= 600 ? 'F4' : 'F3', size }
   return { id: weight >= 600 ? 'F2' : 'F1', size }
 }
 

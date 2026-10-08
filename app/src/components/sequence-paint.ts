@@ -24,7 +24,7 @@ import {
 } from '../codon/translation-display'
 import type { ReadingFrame } from '../codon/translation-display'
 import { isAutoAnnotationId, keyFromAutoId } from '../utils/auto-annotations'
-import { codonStartOffset } from '../utils/annotation-sequence'
+import { annotationCode, codonStartOffset } from '../utils/annotation-sequence'
 import { keyFromOrfId } from '../utils/orf-features'
 import { isPrimerItemId, type PrimerItem } from '../primers/display'
 import { drawPrimerItem } from './primer-draw'
@@ -1218,9 +1218,8 @@ export function paintSequenceRows(
        */
       const paintJoinedCodons = (
         codons: SelectionCodon[], reverse: boolean,
-        fillFor: (aa: string) => string | null, showPartial: boolean,
+        fillFor: (aa: string) => string | null, showPartial: boolean, code: GeneticCode = s.translationCode,
       ) => {
-        const code = s.translationCode
         const threeLetter = s.threeLetter
         ctx.font = monoFont(threeLetter ? '9px' : '10px')
         ctx.textBaseline = 'middle'
@@ -1330,7 +1329,7 @@ export function paintSequenceRows(
         // A spliced feature's codons are not where the span's frame puts
         // them, so it is never taken for a duplicate.
         if (ann.segments) { uniqueCds.push(ann); continue }
-        let key = `${ann.strand}:`
+        let key = `${ann.strand}:${annotationCode(ann)?.id ?? 0}:`
         for (let pos = aStart; pos < aEnd; pos++) {
           const fOffset = fullAnnOffset(ann, pos)
           if (fOffset % 3 !== 0) continue
@@ -1352,7 +1351,9 @@ export function paintSequenceRows(
 
         const threeLetter = s.threeLetter
         const aaStyle = s.aminoAcidStyle
-        const code = s.translationCode
+        // A feature that declares its code (/transl_table) is read with it,
+        // whatever code the display is set to.
+        const code = annotationCode(ann) ?? s.translationCode
         // "By annotation" colouring means the feature's own colour, which is
         // the one thing the residue palettes cannot supply. Stops keep their
         // red so they still stand out in a feature-coloured row.
@@ -1368,7 +1369,7 @@ export function paintSequenceRows(
           const codons = selectionCodonsInRow(
             trimReadingStart(ann.segments, codonStartOffset(ann), reverse), reverse, rowStart, rowEnd)
           if (codons.length === 0) continue
-          paintJoinedCodons(codons, reverse, fillFor, false)
+          paintJoinedCodons(codons, reverse, fillFor, false, code)
           translationCount++
           continue
         }

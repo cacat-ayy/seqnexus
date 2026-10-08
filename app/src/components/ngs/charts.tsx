@@ -11,6 +11,7 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { Table2, ChartColumn } from 'lucide-react'
 import type { Histogram, PositionQuality } from '../../ngs/types'
+import { niceTicks } from '../../utils/ticks'
 
 const nf = new Intl.NumberFormat()
 const compact = new Intl.NumberFormat('en', { notation: 'compact', maximumFractionDigits: 1 })
@@ -29,18 +30,6 @@ function useWidth<T extends HTMLElement>(): [React.RefObject<T>, number] {
     return () => ro.disconnect()
   }, [])
   return [ref, w]
-}
-
-/** Round axis steps: 1, 2 or 5 times a power of ten. */
-function niceTicks(max: number, count = 4): number[] {
-  if (max <= 0) return [0]
-  const raw = max / count
-  const pow = 10 ** Math.floor(Math.log10(raw))
-  const step = [1, 2, 5, 10].map(m => m * pow).find(s => s >= raw) ?? raw
-  // Up to the first tick at or above the maximum, so the tallest bar fits.
-  const out: number[] = [0]
-  while (out[out.length - 1] < max - step * 0.001) out.push(out.length * step)
-  return out
 }
 
 /** A bar with its top corners rounded and its base square. */

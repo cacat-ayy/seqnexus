@@ -203,7 +203,7 @@ export default function AssemblyOverview({ assembly, onClose }: Props) {
         <Suspense fallback={null}>
           <SamplesPage assembly={assembly} onOpen={openSample} onAdd={() => setAdding(true)} />
         </Suspense>
-      ) : ngs ? <div className="ao-body"><MappingReport key={ngs.storageId} ngs={ngs} onOpenReference={viewable ? i => showMapping({ page: 'reads', ref: i }) : undefined} /></div> : <div className="ao-body">
+      ) : ngs ? <div className="ao-body"><MappingReport key={ngs.storageId} ngs={ngs} name={samples.length > 1 ? `${assembly.name} ${ngs.readSetName}` : assembly.name} onOpenReference={viewable ? i => showMapping({ page: 'reads', ref: i }) : undefined} /></div> : <div className="ao-body">
         <section className="ao-section">
           <h3 className="ao-title">Contigs</h3>
           <div className="ao-table-wrap">

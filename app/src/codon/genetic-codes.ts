@@ -135,6 +135,15 @@ export function geneticCode(id: GeneticCodeId): GeneticCode {
   return BY_ID.get(id) ?? BY_ID.get(DEFAULT_GENETIC_CODE_ID)!
 }
 
+/**
+ * The code a feature names in its /transl_table qualifier, or null when it
+ * names none or one that does not exist (the caller then uses its default).
+ */
+export function codeFromTranslTable(qualifiers: Record<string, string[]> | undefined): GeneticCode | null {
+  const id = parseInt(qualifiers?.transl_table?.[0] ?? '', 10)
+  return BY_ID.get(id) ?? null
+}
+
 /** The standard code's table, for callers that have no code selection. */
 export const STANDARD_CODE_TABLE: Record<string, string> = geneticCode(1).table
 

@@ -203,3 +203,23 @@ describe('annotationLength', () => {
     expect(annotationLength(ann({ start: 2, end: 8 }), 10)).toBe(6)
   })
 })
+
+describe('the genetic code a feature declares', () => {
+  // ATG TGA AAA TAA: a stop in the middle with the standard code, W with table 2.
+  const seq = new Sequence('ATGTGAAAATAA')
+  const mito = ann({ start: 0, end: 12, qualifiers: { transl_table: ['2'] } })
+
+  it('translates with /transl_table', () => {
+    expect(annotationProtein(ann({ start: 0, end: 12 }), seq)).toBe('M*K*')
+    expect(annotationProtein(mito, seq)).toBe('MWK*')
+  })
+
+  it('reports no internal stop when its code reads through', () => {
+    expect(translationIssues(ann({ start: 0, end: 12 }), seq)?.internalStops).toBe(1)
+    expect(translationIssues(mito, seq)).toBeNull()
+  })
+
+  it('falls back to the standard code for a table that does not exist', () => {
+    expect(annotationProtein(ann({ start: 0, end: 12, qualifiers: { transl_table: ['99'] } }), seq)).toBe('M*K*')
+  })
+})

@@ -28,6 +28,7 @@ import { deflateSync, inflateSync } from 'fflate'
 import { decodePage, type StoredAlignment } from './alignments'
 import { mappingStorageIds, type MappingStorage } from './builder'
 import { readMappingIndex, readReferenceBases } from './sam'
+import type { AnnotationData } from '../models/Annotation'
 
 export const MIN_CLIP = 10
 export const MIN_READS = 3
@@ -136,6 +137,35 @@ export function describeJunction(j: Junction, refIndex: number, refNames: readon
   if (gap > 0) return `Continues ${gap.toLocaleString()} bases on: a deletion of ${gap.toLocaleString()} bases?`
   if (gap < 0) return `Continues ${(-gap).toLocaleString()} bases back: a duplication?`
   return 'Continues next to itself'
+}
+
+let junctionSeq = 0
+
+/**
+ * A `variation` feature for each junction, on the base where the reads stop
+ * aligning (the last base before the clip), named by what the junction
+ * suggests. `variation`, as for variants, so the variant caller and clone
+ * verification do not take it for a feature of the construct.
+ */
+export function junctionAnnotations(js: readonly Junction[], refIndex: number, refNames: readonly string[], refLength: number): AnnotationData[] {
+  return js.map(j => {
+    const base = Math.max(0, Math.min(refLength - 1, j.side === 'left' ? j.pos : j.pos - 1))
+    const what = describeJunction(j, refIndex, refNames)
+    const outward = j.side === 'left' ? [...j.clipped].reverse().join('') : j.clipped
+    return {
+      id: `junction_${Date.now().toString(36)}_${++junctionSeq}`,
+      name: `Junction, ${j.side === 'left' ? 'left' : 'right'} side`,
+      type: 'variation',
+      start: base, end: base + 1, strand: 0 as const,
+      qualifiers: {
+        note: [
+          what,
+          `${j.reads} of ${j.depth} reads (${Math.round((j.reads / Math.max(1, j.depth)) * 100)}%) clipped to the ${j.side}, ${j.forward} forward and ${j.reverse} reverse`,
+          `clipped bases: ${outward.length > 60 ? `${outward.slice(0, 60)}...` : outward}`,
+        ],
+      },
+    }
+  })
 }
 
 export function encodeJunctions(js: readonly Junction[]): Uint8Array {

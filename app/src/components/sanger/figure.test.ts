@@ -32,3 +32,24 @@ describe('trace figure', () => {
     expect(fig.svg).toContain('pUC &lt;M13F&gt;')
   })
 })
+
+describe('trace figure as PDF', () => {
+  it('draws the four traces inside their clip, and every call', async () => {
+    const { svgToPdf } = await import('../../pdf/svg-pdf')
+    const { unzlibSync } = await import('fflate')
+    const m = buildTraceModel(read('ACGT'.repeat(30)), [], 0, 120, false)
+    const fig = buildTraceFigure(m, DEFAULT_TRACE_VIEW, { d0: 0, d1: 120, perLine: 50, fontSize: 10, traceHeight: 80, ruler: true, quality: true, showTrim: false })
+    const bytes = svgToPdf(fig.svg)
+    const text = Array.from(bytes, c => String.fromCharCode(c)).join('')
+    const at = text.indexOf('stream\n') + 7
+    const content = Array.from(unzlibSync(bytes.subarray(at, at + Number(/\/Length (\d+)/.exec(text)![1]))), c => String.fromCharCode(c)).join('')
+    expect(content.match(/W n/g)).toHaveLength(3)
+    // Twelve trace paths (four channels, three rows), stroked with round joins.
+    expect(content.match(/ l\nS/g)?.length).toBeGreaterThanOrEqual(12)
+    expect(content).toContain('1 j')
+    // The calls at the figure's font size, bold monospace.
+    expect(content).toContain('/F4 10 Tf')
+    expect(content).not.toMatch(/\/F\d [1-9]\d\d+ Tf/)
+    expect(content.match(/\/ActualText \(([ACGT]+)\)/g)?.join('').replace(/\/ActualText \(|\)/g, '')).toBe('ACGT'.repeat(30))
+  })
+})

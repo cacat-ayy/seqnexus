@@ -18,6 +18,7 @@ import type { RowTranslation } from '../../msa/translate'
 import type { PaintModel } from './layout'
 import { cellLook, logoColorer } from './paint'
 import { FIGURE_THEME, type AlnTheme } from './theme'
+import { svgToPdf } from '../../pdf/svg-pdf'
 
 export interface FigureOptions {
   /** Rows to include (document order), or null for all. */
@@ -282,19 +283,11 @@ export async function figureToPng(fig: Figure, scale: number): Promise<Blob> {
 }
 
 /**
- * Print a figure through the browser's print dialog, where "Save as PDF"
- * keeps it vector. Returns false when the pop-up was blocked.
+ * A figure as a vector PDF file, one page at the figure's size, made by the
+ * app's own PDF writer (pdf/svg-pdf.ts) rather than the browser's print
+ * dialog.
  */
-export function printFigure(fig: Figure, title: string): boolean {
-  const w = window.open('', '_blank')
-  if (!w) return false
-  w.document.write(`<!DOCTYPE html><html><head><title>${esc(title)}</title><style>
-    @page { margin: 12mm; }
-    body { margin: 0; }
-    svg { display: block; width: 100%; height: auto; }
-  </style></head><body>${fig.svg}<script>
-    window.onload = function () { setTimeout(function () { window.print(); window.close(); }, 300); };
-  </script></body></html>`)
-  w.document.close()
-  return true
+export function figureToPdf(fig: Figure, title: string): Blob {
+  const bytes = svgToPdf(fig.svg, { title })
+  return new Blob([bytes], { type: 'application/pdf' })
 }

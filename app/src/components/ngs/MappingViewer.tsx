@@ -39,7 +39,8 @@ import MappingFigureDialog from './MappingFigureDialog'
 import JunctionTable from './JunctionTable'
 import { takeReveal } from './reveal'
 import { startFindJunctions } from '../../workers/readset'
-import type { Junction } from '../../ngs/junctions'
+import { junctionAnnotations, type Junction } from '../../ngs/junctions'
+import type { AnnotationData } from '../../models/Annotation'
 import { createSignal, useSignal, type Signal } from '../alignment/signal'
 import { withAlpha } from '../sanger/paint'
 import ContextMenuPopup, { MenuItem, MenuSeparator } from '../ContextMenuPopup'
@@ -61,8 +62,8 @@ import {
 import { HistogramChart } from './charts'
 import MappingCanvas, { type MapHover, type MappingCanvasHandle } from './MappingCanvas'
 import {
-  ALLELE_FRACTION, clampScale, depthOver, layFeatures, LETTER_PX, mapGeometry, MAX_PX_PER_BASE, PAIR_LABEL, readColors,
-  type BaseMode, type ColorBy, type CompareTo, type MapOptions, type MapPaintInput, type MapScale, type RowMode,
+  ALLELE_FRACTION, clampScale, depthOver, layFeatures, LETTER_PX, mapGeometry, MAX_PX_PER_BASE, MAPQ_LABEL, PAIR_LABEL, readColors,
+  type BaseMode, type ColorBy, type MapqClass, type CompareTo, type MapOptions, type MapPaintInput, type MapScale, type RowMode,
 } from './mappingPaint'
 import { readAlnTheme, useThemeVersion } from '../alignment/theme'
 import { drawCaption } from '../minimap/theme'
@@ -164,6 +165,8 @@ export default function MappingViewer({ ngs, assemblyId, name, refIndex, onRefIn
     : saved && saved.ref === ref ? saved.scale : { start: 0, bpPerPx: Infinity }), []) // eslint-disable-line react-hooks/exhaustive-deps
   const hover = useMemo(() => createSignal<MapHover | null>(null, (a, b) => a?.read === b?.read && Math.floor(a?.pos ?? -1) === Math.floor(b?.pos ?? -1) && a?.clientX === b?.clientX && a?.clientY === b?.clientY), [])
   const viewport = useMemo(() => createViewportSource(), [])
+  // The view spans (nearly) the whole reference: the overview would only repeat its coverage.
+  const [whole, setWhole] = useState(false)
   const canvasRef = useRef<MappingCanvasHandle>(null)
   const [plotW, setPlotW] = useState(0)
 
@@ -199,6 +202,7 @@ export default function MappingViewer({ ngs, assemblyId, name, refIndex, onRefIn
       const v0 = Math.max(0, s.start)
       const v1 = Math.min(R.length, s.start + plotW * s.bpPerPx)
       viewport.set({ start: v0, end: v1 })
+      setWhole(v1 - v0 >= R.length * 0.9)
       const span = v1 - v0
       window.clearTimeout(timer.current)
       if (span > READ_SPAN_LIMIT) { token.current++; setReadState('zoom'); return }
@@ -444,23 +448,24 @@ export default function MappingViewer({ ngs, assemblyId, name, refIndex, onRefIn
   // Only which variant is pointed at, so pointer moves elsewhere do not re-render the view.
   const litVariant = useSyncExternalStore(hover.subscribe, () => { const v = hover.get()?.variant; return v ? variantKey(v) : null })
 
-  const annotate = async (list: Variant[]) => {
-    if (!list.length || !refData) return
+  /** Add features to the reference: to its open sequence, or to a copy opened from the mapping's. */
+  const addToReference = (notes: AnnotationData[], what: string) => {
+    if (!notes.length || !refData) return
     const store = useEditorStore.getState()
-    const notes = variantAnnotations(list, R.length)
     if (refTab) {
       if (refTab.readOnly) { notify.info(`${refTab.doc.name} is read-only; unlock it to annotate`); return }
       store.setActiveTab(refTab.id)
       store.addAnnotations(notes)
     } else {
-      store.openDocument(R.name, refData.bases, R.circular ? 'circular' : 'linear', `Reference of ${name}, with its variants`)
+      store.openDocument(R.name, refData.bases, R.circular ? 'circular' : 'linear', `Reference of ${name}, with its ${what}`)
       useEditorStore.getState().addAnnotations(notes)
     }
     const tabId = useEditorStore.getState().activeTabId
     useEditorStore.getState().setActiveAssembly(assemblyId)
-    notify.success(`Added ${list.length} ${list.length === 1 ? 'variant' : 'variants'} to ${refTab?.doc.name ?? R.name} as features`,
+    notify.success(`Added ${notes.length} ${what} to ${refTab?.doc.name ?? R.name} as features`,
       { action: { label: 'Show', onClick: () => { if (tabId) useEditorStore.getState().setActiveTab(tabId) } } })
   }
+  const annotate = (list: Variant[]) => addToReference(variantAnnotations(list, R.length), list.length === 1 ? 'variant' : 'variants')
 
   const fileStem = name.replace(/[\\/:*?"<>|\s]+/g, '_')
   const exportVariants = async (format: 'vcf' | 'vcf-all' | 'csv') => {
@@ -541,6 +546,7 @@ export default function MappingViewer({ ngs, assemblyId, name, refIndex, onRefIn
           <option value="none">One colour</option>
           <option value="strand">By strand</option>
           {paired && <option value="pair">By pair (distance and orientation)</option>}
+          <option value="mapq">By mapping quality</option>
         </select>
         <div className="aw-export" ref={sortMenuRef}>
           <button className={`aw-tool-btn ${sort ? 'active' : ''}`} onClick={() => setSortMenu(o => !o)} aria-expanded={sortMenu}
@@ -591,7 +597,7 @@ export default function MappingViewer({ ngs, assemblyId, name, refIndex, onRefIn
         <div className="aw-main">
           {fileReady && (
             <div className="aw-minimap">
-              <Minimap kind="mapping" length={R.length} tracks={tracks} viewport={viewport}
+              <Minimap kind="mapping" length={R.length} tracks={tracks} viewport={viewport} folded={whole}
                 onNavigate={start => {
                   const s = scale.get()
                   scale.set(clampScale({ start, bpPerPx: s.bpPerPx }, R.length, plotW))
@@ -658,6 +664,11 @@ export default function MappingViewer({ ngs, assemblyId, name, refIndex, onRefIn
               }}
               refIndex={ref}
               refNames={refs.map(r => r.name)}
+              canAnnotate={fileReady}
+              annotateTitle={refTab
+                ? `Add a "variation" feature for each junction to ${refTab.doc.name}`
+                : `${R.name} is not open: opens it from the copy kept with the mapping, with a feature for each junction`}
+              onAnnotate={js => addToReference(junctionAnnotations(js, ref, refs.map(r => r.name), R.length), js.length === 1 ? 'junction' : 'junctions')}
               onClose={() => setJuncOpen(false)}
             />
           )}
@@ -960,6 +971,9 @@ const Legend = memo(function Legend({ colorBy, counts }: { colorBy: ColorBy; cou
   const c = theme ? readColors(theme) : null
   const items: { label: string; color: string; count?: number; title?: string }[] = []
   if (c && colorBy === 'strand') items.push({ label: 'Forward strand', color: c.forward }, { label: 'Reverse strand', color: c.reverse })
+  if (c && colorBy === 'mapq') {
+    for (const k of ['high', 'low', 'zero', 'none'] as MapqClass[]) items.push({ label: MAPQ_LABEL[k], color: c.mapq[k] })
+  }
   if (c && colorBy === 'pair') {
     for (const k of ['proper', 'larger', 'smaller', 'orientation', 'otherRef', 'mateUnmapped', 'single'] as PairClass[]) {
       if (k !== 'proper' && !counts?.[k]) continue
@@ -980,7 +994,7 @@ const Legend = memo(function Legend({ colorBy, counts }: { colorBy: ColorBy; cou
         <>
           <div className="mv-key"><i className="mv-key-ins" style={{ background: theme.accent }} /><span>Inserted bases (number when zoomed in)</span></div>
           <div className="mv-key"><i className="mv-key-del" /><span>Deleted bases</span></div>
-          <div className="mv-key"><i style={{ background: withAlpha(theme.muted, 0.2) }} /><span>Faint: mapping quality 0, or outside the fragment lengths picked</span></div>
+          <div className="mv-key"><i style={{ background: withAlpha(theme.muted, 0.2) }} /><span>{colorBy === 'mapq' ? 'Faint: outside the fragment lengths picked' : 'Faint: mapping quality 0, or outside the fragment lengths picked'}</span></div>
         </>
       )}
       <p className="aw-note">Bases that differ from the reference are drawn in their base&apos;s colour, fainter the lower their quality.</p>

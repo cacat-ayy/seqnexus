@@ -1,5 +1,5 @@
 /**
- * A minimal PDF writer: pages of vector content, the three standard fonts
+ * A minimal PDF writer: pages of vector content, the four standard fonts
  * in fonts.ts, and transparency through ExtGState. No images, no embedded
  * fonts, no external library. Version 1.5, the first to allow ActualText
  * on marked content, which the sequence runs use.

@@ -12,6 +12,7 @@ import type { Annotation } from '../models/Annotation'
 import type { Sequence } from '../models/Sequence'
 import { reverseComplement } from '../models/complement'
 import { translate } from '../utils/codon'
+import { codeFromTranslTable, translateWith, type GeneticCode } from '../codon/genetic-codes'
 
 /**
  * Feature types treated as protein-coding.
@@ -55,6 +56,22 @@ export function codonStartOffset(ann: Annotation): number {
 }
 
 /**
+ * The genetic code a feature declares with `/transl_table` (2 for vertebrate
+ * mitochondria, 11 for bacteria and so on), or null when it declares none.
+ * A mitochondrial CDS read with the standard code shows false internal stops
+ * wherever TGA codes for tryptophan.
+ */
+export function annotationCode(ann: Pick<Annotation, 'qualifiers'>): GeneticCode | null {
+  return codeFromTranslTable(ann.qualifiers)
+}
+
+/** Coding bases translated with the feature's own code, the standard one by default. */
+function translateAnnotationBases(ann: Annotation, coding: string): string {
+  const code = annotationCode(ann)
+  return code ? translateWith(code, coding) : translate(coding)
+}
+
+/**
  * The bases actually fed to the ribosome: reverse-complemented for features on
  * the minus strand, then offset by `/codon_start` so the reading frame is the
  * one the source record declared.
@@ -71,7 +88,7 @@ export function annotationCodingBases(ann: Annotation, sequence: Sequence): stri
 
 /** Translated protein for a coding annotation. Trailing partial codons are dropped. */
 export function annotationProtein(ann: Annotation, sequence: Sequence): string {
-  return translate(annotationCodingBases(ann, sequence))
+  return translateAnnotationBases(ann, annotationCodingBases(ann, sequence))
 }
 
 /**
@@ -91,7 +108,7 @@ export interface TranslationIssues {
   internalStops: number
   /** Bases left over after the last whole codon (0 when in frame). */
   leftover: number
-  /** The first codon, when it is not a start codon (ATG, GTG, TTG). */
+  /** The first codon, when it is not a start codon (ATG, GTG, TTG, or those of the feature's /transl_table). */
   badStart: string | null
 }
 
@@ -107,11 +124,13 @@ export function translationIssues(ann: Annotation, sequence: Sequence): Translat
   if (ann.type !== 'CDS' || ann.id.startsWith('_orf_')) return null
   const coding = annotationCodingBases(ann, sequence).toUpperCase()
   if (coding.length < 3) return null
-  const protein = translate(coding)
+  const protein = translateAnnotationBases(ann, coding)
   const internalStops = [...protein.slice(0, -1)].filter(aa => aa === '*').length
   const leftover = coding.length % 3
   const first = coding.slice(0, 3)
-  const badStart = codonStartOffset(ann) === 0 && !START_CODONS.has(first) ? first : null
+  const code = annotationCode(ann)
+  const starts = code ? new Set(code.starts) : START_CODONS
+  const badStart = codonStartOffset(ann) === 0 && !starts.has(first) ? first : null
   if (internalStops === 0 && leftover === 0 && !badStart) return null
   return { internalStops, leftover, badStart }
 }

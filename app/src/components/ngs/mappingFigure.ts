@@ -17,7 +17,7 @@ import type { Figure } from '../alignment/figure'
 import { firstInRow, pairClass, readDiff, type ReadLayout } from '../../ngs/view'
 import type { PairClass } from '../../ngs/view'
 import { variantLabel, type Variant } from '../../assembly/variants'
-import { depthOver, niceMax, type ColorBy, type MapPaintInput } from './mappingPaint'
+import { depthOver, mapqClass, niceMax, type ColorBy, type MapPaintInput, type MapqClass } from './mappingPaint'
 
 /** Widest stretch drawn with its reads; wider, the figure shows coverage and variants only. */
 export const MAX_READ_SPAN = 20_000
@@ -159,6 +159,7 @@ export function buildMappingFigure(p: MappingFigureInput, o: MappingFigureOption
       single: theme.muted, proper: theme.muted, mateUnmapped: theme.muted,
       larger: theme.danger, smaller: theme.accent, orientation: theme.good, otherRef: theme.warning,
     })[c]
+    const mapqColor = (c: MapqClass) => ({ zero: theme.danger, low: theme.warning, high: theme.good, none: theme.muted })[c]
     const top0 = y
     rows.forEach((row, i) => {
       const ry = top0 + i * (ROW + ROW_GAP)
@@ -167,11 +168,12 @@ export function buildMappingFigure(p: MappingFigureInput, o: MappingFigureOption
         const a = r.a
         const color = o.colorBy === 'strand' ? (a.flag & 0x10 ? theme.warning : theme.good)
           : o.colorBy === 'pair' ? pairColor(pairClass(a, p.refIndex, p.length, p.circular, p.opts.expected))
-            : theme.muted
+            : o.colorBy === 'mapq' ? mapqColor(mapqClass(a.mapq))
+              : theme.muted
         const x0 = xOf(Math.max(o.from, r.start))
         const x1 = xOf(Math.min(o.to, r.end))
         if (x1 <= x0) continue
-        out.push(`<rect x="${r1(x0)}" y="${r1(ry)}" width="${r1(x1 - x0)}" height="${ROW}" fill="${color}" fill-opacity="${a.mapq === 0 ? 0.2 : 0.45}"/>`)
+        out.push(`<rect x="${r1(x0)}" y="${r1(ry)}" width="${r1(x1 - x0)}" height="${ROW}" fill="${color}" fill-opacity="${a.mapq === 0 && o.colorBy !== 'mapq' ? 0.2 : 0.45}"/>`)
         if (a.diff === '*') continue
         const d = r.diff ?? (r.diff = readDiff(a))
         for (const del of d.deletions) {
@@ -212,10 +214,12 @@ export function buildMappingFigure(p: MappingFigureInput, o: MappingFigureOption
 
   const width = Math.ceil(GUTTER + o.width + PAD)
   const height = Math.ceil(y + PAD)
-  const style = `text{font-family:${theme.sans};font-size:10px;fill:${theme.text}}`
+  // Text colour comes from the root, not a text rule: a style rule would
+  // outrank the fill attribute that colours each reference base.
+  const style = `text{font-family:${theme.sans};font-size:10px}`
     + `.t{font-size:14px;font-weight:600}.l{font-weight:600}.m{fill:${theme.muted}}`
     + `.b{font-family:${theme.mono};font-weight:600}.g{stroke:${theme.grid};stroke-width:1;fill:none}`
-  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}">`
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}" fill="${theme.text}">`
     + `<style>${style}</style><rect width="100%" height="100%" fill="${theme.bg}"/>`
     + out.join('') + '</svg>'
   return { svg, width, height }

@@ -43,3 +43,22 @@ describe('mapping figure', () => {
     expect(f.svg).toContain('Reads are drawn for stretches of')
   })
 })
+
+describe('mapping figure as PDF', () => {
+  it('converts to a vector PDF with the reference bases in their own colours', async () => {
+    const { svgToPdf } = await import('../../pdf/svg-pdf')
+    const { unzlibSync } = await import('fflate')
+    const f = buildMappingFigure(input(), opts)
+    const bytes = svgToPdf(f.svg, { title: 'pTest' })
+    const text = Array.from(bytes, c => String.fromCharCode(c)).join('')
+    expect(text.startsWith('%PDF-')).toBe(true)
+    const at = text.indexOf('stream\n') + 7
+    const len = Number(/\/Length (\d+)/.exec(text)![1])
+    const content = Array.from(unzlibSync(bytes.subarray(at, at + len)), c => String.fromCharCode(c)).join('')
+    expect(content).toContain('(Coverage) Tj')
+    // The reference is one Courier run, its letters coloured by base.
+    const run = /\/ActualText \(([ACGT]+)\)[^\n]*/.exec(content)
+    expect(run?.[1]).toBe(REF)
+    expect(new Set(run![0].match(/[\d.]+ [\d.]+ [\d.]+ rg/g)).size).toBe(4)
+  })
+})

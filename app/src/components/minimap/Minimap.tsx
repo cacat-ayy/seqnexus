@@ -41,6 +41,12 @@ export interface MinimapProps {
   /** The track item under the pointer changed. */
   onHoverItem?: (id: string | null) => void
   ariaLabel: string
+  /**
+   * Show the slim strip whatever the saved state, without changing it: for
+   * when the main view already shows (nearly) all the overview would, so it
+   * would only repeat it. The toggle is hidden meanwhile.
+   */
+  folded?: boolean
 }
 
 const PAD_X = 4
@@ -93,11 +99,13 @@ export default function Minimap({
   highlightId,
   onHoverItem,
   ariaLabel,
+  folded = false,
 }: MinimapProps) {
   const rootRef = useRef<HTMLDivElement>(null)
   const baseRef = useRef<HTMLCanvasElement>(null)
   const overlayRef = useRef<HTMLCanvasElement>(null)
-  const [collapsed, setCollapsed] = useState(() => loadCollapsed(kind))
+  const [collapsedPref, setCollapsed] = useState(() => loadCollapsed(kind))
+  const collapsed = folded || collapsedPref
   const [width, setWidth] = useState(0)
   const [themeTick, setThemeTick] = useState(0)
   const [hover, setHover] = useState<Hover | null>(null)
@@ -348,7 +356,7 @@ export default function Minimap({
           onPointerLeave={handlePointerLeave}
         />
       </div>
-      <button
+      {!folded && <button
         type="button"
         className="minimap-toggle"
         onClick={toggle}
@@ -357,7 +365,7 @@ export default function Minimap({
         aria-label={collapsed ? 'Expand overview' : 'Collapse overview'}
       >
         {collapsed ? <ChevronDown size={12} /> : <ChevronUp size={12} />}
-      </button>
+      </button>}
       {hover && !dragging && (
         <div
           className="minimap-readout"

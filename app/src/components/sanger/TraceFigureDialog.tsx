@@ -1,7 +1,7 @@
 /**
  * Export the trace as a figure: pick the stretch, row length and tracks, see
- * it, then save SVG, PNG or (through the print dialog) PDF. Orientation,
- * channels, peak height and even heights follow the current view.
+ * it, then save SVG, PNG or PDF. Orientation, channels, peak height and
+ * even heights follow the current view.
  */
 
 import { useEffect, useMemo, useRef, useState } from 'react'
@@ -11,7 +11,7 @@ import { notify } from '../../toast'
 import { useFocusTrap } from '../../hooks/useFocusTrap'
 import type { TraceModel } from '../../sanger/model'
 import type { TraceView } from '../../sanger/view'
-import { figureToPng, printFigure } from '../alignment/figure'
+import { figureToPng, figureToPdf } from '../alignment/figure'
 import { buildTraceFigure, MAX_FIGURE_BASES } from './figure'
 import type { TraceSelection } from './TraceCanvas'
 
@@ -62,11 +62,10 @@ export default function TraceFigureDialog({ model, view, selection, name, onClos
   const savePng = (scale: number) => fig && withName(`${base}${scale >= 4 ? '-print' : ''}.png`, n => {
     figureToPng(fig, scale).then(b => downloadBlob(b, n)).catch(err => notify.error('Could not make the PNG', { detail: err instanceof Error ? err.message : String(err) }))
   })
-  const savePdf = () => {
-    if (fig && !printFigure(fig, title.trim() || name)) {
-      notify.error('Could not open the print window', { detail: 'Allow pop-ups for this site to save a PDF.' })
-    }
-  }
+  const savePdf = () => fig && withName(`${base}.pdf`, n => {
+    try { downloadBlob(figureToPdf(fig, title.trim() || name), n) }
+    catch (err) { notify.error('Could not make the PDF', { detail: err instanceof Error ? err.message : String(err) }) }
+  })
 
   return (
     <div className="aw-figure-backdrop" onMouseDown={e => { if (e.target === e.currentTarget) onClose() }}>
@@ -119,7 +118,7 @@ export default function TraceFigureDialog({ model, view, selection, name, onClos
               <button className="btn btn-sm btn-primary" disabled={!fig} onClick={saveSvg} title="Vector; edit in Illustrator or Inkscape">SVG</button>
               <button className="btn btn-sm" disabled={!fig} onClick={() => savePng(2)} title="Image at 2× resolution">PNG</button>
               <button className="btn btn-sm" disabled={!fig} onClick={() => savePng(4)} title="Image at 4× resolution, for print">PNG 4×</button>
-              <button className="btn btn-sm" disabled={!fig} onClick={savePdf} title="Opens the print dialog; choose Save as PDF">PDF</button>
+              <button className="btn btn-sm" disabled={!fig} onClick={savePdf} title="Vector, one page at the figure's size">PDF</button>
             </div>
             {fig && <p className="aw-note">{fig.width.toLocaleString()} × {fig.height.toLocaleString()} px</p>}
           </div>

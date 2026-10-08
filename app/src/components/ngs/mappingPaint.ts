@@ -24,7 +24,7 @@ import type { CoverageLevel } from '../../ngs/alignments'
 import type { PileupSite } from '../../ngs/pileup'
 import { CODING, variantKey, type RefFeature, type Variant } from '../../assembly/variants'
 import { complementBase } from '../../models/complement'
-import { translateCodon } from '../../utils/codon'
+import { geneticCode, translateCodonWith } from '../../codon/genetic-codes'
 import {
   firstInRow, pairClass, readDiff, summaryLevel,
   type PairClass, type ReadLayout, type ViewRead, type WindowPileup,
@@ -43,7 +43,7 @@ const VARS_H = 14
 /** Share of reads differing from the reference for a coverage bar to be split by base (IGV's default). */
 export const ALLELE_FRACTION = 0.2
 
-export type ColorBy = 'none' | 'strand' | 'pair'
+export type ColorBy = 'none' | 'strand' | 'pair' | 'mapq'
 export type RowMode = 'expanded' | 'squished'
 /**
  * How the reads' bases are drawn once they are wide enough for letters:
@@ -313,6 +313,7 @@ export interface ReadColors {
   forward: string
   reverse: string
   pair: Record<PairClass, string>
+  mapq: Record<MapqClass, string>
   deletion: string
   insertion: string
   clip: string
@@ -334,10 +335,34 @@ export function readColors(theme: AlnTheme): ReadColors {
       otherRef: withAlpha(theme.warning, 0.65),
       mateUnmapped: neutral,
     },
+    mapq: {
+      zero: withAlpha(theme.danger, 0.6),
+      low: withAlpha(theme.warning, 0.6),
+      high: withAlpha(theme.good, a),
+      none: neutral,
+    },
     deletion: withAlpha(theme.text, 0.75),
     insertion: theme.accent,
     clip: withAlpha(theme.muted, 0.16),
   }
+}
+
+/**
+ * Mapping quality in bands. MAPQ is -10 log10 of the chance the read
+ * belongs elsewhere: 0 means another place fits as well (a repeat), below
+ * 20 a 1% chance or more of the wrong place, 255 that the aligner gave none.
+ */
+export type MapqClass = 'zero' | 'low' | 'high' | 'none'
+
+export function mapqClass(mapq: number): MapqClass {
+  return mapq === 255 ? 'none' : mapq === 0 ? 'zero' : mapq < 20 ? 'low' : 'high'
+}
+
+export const MAPQ_LABEL: Record<MapqClass, string> = {
+  high: 'Mapping quality 20 and up',
+  low: 'Mapping quality 1 to 19',
+  zero: 'Mapping quality 0: fits elsewhere as well',
+  none: 'No mapping quality given',
 }
 
 export const PAIR_LABEL: Record<PairClass, string> = {
@@ -722,7 +747,8 @@ function paintReference(ctx: CanvasRenderingContext2D, p: MapPaintInput, theme: 
  * as the user chose them), with their names where they fit. Close in, a
  * coding feature shows its translation instead: each amino acid centred on
  * its codon, in the reading frame of the feature's start (or end, on the
- * reverse strand), with the standard genetic code.
+ * reverse strand) and its /codon_start, with the genetic code its
+ * /transl_table names (the standard code when it names none).
  */
 function paintFeatures(ctx: CanvasRenderingContext2D, p: MapPaintInput, theme: AlnTheme, st: MapState) {
   const g = p.geo
@@ -752,16 +778,19 @@ function paintFeatures(ctx: CanvasRenderingContext2D, p: MapPaintInput, theme: A
       // Codon k covers [c, c + 3), c counted in the feature's unwrapped coordinates
       // (f.start to fEnd); the stretch after the origin of a wrapped feature is drawn L to the left.
       const fEnd = f.end > f.start ? f.end : f.end + L
-      const n = Math.floor((fEnd - f.start) / 3)
+      // Codons start /codon_start - 1 bases into the feature on its own strand.
+      const first = f.strand === 1 ? f.start + (f.frame ?? 0) : fEnd - (f.frame ?? 0) - 3
+      const code = geneticCode(f.code ?? 1)
+      const n = Math.floor((fEnd - f.start - (f.frame ?? 0)) / 3)
       const o = lf.start < f.start ? L : 0
       const lo = Math.max(v0, lf.start) + o - 3
       const hi = Math.min(v1, lf.end) + o
-      const k0 = Math.max(0, f.strand === 1 ? Math.ceil((lo - f.start) / 3) : Math.ceil((fEnd - 3 - hi) / 3))
-      const k1 = Math.min(n - 1, f.strand === 1 ? Math.floor((hi - f.start) / 3) : Math.floor((fEnd - 3 - lo) / 3))
+      const k0 = Math.max(0, f.strand === 1 ? Math.ceil((lo - first) / 3) : Math.ceil((first - hi) / 3))
+      const k1 = Math.min(n - 1, f.strand === 1 ? Math.floor((hi - first) / 3) : Math.floor((first - lo) / 3))
       for (let k = k0; k <= k1; k++) {
-        const c = f.strand === 1 ? f.start + k * 3 : fEnd - 3 - k * 3
+        const c = f.strand === 1 ? first + k * 3 : first - k * 3
         const codon = f.strand === 1 ? at(c) + at(c + 1) + at(c + 2) : complementBase(at(c + 2)) + complementBase(at(c + 1)) + complementBase(at(c))
-        ctx.fillText(translateCodon(codon.toUpperCase()), xOf(c - o + 1.5, g, s), y + h / 2)
+        ctx.fillText(translateCodonWith(code, codon), xOf(c - o + 1.5, g, s), y + h / 2)
       }
     } else if (x1 - x0 > 30) {
       ctx.font = `600 10px ${theme.sans}`
@@ -818,6 +847,7 @@ export function readFill(r: ViewRead, p: Pick<MapPaintInput, 'refIndex' | 'lengt
   switch (p.opts.colorBy) {
     case 'strand': return a.flag & 0x10 ? colors.reverse : colors.forward
     case 'pair': return colors.pair[pairClass(a, p.refIndex, p.length, p.circular, p.opts.expected)]
+    case 'mapq': return colors.mapq[mapqClass(a.mapq)]
     default: return colors.neutral
   }
 }
@@ -834,7 +864,8 @@ function paintRead(
   const letters = pxPerBase >= LETTER_PX && rowH >= 12
   const xs = xOf(r.start, g, s)
   const xe = xOf(r.end, g, s)
-  let alpha = a.mapq === 0 ? 0.4 : 1
+  // Reads of mapping quality 0 are drawn faint, unless colour already says so.
+  let alpha = a.mapq === 0 && p.opts.colorBy !== 'mapq' ? 0.4 : 1
   if (!inBrush(r, p)) alpha *= 0.15
   ctx.globalAlpha = alpha
 

@@ -9,7 +9,8 @@
  *
  * Two things differ from a canvas, both deliberate:
  * - Fonts are the PDF standard fonts (see fonts.ts), chosen from the CSS
- *   font string: monospaced families print in Courier, the rest in Helvetica.
+ *   font string: monospaced families print in Courier, the rest in Helvetica,
+ *   each in its bold from weight 600.
  * - Single letters set one cell apart, which is how the sequence is drawn,
  *   are merged into one text run with character spacing. The bases then
  *   select and copy from the PDF as a sequence rather than as letters.
@@ -459,7 +460,7 @@ export class PdfCanvas {
     const alphaName = alpha >= 0.995 ? '' : this.doc.alphaState('fill', alpha)
 
     // Monospaced single letters one cell apart: extend the current run.
-    if (font.id === 'F3' && enc.length === 1) {
+    if ((font.id === 'F3' || font.id === 'F4') && enc.length === 1) {
       const run = this.run
       if (run && run.font.id === font.id && run.font.size === font.size
           && Math.abs(run.baselineY - base) < 0.01 && run.alpha === alphaName) {

@@ -3,7 +3,7 @@ import { parseSamLine } from './mapper'
 import { MappingBuilder, mappingStorageIds, type MappingStorage } from './builder'
 import { clipLeft, clipPrimer, clipRight, oligoSites, primerSites } from './primerClip'
 import { differingRows, matrixCsv, samplesMatrix, verifySample } from './samples'
-import { clipConsensus, decodeJunctions, describeJunction, findJunctions, findPartner } from './junctions'
+import { clipConsensus, decodeJunctions, describeJunction, findJunctions, findPartner, junctionAnnotations } from './junctions'
 import { decodePage } from './alignments'
 import { describeVariant, VARIANT_PRESETS, type Variant } from '../assembly/variants'
 import { sanitizeAssembly } from '../assembly/container'
@@ -152,6 +152,10 @@ describe('soft-clip junctions', () => {
     expect(j.clipped.startsWith(REF.slice(340, 360))).toBe(true)
     expect(j.partner).toEqual({ ref: 0, pos: 340, strand: 1 })
     expect(describeJunction(j, 0, ['ref'])).toMatch(/deletion of 40 bases/)
+    // As a feature: on the last aligned base, saying what it suggests.
+    const [f] = junctionAnnotations(js, 0, ['ref'], REF.length)
+    expect(f).toMatchObject({ type: 'variation', start: 299, end: 300 })
+    expect(f.qualifiers!.note[0]).toMatch(/deletion of 40 bases/)
   })
 
   it('places a left junction where its clipped bases end', () => {

@@ -470,6 +470,17 @@ Contigs saved before assemblies existed each get an assembly of their own when
 loaded. The reads and reference are read back from the contig; the settings
 were not saved, so they are shown as not recorded.
 
+### Trimming reads
+
+A read's ends are trimmed before it is assembled: by error probability
+(Mott's algorithm with a limit of 0.05, as Geneious and phred do), by a
+quality cut-off, or kept as they are; then by fixed cuts, primers and vector
+sequence. A read without qualities (a FASTA read, or a trace saved without
+them) cannot be trimmed by quality, so it keeps its longest stretch with at
+most a set number of ambiguous calls (N and the other IUPAC codes; 2 by
+default), as Geneious's "Maximum ambiguities" does. Its noisy ends, where
+the base caller gives up and writes N, go; a clean read keeps everything.
+
 ### Overview figures
 
 - **Mean depth**: the mean number of reads over the columns that some read
@@ -767,8 +778,10 @@ reads, from a whole genome down to single bases.
   lanes (a feature across the origin of a circular reference in two parts).
   Close in (from 3 pixels per base), a CDS or ORF shows its translation in
   place of its name: each amino acid centred on its codon, in the frame of
-  the feature's start (its end on the reverse strand), with the standard
-  genetic code, so a variant can be read against the codon it falls in.
+  the feature's start (its end on the reverse strand) moved on by its
+  `/codon_start`, with the genetic code its `/transl_table` names (the
+  standard code when it names none), so a variant can be read against the
+  codon it falls in.
 - **Coverage track:** one bar per base when bases are a pixel or wider, else
   one per pixel column, from the best source at hand: the loaded reads (which
   also give the strands and the alleles), per-base coverage up to 256 bases per
@@ -797,7 +810,11 @@ reads, from a whole genome down to single bases.
   grouped A, C, G, T, other, deletions, best quality first in a group), by
   strand, mapping quality, fragment length or start.
 - **Colours:** one colour, by strand (forward and reverse as in the Sanger
-  contig view), or by pair. By pair, as IGV colours insert size and pair
+  contig view), by mapping quality, or by pair. By mapping quality, as
+  Geneious offers: MAPQ is -10 log10 of the chance the read belongs
+  elsewhere, so reads are split into 0 (another place fits as well, a
+  repeat), 1 to 19 (a 1% chance or more of the wrong place), 20 and up, and
+  255 (none given, as some aligners write). By pair, as IGV colours insert size and pair
   orientation: mates facing each other at the expected distance are plain;
   further apart than expected (a deletion between the mates in the sample),
   closer (an insertion), facing the wrong way or on the same strand (an
@@ -807,7 +824,8 @@ reads, from a whole genome down to single bases.
   IGV computes it. On a circular reference, distances and orientation are
   taken the short way round the origin, so pairs across it are not flagged.
   Mismatches are faded by base quality, faint at Q5 and below and full from
-  Q20 (IGV's shading), and reads of mapping quality 0 are drawn faint.
+  Q20 (IGV's shading), and reads of mapping quality 0 are drawn faint
+  (except when coloured by mapping quality, which marks them already).
 - **Fragment lengths:** the side panel shows the proper pairs' fragment
   lengths; dragging across the bars keeps the pairs of those lengths at full
   strength and fades the rest, to find the reads behind a shoulder or a
@@ -840,6 +858,24 @@ short tandem repeat it falls in, and the homopolymer an insertion or deletion
 touches. Calling and judging are separate: every candidate is kept, and the
 thresholds are applied on top, so the table changes as they are typed and
 VCF can name the thresholds a variant failed.
+
+- **Coding changes** are read with the coding feature's own genetic code
+  (its `/transl_table`, the standard code when it names none) and from its
+  `/codon_start`. With the standard code a mitochondrial gene's TGA reads as
+  a stop, so a harmless change to it was reported as nonsense; vertebrate
+  mitochondria (table 2) and invertebrate ones (table 5, the COI barcode
+  gene) read it as tryptophan. The first codon of a CDS that starts whole
+  counts as methionine when it is one of its code's start codons (GTG, TTG
+  and others in bacteria, table 11), so a change from one start to another
+  is synonymous and a change to anything else is a lost start. Without a
+  `/transl_table` only ATG is taken as the start. Spliced features are read
+  as their whole span, not by exon.
+- **Transitions and transversions:** a single-base change between two
+  purines (A, G) or two pyrimidines (C, T) is a transition, between the
+  kinds a transversion. Transitions are about twice as common in nature, so
+  a call set's ratio far from that suggests sequencing errors. The hover
+  card and the CSV say which, with the share of reads showing the
+  reference.
 
 - **Sanger evidence:** per contig column, each read's call counts as an
   allele (a gap too; a two-base IUPAC call counts half for each base).
@@ -1012,7 +1048,12 @@ sequence continues: further on the same strand reads as a deletion of the
 bases between, back on the same strand as a duplication, the other strand as
 an inversion, another reference as a join to it. These are suggestions to
 look at, not calls. The result is kept with the mapping; a junction in the
-table opens the view there with the soft-clipped bases shown.
+table opens the view there with the soft-clipped bases shown. "Add to the
+reference" adds each junction as a `variation` feature of one base, the
+last one the reads align to, its note saying what it suggests, how many
+reads support it on which strands, and its clipped bases (Geneious
+annotates its junctions the same way). `variation`, as for saved variants,
+so the variant caller and clone verification leave them out.
 
 ### Guided pipeline
 
@@ -1512,7 +1553,8 @@ polished contigs, which replace the old ones, with an Undo.
 
 The mapping view exports a stretch as a figure: the view as it is, or a
 stretch typed in, as SVG (vector, for Illustrator or Inkscape), PNG at 2x or
-4x, or PDF through the print dialog. Tracks: ruler, coverage (optionally by
+4x, or PDF (vector, one page at the figure's size; see [Figures and
+reports](#figures-and-reports)). Tracks: ruler, coverage (optionally by
 strand), variants with their coding changes where there is room, the
 reference's bases when they are wide enough to tell apart, and the reads in
 the view's colours, order and downsampling (up to a chosen number of rows).
@@ -1520,6 +1562,10 @@ It is drawn on white with print colours whatever the app's theme, with
 colours as hex plus fill-opacity, which vector editors read reliably,
 rather than rgba(). Reads are drawn for stretches of 20 kb or less, and
 where the view has them loaded; wider, the figure is coverage and variants.
+
+The report page saves as a PDF too (Export > Report as PDF): the figures,
+the references table, the coverage, fragment length and mapping quality
+charts, and how the mapping was made.
 
 ### Scale
 
@@ -1587,6 +1633,16 @@ time), need not be sorted, and goes through the same storage as a minimap2
 run, so it gets the same report, pages, coverage and sites. Alignments on a
 reference left out are counted and skipped. An imported mapping has no read
 set, so it cannot be run again.
+
+**Coverage** exports as bedGraph (Export > Coverage as bedGraph on the report
+page), for IGV, the UCSC browser, bedtools or a spreadsheet: the stored
+per-base depth (aligned bases of every primary and supplementary alignment,
+deletions not counted, the figure the coverage track draws), one line per
+run of bases at the same depth, 0-based and half-open, zero-depth runs
+included, as `bedtools genomecov -bga` writes it. Runs keep the file small
+where depth is flat; where it changes at nearly every base, as across a
+genome at depth, it is about one line per base, built in parts so it is
+never one string.
 
 ---
 
@@ -2102,9 +2158,9 @@ renderer draws into the same object. The export therefore cannot drift from
 the view: a change to how features or translations are drawn reaches both.
 
 Rejected alternatives:
-- **Printing through the browser** (as the alignment figure does) gives no
-  control over page breaks, so a line and its features can split across
-  pages, and the user has to go through the print dialog every time.
+- **Printing through the browser** gives no control over page breaks, so a
+  line and its features can split across pages, and the user has to go
+  through the print dialog every time.
 - **Rasterising each page** would be exact but not searchable, large, and
   blurry when zoomed.
 - **A PDF library** would add weight to a single-file app for what is a
@@ -2130,12 +2186,13 @@ to reveal "+N more", so print shows every lane up to 16.
 
 ### Fonts and text
 
-The PDF uses three of the standard 14 fonts (Helvetica, Helvetica-Bold,
-Courier), which every reader provides, so nothing is embedded. Their glyph
+The PDF uses four of the standard 14 fonts (Helvetica, Helvetica-Bold,
+Courier, Courier-Bold), which every reader provides, so nothing is embedded. Their glyph
 widths are fixed by the Adobe font metrics, which lets the export measure
 labels exactly without a canvas; the painter is handed these metrics, so
 label fitting and enzyme label tiers are computed for the glyphs that will
-print. Monospaced text prints in Courier, the rest in Helvetica.
+print. Monospaced text prints in Courier, the rest in Helvetica, each in its
+bold from weight 600.
 
 The sequence letters of a line are written as one text run with character
 spacing set to the cell width, and tagged with `/ActualText` so copy and
@@ -2157,6 +2214,34 @@ faint marks on white. Selection and search highlights are off by default.
 - Exports over 1,500 pages are refused; choose a smaller range or zoom out.
 - Writing runs on the main thread in batches, so a long export keeps the
   dialog responsive and can be stopped.
+
+### Figures and reports
+
+The figures of alignments, traces and mappings are built once, as SVG, for
+the SVG and PNG exports. Their PDF is made from that same SVG
+(`pdf/svg-pdf.ts`): it is parsed and painted onto `PdfCanvas`, one page at
+the figure's own size (a CSS pixel is 0.75 pt), so the PDF places in a
+layout program at the size it was made and cannot drift from the SVG. The
+translator covers what the figure builders write: rectangles, paths (move,
+line, cubic and quadratic curves, close), lines, circles, polygons, text
+with a position per glyph, groups with transforms and clip paths, and a
+style sheet of type, class and descendant selectors. Styles cascade as a
+browser does: a presentation attribute loses to any style rule, rules rank
+by specificity and then order, and inherited properties pass to children.
+
+Rejected alternatives:
+- **Drawing each figure a second time** through a canvas painter, as the
+  sequence export does, would give the PDF its own code for every track,
+  and the PDF and SVG of one figure could disagree.
+- **The browser's print dialog** sized the figure to the paper rather than
+  to itself, needed a pop-up window, and left the file name and page
+  setup to the user each time.
+
+Reports (the report of an NGS mapping) are laid out down A4 pages by
+`pdf/report-pdf.ts`: figure tiles, tables that break between rows and
+repeat their header, histograms drawn as vector bars on the same axis steps
+as the screen, and terms with their explanations. Both use the figures'
+print colours on white, whatever the app's theme.
 
 ---
 

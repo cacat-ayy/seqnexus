@@ -11,7 +11,7 @@
  * actions sit in submenus (Copy, New Primer, Origin) for the same reason.
  */
 
-import { useEffect, type ReactNode } from 'react'
+import type { ReactNode } from 'react'
 import {
   ClipboardPaste, Combine, Copy, Crosshair, ExternalLink, MoveLeft, MoveRight, PanelRight, Pencil, Replace,
   SquareDashedMousePointer, Tag, Trash2, TriangleAlert, Undo2,
@@ -167,30 +167,6 @@ export default function SequenceContextMenu({
   const extraSelections = useEditorStore(extraSelectionsOf)
   const readOnly = useEditorStore(s => s.readOnly)
   const setSelection = useEditorStore(s => s.setSelection)
-
-  // Close on a click outside, on scrolling anything but the menu itself,
-  // and when the window loses focus or changes size.
-  useEffect(() => {
-    let downOutside = false
-    const down = () => { downOutside = true }
-    const up = () => { if (downOutside) onClose(); downOutside = false }
-    const scroll = (e: Event) => {
-      if (e.target instanceof Element && e.target.closest('.ctx-menu')) return
-      onClose()
-    }
-    window.addEventListener('mousedown', down)
-    window.addEventListener('mouseup', up)
-    window.addEventListener('scroll', scroll, true)
-    window.addEventListener('resize', onClose)
-    window.addEventListener('blur', onClose)
-    return () => {
-      window.removeEventListener('mousedown', down)
-      window.removeEventListener('mouseup', up)
-      window.removeEventListener('scroll', scroll, true)
-      window.removeEventListener('resize', onClose)
-      window.removeEventListener('blur', onClose)
-    }
-  }, [onClose])
 
   // Several ranges are copied joined, in reading order, as Ctrl+C copies
   // them. What needs one stretch of sequence (a primer, a cloning insert,

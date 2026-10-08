@@ -5,6 +5,8 @@
  *
  * 1. Quality: the best stretch by error probability (Mott's algorithm, as
  *    Geneious and phred do) or by a quality cut-off, or the current trim.
+ *    A read without qualities keeps its longest stretch with at most a few
+ *    ambiguous calls (N and other IUPAC codes) instead, as Geneious does.
  * 2. Fixed cuts from either end.
  * 3. Primers: a primer (or its reverse complement) found near the start cuts
  *    the start to after it; near the end, cuts the end to before it. An
@@ -45,6 +47,8 @@ export interface TrimSettings {
   vector: TrimVector | null
   /** Reads shorter than this after trimming are reported. */
   minLength: number
+  /** For reads without qualities: most ambiguous calls the kept stretch may hold. */
+  maxAmbiguities: number
 }
 
 export const DEFAULT_TRIM: TrimSettings = {
@@ -57,6 +61,7 @@ export const DEFAULT_TRIM: TrimSettings = {
   primerMismatches: 2,
   vector: null,
   minLength: 50,
+  maxAmbiguities: 2,
 }
 
 export interface TrimPlan {
@@ -74,9 +79,10 @@ export function planTrim(data: TraceData, current: [number, number], s: TrimSett
 
   if (s.method !== 'keep') {
     if (data.metadata.qualityMissing) {
-      start = 0
-      end = n
-      notes.push('No quality values: not quality-trimmed')
+      const [a, b] = ambiguityTrim(data.bases, s.maxAmbiguities)
+      start = a
+      end = b
+      notes.push(`No quality values: kept the longest stretch with at most ${s.maxAmbiguities} ambiguous ${s.maxAmbiguities === 1 ? 'call' : 'calls'}`)
     } else {
       const [a, b] = s.method === 'error' ? errorTrim(data.qualityScores, s.errorLimit) : autoTrim(data.qualityScores, s.minQuality)
       if (b > a) { start = a; end = b } else { start = 0; end = 0; notes.push('No stretch passes the quality limit') }
@@ -114,6 +120,25 @@ export function planTrim(data: TraceData, current: [number, number], s: TrimSett
   const tooShort = end - start < s.minLength
   if (tooShort) notes.push(`Only ${end - start} bases left (under ${s.minLength})`)
   return { start, end, notes, tooShort }
+}
+
+/**
+ * The longest stretch holding at most `max` ambiguous calls (anything but
+ * A, C, G and T), for reads that have no qualities to trim by. A sliding
+ * window: the end moves on a base at a time, the start catches up whenever
+ * the window holds one ambiguity too many. Ties go to the earliest stretch.
+ */
+export function ambiguityTrim(bases: string, max: number): [number, number] {
+  const ambiguous = (c: string) => !'ACGTacgt'.includes(c)
+  let best: [number, number] = [0, 0]
+  let start = 0
+  let count = 0
+  for (let end = 0; end < bases.length; end++) {
+    if (ambiguous(bases[end])) count++
+    while (count > max) { if (ambiguous(bases[start])) count--; start++ }
+    if (end + 1 - start > best[1] - best[0]) best = [start, end + 1]
+  }
+  return best
 }
 
 /**

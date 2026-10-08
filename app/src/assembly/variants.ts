@@ -31,7 +31,7 @@
 
 import { baseBits } from '../msa/iupac'
 import { complementBase } from '../models/complement'
-import { translateCodon } from '../utils/codon'
+import { geneticCode, translateCodonWith } from '../codon/genetic-codes'
 import type { ContigDoc } from './types'
 import { findTandemRepeats, type TandemRepeat } from './repeats'
 
@@ -43,6 +43,10 @@ export interface RefFeature {
   end: number
   strand: 1 | -1 | 0
   color?: string
+  /** NCBI genetic code of a coding feature (its /transl_table), when it names one. */
+  code?: number
+  /** Bases before the first codon (/codon_start minus 1). */
+  frame?: number
 }
 
 export interface VariantSettings {
@@ -456,24 +460,34 @@ export function codingChange(type: VariantType, refStart: number, ref: string, a
   const f = feats.find(x => CODING.has(x.type) && x.strand !== 0)
   if (!f || refStart < 0) return null
   const L = refSeq.length
-  const len = featureLength(f, L)
+  // The feature's own code (/transl_table) and frame (/codon_start); offsets
+  // below count from its first whole codon.
+  const code = geneticCode(f.code ?? 1)
+  const frame = f.frame ?? 0
+  const len = featureLength(f, L) - frame
   const at = (i: number) => refSeq[((i % L) + L) % L]
-  // Offset of the variant within the feature, 5'→3' on the feature's strand.
-  const offsetOf = (p: number) => (f.strand === 1 ? ((p - f.start) % L + L) % L : ((f.end - 1 - p) % L + L) % L)
+  // Offset of the variant within the coding sequence, 5'→3' on the feature's strand.
+  const offsetOf = (p: number) => (f.strand === 1 ? ((p - f.start) % L + L) % L : ((f.end - 1 - p) % L + L) % L) - frame
   // The feature's coding sequence, 5'→3'.
-  const cds = (i: number) => (f.strand === 1 ? at(f.start + i) : complementBase(at(f.end - 1 - i)))
-  const aaAt = (codon: number) => translateCodon(cds(codon * 3) + cds(codon * 3 + 1) + cds(codon * 3 + 2))
+  const cds = (i: number) => (f.strand === 1 ? at(f.start + frame + i) : complementBase(at(f.end - 1 - frame - i)))
+  const aaAt = (codon: number) => translateCodonWith(code, cds(codon * 3) + cds(codon * 3 + 1) + cds(codon * 3 + 2))
   const strandBase = (b: string) => (f.strand === 1 ? b : complementBase(b))
 
   if (type === 'SNP') {
     const off = offsetOf(refStart)
-    if (off >= len) return null
+    if (off < 0 || off >= len) return null
     const codon = Math.floor(off / 3)
     const j = off % 3
     const from = cds(codon * 3) + cds(codon * 3 + 1) + cds(codon * 3 + 2)
     const to = from.slice(0, j) + strandBase(alt) + from.slice(j + 1)
-    const aaFrom = translateCodon(from)
-    const aaTo = translateCodon(to)
+    // The first codon of a CDS that starts whole is read as methionine when
+    // it is one of its code's start codons (GTG and TTG in bacteria, ATA in
+    // vertebrate mitochondria), so a change between two starts keeps it.
+    // Without a /transl_table only ATG is taken as the start.
+    const first = codon === 0 && frame === 0
+    const starts = f.code ? code.starts : ['ATG']
+    const aaFrom = first && starts.includes(from.toUpperCase()) ? 'M' : translateCodonWith(code, from)
+    const aaTo = first && aaFrom === 'M' && starts.includes(to.toUpperCase()) ? 'M' : translateCodonWith(code, to)
     const effect: Effect = aaFrom === aaTo ? 'Synonymous'
       : aaTo === '*' ? 'Nonsense'
       : aaFrom === '*' ? 'Stop lost'
@@ -494,13 +508,13 @@ export function codingChange(type: VariantType, refStart: number, ref: string, a
   if (startOff < 0 || startOff > len) return null
   const codon = Math.floor(startOff / 3)
   const aa = codon * 3 + 2 < len ? aaAt(codon) : '?'
-  const frame = n % 3 !== 0
-  const effect: Effect = frame ? 'Frameshift' : type === 'Insertion' ? 'In-frame insertion' : 'In-frame deletion'
+  const shifts = n % 3 !== 0
+  const effect: Effect = shifts ? 'Frameshift' : type === 'Insertion' ? 'In-frame insertion' : 'In-frame deletion'
   const seq = type === 'Insertion' ? (f.strand === 1 ? alt : [...alt].reverse().map(complementBase).join('')) : ''
   return {
     feature: f.name,
     cdna: type === 'Insertion' ? `c.${startOff}_${startOff + 1}ins${seq}` : `c.${startOff + 1}${n > 1 ? `_${startOff + n}` : ''}del`,
-    protein: frame ? `${aa}${codon + 1}fs` : type === 'Insertion' ? `${aa}${codon + 1}ins${n / 3}` : `${aa}${codon + 1}del${n / 3}`,
+    protein: shifts ? `${aa}${codon + 1}fs` : type === 'Insertion' ? `${aa}${codon + 1}ins${n / 3}` : `${aa}${codon + 1}del${n / 3}`,
     effect,
   }
 }
@@ -572,14 +586,35 @@ export function fisherExact(a: number, b: number, c: number, d: number): number 
 
 /** Variants as CSV, one row each. */
 export function variantsCsv(vs: readonly Variant[]): string {
-  const head = ['Position', 'Type', 'Reference', 'Variant', 'Frequency', 'Coverage', 'Reads with variant', 'P-value', 'Strand bias P', 'Forward ref/alt', 'Reverse ref/alt', 'Mean quality', 'Features', 'cDNA change', 'Protein change', 'Effect', 'Tandem repeat', 'Homopolymer']
+  const head = ['Position', 'Type', 'Substitution', 'Reference', 'Variant', 'Frequency', 'Reference frequency', 'Coverage', 'Reads with variant', 'P-value', 'Strand bias P', 'Forward ref/alt', 'Reverse ref/alt', 'Mean quality', 'Features', 'cDNA change', 'Protein change', 'Effect', 'Tandem repeat', 'Homopolymer']
   const q = (s: string) => (/[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s)
   const rows = vs.map(v => [
-    String(v.position), v.type, v.ref || '-', v.alt || '-', v.frequency.toFixed(3), String(v.coverage), v.count.toFixed(1).replace(/\.0$/, ''),
+    String(v.position), v.type, substitutionKind(v) ?? '', v.ref || '-', v.alt || '-', v.frequency.toFixed(3), referenceFrequency(v).toFixed(3), String(v.coverage), v.count.toFixed(1).replace(/\.0$/, ''),
     v.pValue.toExponential(2), v.strandBiasP.toPrecision(3), `${v.forward.ref}/${v.forward.alt}`, `${v.reverse.ref}/${v.reverse.alt}`,
     v.meanQuality.toFixed(1), v.features.join('; '), v.coding?.cdna ?? '', v.coding?.protein ?? '', v.coding?.effect ?? '', v.repeat ?? '', v.homopolymer ? String(v.homopolymer) : '',
   ].map(q).join(','))
   return [head.join(','), ...rows].join('\n') + '\n'
+}
+
+/**
+ * A single-base change as a transition (purine to purine, A and G, or
+ * pyrimidine to pyrimidine, C and T) or a transversion (one to the other).
+ * Transitions are about twice as common in nature, so a Ts/Tv ratio far
+ * from that in a call set hints at sequencing errors. Null for indels and
+ * IUPAC calls.
+ */
+export function substitutionKind(v: Pick<Variant, 'type' | 'ref' | 'alt'>): 'Transition' | 'Transversion' | null {
+  if (v.type !== 'SNP' || v.ref.length !== 1 || v.alt.length !== 1) return null
+  const purine = (b: string) => (b === 'A' || b === 'G' ? 1 : b === 'C' || b === 'T' ? 0 : -1)
+  const a = purine(v.ref.toUpperCase())
+  const b = purine(v.alt.toUpperCase())
+  if (a < 0 || b < 0 || v.ref.toUpperCase() === v.alt.toUpperCase()) return null
+  return a === b ? 'Transition' : 'Transversion'
+}
+
+/** Share of the covering reads that show the reference here. */
+export function referenceFrequency(v: Pick<Variant, 'forward' | 'reverse' | 'coverage'>): number {
+  return v.coverage > 0 ? Math.min(1, (v.forward.ref + v.reverse.ref) / v.coverage) : 0
 }
 
 /** Identifies a variant across recomputations: type, position and alleles. */

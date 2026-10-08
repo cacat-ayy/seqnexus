@@ -3,7 +3,7 @@ import { computeConsensus } from './consensus'
 import { findTandemRepeats } from './repeats'
 import { testContig, testRow } from './testing'
 import {
-  callVariants, codingChange, DEFAULT_VARIANT_SETTINGS, fisherExact, poissonBinomialTail, variantsCsv, type RefFeature,
+  callVariants, codingChange, substitutionKind, DEFAULT_VARIANT_SETTINGS, fisherExact, poissonBinomialTail, variantsCsv, type RefFeature,
 } from './variants'
 import { DEFAULT_VERIFY, verifyClone, verifyCsv, verifyHtml } from './verify'
 
@@ -79,8 +79,8 @@ describe('variant calling', () => {
     const vs = call([testRow('a', 0, REF.slice(0, 6) + 'G' + REF.slice(7))])
     const csv = variantsCsv(vs).trim().split('\n')
     expect(csv).toHaveLength(2)
-    expect(csv[0]).toMatch(/^Position,Type,Reference,Variant/)
-    expect(csv[1]).toMatch(/^7,SNP,A,G,/)
+    expect(csv[0]).toMatch(/^Position,Type,Substitution,Reference,Variant/)
+    expect(csv[1]).toMatch(/^7,SNP,Transition,A,G,/)
   })
 })
 
@@ -91,6 +91,36 @@ describe('coding changes on the reverse strand', () => {
     const c = codingChange('SNP', 17, 'A', 'C', [rev], REF)!
     expect(c.cdna).toBe('c.1T>G')
     expect(c.protein.startsWith('L1')).toBe(true)
+  })
+})
+
+describe('coding changes with the feature\'s genetic code', () => {
+  // ATG TGG AAA TAA: M W K stop.
+  const SEQ = 'ATGTGGAAATAA'
+  const cds = (extra: Partial<RefFeature> = {}): RefFeature => ({ id: 'c', name: 'cox1', type: 'CDS', start: 0, end: 12, strand: 1, ...extra })
+
+  it('takes TGA for tryptophan in a mitochondrial CDS', () => {
+    // TGG > TGA at the third base of codon 2.
+    expect(codingChange('SNP', 5, 'G', 'A', [cds()], SEQ)!.effect).toBe('Nonsense')
+    const mito = codingChange('SNP', 5, 'G', 'A', [cds({ code: 5 })], SEQ)!
+    expect(mito.effect).toBe('Synonymous')
+    expect(mito.protein).toBe('W2W')
+  })
+
+  it('keeps a start codon its code allows', () => {
+    // ATG > GTG: a start in bacteria (table 11), lost without a code; ATG > AAG is no start.
+    expect(codingChange('SNP', 0, 'A', 'G', [cds()], SEQ)!.effect).toBe('Start lost')
+    expect(codingChange('SNP', 0, 'A', 'G', [cds({ code: 11 })], SEQ)!.effect).toBe('Synonymous')
+    expect(codingChange('SNP', 1, 'T', 'A', [cds({ code: 11 })], SEQ)!.effect).toBe('Start lost')
+  })
+
+  it('counts codons from /codon_start', () => {
+    // codon_start 2 on 'CATGTGG...': the first codon is ATG at base 1.
+    const f = cds({ end: 13, frame: 1 })
+    const c = codingChange('SNP', 4, 'T', 'C', [f], 'C' + SEQ)!
+    expect(c.cdna).toBe('c.4T>C')
+    expect(c.protein).toBe('W2R')
+    expect(codingChange('SNP', 0, 'C', 'A', [f], 'C' + SEQ)).toBeNull()
   })
 })
 
@@ -154,5 +184,15 @@ describe('clone verification', () => {
     const r = verifyClone(doc, computeConsensus(doc).bases, [CDS], { ...DEFAULT_VERIFY, bothStrands: true })!
     expect(r.verdict).toBe('incomplete')
     expect(r.features[0].bothStrands).toBe(0)
+  })
+})
+
+describe('substitution kinds', () => {
+  it('tells transitions from transversions', () => {
+    expect(substitutionKind({ type: 'SNP', ref: 'A', alt: 'G' })).toBe('Transition')
+    expect(substitutionKind({ type: 'SNP', ref: 'c', alt: 't' })).toBe('Transition')
+    expect(substitutionKind({ type: 'SNP', ref: 'A', alt: 'T' })).toBe('Transversion')
+    expect(substitutionKind({ type: 'SNP', ref: 'A', alt: 'R' })).toBeNull()
+    expect(substitutionKind({ type: 'Deletion', ref: 'A', alt: '' })).toBeNull()
   })
 })

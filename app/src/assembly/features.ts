@@ -6,16 +6,26 @@
 
 import type { AnnotationData } from '../models/Annotation'
 import { defaultColorForType } from '../models/Annotation'
+import { codeFromTranslTable } from '../codon/genetic-codes'
 import type { ContigDoc } from './types'
 import type { RefFeature, Variant } from './variants'
 import type { TandemRepeat } from './repeats'
 
 /** Features of a sequence, as the variant caller and verification want them. */
 export function refFeatures(annotations: readonly AnnotationData[]): RefFeature[] {
-  return annotations.map(a => ({
-    id: a.id, name: a.name, type: a.type, start: a.start, end: a.end,
-    strand: a.strand, color: a.color ?? defaultColorForType(a.type),
-  }))
+  return annotations.map(a => {
+    const f: RefFeature = {
+      id: a.id, name: a.name, type: a.type, start: a.start, end: a.end,
+      strand: a.strand, color: a.color ?? defaultColorForType(a.type),
+    }
+    // A coding feature's own genetic code and reading frame, so a variant in
+    // a mitochondrial CDS (TGA for tryptophan) is not called a stop.
+    const code = codeFromTranslTable(a.qualifiers)
+    if (code) f.code = code.id
+    const start = parseInt(a.qualifiers?.codon_start?.[0] ?? '', 10)
+    if (start === 2 || start === 3) f.frame = start - 1
+    return f
+  })
 }
 
 export interface ColumnFeature {
