@@ -9,6 +9,8 @@
  * back to the read's trace, so the trace can be drawn under each row.
  */
 
+import type { RefFeature } from './variants'
+
 export interface ContigRow {
   id: string
   /** The sequencing read this row was made from; null once that read is deleted, or for a plain sequence. */
@@ -40,6 +42,13 @@ export interface ContigReference {
   circular: boolean
   /** Reference bases across every column; '-' where reads have extra bases. */
   seq: string
+  /**
+   * The reference's features when it was mapped to, so the contig can draw
+   * them and verify the clone after the sequence is closed. The open
+   * sequence's own features are used while it is open (they may have been
+   * edited since).
+   */
+  features?: RefFeature[]
 }
 
 export interface ContigDoc {

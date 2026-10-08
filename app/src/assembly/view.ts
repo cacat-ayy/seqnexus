@@ -25,6 +25,8 @@ export interface ContigView {
   frame: 0 | 1 | 2
   /** Draw the reference sequence's features under it. */
   features: boolean
+  /** Draw each read's trimmed-off bases, faded, beyond its row. */
+  trimmed: boolean
   variants: VariantSettings
 }
 
@@ -38,6 +40,7 @@ export const DEFAULT_CONTIG_VIEW: ContigView = {
   translate: false,
   frame: 0,
   features: true,
+  trimmed: true,
   variants: DEFAULT_VARIANT_SETTINGS,
 }
 
@@ -60,6 +63,7 @@ export function sanitizeContigView(v: unknown): ContigView {
     translate: typeof x.translate === 'boolean' ? x.translate : d.translate,
     frame: x.frame === 1 || x.frame === 2 ? x.frame : 0,
     features: typeof x.features === 'boolean' ? x.features : d.features,
+    trimmed: typeof x.trimmed === 'boolean' ? x.trimmed : d.trimmed,
     variants: sanitizeVariants(x.variants),
   }
 }

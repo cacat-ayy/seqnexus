@@ -16,13 +16,17 @@
 import type { AssemblyReport, AssemblySettings, ContigDoc } from './types'
 import type { MappingReport } from '../ngs/builder'
 import type { DeNovoReport } from '../ngs/denovo/types'
+import { sanitizeGrouping, type NameGrouping } from './groups'
+import { sanitizePlateVerify, type PlateVerifySettings } from './plate'
 
 /** What went into an assembly. */
 export interface AssemblyInputs {
   /** The reads assembled, in the order given. */
   readIds: string[]
-  /** Map to reference only: the sequence mapped to. */
+  /** Map to reference only: the sequence mapped to (the first, when there were several). */
   reference: { tabId: string | null; name: string } | null
+  /** Mapped to several references, each clone (or read) to the one it matches best: all of them, in order. */
+  references?: { tabId: string | null; name: string }[]
 }
 
 export type UnplacedRead = AssemblyReport['unplaced'][number]
@@ -35,6 +39,8 @@ export interface AssemblyRun {
   inputs: AssemblyInputs
   /** Reads that went in but are in no contig, each with why. */
   unplaced: UnplacedRead[]
+  /** Reads grouped into clones by name, one contig per clone (a plate). Absent when not grouped. */
+  grouping?: NameGrouping
 }
 
 /**
@@ -101,6 +107,8 @@ export interface AssemblyRecord extends AssemblyRun {
    * them), stored with it.
    */
   denovo?: DeNovoReport
+  /** How its clones are verified on the overview (plate.ts), once changed from the default. */
+  verify?: PlateVerifySettings
 }
 
 /** The first sample of an NGS mapping, or undefined for a Sanger assembly. */
@@ -213,6 +221,11 @@ export function sanitizeAssembly(raw: unknown): AssemblyRecord | null {
   if (contigIds.length === 0 && samples.length === 0) return null
   const inputs = (x.inputs ?? {}) as Partial<AssemblyInputs>
   const ref = inputs.reference
+  const refName = (r: unknown) => (r && typeof r === 'object' && isString((r as { name?: unknown }).name)
+    ? { name: (r as { name: string }).name, tabId: isString((r as { tabId?: unknown }).tabId) ? (r as { tabId: string }).tabId : null }
+    : null)
+  const references = Array.isArray(inputs.references) ? inputs.references.map(refName).filter((r): r is NonNullable<typeof r> => !!r) : []
+  const grouping = sanitizeGrouping(x.grouping)
   const s = x.settings as Partial<AssemblySettings> | null | undefined
   const num = (v: unknown): v is number => typeof v === 'number' && Number.isFinite(v)
   return {
@@ -227,10 +240,11 @@ export function sanitizeAssembly(raw: unknown): AssemblyRecord | null {
       : null,
     inputs: {
       readIds: Array.isArray(inputs.readIds) ? inputs.readIds.filter(isString) : [],
-      reference: ref && typeof ref === 'object' && isString(ref.name)
-        ? { name: ref.name, tabId: isString(ref.tabId) ? ref.tabId : null }
-        : null,
+      reference: refName(ref),
+      ...(references.length > 1 ? { references } : {}),
     },
+    ...(grouping ? { grouping } : {}),
+    ...(sanitizePlateVerify(x.verify) ? { verify: sanitizePlateVerify(x.verify)! } : {}),
     unplaced: Array.isArray(x.unplaced)
       ? x.unplaced
         .filter(u => u && isString(u.name) && isString(u.reason))

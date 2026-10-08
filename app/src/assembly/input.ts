@@ -9,8 +9,20 @@ import { buildLayout, inTrim, KIND_DELETE, KIND_INSERT } from '../sanger/layout'
 import { MANUAL_QUALITY } from '../sanger/edits'
 import type { AssemblyInput } from './types'
 
-export function readInput(read: SequencingRead): AssemblyInput {
-  const { data, edits, trimStart, trimEnd } = read
+type ReadForInput = Pick<SequencingRead, 'id' | 'data' | 'edits' | 'trimStart' | 'trimEnd' | 'reversed'>
+
+/** A read as it goes into an assembly: as trimmed and edited now. */
+export function readInput(read: ReadForInput): AssemblyInput {
+  return readInputWithTrim(read, [read.trimStart, read.trimEnd])
+}
+
+/**
+ * The read with another trim (called-base indices, half-open) in place of
+ * its own: [0, length] gives the whole read, trimmed ends included.
+ */
+export function readInputWithTrim(read: ReadForInput, trim: readonly [number, number]): AssemblyInput {
+  const { data, edits } = read
+  const [trimStart, trimEnd] = trim
   const L = buildLayout(data, edits)
   let seq = ''
   const qual: number[] = []

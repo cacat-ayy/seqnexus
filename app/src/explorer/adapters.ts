@@ -299,9 +299,10 @@ export function assemblyToItem(assembly: Assembly, contigs: readonly Contig[], c
   }
   const reads = contigs.reduce((n, c) => n + c.doc.rows.length, 0)
   const width = contigs.reduce((n, c) => n + c.doc.width, 0)
-  const stats = single ? [formatCount(reads, 'read')] : [formatCount(contigs.length, 'contig'), formatCount(reads, 'read')]
+  const stats = single ? [formatCount(reads, 'read')] : [formatCount(contigs.length, assembly.grouping ? 'clone' : 'contig'), formatCount(reads, 'read')]
   const ref = assembly.inputs.reference
-  stats.push(assembly.method === 'reference' && ref ? `vs ${ref.name}` : 'de novo')
+  const refCount = assembly.inputs.references?.length ?? 0
+  stats.push(assembly.method !== 'reference' ? 'de novo' : refCount > 1 ? `vs ${refCount} references` : ref ? `vs ${ref.name}` : 'mapped')
   if (single) stats.push(formatBases(width))
   const badges: ItemBadge[] = []
   const left = assembly.unplaced.length

@@ -37,7 +37,8 @@ interface Props {
   onOpenRow: (row: number) => void
   onZoom: (step: number) => void
   onViewport: (start: number, end: number) => void
-  onContextMenu: (at: { x: number; y: number; row: number; col: number; gutter: boolean }) => void
+  /** `col` is a column of the contig; `at` the column under the pointer, which may lie in the margins (trimmed ends). */
+  onContextMenu: (at: { x: number; y: number; row: number; col: number; at: number; gutter: boolean }) => void
   onKeyDown: (e: React.KeyboardEvent) => void
 }
 
@@ -58,10 +59,15 @@ const ContigCanvas = forwardRef<ContigCanvasHandle, Props>(function ContigCanvas
   live.current = props
   focusedRef.current = focused
 
+  // Room before column 0 for trimmed ends: the scroller is that much wider,
+  // and the columns' scroll position is the scroller's less it.
+  const leadPx = input.margins.left * g.cellW
+  const lead = () => live.current.input.margins.left * live.current.input.geo.cellW
+
   // ---- Painting ----
   const scrollState = (sz: StageSize): PaintState => {
     const el = scrollerRef.current
-    return { scrollX: el?.scrollLeft ?? 0, scrollY: el?.scrollTop ?? 0, w: sz.w, h: sz.h }
+    return { scrollX: (el?.scrollLeft ?? 0) - lead(), scrollY: el?.scrollTop ?? 0, w: sz.w, h: sz.h }
   }
   const { size, bodyRef, marksRef, schedule } = useCanvasLayers(scrollerRef, {
     body: (ctx, t, sz) => paintContig(ctx, live.current.input, t, scrollState(sz)),
@@ -83,20 +89,30 @@ const ContigCanvas = forwardRef<ContigCanvasHandle, Props>(function ContigCanvas
   const visibleColumns = useCallback((): [number, number] => {
     const el = scrollerRef.current
     if (!el) return [0, 0]
-    return [el.scrollLeft / g.cellW, (el.scrollLeft + size.w - GUTTER) / g.cellW]
-  }, [g.cellW, size.w])
+    const x = el.scrollLeft - leadPx
+    return [x / g.cellW, (x + size.w - GUTTER) / g.cellW]
+  }, [g.cellW, size.w, leadPx])
   const publish = useCallback(() => {
     const [a, b] = visibleColumns()
-    live.current.onViewport(a, Math.min(live.current.input.doc.width, b))
+    live.current.onViewport(Math.max(0, a), Math.min(live.current.input.doc.width, b))
   }, [visibleColumns])
   useLayoutEffect(() => { publish() }, [publish, size, input])
   useLayoutEffect(() => {
     const a = zoomAnchor.current
     const el = scrollerRef.current
     if (!a || !el) return
-    el.scrollLeft = a.col * g.cellW - (a.px - GUTTER)
+    el.scrollLeft = a.col * g.cellW - (a.px - GUTTER) + leadPx
     zoomAnchor.current = null
-  }, [g.cellW])
+  }, [g.cellW]) // eslint-disable-line react-hooks/exhaustive-deps
+  // When the margin changes (trimmed ends shown or hidden, a read extended), keep the columns in view where they were.
+  const lastLead = useRef<number | null>(null)
+  useLayoutEffect(() => {
+    const el = scrollerRef.current
+    if (!el) return
+    if (lastLead.current === null) el.scrollLeft = leadPx
+    else if (zoomAnchor.current === null && leadPx !== lastLead.current) el.scrollLeft += leadPx - lastLead.current
+    lastLead.current = leadPx
+  }, [leadPx])
 
   const onScroll = () => { schedule(true); publish() }
 
@@ -107,12 +123,13 @@ const ContigCanvas = forwardRef<ContigCanvasHandle, Props>(function ContigCanvas
     const x = clientX - r.left
     const y = clientY - r.top
     const p = live.current.input
-    const col = Math.max(0, Math.min(p.doc.width - 1, Math.floor((x - GUTTER + el.scrollLeft) / p.geo.cellW)))
+    const at = Math.floor((x - GUTTER + el.scrollLeft - lead()) / p.geo.cellW)
+    const col = Math.max(0, Math.min(p.doc.width - 1, at))
     const inHeader = y < p.geo.headerH
     const row = inHeader ? -1 : Math.floor((y - p.geo.headerH + el.scrollTop) / p.geo.pitch)
     const valid = row >= 0 && row < p.doc.rows.length
     const onBases = valid && y - rowTop(row, p.geo, { scrollX: 0, scrollY: el.scrollTop, w: 0, h: 0 }) < ROW_H
-    return { x, y, col, row: valid ? row : -1, inHeader, gutter: x < GUTTER, onBases }
+    return { x, y, col, at, row: valid ? row : -1, inHeader, gutter: x < GUTTER, onBases }
   }
 
   const onPointerDown = (e: React.PointerEvent) => {
@@ -190,7 +207,7 @@ const ContigCanvas = forwardRef<ContigCanvasHandle, Props>(function ContigCanvas
     const inside = s && h.col >= s.c0 && h.col < s.c1 && (s.r0 < 0 || (h.row >= s.r0 && h.row < s.r1))
     if (!inside && !h.gutter) p.onSelect(null, { row: h.row, col: h.col })
     if (!inside && h.gutter && h.row >= 0) p.onSelect({ r0: h.row, r1: h.row + 1, c0: 0, c1: p.input.doc.width }, null)
-    p.onContextMenu({ x: e.clientX, y: e.clientY, row: h.row, col: h.col, gutter: h.gutter })
+    p.onContextMenu({ x: e.clientX, y: e.clientY, row: h.row, col: h.col, at: h.at, gutter: h.gutter })
   }
 
   useEffect(() => {
@@ -201,7 +218,7 @@ const ContigCanvas = forwardRef<ContigCanvasHandle, Props>(function ContigCanvas
       e.preventDefault()
       const r = el.getBoundingClientRect()
       const px = e.clientX - r.left
-      zoomAnchor.current = { col: (el.scrollLeft + px - GUTTER) / live.current.input.geo.cellW, px }
+      zoomAnchor.current = { col: (el.scrollLeft - lead() + px - GUTTER) / live.current.input.geo.cellW, px }
       live.current.onZoom(e.deltaY < 0 ? 1 : -1)
     }
     el.addEventListener('wheel', onWheel, { passive: false })
@@ -212,7 +229,7 @@ const ContigCanvas = forwardRef<ContigCanvasHandle, Props>(function ContigCanvas
     revealColumn(col, row) {
       const el = scrollerRef.current
       if (!el) return
-      const x = col * g.cellW
+      const x = col * g.cellW + leadPx
       const viewW = size.w - GUTTER
       if (x < el.scrollLeft + 10 || x + g.cellW > el.scrollLeft + viewW - 10) el.scrollLeft = Math.max(0, x - viewW / 2)
       if (row !== undefined && row >= 0) {
@@ -223,13 +240,13 @@ const ContigCanvas = forwardRef<ContigCanvasHandle, Props>(function ContigCanvas
     },
     scrollToColumn(col) {
       const el = scrollerRef.current
-      if (el) el.scrollLeft = Math.max(0, col * g.cellW)
+      if (el) el.scrollLeft = Math.max(0, col * g.cellW + leadPx)
     },
     focus() { scrollerRef.current?.focus({ preventScroll: true }) },
     visibleColumns,
-  }), [g, size, visibleColumns])
+  }), [g, size, visibleColumns, leadPx])
 
-  const contentW = GUTTER + input.doc.width * g.cellW + 40
+  const contentW = GUTTER + (input.margins.left + input.doc.width + input.margins.right) * g.cellW + 40
   const contentH = g.headerH + input.doc.rows.length * g.pitch + 24
   return (
     <div

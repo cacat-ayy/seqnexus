@@ -11,12 +11,15 @@
 import { alignBanded, bandAround, GLOCAL, kmerIndex, seedBothStrands, type PairAlignment } from './align'
 import { addAligned, emptyPileup, orient, toDoc } from './pileup'
 import type { AssemblyInput, AssemblyReport, AssemblySettings, ContigDoc } from './types'
+import type { RefFeature } from './variants'
 
 export interface MapReference {
   name: string
   tabId: string | null
   bases: string
   circular: boolean
+  /** Kept with the contig (see ContigReference). */
+  features?: RefFeature[]
 }
 
 export function mapToReference(
@@ -64,7 +67,10 @@ export function mapToReference(
     addAligned(pile, orient(p.input, p.reversed), p.aln, colOf, `row${i + 1}`)
     colOf = refColumns(pile.ref!)
   })
-  const doc: ContigDoc = toDoc(pile, 'reference', { name: ref.name, tabId: ref.tabId, length: L, circular: ref.circular })
+  const doc: ContigDoc = toDoc(pile, 'reference', {
+    name: ref.name, tabId: ref.tabId, length: L, circular: ref.circular,
+    ...(ref.features?.length ? { features: ref.features } : {}),
+  })
   return { contigs: placed.length ? [{ name: `${ref.name} assembly`, doc }] : [], unplaced }
 }
 

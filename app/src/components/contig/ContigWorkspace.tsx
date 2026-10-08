@@ -7,6 +7,11 @@
  * contig: type a base, '-' or Delete for a gap, Space to insert a gap
  * column. Edits change the contig's copies of the reads, never the reads,
  * and each is a named undo step (Ctrl+Z / Ctrl+Y).
+ *
+ * Each read's trimmed-off bases are shown faded beyond its row. Right-click
+ * one to extend the read to it, or a base of the read to trim it there: the
+ * read is placed again with the new trim (assembly/place.ts), also an undo
+ * step, and also in the contig only.
  */
 
 import '../alignment/AlignmentWorkspace.css'
@@ -17,6 +22,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   ChevronDown, ChevronLeft, ChevronRight, ClipboardCopy, Columns3, Download, FileOutput, Languages, Layers, Minus,
   PanelRightClose, PanelRightOpen, Pencil, Plus, Redo2, Search, Table2, Trash2, Undo2, X, Activity, ShieldCheck, Tags, ListTree,
+  Scissors, MoveHorizontal,
 } from 'lucide-react'
 import { useEditorStore, type Contig, type SequencingRead } from '../../store'
 import { notify } from '../../toast'
@@ -28,7 +34,9 @@ import { computeConsensus, consensusSequence } from '../../assembly/consensus'
 import { deleteColumns, insertColumns, removeRows, setCell, setCells } from '../../assembly/edit'
 import { contigToAlignment } from '../../assembly/export'
 import { CONTIG_ZOOM, type ContigView } from '../../assembly/view'
-import type { ContigRow } from '../../assembly/types'
+import { DEFAULT_ASSEMBLY, type ContigRow } from '../../assembly/types'
+import { readInputWithTrim } from '../../assembly/input'
+import { clipColumns, cutRow, extendedTrim, replaceRow, rowClips, type ClipBase } from '../../assembly/place'
 import { writeAlignment } from '../../msa/formats'
 import { findInColumns, toFasta } from '../../sanger/edits'
 import { readQc } from '../../sanger/qc'
@@ -58,6 +66,8 @@ interface Props {
 }
 
 const nf = new Intl.NumberFormat()
+/** Most columns of margin kept for trimmed ends past the contig's edges. */
+const MAX_MARGIN = 1500
 const BASE_KEY = /^[ACGTNRYSWKMBDHV]$/
 
 export default function ContigWorkspace({ contig, onClose, onExportPrompt, findRequested, onFindClosed }: Props) {
@@ -75,7 +85,7 @@ export default function ContigWorkspace({ contig, onClose, onExportPrompt, findR
   const [inspectorOpen, setInspectorOpen] = useState(true)
   const [tab, setTab] = useState<'contig' | 'column' | 'variants'>('contig')
   const [verifyOpen, setVerifyOpen] = useState(false)
-  const [menu, setMenu] = useState<{ x: number; y: number; row: number; col: number; gutter: boolean } | null>(null)
+  const [menu, setMenu] = useState<{ x: number; y: number; row: number; col: number; at: number; gutter: boolean } | null>(null)
   const [exportOpen, setExportOpen] = useState(false)
   const [nameDraft, setNameDraft] = useState<string | null>(null)
   const exportRef = useRef<HTMLDivElement>(null)
@@ -98,6 +108,28 @@ export default function ContigWorkspace({ contig, onClose, onExportPrompt, findR
     if (!traceCache.has(row.id)) traceCache.set(row.id, rowTrace(row, row.readId ? reads.get(row.readId)?.data : undefined))
     return traceCache.get(row.id) ?? null
   }, [traceCache, reads])
+  // Each row's trimmed-off bases, from its read's trace, and where to show them.
+  const clipCache = useMemo(() => new Map<string, ReturnType<typeof clipColumns> | null>(), [doc, reads]) // eslint-disable-line react-hooks/exhaustive-deps
+  const clipsOf = useCallback((row: ContigRow) => {
+    if (!clipCache.has(row.id)) {
+      const read = row.readId ? reads.get(row.readId) : undefined
+      const clips = read ? rowClips(row, readInputWithTrim(read, [0, read.data.bases.length])) : null
+      clipCache.set(row.id, clips && (clips.left.length || clips.right.length) ? clipColumns(doc, row, clips) : null)
+    }
+    return clipCache.get(row.id) ?? null
+  }, [clipCache, reads, doc])
+  // Room for trimmed ends that stick out past the contig's first or last column (at most MAX_MARGIN).
+  const margins = useMemo(() => {
+    if (!view.trimmed) return { left: 0, right: 0 }
+    let left = 0
+    let right = 0
+    for (const row of doc.rows) {
+      const c = clipsOf(row)
+      if (c?.left.length) left = Math.max(left, -c.left[0].col)
+      if (c?.right.length) right = Math.max(right, c.right[c.right.length - 1].col + 1 - doc.width)
+    }
+    return { left: Math.min(MAX_MARGIN, left), right: Math.min(MAX_MARGIN, right) }
+  }, [view.trimmed, doc, clipsOf])
   const codons = useMemo(() => {
     if (!view.translate) return null
     const cols: number[] = []
@@ -110,7 +142,8 @@ export default function ContigWorkspace({ contig, onClose, onExportPrompt, findR
   }, [view.translate, view.frame, cons, doc.width])
   const refTabId = doc.reference?.tabId ?? null
   const refTab = useEditorStore(s => (refTabId ? s.tabs.find(t => t.id === refTabId) : undefined))
-  const features = useMemo(() => (refTab ? refFeatures(refTab.doc.annotations.map(a => a.toData())) : []), [refTab])
+  // The open reference's features, or the copy the contig kept when it was mapped.
+  const features = useMemo(() => (refTab ? refFeatures(refTab.doc.annotations.map(a => a.toData())) : doc.reference?.features ?? []), [refTab, doc.reference])
   const colFeatures = useMemo(() => featuresInColumns(doc, features), [doc, features])
   const variants = useMemo(() => callVariants(doc, cons.bases, features, view.variants), [doc, cons, features, view.variants])
   const variantCols = useMemo(() => variants.map(v => [v.c0, v.c1] as [number, number]), [variants])
@@ -122,8 +155,8 @@ export default function ContigWorkspace({ contig, onClose, onExportPrompt, findR
     return { name: row.name, verdict: read ? readQc(read.data).verdict : undefined }
   }, [reads])
   const input: PaintInput = useMemo(
-    () => ({ doc, cons, view, geo, refPos, traces, codons, readNames, features: view.features ? colFeatures : [], variants: variantCols }),
-    [doc, cons, view, geo, refPos, traces, codons, readNames, colFeatures, variantCols],
+    () => ({ doc, cons, view, geo, refPos, traces, codons, readNames, features: view.features ? colFeatures : [], variants: variantCols, clips: view.trimmed ? clipsOf : null, margins }),
+    [doc, cons, view, geo, refPos, traces, codons, readNames, colFeatures, variantCols, clipsOf, margins],
   )
 
   // Edits can remove rows or columns under the selection.
@@ -163,6 +196,29 @@ export default function ContigWorkspace({ contig, onClose, onExportPrompt, findR
     edit(d => removeRows(d, ids), ids.length === 1 ? 'Remove a read' : `Remove ${ids.length} reads`)
     setSelection(null)
     notify.success(ids.length === 1 ? 'Removed the read from the contig' : `Removed ${ids.length} reads from the contig`, { action: undoAction })
+  }
+
+  // ---- Trims: place a read again with one end moved ----
+  const assemblySettings = assembly?.settings ?? { ...DEFAULT_ASSEMBLY, minIdentity: doc.reference ? 0.8 : 0.9 }
+  const cutAt = (row: ContigRow, col: number, keep: 'from' | 'to') => {
+    const next = cutRow(doc, row.id, col, keep)
+    if (!next || next === doc) return
+    edit(() => next, 'Trim a read')
+    setSelection(null)
+    notify.success(`Trimmed ${row.name}: ${next.rows.find(x => x.id === row.id)!.seq.replace(/-/g, '').length} bases left in the contig`, { action: undoAction })
+  }
+  const retrim = (row: ContigRow, trim: [number, number] | null, label: string) => {
+    const read = row.readId ? reads.get(row.readId) : undefined
+    if (!read || !trim) return
+    const r = replaceRow(doc, row.id, readInputWithTrim(read, trim), assemblySettings)
+    if ('reason' in r) { notify.warning(`${row.name} cannot be placed with that trim`, { detail: r.reason }); return }
+    const edited = row.seq !== row.orig
+    edit(() => r.doc, label)
+    setSelection(null)
+    notify.success(`${label}: ${row.name} now has ${r.doc.rows.find(x => x.id === row.id)!.seq.replace(/-/g, '').length} bases in the contig`, {
+      action: undoAction,
+      ...(edited ? { detail: 'Its edits in the contig were dropped, since its bases were laid out again. Undo puts them back.' } : {}),
+    })
   }
 
   // ---- Export ----
@@ -429,6 +485,20 @@ export default function ContigWorkspace({ contig, onClose, onExportPrompt, findR
   const undoTop = contig.undoStack[contig.undoStack.length - 1]
   const redoTop = contig.redoStack[contig.redoStack.length - 1]
   const menuRows = selection && selection.r0 >= 0 ? doc.rows.slice(selection.r0, selection.r1) : menu && menu.row >= 0 ? [doc.rows[menu.row]] : []
+  // The trim actions at the place right-clicked: a trimmed-off base, or a base of the read.
+  const menuTrim = (() => {
+    if (!menu || menu.row < 0 || menu.gutter || menuRows.length !== 1) return null
+    const row = doc.rows[menu.row]
+    const read = row?.readId ? reads.get(row.readId) : undefined
+    if (!row || !read) return null
+    const clips = clipsOf(row)
+    const clipped: ClipBase | undefined = view.trimmed ? [...(clips?.left ?? []), ...(clips?.right ?? [])].find(b => b.col === menu.at) : undefined
+    const k = menu.at - row.start
+    // A base of the read under the pointer, or the nearest one before it (a gap has none).
+    let src = -1
+    if (k >= 0 && k < row.seq.length) for (let j = k; j >= 0 && src < 0; j--) src = row.src[j]
+    return { row, clipped, src, whole: [0, read.data.bases.length] as [number, number], hasClips: !!clips }
+  })()
 
   return (
     <div className="aw cw">
@@ -522,6 +592,10 @@ export default function ContigWorkspace({ contig, onClose, onExportPrompt, findR
         {view.traces && (
           <input type="range" className="aw-zoom tw-height" min={30} max={160} step={2} value={view.traceHeight} aria-label="Trace height" title="Trace height" onChange={e => onView({ traceHeight: Number(e.target.value) })} />
         )}
+        <button className={`aw-tool-btn ${view.trimmed ? 'active' : ''}`} aria-pressed={view.trimmed} onClick={() => onView({ trimmed: !view.trimmed })}
+          title="Show each read's trimmed-off bases, faded, beyond its row. Right-click one to extend the read to it, or a base of the read to trim it there">
+          <Scissors size={13} /> Trimmed ends
+        </button>
         {colFeatures.length > 0 && (
           <button className={`aw-tool-btn ${view.features ? 'active' : ''}`} aria-pressed={view.features} onClick={() => onView({ features: !view.features })} title="Show the reference's features under it">
             <Tags size={13} /> Features
@@ -637,6 +711,27 @@ export default function ContigWorkspace({ contig, onClose, onExportPrompt, findR
             )}
             {editing && selection && selection.r0 < 0 && (
               <MenuItem icon={<Trash2 size={13} />} danger onSelect={() => edit(d => deleteColumns(d, selection.c0, selection.c1), 'Delete columns')}>Delete the selected columns</MenuItem>
+            )}
+            {menuTrim && (menuTrim.clipped || menuTrim.src >= 0 || menuTrim.hasClips) && <MenuSeparator />}
+            {menuTrim?.clipped && menuTrim.clipped.src >= 0 && (
+              <MenuItem icon={<MoveHorizontal size={13} />} onSelect={() => retrim(menuTrim.row, extendedTrim(menuTrim.row, menuTrim.clipped!.src), 'Extend a read')}>
+                Extend the read to here
+              </MenuItem>
+            )}
+            {menuTrim && menuTrim.src >= 0 && (
+              <>
+                <MenuItem icon={<Scissors size={13} />} onSelect={() => cutAt(menuTrim.row, menu.at, 'from')}>
+                  Trim the read before this base
+                </MenuItem>
+                <MenuItem icon={<Scissors size={13} />} onSelect={() => cutAt(menuTrim.row, menu.at, 'to')}>
+                  Trim the read after this base
+                </MenuItem>
+              </>
+            )}
+            {menuTrim?.hasClips && (
+              <MenuItem icon={<MoveHorizontal size={13} />} onSelect={() => retrim(menuTrim.row, menuTrim.whole, 'Use the whole read')}>
+                Use the whole read, trimmed ends included
+              </MenuItem>
             )}
             {menuRows.length > 0 && menuRows.length < doc.rows.length && (
               <MenuItem icon={<Trash2 size={13} />} danger onSelect={() => removeReads(menuRows.map(r => r.id))}>

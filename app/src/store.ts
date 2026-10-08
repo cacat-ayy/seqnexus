@@ -43,6 +43,7 @@ import type { DesignResult } from './primers/design/types'
 import type { ContigDoc } from './assembly/types'
 import { DEFAULT_CONTIG_VIEW, type ContigView } from './assembly/view'
 import { runFromDocs, type AssemblyRecord, type AssemblyRun, type NgsMapping } from './assembly/container'
+import type { PlateVerifySettings } from './assembly/plate'
 import type { DeNovoReport } from './ngs/denovo/types'
 import type { KmerSpectrum } from './ngs/denovo/spectrum'
 import type { ReadSetRecord } from './ngs/types'
@@ -1345,6 +1346,8 @@ interface EditorStore {
   setActiveAssembly: (id: string | null) => void
   /** Rename an assembly; one with a single contig renames the contig too. */
   renameAssembly: (id: string, name: string) => void
+  /** How an assembly's clones are verified on its overview. Not an undo step, like a view setting. */
+  setAssemblyVerify: (id: string, verify: PlateVerifySettings) => void
   /** Delete an assembly with its contigs, into the Recently deleted buffer. */
   removeAssembly: (id: string) => void
   /**
@@ -4100,6 +4103,7 @@ export const useEditorStore = create<EditorStore>((set, get) => {
         settings: spec.settings ?? null,
         inputs: spec.inputs ?? shown.inputs,
         unplaced: spec.unplaced ?? [],
+        ...(spec.grouping ? { grouping: spec.grouping } : {}),
       }
       set(s => ({ assemblies: [...s.assemblies, assembly], contigs: [...s.contigs, ...made] }))
       get().openAssembly(assemblyId)
@@ -4173,6 +4177,10 @@ export const useEditorStore = create<EditorStore>((set, get) => {
       })
     },
 
+    setAssemblyVerify(id, verify) {
+      set(s => ({ assemblies: s.assemblies.map(a => (a.id === id ? { ...a, verify } : a)) }))
+    },
+
     removeAssembly(id) {
       set(s => {
         const index = s.assemblies.findIndex(a => a.id === id)
@@ -4222,7 +4230,10 @@ export const useEditorStore = create<EditorStore>((set, get) => {
         })
         if (wasOpen) get().openAssembly(id)
       }
-      swap({ ...before, ...run, contigIds: made.map(c => c.id), modifiedAt: now }, oldIds, made)
+      // A run without grouping replaces one with it, so the old grouping must not stay behind.
+      const { grouping: _old, ...kept } = before
+      void _old
+      swap({ ...kept, ...run, contigIds: made.map(c => c.id), modifiedAt: now }, oldIds, made)
       return () => {
         if (!get().assemblies.some(a => a.id === id)) return
         swap(before, new Set(made.map(c => c.id)), oldContigs)

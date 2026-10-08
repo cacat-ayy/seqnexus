@@ -25,6 +25,8 @@ import { contigSummary } from '../../assembly/container'
 import { computeConsensus, consensusSequence } from '../../assembly/consensus'
 import MappingReport from '../ngs/MappingReport'
 import { revealOnOpen } from '../ngs/reveal'
+import { describeGrouping } from '../../assembly/groups'
+import ClonesSection from './ClonesSection'
 
 const AssembleDialog = lazy(() => import('./AssembleDialog'))
 const MappingViewer = lazy(() => import('../ngs/MappingViewer'))
@@ -101,6 +103,8 @@ export default function AssemblyOverview({ assembly, onClose }: Props) {
   const leftHere = left.flatMap(u => (u.readId && readById.has(u.readId) ? [u.readId] : []))
   const ref = assembly.inputs.reference
   const refTab = ref?.tabId ? tabs.find(t => t.id === ref.tabId) : undefined
+  const refList = assembly.inputs.references ?? (ref ? [ref] : [])
+  const unit = assembly.grouping ? (contigs.length === 1 ? 'clone' : 'clones') : contigs.length === 1 ? 'contig' : 'contigs'
   const s = assembly.settings
 
   const commitName = () => {
@@ -126,7 +130,7 @@ export default function AssemblyOverview({ assembly, onClose }: Props) {
           }}
           size={Math.max(6, (nameDraft ?? assembly.name).length)}
         />
-        <span className="aw-chip">{ngs && samples.length === 1 && ngs.report.importedFrom ? 'Imported' : assembly.method === 'reference' ? `Mapped to ${ref?.name ?? 'a reference'}` : 'De novo'}</span>
+        <span className="aw-chip">{ngs && samples.length === 1 && ngs.report.importedFrom ? 'Imported' : assembly.method === 'reference' ? (refList.length > 1 ? `Mapped to ${refList.length} references` : `Mapped to ${ref?.name ?? 'a reference'}`) : 'De novo'}</span>
         <span className="aw-muted">
           {ngs && assembly.denovo && samples.length === 1
             ? <>{nf.format(assembly.denovo.contigs.length)} {assembly.denovo.contigs.length === 1 ? 'contig' : 'contigs'} · {nf.format(ngs.report.mapped)} of {nf.format(ngs.report.reads)} reads mapped back</>
@@ -134,7 +138,7 @@ export default function AssemblyOverview({ assembly, onClose }: Props) {
             ? samples.length > 1
               ? `${nf.format(samples.length)} samples`
               : `${nf.format(ngs.report.mapped)} of ${nf.format(ngs.report.reads)} reads mapped`
-            : <>{nf.format(contigs.length)} {contigs.length === 1 ? 'contig' : 'contigs'} · {nf.format(placed)} of {nf.format(inputCount || placed)} reads placed</>}
+            : <>{nf.format(contigs.length)} {unit} · {nf.format(placed)} of {nf.format(inputCount || placed)} reads placed</>}
         </span>
         {ngs && (
           <div className="aw-seg mv-switch" role="radiogroup" aria-label="Page">
@@ -204,17 +208,17 @@ export default function AssemblyOverview({ assembly, onClose }: Props) {
           <SamplesPage assembly={assembly} onOpen={openSample} onAdd={() => setAdding(true)} />
         </Suspense>
       ) : ngs ? <div className="ao-body"><MappingReport key={ngs.storageId} ngs={ngs} name={samples.length > 1 ? `${assembly.name} ${ngs.readSetName}` : assembly.name} onOpenReference={viewable ? i => showMapping({ page: 'reads', ref: i }) : undefined} /></div> : <div className="ao-body">
+        {assembly.method === 'reference' ? <ClonesSection assembly={assembly} contigs={contigs} /> : (
         <section className="ao-section">
-          <h3 className="ao-title">Contigs</h3>
+          <h3 className="ao-title">{assembly.grouping ? 'Clones' : 'Contigs'}</h3>
           <div className="ao-table-wrap">
             <table className="rs-table ao-table">
               <thead>
                 <tr>
-                  <th>Contig</th>
+                  <th>{assembly.grouping ? 'Clone' : 'Contig'}</th>
                   <th className="num">Reads</th>
                   <th className="num" title="Length of the consensus">Consensus</th>
                   <th className="num" title="Mean number of reads over the columns some read spans">Mean depth</th>
-                  {assembly.method === 'reference' && <th className="num" title="Share of the reference's bases some read spans">Reference covered</th>}
                   <th />
                 </tr>
               </thead>
@@ -228,7 +232,6 @@ export default function AssemblyOverview({ assembly, onClose }: Props) {
                     <td className="num">{nf.format(summary.reads)}</td>
                     <td className="num">{nf.format(consensus)} bp</td>
                     <td className="num">{summary.meanDepth.toFixed(1)}×</td>
-                    {assembly.method === 'reference' && <td className="num">{summary.referenceCovered === null ? '-' : pct(summary.referenceCovered)}</td>}
                     <td className="ao-actions" onClick={e => e.stopPropagation()}>
                       {contigs.length > 1 && (
                         <button className="aw-icon-btn" onClick={() => useEditorStore.getState().extractContig(contig.id)}
@@ -248,6 +251,7 @@ export default function AssemblyOverview({ assembly, onClose }: Props) {
             </table>
           </div>
         </section>
+        )}
 
         <section className="ao-section">
           <h3 className="ao-title">
@@ -294,7 +298,7 @@ export default function AssemblyOverview({ assembly, onClose }: Props) {
           <dl className="ao-facts">
             <dt>Method</dt>
             <dd>{assembly.method === 'reference' ? 'Mapped to a reference' : 'De novo, reads joined where they overlap'}</dd>
-            {assembly.method === 'reference' && (
+            {assembly.method === 'reference' && refList.length <= 1 && (
               <>
                 <dt>Reference</dt>
                 <dd>
@@ -303,6 +307,29 @@ export default function AssemblyOverview({ assembly, onClose }: Props) {
                     ? <button className="ao-link" onClick={() => useEditorStore.getState().setActiveTab(refTab.id)}>Open</button>
                     : <span className="aw-muted"> (not open; the contig keeps its own copy)</span>}
                 </dd>
+              </>
+            )}
+            {assembly.method === 'reference' && refList.length > 1 && (
+              <>
+                <dt>References</dt>
+                <dd>
+                  {refList.map((r, i) => {
+                    const tab = r.tabId ? tabs.find(t => t.id === r.tabId) : undefined
+                    return (
+                      <span key={`${r.name}:${i}`}>
+                        {i > 0 && ', '}{r.name}
+                        {tab && <button className="ao-link" onClick={() => useEditorStore.getState().setActiveTab(tab.id)}>Open</button>}
+                      </span>
+                    )
+                  })}
+                  <span className="aw-muted"> ({assembly.grouping ? 'each clone' : 'each read'} mapped to the one it matches best)</span>
+                </dd>
+              </>
+            )}
+            {assembly.grouping && (
+              <>
+                <dt>Clones</dt>
+                <dd>Reads grouped by {describeGrouping(assembly.grouping)}</dd>
               </>
             )}
             <dt>Reads that went in</dt>

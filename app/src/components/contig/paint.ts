@@ -141,7 +141,13 @@ export interface PaintInput {
   features: readonly ColumnFeature[]
   /** Variant column ranges, half-open. */
   variants: readonly [number, number][]
+  /** Each row's trimmed-off bases and the columns to show them in, when shown (place.ts clipColumns). */
+  clips: ((row: ContigRow) => RowClipColumns | null) | null
+  /** Columns of room before column 0 and after the last one, for trimmed ends that stick out. */
+  margins: { left: number; right: number }
 }
+
+export type RowClipColumns = { left: { col: number; ch: string }[]; right: { col: number; ch: string }[] }
 
 
 const colX = (c: number, g: Geometry, st: PaintState) => GUTTER + c * g.cellW - st.scrollX
@@ -194,6 +200,8 @@ export function paintContig(ctx: CanvasRenderingContext2D, p: PaintInput, theme:
       ctx.fillRect(colX(row.start, g, st), y + ROW_H - 1, row.seq.length * g.cellW, 1)
     }
     ctx.font = `600 ${font}px ${theme.mono}`
+    const clip = p.clips?.(row)
+    if (clip) paintClips(ctx, clip, g, st, y, letters, theme)
     for (let c = a; c < b; c++) {
       const k = c - row.start
       const ch = row.seq[k]
@@ -418,6 +426,34 @@ export function paintContig(ctx: CanvasRenderingContext2D, p: PaintInput, theme:
   }
   ctx.restore()
   ctx.textAlign = 'center'
+}
+
+/**
+ * A row's trimmed-off bases: faint, in one muted colour rather than their
+ * bases' colours, so they read as not part of the contig, with a short tick
+ * at each trim edge.
+ */
+function paintClips(ctx: CanvasRenderingContext2D, clip: RowClipColumns, g: Geometry, st: PaintState, y: number, letters: boolean, theme: AlnTheme) {
+  ctx.fillStyle = theme.muted
+  for (const side of [clip.left, clip.right]) {
+    for (const b of side) {
+      // May lie in the margins outside the contig's columns.
+      const x = colX(b.col, g, st)
+      if (x + g.cellW < GUTTER || x > st.w) continue
+      if (letters) {
+        ctx.globalAlpha = 0.5
+        ctx.fillText(b.ch, x + g.cellW / 2, y + ROW_H / 2 + 0.5)
+      } else {
+        ctx.globalAlpha = 0.18
+        ctx.fillRect(x, y + 5, Math.max(1, g.cellW - (g.cellW > 3 ? 1 : 0)), ROW_H - 10)
+      }
+    }
+  }
+  ctx.globalAlpha = 0.6
+  const edge = (col: number) => { const x = colX(col, g, st); ctx.fillRect(x - 0.5, y + 2, 1, ROW_H - 4) }
+  if (clip.left.length) edge(clip.left[clip.left.length - 1].col + 1)
+  if (clip.right.length) edge(clip.right[0].col)
+  ctx.globalAlpha = 1
 }
 
 function paintRuler(ctx: CanvasRenderingContext2D, p: PaintInput, theme: AlnTheme, st: PaintState, c0: number, c1: number) {

@@ -151,6 +151,20 @@ describe('undoing a delete', () => {
     expect(store().contigs.map(c => c.id)).toEqual(made.contigIds)
   })
 
+  it('keeps a plate\'s grouping, and drops it when run again without', () => {
+    const grouping = { separator: '_' as const, take: 'first' as const, parts: 1 }
+    const made = store().addAssembly({
+      name: 'Plate 1', grouping,
+      contigs: [{ name: 'c1', doc: testContig([testRow('a', 0, 'ATGC')]) }, { name: 'c2', doc: testContig([testRow('b', 0, 'GGCC')]) }],
+    })!
+    expect(store().assemblies.find(a => a.id === made.assemblyId)!.grouping).toEqual(grouping)
+    const run = { method: 'de-novo' as const, settings: null, inputs: { readIds: [], reference: null }, unplaced: [] }
+    const undo = store().replaceAssemblyRun(made.assemblyId, run, [{ name: 'Contig', doc: testContig([testRow('a', 0, 'ATGC')]) }])!
+    expect(store().assemblies.find(a => a.id === made.assemblyId)!.grouping).toBeUndefined()
+    undo()
+    expect(store().assemblies.find(a => a.id === made.assemblyId)!.grouping).toEqual(grouping)
+  })
+
   it('undoes deletes of different kinds in reverse order', () => {
     const tabId = store().openDocument('seq', 'ATGC')
     const readId = store().addSequencingRead(trace('r'))

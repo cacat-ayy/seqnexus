@@ -470,6 +470,105 @@ Contigs saved before assemblies existed each get an assembly of their own when
 loaded. The reads and reference are read back from the contig; the settings
 were not saved, so they are shown as not recorded.
 
+### Plates of clones
+
+A plate of clones, each sequenced with two or more reads, is assembled in one
+run: one assembly with a contig per clone, every clone verified at once.
+
+**Grouping by name.** The clone is written into each read's name, with what
+tells its reads apart after it (`A03.1` and `A03.2`, `pX12_M13F` and
+`pX12_M13R`, `Achl_ACHLO006-09_1_F` and `Achl_ACHLO006-09_2_R`). A name
+is split at a separator (underscore, hyphen, full stop or space) and the
+clone is its first n parts, or all but its last n, as Geneious's "Assemble
+by name" takes a delimiter and a part. The grouping is suggested from the
+names: every separator and choice of up to four parts is tried, and each
+read in a clone of two or more counts, up to four per clone, the shape of a
+plate read from both ends (or with a primer walk). One clone holding every
+read, or clones of one read each, score little. A name with too few parts is
+a clone of its own rather than a guess. The Assemble dialog shows each
+read's clone in its reads table as the grouping is changed, and marks clones
+left with a single read.
+
+**Several references.** Mapping, all reads of a clone go to one reference,
+the one they match best: a clone is one construct, and letting each read
+choose would split a clone whose reads cover different parts of
+near-identical designs. Each read is seeded on both strands against every
+reference (k-mers of 12, as in mapping) and its best diagonal's votes are
+summed per reference. A read across the junction of a shared vector and its
+insert lines up on one diagonal only in the construct it came from, so the
+insert decides. When other references come within a fifth of the best
+one's votes, as point mutants of one design do, the clone is mapped to each
+of them and the one its reads agree with best is kept (a matching base
+counts one, a mismatch or a gap costs two): seeds cannot tell designs a base
+or two apart, an alignment can. A clone with no seed on any reference is
+listed with the reads not placed. Without grouping, each read goes to its
+own best reference and the reads of each reference make one contig, as
+Geneious maps to several references. De novo, each clone is assembled on
+its own, so reads of two clones are never joined however alike they are.
+The dialog ticks the open sequences (up to 200 kb) that at least one of the
+first 24 reads seeds well on (20 votes, about 30 matching bases), and the
+first open sequence when none matches.
+
+**The reference goes with the contig.** A contig keeps a copy of its
+reference's features when it is mapped, so its feature track, variants and
+verification still work after the reference is closed; while the sequence
+is open its own features are used, since they may have been edited.
+
+**Verifying the plate.** The assembly's overview lists the clones with the
+clone verification verdict (`assembly/verify.ts`, as for one contig): verified when every
+feature checked is covered from end to end and the reads' consensus matches
+the design there, differences found, or not fully covered; with the share
+of the construct covered, the fewest reads over a checked feature, and the
+differences with their protein changes. One set of settings serves the whole
+plate and is kept with the assembly: the reads needed over a base, whether
+both strands are needed, and which feature types are checked. Types rather
+than single features, since clones may be mapped to different constructs;
+primer sites and miscellaneous features are left out by default, as when one
+contig is verified (a primer site is where a read starts, rarely what the
+clone is checked for). A construct with no feature left to check is checked
+whole. The table filters by verdict and exports a PDF report (counts, a row
+per clone, every difference, how it was checked), a CSV summary with a row
+per clone, and the consensus sequences of every clone, or of the verified
+ones, as FASTA. A row opens its contig, where the verification of that one
+clone shows the detail.
+
+### Trimmed ends in a contig
+
+A read goes into an assembly as trimmed, and the contig keeps its own copy
+of the bases inside the trim. The rest of the read is still in its trace,
+so the contig shows it: each row's trimmed-off bases are drawn faded beyond
+its ends, as Geneious shows soft-trimmed regions, with a tick at each trim
+edge. They are found from the read itself (the row's first and last called
+bases locate it in the read, edits included), so they are there for any
+contig whose reads are still in the session. They are placed one base a
+column outward from the row, skipping columns where the reference has a gap
+(another read's insertion); where they truly align is only known once the
+read takes them in. The view keeps a margin before the first column and
+after the last for the ends of the outermost reads, which are the ends most
+worth extending.
+
+- **Extend the read to here** (right-click a faded base) places the read
+  again with the trim moved to that base: its row is taken out, the read
+  with its new trim is aligned to the contig's backbone and laid out in the
+  columns already there (with new columns where it inserts bases), and the
+  row goes back where it was in the list. The backbone is the reference,
+  aligned to end to end as in mapping, so bases that do not belong lower the
+  read's identity, and below the assembly's lowest identity the change is
+  refused with the figure reached. De novo it is the contig's consensus,
+  and the read must line up with it to one of its ends or the consensus's,
+  since an end that matches nothing would otherwise be laid out as an
+  overhang in the middle of the contig. **Use the whole read** does the same
+  with nothing trimmed.
+- **Trim the read before / after this base** (right-click a base of the
+  read) needs no alignment: the bases past the cut are dropped and the rest
+  keep their columns and their edits; columns no row needs any more go.
+
+Each is an undo step of the contig, and every other row stays exactly as it
+was. Placing a read again lays its bases out afresh, so its own edits in the
+contig are dropped (the message says so, and Undo puts them back). Only the
+contig changes: the read's own trim stays as it is, as with every edit in a
+contig, so running the assembly again starts from the reads' own trims.
+
 ### Trimming reads
 
 A read's ends are trimmed before it is assembled: by error probability
@@ -2346,6 +2445,12 @@ print colours on white, whatever the app's theme.
 - Li H. (2016) "Minimap and miniasm: fast mapping and de novo assembly for
   noisy long sequences." *Bioinformatics* 32:2103-2110. (The string graph,
   its overlap classes and cleaning steps.)
+
+- Biomatters. "Assembly and Mapping" and "Analysis of Assemblies and
+  Alignments", *Geneious Prime User Manual*.
+  https://manual.geneious.com/en/latest/AssemblyMapping.html (assembling by
+  name, mapping to several references, trimming reads without qualities by
+  their ambiguities, mapping-quality colouring, junction annotations).
 
 - Myers EW. (2005) "The fragment assembly string graph." *Bioinformatics*
   21 Suppl 2:ii79-ii85. (Transitive reduction.)
