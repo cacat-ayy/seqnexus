@@ -21,7 +21,7 @@ import { useEditorStore } from '../../store'
 import HoverCard from '../HoverCard'
 import OligoSequence from './OligoSequence'
 
-const fmtTm = (t: number | null) => (t === null || !Number.isFinite(t) ? '–' : `${t.toFixed(1)} °C`)
+const fmtTm = (t: number | null) => (t === null || !Number.isFinite(t) ? '-' : `${t.toFixed(1)} °C`)
 /** A structure Tm: an estimate, and meaningless below freezing. */
 const fmtStructTm = (t: number) => (t < 0 ? '< 0 °C' : `≈ ${t.toFixed(0)} °C`)
 

@@ -2,8 +2,8 @@
  * Building many constructs from the same design.
  *
  * Each position in the assembly becomes a bin, and a bin can hold more than
- * one part. The run is every way of taking one part from each — which is what
- * a combinatorial library is — and a vector against a list of inserts is just
+ * one part. The run is every way of taking one part from each (which is what
+ * a combinatorial library is), and a vector against a list of inserts is just
  * the two-bin case of the same thing.
  *
  * Parts can be read from a spreadsheet, because a library is usually already
@@ -248,7 +248,7 @@ export default function LibraryPanel({ design, bins, onBinsChange, onOpenRow, on
                   >
                     <td className="cw-cell-name">{row.name}</td>
                     {result.binNames.map((_, b) => <td key={b}>{row.partNames[b] ?? ''}</td>)}
-                    <td className="cw-cell-size">{row.size > 0 ? formatBp(row.size) : '—'}</td>
+                    <td className="cw-cell-size">{row.size > 0 ? formatBp(row.size) : '-'}</td>
                     <td>
                       {row.verdict === 'ok' && <span className="cw-tag good">as designed</span>}
                       {row.verdict === 'ambiguous' && <span className="cw-tag warn">not as designed</span>}

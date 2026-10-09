@@ -3,7 +3,7 @@
  *
  * att sites are ~25 bp core recognition regions used by the λ integrase
  * family of recombinases. This module stores the consensus sequences for
- * attB, attP, attL, and attR sites (numbered 1–4 for MultiSite Gateway)
+ * attB, attP, attL, and attR sites (numbered 1-4 for MultiSite Gateway)
  * and provides a scanner that finds them in arbitrary DNA sequences with
  * up to 2 mismatches.
  */
@@ -62,13 +62,13 @@ export const ATT_SITES: AttSiteDefinition[] = [
   { name: 'attP3', type: 'attP', number: 3, core: 'ACAACTTTGTATAATAAAGTTGGC' },
   { name: 'attP4', type: 'attP', number: 4, core: 'ACAACTTTGTATAGAAAAGTTGGC' },
 
-  // attL sites (on entry clones – attB-half + attP-half)
+  // attL sites (on entry clones: attB-half + attP-half)
   { name: 'attL1', type: 'attL', number: 1, core: 'ACAAGTTTGTACAAAAAAGCAGGCTCCGCGG' },
   { name: 'attL2', type: 'attL', number: 2, core: 'ACCCAGCTTTCTTGTACAAAGTTGGCATTA' },
   { name: 'attL3', type: 'attL', number: 3, core: 'ACAACTTTGTATAATAAAGTTGAAC' },
   { name: 'attL4', type: 'attL', number: 4, core: 'ACAACTTTGTATAGAAAAGTTGAAC' },
 
-  // attR sites (on destination vectors – attP-half + attB-half)
+  // attR sites (on destination vectors: attP-half + attB-half)
   { name: 'attR1', type: 'attR', number: 1, core: 'ACAAGTTTGTACAAAAAAGCTGAACGAGAAAC' },
   { name: 'attR2', type: 'attR', number: 2, core: 'ACCACTTTGTACAAGAAAGCTGAACGAGAAAC' },
   { name: 'attR3', type: 'attR', number: 3, core: 'ACAACTTTGTATAATAAAGTTGGCAGTAAAC' },

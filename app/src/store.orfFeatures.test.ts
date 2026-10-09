@@ -1,8 +1,8 @@
 /**
  * Converting ORFs into CDS features.
  *
- * Deliberately the same contract as the auto-annotation conversion — one undo
- * entry, picks cleared, overlay off — with one difference: the ORF overlay
+ * Deliberately the same contract as the auto-annotation conversion (one undo
+ * entry, picks cleared, overlay off) with one difference: the ORF overlay
  * keeps showing an ORF after it has been annotated, so what has to hold is
  * that converting twice does not produce two copies.
  */
@@ -89,7 +89,7 @@ describe('ORF conversion', () => {
     expect(store().doc.annotations).toHaveLength(1)
   })
 
-  it('keeps showing a converted ORF — only the conversion skips it', () => {
+  it('keeps showing a converted ORF; only the conversion skips it', () => {
     store().setOrfResults([A, B])
     store().applyOrfs([orfKey(A)])
     // The overlay still holds both: an annotated reading frame is still a

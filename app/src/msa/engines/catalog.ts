@@ -6,7 +6,7 @@
  * /wasm so they load from the app's own origin: MAFFT 7.520 (tbfast, which
  * does the pairwise stage, the progressive alignment and iterative
  * refinement itself), MUSCLE 5 and Kalign 3. Two-sequence alignment uses the
- * built-in Needleman–Wunsch / Smith–Waterman.
+ * built-in Needleman-Wunsch / Smith-Waterman.
  */
 
 import { parseFasta } from '../formats/fasta'
@@ -45,7 +45,7 @@ export const ENGINES: readonly EngineInfo[] = [
   {
     id: 'mafft', label: 'MAFFT', version: '7.520', license: 'BSD',
     summary: 'The most accurate choice for up to a few hundred sequences',
-    citation: 'Katoh & Standley (2013) Mol Biol Evol 30:772–780',
+    citation: 'Katoh & Standley (2013) Mol Biol Evol 30:772-780',
   },
   {
     id: 'muscle', label: 'MUSCLE 5', version: '5', license: 'GPL-3.0',
@@ -55,9 +55,9 @@ export const ENGINES: readonly EngineInfo[] = [
   {
     id: 'kalign', label: 'Kalign 3', version: '3.3.1', license: 'GPL-3.0',
     summary: 'Fast and accurate: best for many or long sequences',
-    citation: 'Lassmann (2020) Bioinformatics 36:1928–1929',
+    citation: 'Lassmann (2020) Bioinformatics 36:1928-1929',
   },
-  { id: 'pairwise', label: 'Pairwise', summary: 'Needleman–Wunsch (global) or Smith–Waterman (local) for exactly two sequences' },
+  { id: 'pairwise', label: 'Pairwise', summary: 'Needleman-Wunsch (global) or Smith-Waterman (local) for exactly two sequences' },
 ]
 
 export const MAFFT_STRATEGIES: readonly { id: MafftStrategy; label: string; summary: string }[] = [
@@ -118,7 +118,7 @@ export function resolveEngine(settings: EngineSettings, shape: InputShape, kind:
 /** "MAFFT L-INS-i", "Kalign 3": for origins, toasts and badges. */
 export function engineLabel(engine: ConcreteEngine, settings: EngineSettings): string {
   if (engine === 'mafft') return `MAFFT ${MAFFT_STRATEGIES.find(s => s.id === settings.mafftStrategy)?.label ?? ''}`.trim()
-  if (engine === 'pairwise') return settings.pairwiseMode === 'local' ? 'Smith–Waterman (local)' : 'Needleman–Wunsch (global)'
+  if (engine === 'pairwise') return settings.pairwiseMode === 'local' ? 'Smith-Waterman (local)' : 'Needleman-Wunsch (global)'
   return engineInfo(engine).label
 }
 

@@ -93,13 +93,13 @@ describe('Minimap', () => {
     const onHoverItem = vi.fn()
     const track = featureTrack({
       features: [{ id: 'lac', name: 'lacZ', type: 'CDS', start: 400, end: 600, strand: 1, color: '#3b82f6' }],
-      formatRange: (s, e) => `${s + 1}–${e}`,
+      formatRange: (s, e) => `${s + 1}-${e}`,
     })
     const { overlay } = setup([track], { onHoverItem })
     // Forward lane 0 sits just above the backbone: ruler (2 + 14) + 10px.
     fireEvent.pointerMove(overlay, { clientX: xOf(500), clientY: 2 + 14 + 12, pointerId: 1 })
     expect(screen.getByRole('status').textContent).toContain('lacZ')
-    expect(screen.getByRole('status').textContent).toContain('CDS · 401–600')
+    expect(screen.getByRole('status').textContent).toContain('CDS · 401-600')
     expect(onHoverItem).toHaveBeenLastCalledWith('lac')
     fireEvent.pointerLeave(overlay)
     expect(onHoverItem).toHaveBeenLastCalledWith(null)

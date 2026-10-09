@@ -1,10 +1,10 @@
 /**
  * Zoom-dependent layout for SequenceView.
  *
- * zoomLevel 0–20 → three render modes:
- *   0–6:   "line"    - thin sequence line, no individual bases
- *   7–12:  "dots"    - colored dots per base
- *   13–20: "letters" - full base letters + complement
+ * zoomLevel 0-20 → three render modes:
+ *   0-6:   "line"    - thin sequence line, no individual bases
+ *   7-12:  "dots"    - colored dots per base
+ *   13-20: "letters" - full base letters + complement
  */
 
 export type RenderMode = 'line' | 'dots' | 'letters'
@@ -45,9 +45,9 @@ export interface ZoomLayout {
 }
 
 const ZOOM_BPR = [
-  15000, 10000, 6000, 4000, 2500, 1500, 1000,  // 0–6: line
-  600, 400, 300, 200, 150, 100,                  // 7–12: dots
-  80, 60, 50, 40, 30, 25, 20, 15,               // 13–20: letters
+  15000, 10000, 6000, 4000, 2500, 1500, 1000,  // 0-6: line
+  600, 400, 300, 200, 150, 100,                  // 7-12: dots
+  80, 60, 50, 40, 30, 25, 20, 15,               // 13-20: letters
 ]
 
 export function getRenderMode(z: number): RenderMode {
@@ -142,7 +142,7 @@ export function getLayout(
   const maxSiteLanes = showEnzymes && mode !== 'line' ? 3 : 0
   const siteBandPad = 2
 
-  // Zero lanes means the annotation area collapses entirely — stackAnnotations
+  // Zero lanes means the annotation area collapses entirely: stackAnnotations
   // places nothing, and rowHeightForLanes reserves no space for it.
   const maxAnnotationRows = wantAnnotations ? 4 : 0
 

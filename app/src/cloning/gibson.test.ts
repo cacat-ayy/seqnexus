@@ -203,7 +203,7 @@ describe('gibsonAssemble', () => {
 
   it('truncates annotations that span beyond fragment region', () => {
     const overlap = 'ATGCATGCATGCATGCATGC' // 20bp
-    // fragA is 30bp total. Annotation spans [5, 30) – extends to the very end.
+    // fragA is 30bp total. Annotation spans [5, 30), reaching the very end.
     // fragB starts with the same 20bp overlap.
     // When assembled, fragA contributes its full sequence, fragB contributes
     // the non-overlapping suffix. The annotation at [5,30) on fragA should

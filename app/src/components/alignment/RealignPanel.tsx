@@ -137,7 +137,7 @@ export default function RealignPanel({ doc, selection, onApply, onClose, onBusy 
           <p className="aw-note">
             {block.whole
               ? `All ${block.picked.length} sequences are aligned again from scratch; hand edits are replaced.`
-              : `Columns ${(block.c0 + 1).toLocaleString()}–${block.c1.toLocaleString()} of ${block.picked.length} rows are realigned; everything else stays as it is.`}
+              : `Columns ${(block.c0 + 1).toLocaleString()}-${block.c1.toLocaleString()} of ${block.picked.length} rows are realigned; everything else stays as it is.`}
           </p>
           <label className="aw-field">
             <span>Aligner</span>
@@ -154,7 +154,7 @@ export default function RealignPanel({ doc, selection, onApply, onClose, onBusy 
           {plan ? (
             <p className="aw-note">
               {settings.engine === 'auto' && <><b>{plan.label}</b> · </>}{formatDuration(plan.estimate)}
-              {plan.estimate > 60 && plan.engine !== 'kalign' && ' — Kalign 3 would take seconds'}
+              {plan.estimate > 60 && plan.engine !== 'kalign' && '; Kalign 3 would take seconds'}
             </p>
           ) : (
             <p className="aw-note">Needs at least two rows with residues in the block.</p>

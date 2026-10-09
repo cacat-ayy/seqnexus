@@ -1,6 +1,6 @@
 /**
  * Restriction cut sites: a tick per site, with the enzymes that cut only
- * once — the ones that matter for cloning — drawn full height and named.
+ * once (the ones that matter for cloning) drawn full height and named.
  * Enzymes with several sites get short, faint ticks; sites blocked by
  * methylation are drawn faded and left unlabelled.
  */

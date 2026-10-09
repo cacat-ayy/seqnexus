@@ -175,13 +175,13 @@ export default function CloningTask({ settings }: { settings: DesignSettings }) 
               <span>Replace to</span>
               <input
                 type="number" className="input ft-input ft-num" min={0} value={replaceTo}
-                placeholder="–"
+                placeholder="-"
                 onChange={e => setReplaceTo(e.target.value === '' ? '' : Math.round(parseFloat(e.target.value)))}
               />
             </label>
             <NumField label="Arm bp" value={arm} min={10} onChange={v => setArm(Math.max(10, Math.round(v)))} />
           </div>
-          <div className="wb-hint">In-Fusion uses 15 bp arms; Gibson 20–40 bp.</div>
+          <div className="wb-hint">In-Fusion uses 15 bp arms; Gibson 20-40 bp.</div>
         </>
       )}
 

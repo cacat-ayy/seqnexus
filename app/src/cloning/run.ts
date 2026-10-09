@@ -4,7 +4,7 @@
  * Nothing here is stored: a design is always re-run, so products reflect the
  * engines as they are now rather than as they were when the design was saved.
  *
- * Every method reports the same thing — a list of `Assembly`, best first —
+ * Every method reports the same thing, a list of `Assembly`, best first,
  * so the workspace shows a product the same way whichever reaction made it.
  */
 

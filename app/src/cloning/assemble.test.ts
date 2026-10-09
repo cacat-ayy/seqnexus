@@ -2,8 +2,8 @@
  * Whole cloning reactions, run the way someone would run them.
  *
  * Every case here is a design that must produce a product. The ones with
- * non-palindromic overhangs — a single sticky cut religated, and any Type IIS
- * assembly — used to produce nothing at all, so they are the point of the
+ * non-palindromic overhangs (a single sticky cut religated, and any Type IIS
+ * assembly) used to produce nothing at all, so they are the point of the
  * suite. Filler is A/T only, which cannot contain any of the recognition
  * sites used, so the cuts are only where the test puts them.
  */
@@ -78,8 +78,8 @@ describe('directional restriction cloning', () => {
 
   it('does not let the insert into the vector backwards', () => {
     // Two different overhangs is what makes the cloning directional. Other
-    // off-target circles can still contain a flipped insert — the excised
-    // polylinker joined to it, for one — so this is about the real product.
+    // off-target circles can still contain a flipped insert (the excised
+    // polylinker joined to it, for one), so this is about the real product.
     const wanted = expected(assemble(all, { required }))
     expect(wanted.every(p => p.parts.every(part => !part.reversed))).toBe(true)
   })

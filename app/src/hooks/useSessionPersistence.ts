@@ -37,7 +37,7 @@ export function useSessionPersistence(
   const [storageRefreshKey, setStorageRefreshKey] = useState(0)
   /**
    * Problems hit while restoring the last session. Surfaced by App as an error
-   * toast — restore silently dropping documents is indistinguishable from
+   * toast: restore silently dropping documents is indistinguishable from
    * "you never saved anything".
    */
   const [sessionLoadWarnings, setSessionLoadWarnings] = useState<string[]>([])

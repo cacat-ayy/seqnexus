@@ -127,7 +127,7 @@ export const PROTEIN_SCHEMES: readonly SchemeOption[] = [
   { id: 'clustalx', label: 'Clustal X', description: 'By property, where the column is conserved enough' },
   { id: 'zappo', label: 'Zappo', description: 'By physicochemical property' },
   { id: 'taylor', label: 'Taylor', description: 'A colour per amino acid' },
-  { id: 'hydrophobicity', label: 'Hydrophobicity', description: 'Kyte–Doolittle: red hydrophobic, blue hydrophilic' },
+  { id: 'hydrophobicity', label: 'Hydrophobicity', description: 'Kyte-Doolittle: red hydrophobic, blue hydrophilic' },
   { id: 'blosum62', label: 'BLOSUM62', description: 'By substitution score against the consensus' },
   { id: 'identity', label: 'Percent identity', description: 'Darker where more sequences share the residue' },
   { id: 'none', label: 'None', description: 'No colour' },

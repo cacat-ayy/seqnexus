@@ -18,7 +18,7 @@ function hexToRgb(hex: string): [number, number, number] {
   return [(n >> 16) & 255, (n >> 8) & 255, n & 255]
 }
 
-/** Relative luminance (0–1) per WCAG formula. */
+/** Relative luminance (0-1) per WCAG formula. */
 function luminance(r: number, g: number, b: number): number {
   const [rs, gs, bs] = [r, g, b].map(c => {
     const s = c / 255

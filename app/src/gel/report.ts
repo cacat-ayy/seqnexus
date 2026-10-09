@@ -26,14 +26,14 @@ export function describeSpecies(s: PlacedSpecies): string {
 }
 
 /**
- * 1-based, inclusive coordinates on the source: "1,203–2,410". A fragment
- * spanning the origin reads high to low: "4,001–120".
+ * 1-based, inclusive coordinates on the source: "1,203-2,410". A fragment
+ * spanning the origin reads high to low: "4,001-120".
  */
 export function fragmentPosition(f: FragmentOrigin, seqLen: number): string {
   const fmt = (n: number) => n.toLocaleString('en-US')
   // `end` is exclusive and 0-based, so it is also the 1-based last base; an
   // end of 0 means the fragment runs to the last base of a circle.
-  return `${fmt(f.start + 1)}–${fmt(f.end === 0 ? seqLen : f.end)}`
+  return `${fmt(f.start + 1)}-${fmt(f.end === 0 ? seqLen : f.end)}`
 }
 
 export function fragmentEnds(f: FragmentOrigin): string {

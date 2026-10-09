@@ -16,7 +16,7 @@ interface State {
  * blank the whole editor.
  *
  * The session auto-saves to localStorage + IndexedDB independently of React
- * state, so a crash here does not take the user's work with it — reloading
+ * state, so a crash here does not take the user's work with it; reloading
  * restores the last saved session. The fallback says so explicitly, because
  * the natural assumption on seeing a crash screen is that the work is gone.
  */
@@ -51,7 +51,7 @@ export class ErrorBoundary extends Component<Props, State> {
       this.setState({ copied: true })
       window.setTimeout(() => this.setState({ copied: false }), 2000)
     } catch {
-      // Clipboard blocked (permissions, insecure context) — the details are
+      // Clipboard blocked (permissions, insecure context): the details are
       // shown on screen anyway, so the user can still select and copy them.
     }
   }

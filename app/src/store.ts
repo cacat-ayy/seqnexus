@@ -1010,7 +1010,7 @@ interface EditorStore {
   clearOrfPicks: () => void
   /**
    * Turn the picked ORFs (or all of them) into CDS features.
-   * One undo entry, and the overlay switches off — they are features now.
+   * One undo entry, and the overlay switches off: they are features now.
    */
   applyOrfs: (keys?: Iterable<string>) => number
   // ORF panel params (persisted)
@@ -1050,7 +1050,7 @@ interface EditorStore {
   clearAutoAnnotationPicks: () => void
   /**
    * Turn the picked proposals (or all of them) into real features.
-   * One undo entry, and the overlay switches off — they are features now.
+   * One undo entry, and the overlay switches off: they are features now.
    */
   applyAutoAnnotations: (keys?: Iterable<string>) => number
   autoAnnotateScanning: boolean
@@ -1158,7 +1158,7 @@ interface EditorStore {
   /**
    * Patch many annotations as a single undoable action.
    *
-   * Pass a `coalesceKey` for continuous interactions — a colour picker drag
+   * Pass a `coalesceKey` for continuous interactions, a colour picker drag
    * fires on every frame, and without a key each frame would push its own
    * full-document undo snapshot. Mint a fresh key per interaction so separate
    * drags stay separately undoable.
@@ -1666,7 +1666,7 @@ export const useEditorStore = create<EditorStore>((set, get) => {
    * repeat. Two reasons it matters beyond tidiness:
    *
    *  - It writes the snapshot and the new document in a *single* `set()`, where
-   *    the old pair issued two — so even single mutations halve their renders.
+   *    the old pair issued two, so even single mutations halve their renders.
    *  - `coalesceKey` lets a continuous interaction collapse into one undo entry.
    *    A colour picker fires `change` on every frame of a drag; without this,
    *    one drag over a large group could push hundreds of full-document
@@ -2817,7 +2817,7 @@ export const useEditorStore = create<EditorStore>((set, get) => {
       })
       for (const o of restoredOligos ?? []) syncId(o.id, oligoIds, 'libo')
 
-      // Determine which view was last active – validate that the referenced entity still exists
+      // Determine which view was last active, and validate that the referenced entity still exists
       const validActiveAlignId = restoredActiveAlignmentId && alignments.some(a => a.id === restoredActiveAlignmentId)
         ? restoredActiveAlignmentId : null
       const validActiveContigId = restoredActiveContigId && contigs.some(c => c.id === restoredActiveContigId)

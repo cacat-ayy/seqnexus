@@ -201,7 +201,7 @@ export default function ReadWorkspace({ read, onClose, onExportPrompt, findReque
     const bases = t ? shownRange(t.d0, t.d1) : keptRead().bases
     if (!bases) { notify.info('Nothing to extract: the selection holds only deleted bases'); return }
     const name = t ? `${data.name} ${t.d0 + 1}-${t.d1}` : data.name
-    openAsSequence(name, bases, t ? `Bases ${t.d0 + 1}–${t.d1} of the read "${data.name}"` : undefined)
+    openAsSequence(name, bases, t ? `Bases ${t.d0 + 1}-${t.d1} of the read "${data.name}"` : undefined)
   }
   const openAsSequence = (name: string, bases: string, description?: string) => {
     const store = useEditorStore.getState()
@@ -668,7 +668,7 @@ export default function ReadWorkspace({ read, onClose, onExportPrompt, findReque
         <ContextMenuPopup x={menu.x} y={menu.y} onClose={() => setMenu(null)} label="Read actions">
           <div onClick={() => setMenu(null)}>
             <div className="ctx-menu-header">
-              {selection && selection.d1 - selection.d0 > 1 ? `Bases ${nf.format(selection.d0 + 1)}–${nf.format(selection.d1)}` : `Base ${nf.format(menu.col + 1)}`}
+              {selection && selection.d1 - selection.d0 > 1 ? `Bases ${nf.format(selection.d0 + 1)}-${nf.format(selection.d1)}` : `Base ${nf.format(menu.col + 1)}`}
             </div>
             <MenuItem icon={<ClipboardCopy size={13} />} onSelect={copySelection} shortcut="Ctrl+C">Copy</MenuItem>
             <MenuItem icon={<Repeat size={13} />} onSelect={copyRevComp}>Copy reverse complement</MenuItem>
@@ -729,7 +729,7 @@ function StatusBar({ model: m, hover, caret, selection, editing, insertMode, onT
   if (h !== null && h >= 0 && h < m.n) readout = <HoverReadout m={m} d={h} />
 
   const where = selection && selection.d1 - selection.d0 > 1
-    ? `${nf.format(selection.d0 + 1)}–${nf.format(selection.d1)} (${nf.format(selection.d1 - selection.d0)} bp)`
+    ? `${nf.format(selection.d0 + 1)}-${nf.format(selection.d1)} (${nf.format(selection.d1 - selection.d0)} bp)`
     : caret !== null ? `Base ${nf.format(Math.min(caret, m.n - 1) + 1)}` : 'Go to…'
 
   return (
@@ -740,7 +740,7 @@ function StatusBar({ model: m, hover, caret, selection, editing, insertMode, onT
           className="tw-goto"
           autoFocus
           value={draft}
-          placeholder={`1–${nf.format(m.n)}`}
+          placeholder={`1-${nf.format(m.n)}`}
           aria-label="Go to base"
           onChange={e => setDraft(e.target.value)}
           onBlur={() => { setDraft(''); onGoto(null) }}

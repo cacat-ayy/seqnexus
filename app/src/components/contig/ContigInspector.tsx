@@ -141,7 +141,7 @@ function ContigPanel({ doc, cons, view, reads, selection, onView, actions }: Pro
               className={`cw-read${selection && selection.r0 <= i && i < selection.r1 ? ' active' : ''}`}
               onClick={() => actions.selectRow(i)}
               onDoubleClick={() => actions.openRow(i)}
-              title={`${r.name}\nColumns ${r.start + 1}–${r.start + r.seq.length}${r.reversed ? ' · reverse complemented' : ''}\nDouble-click to open the read`}
+              title={`${r.name}\nColumns ${r.start + 1}-${r.start + r.seq.length}${r.reversed ? ' · reverse complemented' : ''}\nDouble-click to open the read`}
             >
               <span className={r.reversed ? 'cw-dir rev' : 'cw-dir'}>{r.reversed ? '◀' : '▶'}</span>
               <span className="cw-read-name">{r.name}</span>
@@ -193,8 +193,8 @@ function ColumnPanel({ doc, cons, refPos, reads, caret, selection, editing, acti
         </div>
       </div>
       <dl className="aw-stats">
-        <Stat label="Consensus" value={c === ' ' ? '—' : c === '-' ? 'gap' : c} strong />
-        <Stat label="Consensus quality" value={c === ' ' ? '—' : `Q${cons.quality[col]}`} />
+        <Stat label="Consensus" value={c === ' ' ? '-' : c === '-' ? 'gap' : c} strong />
+        <Stat label="Consensus quality" value={c === ' ' ? '-' : `Q${cons.quality[col]}`} />
         <Stat label="Coverage" value={nf.format(cons.coverage[col])} />
       </dl>
       <table className="cw-col-table">

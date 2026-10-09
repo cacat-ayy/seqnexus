@@ -18,7 +18,7 @@ function setup() {
   useEditorStore.setState({ contigs: [], assemblies: [], activeContigId: null, activeAssemblyId: null, sequencingReads: [], folders: [] })
   const tabId = store().openDocument('pTest', REF)
   store().addAnnotation({ id: 'cds1', name: 'gfp', type: 'CDS', start: 3, end: 18, strand: 1 })
-  // Both reads carry AAA→GAA at reference position 7 (K2E); they cover bases 1–20 only.
+  // Both reads carry AAA→GAA at reference position 7 (K2E); they cover bases 1-20 only.
   const alt = REF.slice(0, 6) + 'G' + REF.slice(7, 20)
   const doc = testContig([testRow('f', 0, alt), testRow('r', 0, alt, { reversed: true })], REF, 'pTest', tabId)
   store().addAssembly({ name: 'Clone 1', contigs: [{ name: 'Clone 1', doc }] })
@@ -50,6 +50,6 @@ describe('ContigWorkspace variants and verification', () => {
     expect(dialog).toHaveTextContent('Differences found')
     expect(dialog).toHaveTextContent('83.3% of 24 bp covered')
     expect(dialog).toHaveTextContent('K2E (missense)')
-    expect(dialog).toHaveTextContent('Not covered: 21–24')
+    expect(dialog).toHaveTextContent('Not covered: 21-24')
   })
 })

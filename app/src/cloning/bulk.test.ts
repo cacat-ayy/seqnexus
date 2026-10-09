@@ -1,7 +1,7 @@
 /**
  * Libraries: every way of taking one part from each position, run through the
- * ordinary engines. The cases here are the ones people actually build — one
- * vector against a list of inserts, and a two-position combinatorial set —
+ * ordinary engines. The cases here are the ones people actually build (one
+ * vector against a list of inserts, and a two-position combinatorial set),
  * plus the housekeeping that stops a big run from being a trap.
  */
 import { describe, it, expect } from 'vitest'

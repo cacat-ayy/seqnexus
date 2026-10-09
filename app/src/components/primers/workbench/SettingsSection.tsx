@@ -26,8 +26,8 @@ export function SettingsSection({ settings, onChange, product = true, probe = tr
         {open ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
         Settings
         <span className="wb-disclosure-summary">
-          Tm {settings.minTm}–{settings.maxTm} · {settings.minLen}–{settings.maxLen} nt
-          {product && ` · ${settings.minProduct}–${settings.maxProduct} bp`}
+          Tm {settings.minTm}-{settings.maxTm} · {settings.minLen}-{settings.maxLen} nt
+          {product && ` · ${settings.minProduct}-${settings.maxProduct} bp`}
         </span>
       </button>
       {open && (
@@ -111,7 +111,7 @@ export function RangeField({ label, min, max, opt, onMin, onMax, onOpt }: {
     <div className="wb-row wb-range">
       <label>{label}</label>
       {num(min, onMin, 'minimum')}
-      <span>–</span>
+      <span>-</span>
       {num(max, onMax, 'maximum')}
       {opt !== undefined && onOpt && <><span>opt</span>{num(opt, onOpt, 'optimum')}</>}
     </div>

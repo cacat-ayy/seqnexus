@@ -3,7 +3,7 @@
  *
  * The engines report products; this says which one is the construct, what
  * each of the others is in plain words ("pUC19 closed on itself" rather than
- * a second "pUC19::pUC19"), and — when the construct does not form — what
+ * a second "pUC19::pUC19"), and, when the construct does not form, what
  * single change to the design would make it form. Every fix offered has been
  * tried: the design is re-run with it, and only changes that give the
  * construct are suggested.

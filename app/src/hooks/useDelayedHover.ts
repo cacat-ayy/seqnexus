@@ -19,7 +19,7 @@ export interface HoverTarget {
    * Stable identity of the thing under the pointer. The countdown restarts
    * only when this changes, which is what lets the pointer drift within one
    * target without resetting the delay. Callers add their own payload
-   * alongside it — a feature id, a grouped cut site, and so on.
+   * alongside it: a feature id, a grouped cut site, and so on.
    */
   key: string
 }

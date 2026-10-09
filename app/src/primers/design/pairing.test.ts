@@ -16,7 +16,7 @@ describe('evaluatePair', () => {
   it('warns about a Tm gap and a product outside the range', () => {
     const e = evaluatePair(oligo('ACGTACGTTGCAAGCTAGCA', 55), oligo('TTGACCGATGCATCGGATCA', 63), 900, ctx)
     expect(e.warnings.some(w => /Tms differ/.test(w))).toBe(true)
-    expect(e.warnings.some(w => /outside 100–500/.test(w))).toBe(true)
+    expect(e.warnings.some(w => /outside 100-500/.test(w))).toBe(true)
   })
 })
 

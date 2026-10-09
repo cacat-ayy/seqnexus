@@ -19,7 +19,7 @@ export interface Command {
   icon?: LucideIcon
   /** Display-only accelerator, e.g. "⌘F". Not bound by the palette. */
   shortcut?: string
-  /** Greyed out and unselectable — usually "no sequence open". */
+  /** Greyed out and unselectable, usually "no sequence open". */
   disabled?: boolean
   /** Extra search terms that should match this command but aren't in the label. */
   keywords?: string
@@ -76,7 +76,7 @@ function fuzzyScore(haystack: string, query: string): { score: number; hits: num
 /**
  * Filter and rank commands against a query.
  *
- * Disabled commands are kept — hiding them makes the palette feel broken when
+ * Disabled commands are kept: hiding them makes the palette feel broken when
  * a user searches for something they know exists. They sort last and cannot be
  * activated.
  */

@@ -16,7 +16,7 @@ export type GelBuffer = 'TAE' | 'TBE'
 export type GelFormat = 'mini' | 'midi' | 'large'
 
 export interface GelConditions {
-  /** Agarose concentration in % (w/v), 0.5–3. */
+  /** Agarose concentration in % (w/v), 0.5-3. */
   agarosePct: number
   buffer: GelBuffer
   format: GelFormat

@@ -64,7 +64,7 @@ function read(template: string, start: number, length: number, circular: boolean
  * Primers for a ring of parts joined by homology.
  *
  * Each part's forward primer carries the tail end of the part before it, and
- * its reverse primer carries the start of the part after it — reverse
+ * its reverse primer carries the start of the part after it; reverse
  * complemented, since a reverse primer is written along the bottom strand.
  * Together that gives every junction one shared stretch, contributed half by
  * each neighbour, which is what the chew-back needs.

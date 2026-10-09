@@ -22,7 +22,7 @@ export interface PrimerDrawStyle {
 
 type Range = [number, number]
 
-/** A [start, end) span as 1–2 non-wrapping ranges. */
+/** A [start, end) span as 1-2 non-wrapping ranges. */
 function unwrap(start: number, end: number, seqLen: number): Range[] {
   return start < end ? [[start, end]] : [[start, seqLen], [0, end]]
 }

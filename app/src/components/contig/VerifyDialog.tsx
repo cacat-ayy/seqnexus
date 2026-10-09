@@ -73,7 +73,7 @@ export default function VerifyDialog({ doc, name, consensus, features, canAnnota
     return { ...s, featureIds: [...ids] }
   })
   const chosen = new Set(settings.featureIds ?? checkable.map(f => f.id))
-  const gaps = report.uncovered.map(g => (g.from === g.to ? `${g.from}` : `${g.from.toLocaleString()}–${g.to.toLocaleString()}`))
+  const gaps = report.uncovered.map(g => (g.from === g.to ? `${g.from}` : `${g.from.toLocaleString()}-${g.to.toLocaleString()}`))
 
   return (
     <div className="aw-figure-backdrop" onMouseDown={e => { if (e.target === e.currentTarget) onClose() }}>
@@ -155,7 +155,7 @@ export default function VerifyDialog({ doc, name, consensus, features, canAnnota
               : (
                 <div className="cw-feature-list">
                   {checkable.map(f => (
-                    <label key={f.id} className="aw-check small" title={`${f.type} · ${f.start + 1}–${f.end}`}>
+                    <label key={f.id} className="aw-check small" title={`${f.type} · ${f.start + 1}-${f.end}`}>
                       <input type="checkbox" checked={chosen.has(f.id)} onChange={() => toggle(f.id)} />
                       {f.name} <span className="aw-muted">({f.type})</span>
                     </label>

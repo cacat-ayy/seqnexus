@@ -74,7 +74,7 @@ export function ToolbarTooltip({ container }: { container: RefObject<HTMLElement
       // An open menu already says what the button does.
       if (el.getAttribute('aria-expanded') === 'true') { display(null); return }
       // Skimming along the row: once one tooltip is up, the next one should
-      // not make the user wait again — whether the pointer crossed a gap
+      // not make the user wait again, whether the pointer crossed a gap
       // (just hidden) or went straight from button to button (still showing).
       const warm = visible || performance.now() - lastHidden < WARM_WINDOW
       if (immediate || warm) display(el)

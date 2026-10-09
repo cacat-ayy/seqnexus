@@ -87,7 +87,7 @@ describe('display preferences', () => {
       expect(store().showAnnotationTracks).toBe(false)
     })
 
-    it('leaves deletions alone — removing a feature must not reopen the tracks', () => {
+    it('leaves deletions alone: removing a feature must not reopen the tracks', () => {
       store().addAnnotation(feature('f1'))
       store().toggleAnnotationTracks()
       store().removeAnnotation('f1')
@@ -102,7 +102,7 @@ describe('layout responds to the toggles', () => {
     const without = getLayout(LETTERS_ZOOM, 900, false, 1000, { showComplement: false })
     expect(withComp.showComplement).toBe(true)
     expect(without.showComplement).toBe(false)
-    // Not just a skipped draw — the row has to get shorter, or every row keeps
+    // Not just a skipped draw: the row has to get shorter, or every row keeps
     // a blank strand's worth of empty space.
     expect(without.seqLineHeight).toBeLessThan(withComp.seqLineHeight)
     expect(without.rowHeight).toBeLessThan(withComp.rowHeight)

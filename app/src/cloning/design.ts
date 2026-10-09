@@ -1,14 +1,14 @@
 /**
  * A cloning design: what goes in, how it is joined, and what to call it.
  *
- * This is what gets saved. Results are never stored — they come from running
+ * This is what gets saved. Results are never stored: they come from running
  * the design (./run), so they are always what the current engines say, and a
  * fix to an engine reaches every old design the next time it is opened.
  *
  * Each part carries a snapshot of its sequence. A design that only pointed
  * at its sources would silently change, or break, when one of them was
  * edited or deleted; one that keeps a copy can say "this source has changed
- * since — refresh?" and let the user decide.
+ * since. Refresh?" and let the user decide.
  */
 
 import type { AnnotationData } from '../models/Annotation'
@@ -72,7 +72,7 @@ export interface DesignPart {
   dephosphorylated?: boolean
   /**
    * Restriction and Golden Gate: which digest fragment to keep, by where it
-   * sits on the part. Unset means the obvious choice — see ./run.
+   * sits on the part. Unset means the obvious choice; see ./run.
    */
   keep?: { start: number; end: number }
   damMethylated?: boolean
@@ -167,7 +167,7 @@ export function partFromDoc(
  *
  * Compared base for base rather than by fingerprint. The fingerprint is what
  * gets saved, for when the source is not to hand, but while the sequence is
- * open there is no reason to trust a summary over the thing itself — and a
+ * open there is no reason to trust a summary over the thing itself, and a
  * design wrongly claiming its source has changed is worse than not saying.
  */
 export function partMatchesSource(

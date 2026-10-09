@@ -2,7 +2,7 @@
  * The oligos this design needs ordering.
  *
  * Each part is amplified with a pair whose 5' tails carry whatever the method
- * needs — a homology arm copied from the neighbouring part, or the enzyme's
+ * needs: a homology arm copied from the neighbouring part, or the enzyme's
  * site, a spacer and the overhang that decides where the part goes. The
  * binding half is sized by the app's own primer designer, so these melt where
  * the rest of its primers do.
@@ -199,8 +199,8 @@ export default function OligosPanel({ design, product, onClose }: Props) {
                       ? <><span className="cw-oligo-tail">{oligo.tail}</span>{oligo.anneal}</>
                       : <span className="cw-hint">{pair.warnings[0] ?? 'Could not be designed'}</span>}
                   </td>
-                  <td className="cw-cell-size">{oligo.sequence.length || '—'}</td>
-                  <td className="cw-cell-size">{oligo.tm > 0 ? `${oligo.tm.toFixed(1)}` : '—'}</td>
+                  <td className="cw-cell-size">{oligo.sequence.length || '-'}</td>
+                  <td className="cw-cell-size">{oligo.tm > 0 ? `${oligo.tm.toFixed(1)}` : '-'}</td>
                 </tr>
               )))}
             </tbody>

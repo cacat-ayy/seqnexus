@@ -104,7 +104,7 @@ export default function ORFPanel({ open, onClose }: Props) {
 
   /**
    * A badge selects its ORF's bases; Ctrl/Cmd-click picks it for conversion
-   * instead — the same modifier that picks an ORF on the canvas, so whichever
+   * instead, the same modifier that picks an ORF on the canvas, so whichever
    * one a user reaches for first teaches the other.
    */
   const handleOrfClick = useCallback((orf: ORFResult, e: React.MouseEvent) => {

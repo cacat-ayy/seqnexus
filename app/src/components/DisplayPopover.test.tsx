@@ -125,7 +125,7 @@ describe('colour target', () => {
     expect(['rgb(0, 0, 0)', 'rgb(255, 255, 255)']).toContain(a.style.color)
   })
 
-  it('never fills for the None scheme — there is no colour to fill with', () => {
+  it('never fills for the None scheme, since there is no colour to fill with', () => {
     store().setColorTarget('background')
     show()
     const swatch = screen.getByText('None').closest('button')!.querySelector('.dp-swatch')!

@@ -3,7 +3,7 @@
  *
  * The three formats are the ones people already have: a FASTA of parts, a
  * spreadsheet, or an annotated GenBank library. What matters most here is that
- * rejections are reported — an import that silently drops entries leaves the
+ * rejections are reported: an import that silently drops entries leaves the
  * user wondering why their part never matches anything.
  */
 import { describe, it, expect } from 'vitest'

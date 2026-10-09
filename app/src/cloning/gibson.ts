@@ -5,7 +5,7 @@
  * This file is the older API the cloning dialog still calls. The engine
  * behind it finds the order and the orientation itself and will open a
  * circular vector where the arms land, so `autoOrder` no longer means
- * anything — the assembly order is always worked out.
+ * anything: the assembly order is always worked out.
  */
 
 import type { DocumentState } from '../models/Document'

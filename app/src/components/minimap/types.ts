@@ -3,8 +3,8 @@
  *
  * Every view's overview bar is the same shell (ruler, viewport, drag, hover,
  * theming, collapse) around a stack of tracks the view supplies. Positions
- * are always in the view's own units — bases for a sequence or a read,
- * columns for an alignment — never in scroll pixels, so the viewport box
+ * are always in the view's own units (bases for a sequence or a read,
+ * columns for an alignment), never in scroll pixels, so the viewport box
  * covers exactly what is on screen however unevenly the main view lays out.
  */
 

@@ -4,7 +4,7 @@
  * The invariant these lock down is "one user action produces exactly one undo
  * entry". Before the transact() layer, a bulk delete of N features pushed N
  * full-document snapshots, and a single drag of a group colour picker pushed
- * one per frame — enough to evict the user's real history past MAX_UNDO.
+ * one per frame, enough to evict the user's real history past MAX_UNDO.
  */
 import { describe, it, expect, beforeEach } from 'vitest'
 import { useEditorStore } from './store'
@@ -174,7 +174,7 @@ describe('setAnnotationsVisibility', () => {
     expect([...store().hiddenAnnotationIds].sort()).toEqual(['f1', 'f2', 'f3'])
   })
 
-  it('is not undoable — visibility is view state, not document state', () => {
+  it('is not undoable: visibility is view state, not document state', () => {
     const before = undoDepth()
     store().setAnnotationsVisibility(['f1', 'f2'], true)
     expect(undoDepth()).toBe(before)

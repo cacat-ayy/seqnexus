@@ -755,5 +755,5 @@ function PlasmidMap(_props: PlasmidMapProps) {
   )
 }
 
-/** Memoised for the same reason as SequenceView — see the note there. */
+/** Memoised for the same reason as SequenceView; see the note there. */
 export default memo(PlasmidMap)

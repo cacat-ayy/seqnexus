@@ -88,8 +88,8 @@ export function designTailedPair(
   if (!f) return { error: 'No forward binding part fits at the start of the insert.' }
   if (!r) return { error: 'No reverse binding part fits at the end of the insert.' }
   const warnings: string[] = []
-  if (!f.inRange) warnings.push(`The forward binding part only reaches ${f.tm.toFixed(1)} °C within ${c.minLength}–${c.maxLength} nt.`)
-  if (!r.inRange) warnings.push(`The reverse binding part only reaches ${r.tm.toFixed(1)} °C within ${c.minLength}–${c.maxLength} nt.`)
+  if (!f.inRange) warnings.push(`The forward binding part only reaches ${f.tm.toFixed(1)} °C within ${c.minLength}-${c.maxLength} nt.`)
+  if (!r.inRange) warnings.push(`The reverse binding part only reaches ${r.tm.toFixed(1)} °C within ${c.minLength}-${c.maxLength} nt.`)
   return {
     forward: { sequence: fwdTail + f.anneal, tail: fwdTail, anneal: f.anneal, tm: f.tm },
     reverse: { sequence: revTail + r.anneal, tail: revTail, anneal: r.anneal, tm: r.tm },

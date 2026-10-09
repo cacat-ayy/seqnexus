@@ -16,7 +16,7 @@ describe('parseOligoList', () => {
     expect(r.oligos[0].name).toBe('T7, promoter')
   })
 
-  it('reads headerless name–sequence lines, tab or space separated', () => {
+  it('reads headerless name-sequence lines, tab or space separated', () => {
     const r = parseOligoList('M13F\tTGTAAAACGACGGCCAGT\nT7 promoter TAATACGACTCACTATAGGG')
     expect(r.oligos.map(o => [o.name, o.sequence])).toEqual([
       ['M13F', 'TGTAAAACGACGGCCAGT'],

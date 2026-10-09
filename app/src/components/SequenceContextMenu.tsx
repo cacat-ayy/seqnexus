@@ -58,7 +58,7 @@ function fasta(name: string, bases: string): string {
   return `>${name.replace(/\s+/g, '_')}\n${lines.join('\n')}`
 }
 
-const fmtTm = (t: number | null) => (t === null || !Number.isFinite(t) ? '–' : `${t.toFixed(1)} °C`)
+const fmtTm = (t: number | null) => (t === null || !Number.isFinite(t) ? '-' : `${t.toFixed(1)} °C`)
 
 // ---------------------------------------------------------------------------
 // Header: what was clicked, in two lines

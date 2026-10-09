@@ -23,7 +23,7 @@ const doc = (name: string, bases: string, topology: 'linear' | 'circular' = 'lin
 
 describe('the two strands of a fragment', () => {
   it('reads the bottom strand of a fragment with two 5-prime ends', () => {
-    // AATT ... GATC overhangs, as an EcoRI–BamHI piece has.
+    // AATT ... GATC overhangs, as an EcoRI-BamHI piece has.
     const f = linearFragment('f', 'f', 'AATTCGGGG', source, { left: five('AATT'), right: five('GATC') })
     expect(coreOf(f)).toBe('CGGGG')
     expect(bottomStrand(f)).toBe('GATC' + reverseComplement('CGGGG'))

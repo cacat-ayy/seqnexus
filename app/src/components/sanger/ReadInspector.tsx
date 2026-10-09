@@ -86,7 +86,7 @@ function ReadPanel({ model: m, actions }: { model: TraceModel; actions: ReadActi
       <div className="aw-section-label">Trim</div>
       <p className="tw-note">
         {t1 > t0
-          ? <>Keeping <b>{nf.format(kept)}</b> of {nf.format(total)} bases ({nf.format(t0 + 1)}–{nf.format(t1)}).</>
+          ? <>Keeping <b>{nf.format(kept)}</b> of {nf.format(total)} bases ({nf.format(t0 + 1)}-{nf.format(t1)}).</>
           : <>Everything is trimmed away.</>}
         {' '}Drag the handles in the ruler to change it.
       </p>
@@ -215,14 +215,14 @@ function SelectionPanel({ model: m, view, selection: liveSel, caret, actions }: 
   return (
     <div className="aw-panel">
       <div className="aw-sel-head">
-        <div className="aw-sel-title">{one ? `Base ${nf.format(range.d0 + 1)}` : `Bases ${nf.format(range.d0 + 1)}–${nf.format(range.d1)}`}</div>
+        <div className="aw-sel-title">{one ? `Base ${nf.format(range.d0 + 1)}` : `Bases ${nf.format(range.d0 + 1)}-${nf.format(range.d1)}`}</div>
         <div className="aw-sel-sub">{nf.format(stats.length)} {stats.length === 1 ? 'base' : 'bases'}{stats.deleted ? ` · ${stats.deleted} deleted` : ''}</div>
       </div>
       <dl className="aw-stats">
         {stats.meanQ !== null && <Stat label="Mean quality" value={`Q${stats.meanQ.toFixed(1)}`} strong />}
         {stats.minQ !== null && <Stat label="Lowest quality" value={`Q${stats.minQ}`} />}
         {stats.meanQ !== null && <Stat label={`Below Q${view.qualityCutoff}`} value={nf.format(stats.low)} />}
-        <Stat label="GC content" value={stats.length ? `${((stats.gc / stats.length) * 100).toFixed(1)}%` : '—'} />
+        <Stat label="GC content" value={stats.length ? `${((stats.gc / stats.length) * 100).toFixed(1)}%` : '-'} />
         <Stat label="Ambiguous calls" value={nf.format(stats.ambiguous)} />
         <Stat label="Second peaks" value={nf.format(stats.mixed)} hint={`Calls whose second-tallest peak reaches ${Math.round(view.mixedRatio * 100)}% of the called one`} />
         <Stat label="Edited" value={nf.format(stats.edited)} />

@@ -117,7 +117,7 @@ export default function CheckTask({ settings }: { settings: DesignSettings }) {
           {sites.map(({ site, tm }, i) => (
             <button key={i} className="pl-site" onClick={() => show(tabId, site)} title="Go to this site">
               <span>{site.start + 1}..{site.end} {site.strand === 1 ? '(+)' : '(−)'}</span>
-              <span className="pl-site-note">Tm {Number.isFinite(tm) ? tm.toFixed(1) : '–'} °C</span>
+              <span className="pl-site-note">Tm {Number.isFinite(tm) ? tm.toFixed(1) : '-'} °C</span>
               {site.tail5 && <span className="pl-site-note">5′ tail {site.tail5.length}</span>}
               {site.mismatches.length > 0 && (
                 <span className="pl-site-note pl-mm">{site.mismatches.length} mismatch{site.mismatches.length === 1 ? '' : 'es'}</span>

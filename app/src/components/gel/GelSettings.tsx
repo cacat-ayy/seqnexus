@@ -38,7 +38,7 @@ export default function GelSettings({ conditions, onConditions, display, onDispl
           <span className="gw-slider-value">{conditions.agarosePct.toFixed(1)}%</span>
         </span>
       </label>
-      <div className="gw-field-hint">Separates about {formatBp(lo)} – {formatBp(hi)} well</div>
+      <div className="gw-field-hint">Separates about {formatBp(lo)} to {formatBp(hi)} well</div>
       <div className="gw-field">
         <span className="gw-field-label">Buffer</span>
         <div className="toggle-group" role="radiogroup" aria-label="Buffer">

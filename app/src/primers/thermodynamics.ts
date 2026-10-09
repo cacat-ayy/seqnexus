@@ -147,7 +147,7 @@ export function calcTm(
 }
 
 /**
- * GC fraction of a sequence (0–1).
+ * GC fraction of a sequence (0-1).
  */
 export function gcFraction(seq: string): number {
   const s = seq.toUpperCase()
@@ -159,7 +159,7 @@ export function gcFraction(seq: string): number {
 }
 
 /**
- * GC content as a percentage (0–100).
+ * GC content as a percentage (0-100).
  */
 export function gcPercent(seq: string): number {
   return gcFraction(seq) * 100

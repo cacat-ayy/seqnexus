@@ -2,7 +2,7 @@
  * The pick-and-convert loop for both overlays, end to end through the panel bar.
  *
  * Picking happens on the canvas, which jsdom cannot lay out, so the pick set
- * is driven through the store here — what this covers is the wiring around it:
+ * is driven through the store here. What this covers is the wiring around it:
  * that results reach the overlay, that the bar offers the conversion, and that
  * converting leaves the document and the toggle in the state the user was
  * promised.
@@ -37,7 +37,7 @@ async function settle() {
 /**
  * Mount the app and put a known document in front of it.
  *
- * App restores the last session — or loads the demo — asynchronously on mount,
+ * App restores the last session (or loads the demo) asynchronously on mount,
  * and that lands on top of whatever the store held beforehand, so the document
  * has to be opened after it settles rather than in `beforeEach`.
  */
@@ -116,7 +116,7 @@ describe('auto-annotation in the panel bar', () => {
     await act(async () => { store().toggleAutoAnnotationPick(matchKey(MATCHES[0])) })
     await act(async () => { button('Add picked (1)')!.click() })
 
-    // Switching back on re-scans and finds both again — but one of them is a
+    // Switching back on re-scans and finds both again, but one of them is a
     // feature now, so only the other is still worth suggesting.
     await act(async () => { autoToggle().click() })
     await settle()

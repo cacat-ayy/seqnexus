@@ -95,7 +95,7 @@ export function planTrim(data: TraceData, current: [number, number], s: TrimSett
   for (const p of s.primers) {
     const hit = findPrimer(data.bases, p.sequence, s.primerMismatches)
     if (!hit) continue
-    const label = `${p.name} at ${hit.start + 1}–${hit.end}${hit.reverse ? ' (reverse complement)' : ''}`
+    const label = `${p.name} at ${hit.start + 1}-${hit.end}${hit.reverse ? ' (reverse complement)' : ''}`
     if ((hit.start + hit.end) / 2 < n / 2) {
       if (hit.end > start) { start = hit.end; notes.push(`${label}: start trimmed after it`) }
     } else if (hit.start < end) {

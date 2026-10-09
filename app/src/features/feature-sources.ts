@@ -75,7 +75,7 @@ export interface ScanReferences {
  * references come with it.
  *
  * A custom entry displaces a built-in one with the same name and type. A lab
- * that has corrected a stock part wants its own version used, not both — and
+ * that has corrected a stock part wants its own version used, not both, and
  * two near-identical references would otherwise produce two overlapping
  * proposals for the same stretch of DNA.
  */
@@ -124,7 +124,7 @@ export function enabledSourcesSignature(sources: readonly FeatureSource[]): stri
   return sources
     .filter(s => s.enabled)
     // The bundled library never changes within a session, and reading its
-    // length would decode it — which is exactly what the getter avoids.
+    // length would decode it, which is exactly what the getter avoids.
     .map(s => `${s.id}:${s.builtin ? 'builtin' : s.features.length}`)
     .join('|')
 }

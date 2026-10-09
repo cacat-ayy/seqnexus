@@ -1,4 +1,4 @@
-/* Command palette — see CommandPalette.tsx.
+/* Command palette; see CommandPalette.tsx.
    Reuses .modal-backdrop / .modal-dialog for the scrim, entrance animation and
    layering, and only adds what is specific to the palette. */
 

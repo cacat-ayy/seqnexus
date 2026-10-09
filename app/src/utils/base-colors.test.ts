@@ -38,7 +38,7 @@ describe('colour schemes', () => {
     }
   })
 
-  it('is case-insensitive — lowercase bases mark soft-masked regions, not other bases', () => {
+  it('is case-insensitive: lowercase bases mark soft-masked regions, not other bases', () => {
     for (const scheme of ALL) {
       for (const b of 'ACGT') {
         expect(baseColorFor(scheme, b.toLowerCase(), TEXT))
@@ -53,7 +53,7 @@ describe('colour schemes', () => {
     }
   })
 
-  it('never returns black for MacClade G — that would vanish on dark themes', () => {
+  it('never returns black for MacClade G, which would vanish on dark themes', () => {
     // MacClade's convention is "black", which here means the theme foreground.
     expect(baseColorFor('macclade', 'G', TEXT)).toBe(TEXT)
     expect(baseColorFor('macclade', 'G', '#ffffff')).toBe('#ffffff')

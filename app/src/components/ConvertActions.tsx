@@ -4,7 +4,7 @@
  * Both the ORF overlay and the auto-annotation overlay draw candidates the
  * user can pick with Ctrl-click and then convert into real features. The
  * buttons sit in the panel bar next to the toggle that produced them, because
- * picking happens on the canvas — sending the user to a modal to commit what
+ * picking happens on the canvas: sending the user to a modal to commit what
  * they just picked there would break the loop.
  */
 

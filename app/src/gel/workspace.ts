@@ -290,7 +290,7 @@ export function autoLaneLabel(sample: LaneSample, names: NameLookup | ((id: stri
     case 'pcr': {
       const fwd = lookup.oligo?.(sample.forwardId) ?? '?'
       const rev = lookup.oligo?.(sample.reverseId) ?? '?'
-      return `PCR ${fwd}–${rev}`
+      return `PCR ${fwd}-${rev}`
     }
     case 'sizes': return 'Sizes'
   }

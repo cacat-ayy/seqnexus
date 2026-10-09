@@ -13,7 +13,7 @@
  * complement of the other's.
  *
  * The convention matters. Writing both ends of a cut as the bases of the top
- * strand instead — which is tempting, since that is where they come from —
+ * strand instead (which is tempting, since that is where they come from)
  * makes annealing an equality test, and mixing the two rules silently
  * restricts ligation to palindromic overhangs.
  */
@@ -73,7 +73,7 @@ export function endsAnneal(a: End, b: End): boolean {
  * How many of a junction's two nicks ligase can seal. Each side supplies the
  * phosphate for one of them, so a junction with neither phosphate does not
  * hold together at all, and one with a single phosphate leaves a nicked
- * product — which still transforms, since the cell repairs it.
+ * product, which still transforms, since the cell repairs it.
  */
 export function sealedNicks(a: End, b: End): 0 | 1 | 2 {
   return ((a.phosphate ? 1 : 0) + (b.phosphate ? 1 : 0)) as 0 | 1 | 2

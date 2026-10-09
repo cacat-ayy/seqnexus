@@ -42,8 +42,8 @@ export interface DigestOptions {
   /**
    * Prefix for the fragment ids. Fragments from different digests end up in
    * one reaction, so their ids have to be told apart; the default is taken
-   * from the document's name, and a caller with something better — a tab or
-   * item id — should pass it.
+   * from the document's name, and a caller with something better (a tab or
+   * item id) should pass it.
    */
   idPrefix?: string
 }

@@ -4,7 +4,7 @@
  * Supports three reaction types:
  * - BP reaction: attB × attP → entry clone (attL) + byproduct (attR)
  * - LR reaction: attL × attR → expression clone (attB) + byproduct (attP)
- * - MultiSite: 2–3 entry clones (attL) × destination vector (attR) → multi-fragment clone
+ * - MultiSite: 2-3 entry clones (attL) × destination vector (attR) → multi-fragment clone
  *
  * att sites are detected by pattern matching against consensus sequences.
  */
@@ -373,7 +373,7 @@ function runLR(sources: { doc: DocumentState }[]): GatewayResult {
     description: `LR reaction: ${entryDoc.name} (attL) × ${destDoc.name} (attR)`,
   }
 
-  // The byproduct carries off the cassette the destination vector gave up —
+  // The byproduct carries off the cassette the destination vector gave up:
   // the ccdB counter-selection marker, which is why only the product grows.
   const discarded = betweenSites(destDoc, r1, r2)
   const byproduct: CloningProduct = {
@@ -530,7 +530,7 @@ function runMultiSite(sources: { doc: DocumentState }[]): GatewayResult {
     warnings.push(`The attR sites on ${destDoc.name} face opposite ways.`)
   }
 
-  // The backbone, running from attR2 round to attR1 — across the origin if
+  // The backbone, running from attR2 round to attR1, across the origin if
   // that is where it falls, and read on the bottom strand if the sites are.
   const backbone = outsideSites(destDoc, r1, r2)
 

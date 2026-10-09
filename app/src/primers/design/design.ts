@@ -138,7 +138,7 @@ export function designPrimers(req: DesignRequest): DesignResult {
 
   result.pairs = pairs
   if (pairs.length === 0) {
-    result.error = `Primers were found on both sides, but no pair gives a product of ${minProductSize}–${maxProductSize} bp.`
+    result.error = `Primers were found on both sides, but no pair gives a product of ${minProductSize}-${maxProductSize} bp.`
   }
   return result
 }

@@ -150,7 +150,7 @@ export default function ExportModal({ open, defaultName, annotationCount, itemKi
             <div className="export-mixed-summary">{mixedSummary}</div>
           )}
 
-          {/* Format selection – only for uniform kinds */}
+          {/* Format selection: only for uniform kinds */}
           {!isMixed && (
             <>
               <div className="export-format-label">Format</div>

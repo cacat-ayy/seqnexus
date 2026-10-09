@@ -472,7 +472,7 @@ export default function ContigWorkspace({ contig, onClose, onExportPrompt, findR
       profileTrack({
         id: 'coverage', values: cons.coverage, max, height: 18, caption: 'Coverage',
         color: (t, v) => (v >= 2 ? t.good : v >= 1 ? t.fair : t.bad),
-        describe: (c, v) => ({ label: `${v} ${v === 1 ? 'read' : 'reads'}`, detail: `consensus ${cons.bases[c] === ' ' ? '—' : cons.bases[c]} · Q${cons.quality[c]}` }),
+        describe: (c, v) => ({ label: `${v} ${v === 1 ? 'read' : 'reads'}`, detail: `consensus ${cons.bases[c] === ' ' ? '-' : cons.bases[c]} · Q${cons.quality[c]}` }),
       }),
       markerTrack('contig-markers', [
         { label: 'Disagreement', positions: cons.disagreements, color: t => t.danger },
@@ -765,7 +765,7 @@ function StatusBar({ doc, cons, refPos, hover, reads, editing }: {
     const parts: React.ReactNode[] = [<span key="c">Column <b>{nf.format(h.col + 1)}</b></span>]
     if (doc.reference) parts.push(<span key="r">{refPos[h.col] ? <>reference {nf.format(refPos[h.col])} <b>{doc.reference.seq[h.col]}</b></> : 'inserted'}</span>)
     const c = cons.bases[h.col]
-    parts.push(<span key="cs">consensus <b>{c === ' ' ? '—' : c}</b>{c !== ' ' && <> Q{cons.quality[h.col]}</>}</span>)
+    parts.push(<span key="cs">consensus <b>{c === ' ' ? '-' : c}</b>{c !== ' ' && <> Q{cons.quality[h.col]}</>}</span>)
     parts.push(<span key="cv">{cons.coverage[h.col]}× coverage</span>)
     const row = h.row >= 0 ? doc.rows[h.row] : undefined
     if (row) {

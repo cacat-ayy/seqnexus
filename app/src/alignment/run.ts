@@ -40,7 +40,7 @@ export function executeAlignment(req: AlignmentRequest): AlignmentResult {
       const cells = bases[0].length * bases[1].length
       let r
       if (cells > MAX_DP_CELLS) {
-        // Too large for full DP – use seed-and-extend
+        // Too large for full DP: use seed-and-extend
         r = seededSmithWaterman(bases[0], bases[1], scorer, scoring.gapOpen, scoring.gapExtend)
         if (r.score === 0) {
           throw new Error('No significant similarity found. The sequences may not be homologous.')

@@ -44,7 +44,7 @@ interface Props {
   actions: InspectorActions
 }
 
-const pct = (v: number | null, digits = 1) => (v === null ? '—' : `${(v * 100).toFixed(digits)}%`)
+const pct = (v: number | null, digits = 1) => (v === null ? '-' : `${(v * 100).toFixed(digits)}%`)
 
 function AlignmentInspector({ doc, view, selection, editing, tab, onTab, onView, actions }: Props) {
   return (
@@ -97,7 +97,7 @@ function SelectionPanel({ doc, selection: liveSelection, editing, actions }: {
   const where = !selection
     ? 'Whole alignment'
     : allCols ? `${selection.rowIds.length} row${selection.rowIds.length === 1 ? '' : 's'}, all columns`
-    : `Columns ${(selection.c0 + 1).toLocaleString()}–${selection.c1.toLocaleString()}${allRows ? ', all rows' : `, ${selection.rowIds.length} row${selection.rowIds.length === 1 ? '' : 's'}`}`
+    : `Columns ${(selection.c0 + 1).toLocaleString()}-${selection.c1.toLocaleString()}${allRows ? ', all rows' : `, ${selection.rowIds.length} row${selection.rowIds.length === 1 ? '' : 's'}`}`
 
   const colorer = useMemo(() => cellColorer(doc.kind === 'dna' ? 'nucleotide' : 'zappo', doc.kind, docProfile(deferredDoc), () => '-'), [doc.kind, deferredDoc])
   const totalResidues = stats.composition.reduce((a, c) => a + c.count, 0)
@@ -125,7 +125,7 @@ function SelectionPanel({ doc, selection: liveSelection, editing, actions }: {
           label="Length"
           value={stats.lengths.min === stats.lengths.max
             ? stats.lengths.max.toLocaleString()
-            : `${stats.lengths.min.toLocaleString()}–${stats.lengths.max.toLocaleString()}`}
+            : `${stats.lengths.min.toLocaleString()}-${stats.lengths.max.toLocaleString()}`}
           hint={`Ungapped residues per row; mean ${stats.lengths.mean.toFixed(1)}`}
         />
       </dl>
@@ -217,7 +217,7 @@ function IdentityMatrix({ rows, c0, c1 }: { rows: AlnDoc['rows']; c0: number; c1
                   title={`${r.name} vs ${rows[j].name}: ${v === null ? 'nothing to compare' : `${(v * 100).toFixed(1)}%`}`}
                   style={{ background: v === null || i === j ? undefined : `color-mix(in srgb, var(--accent) ${Math.round(Math.max(0, (v - 0.5) * 2) * 70)}%, transparent)` }}
                 >
-                  {i === j ? '' : v === null ? '–' : Math.round(v * 100)}
+                  {i === j ? '' : v === null ? '-' : Math.round(v * 100)}
                 </td>
               ))}
             </tr>

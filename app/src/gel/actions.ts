@@ -68,7 +68,7 @@ export function extractFragment(sourceId: string, enzymeNames: string[], f: Frag
     return false
   }
   const size = fragment.sequence.length
-  const ends = `${f.leftEnzyme ?? 'end'}–${f.rightEnzyme ?? 'end'}`
+  const ends = `${f.leftEnzyme ?? 'end'}-${f.rightEnzyme ?? 'end'}`
   const meta = doc.metadata ?? {}
   const state: DocumentState = {
     name: `${doc.name} ${ends} ${formatBp(size)}`,

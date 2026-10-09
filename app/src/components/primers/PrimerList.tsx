@@ -21,7 +21,7 @@ import { OligoExportDialog, OligoImportDialog } from './OligoDialogs'
 import { useLibraryMatches, toDocumentPrimer, type LibraryMatch } from '../../primers/library'
 import './primers.css'
 
-const fmtTm = (t: number | null) => (t === null || !Number.isFinite(t) ? '–' : `${t.toFixed(1)}°`)
+const fmtTm = (t: number | null) => (t === null || !Number.isFinite(t) ? '-' : `${t.toFixed(1)}°`)
 
 function tailLabel(site: BindingSite): string | null {
   const parts: string[] = []

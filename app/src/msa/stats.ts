@@ -1,6 +1,6 @@
 /**
  * Column statistics: residue counts per column (the profile), and everything
- * read off it — consensus, identity and similarity graphs, sequence logos,
+ * read off it: consensus, identity and similarity graphs, sequence logos,
  * Clustal conservation marks and the numbers for a selection.
  *
  * Mean pairwise identity is computed from counts rather than by comparing
@@ -13,7 +13,7 @@ import { isSimilar } from '../alignment/matrices'
 import { baseBits, codeForBits } from './iupac'
 import { width, type AlnDoc, type AlnKind, type AlnRow } from './model'
 
-/** Symbols: A–Z are 0–25, '*' is 26, the gap is 27. */
+/** Symbols: A-Z are 0-25, '*' is 26, the gap is 27. */
 export const NSYM = 28
 const STOP_SYM = 26
 export const GAP_SYM = 27
@@ -103,7 +103,7 @@ function residueTotal(p: Profile, col: number): number {
 
 export interface ConsensusOptions {
   /**
-   * Fraction (0–1) of sequences a call must cover. 0 means "most common
+   * Fraction (0-1) of sequences a call must cover. 0 means "most common
    * residue". DNA builds the smallest ambiguity code that reaches it;
    * protein falls back to 'X'.
    */
@@ -174,7 +174,7 @@ function columnPairs(p: Profile, col: number): { identical: number; compared: nu
 }
 
 /**
- * Fraction of identical pairs in each column, 0–1. A column where every row
+ * Fraction of identical pairs in each column, 0-1. A column where every row
  * has the same residue scores 1; a gap against a residue counts as a
  * difference; an all-gap column scores 0.
  */

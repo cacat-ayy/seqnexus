@@ -56,8 +56,8 @@ export interface Span {
  *
  * Items pack into as many lanes as they need. When that is more than
  * `maxLanes`, the first `maxLanes - 1` lanes are kept and every remaining
- * item goes into `overflow`, which the caller draws as a final, merged lane —
- * the old minimap silently discarded these, so dense maps lost features.
+ * item goes into `overflow`, which the caller draws as a final, merged lane.
+ * The old minimap silently discarded these, so dense maps lost features.
  * A wrapping item occupies both [start, length) and [0, end).
  */
 export function packLanes<T extends Span>(items: readonly T[], maxLanes: number): { lanes: T[][]; overflow: T[] } {
@@ -95,7 +95,7 @@ export function spanContains(s: Span, pos: number, slop = 0): boolean {
  * Summarise `values` into `bins` buckets.
  *
  * Every value lands in exactly one bucket, so nothing between two sampled
- * columns is skipped — the alignment minimap used to read one column per
+ * columns is skipped: the alignment minimap used to read one column per
  * pixel and miss isolated gaps on long alignments. With more buckets than
  * values, each bucket repeats the value it falls on.
  */

@@ -213,9 +213,9 @@ export default function ReadSetView({ readIds, onClose, onExportPrompt }: Props)
                     <td><span className="rs-spark"><QualitySparkline data={r.read.data} trimStart={r.read.trimStart} trimEnd={r.read.trimEnd} /></span></td>
                     <td className="num">{nf.format(r.length)}</td>
                     <td className="num">{nf.format(r.kept)}</td>
-                    <td className="num">{r.score === null ? '–' : Math.round(r.score)}</td>
-                    <td className="num">{r.crl === null ? '–' : nf.format(r.crl)}</td>
-                    <td className="num">{r.qv20 === null ? '–' : nf.format(r.qv20)}</td>
+                    <td className="num">{r.score === null ? '-' : Math.round(r.score)}</td>
+                    <td className="num">{r.crl === null ? '-' : nf.format(r.crl)}</td>
+                    <td className="num">{r.qv20 === null ? '-' : nf.format(r.qv20)}</td>
                     <td className="num">{nf.format(r.mixed)}</td>
                     <td className="num">{r.edits ? nf.format(r.edits) : ''}</td>
                     <td className="rs-issues" title={r.issues.join('\n')}>{r.issues[0] ?? ''}</td>

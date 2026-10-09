@@ -61,8 +61,8 @@ export interface Interval {
  * least `overlapThreshold` percent of the shared region. One-sided overlap
  * would suppress a whole gene because a 20 bp primer site sits inside it.
  *
- * This is the rule that keeps a conversion converted — something that was just
- * turned into a feature covers itself 100% — while leaving genuinely new
+ * This is the rule that keeps a conversion converted (something that was just
+ * turned into a feature covers itself 100%) while leaving genuinely new
  * candidates (from a lower similarity threshold, a newly enabled database, or
  * looser ORF settings) free to appear, since nothing in the document covers
  * those. Shared with the ORF overlay, which needs the same guarantee.

@@ -3,7 +3,7 @@
  * is aligned to the alignment as a profile (column residue frequencies), and
  * only gap columns are inserted into the existing rows.
  *
- * Profile–sequence scoring is the expected substitution score under the
+ * Profile-sequence scoring is the expected substitution score under the
  * column's residue frequencies; gaps are affine (Gotoh) with free end gaps,
  * so a partial sequence (a read, a fragment, a single domain) lies where it
  * fits instead of being stretched across the whole alignment.

@@ -95,9 +95,9 @@ export function extentOf(f: Fragment): number {
 /**
  * The same molecule held the other way round.
  *
- * The ends themselves are unchanged — each one's span is written along its own
- * protruding strand, which does not care which way you look at the molecule —
- * they only swap sides. The top strand becomes the old bottom strand, and
+ * The ends themselves are unchanged: each one's span is written along its own
+ * protruding strand, which does not care which way you look at the molecule.
+ * They only swap sides. The top strand becomes the old bottom strand, and
  * annotations are mirrored into the new frame.
  *
  * Flipping twice returns the original.

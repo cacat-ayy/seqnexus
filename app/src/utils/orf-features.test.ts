@@ -34,7 +34,7 @@ describe('ORF identity', () => {
     const a = orf({ start: 100 })
     const b = orf({ start: 900, end: 1200 })
     expect(orfKey(a)).not.toBe(orfKey(b))
-    // Same ORF found again after a settings change — same key.
+    // Same ORF found again after a settings change: same key.
     expect(orfKey({ ...a })).toBe(orfKey(a))
   })
 

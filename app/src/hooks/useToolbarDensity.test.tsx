@@ -2,7 +2,7 @@
  * Toolbar density selection.
  *
  * jsdom does no layout, so the toolbar and its last item are given boxes that
- * respond to the density classes the hook applies — which is exactly the
+ * respond to the density classes the hook applies, which is exactly the
  * feedback the hook relies on in a real browser. The widths below stand in for
  * a toolbar that needs 1300px as designed, 1100px squeezed, and 800px without
  * labels.

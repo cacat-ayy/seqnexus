@@ -141,7 +141,7 @@ describe('canTranslateAnnotation', () => {
   it('never passes a feature whose translation would be empty', () => {
     // This is the property the context menu depends on: if the item is shown,
     // clicking it must put something on the clipboard. The converse does not
-    // hold — annotationProtein is a pure translation and will happily
+    // hold: annotationProtein is a pure translation and will happily
     // translate a promoter; it is this gate that decides not to offer it.
     const seq = new Sequence('ATGGCTTAA')
     const cases = [

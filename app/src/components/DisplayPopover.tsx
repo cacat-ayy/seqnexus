@@ -35,7 +35,7 @@ interface Props {
  * The four bases previewed exactly as the canvas will draw them.
  *
  * The preview follows the current target, so switching to Background
- * immediately shows filled blocks in the list — picking a scheme should not
+ * immediately shows filled blocks in the list: picking a scheme should not
  * require imagining what it will look like.
  */
 function SchemeSwatch({ schemeId, target }: { schemeId: ColorSchemeId; target: ColorTarget }) {
@@ -124,7 +124,7 @@ export default function DisplayPopover({ open, onClose, triggerRef }: Props) {
 
   // Positioned fixed and clamped to the viewport rather than absolutely inside
   // the panel bar. The trigger is pinned to the bar's right edge, so an
-  // absolutely-positioned popover ran off the screen — and .main-area is
+  // absolutely-positioned popover ran off the screen, and .main-area is
   // overflow:hidden, so it was clipped as well as overflowing. Anchoring to the
   // trigger's left edge and letting the clamp pull it back keeps it on screen
   // at any window size, on both axes.

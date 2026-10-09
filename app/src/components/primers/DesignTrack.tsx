@@ -138,7 +138,7 @@ export default function DesignTrack({ result, excluded, circular, picked, onPick
       </div>
       <div className="wb-track-readout" aria-live="polite">
         {hover
-          ? `${hover.role === 'forward' ? 'Forward' : 'Reverse'} ${fmt(hover.c.start)}..${fmt(hover.c.end - 1)} · ${hover.c.length} nt · Tm ${hover.c.tm.toFixed(1)} °C · penalty ${hover.c.penalty.toFixed(1)} — click to pick`
+          ? `${hover.role === 'forward' ? 'Forward' : 'Reverse'} ${fmt(hover.c.start)}..${fmt(hover.c.end - 1)} · ${hover.c.length} nt · Tm ${hover.c.tm.toFixed(1)} °C · penalty ${hover.c.penalty.toFixed(1)}. Click to pick`
           : 'Hover a tick to inspect it, click to pick that side.'}
       </div>
     </div>

@@ -41,7 +41,7 @@ export function overviewTracks(pm: PaintModel, hits: readonly { c0: number; c1: 
       height: 18,
       caption: label,
       color: (theme, v) => rampColor(theme, v),
-      describe: (col, v) => ({ label: `${Math.round(v * 100)}% ${label.toLowerCase()}`, detail: `consensus ${pm.consensus[col] ?? '–'}` }),
+      describe: (col, v) => ({ label: `${Math.round(v * 100)}% ${label.toLowerCase()}`, detail: `consensus ${pm.consensus[col] ?? '-'}` }),
     }),
     markerTrack('alignment-markers', [
       { label: `Differs from ${against}`, positions: differenceColumns(pm), color: t => t.warning },

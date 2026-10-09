@@ -13,7 +13,7 @@ const formatOverhang = (o: string) =>
   o === '5prime' ? "5' overhang" : o === '3prime' ? "3' overhang" : 'Blunt end'
 
 const formatMethyl = (v?: string) => {
-  if (!v || v === 'unknown') return '–'
+  if (!v || v === 'unknown') return '-'
   if (v === 'blocked') return 'Blocked'
   if (v === 'impaired') return 'Impaired'
   return 'Insensitive'

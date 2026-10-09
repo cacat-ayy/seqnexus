@@ -5,7 +5,7 @@ import { useState, useRef, useCallback, useEffect, useMemo } from 'react'
  *
  * Extracted from the file explorer, which had the only implementation of this
  * in the app. The annotation sidebar needs the same behaviour, and two hand-
- * rolled copies would drift — range selection is exactly the kind of thing
+ * rolled copies would drift: range selection is exactly the kind of thing
  * that ends up subtly different in each place.
  *
  * Conventions follow the platform: Ctrl/Cmd toggles one item, Shift extends
@@ -19,7 +19,7 @@ export interface ListMultiSelectOptions {
   /** Required when `selected` is supplied. */
   onSelectedChange?: (next: Set<string>) => void
   /**
-   * On the first Ctrl-click, also pull in a related already-active item — the
+   * On the first Ctrl-click, also pull in a related already-active item, the
    * file explorer treats the open document as implicitly selected so that
    * Ctrl-clicking a second one selects both, not just the second.
    */
@@ -37,7 +37,7 @@ export function useListMultiSelect(
   const selectedIds = isControlled ? selected : internal
 
   // Kept in a ref so the callbacks below can stay stable while still reading
-  // the current selection — they are passed to every row in a long list.
+  // the current selection: they are passed to every row in a long list.
   const selectedRef = useRef(selectedIds)
   selectedRef.current = selectedIds
 
@@ -52,7 +52,7 @@ export function useListMultiSelect(
   const orderedRef = useRef(orderedIds)
   orderedRef.current = orderedIds
 
-  // Drop ids that have left the list — deleting a selected row must not leave
+  // Drop ids that have left the list: deleting a selected row must not leave
   // a phantom in the selection that later bulk actions would act on.
   const idsKey = orderedIds.join('\u0000')
   useEffect(() => {

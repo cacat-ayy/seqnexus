@@ -849,7 +849,7 @@ function preserveCorruptSession(raw: string): void {
     localStorage.setItem(CORRUPT_KEY, JSON.stringify({ savedAt: Date.now(), raw }))
   } catch {
     // Quota exhausted, or the payload is too large to duplicate. Nothing more
-    // we can do — the warning below still tells the user what happened.
+    // we can do; the warning below still tells the user what happened.
   }
 }
 

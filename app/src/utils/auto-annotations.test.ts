@@ -18,7 +18,7 @@ const match = (over: Partial<AnnotationMatch> = {}): AnnotationMatch => ({
   color: '#ff0000', ...over,
 })
 
-/** A feature as the store holds it — only the fields the rule reads. */
+/** A feature as the store holds it: only the fields the rule reads. */
 const feature = (over: Partial<{ type: string; strand: number; start: number; end: number }> = {}) =>
   ({ type: 'CDS', strand: 1, start: 100, end: 400, ...over })
 
@@ -50,7 +50,7 @@ describe('isAlreadyAnnotated', () => {
   })
 
   it('keeps a match whose overlap is below the threshold', () => {
-    // 100 bp of a 300 bp match: 33% — under 75 either way.
+    // 100 bp of a 300 bp match: 33%, under 75 either way.
     expect(isAlreadyAnnotated(match(), [feature({ start: 300, end: 400 })], 75)).toBe(false)
   })
 

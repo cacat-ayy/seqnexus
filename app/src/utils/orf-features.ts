@@ -1,7 +1,7 @@
 /**
  * Turning found ORFs into real features.
  *
- * The ORF overlay is an analysis result, not part of the document — but an ORF
+ * The ORF overlay is an analysis result, not part of the document, but an ORF
  * a user recognises as a gene is exactly the thing they then want annotated.
  * This mirrors the auto-annotation flow: pick ORFs on the canvas, convert the
  * picked ones in a single undoable step.
@@ -25,8 +25,8 @@ export const ORF_ID_PREFIX = '_orf_'
  * Deliberately tight.
  *
  * A converted ORF matches its own feature exactly, so any threshold excludes
- * it. Keeping the bar high means a merely overlapping CDS — a shorter isoform,
- * a neighbouring gene — does not quietly swallow an ORF the user could add.
+ * it. Keeping the bar high means a merely overlapping CDS (a shorter isoform,
+ * a neighbouring gene) does not quietly swallow an ORF the user could add.
  */
 export const ORF_COVERAGE_THRESHOLD = 90
 

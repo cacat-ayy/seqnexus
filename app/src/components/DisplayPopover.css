@@ -69,7 +69,7 @@
   font-weight: 600;
 }
 
-/* The swatch is the real preview — the label only names it. Monospace so the
+/* The swatch is the real preview; the label only names it. Monospace so the
    four letters line up between rows and the schemes are comparable. */
 .dp-swatch {
   display: inline-flex;

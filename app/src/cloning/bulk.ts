@@ -2,8 +2,8 @@
  * Cloning many constructs at once.
  *
  * A bulk design is the same design with alternatives at one or more
- * positions. Each position is a bin — a vector, a promoter, a set of coding
- * sequences — and every way of taking one part from each bin is a
+ * positions. Each position is a bin (a vector, a promoter, a set of coding
+ * sequences), and every way of taking one part from each bin is a
  * combination that gets run through the ordinary engines (./run).
  *
  * A vector against a list of inserts is a two-bin design, so the matrix
@@ -43,7 +43,7 @@ export interface BulkRow {
   product?: Assembly
   /** Why there is no product, or what to watch out for in the one there is. */
   notes: string[]
-  /** Type IIS only: how well the overhangs tell themselves apart, 0–1. */
+  /** Type IIS only: how well the overhangs tell themselves apart, 0-1. */
   fidelity?: number
 }
 
@@ -183,7 +183,7 @@ export function binOf(part: DesignPart, name?: string): DesignBin {
 /**
  * Bins from a design's own parts: one per part, each with that part as its
  * only choice. This is the starting point when turning a single design into
- * a library — the user then adds alternatives to whichever positions vary.
+ * a library: the user then adds alternatives to whichever positions vary.
  */
 export function binsFromDesign(design: CloningDesign): DesignBin[] {
   return vectorsFirst(design.parts).map(part =>

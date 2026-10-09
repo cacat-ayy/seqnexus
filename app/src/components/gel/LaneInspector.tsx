@@ -149,7 +149,7 @@ export default function LaneInspector({
     <label className="gw-field">
       <span className="gw-field-label">{label}</span>
       <select className="select gw-select" value={value} onChange={e => onValue(e.target.value)}>
-        {!sources.some(s => s.id === value) && <option value={value}>– choose a sequence –</option>}
+        {!sources.some(s => s.id === value) && <option value={value}>Choose a sequence</option>}
         {sources.map(s => (
           <option key={s.id} value={s.id}>{s.name} ({formatBp(s.length)}, {s.topology})</option>
         ))}
@@ -161,7 +161,7 @@ export default function LaneInspector({
     <label className="gw-field">
       <span className="gw-field-label">{label}</span>
       <select className="select gw-select" value={value} onChange={e => onValue(e.target.value)}>
-        {!oligos.some(o => o.id === value) && <option value={value}>– choose a primer –</option>}
+        {!oligos.some(o => o.id === value) && <option value={value}>Choose a primer</option>}
         {oligos.map(o => <option key={o.id} value={o.id}>{o.name} ({o.length} nt)</option>)}
       </select>
     </label>
@@ -350,8 +350,8 @@ export default function LaneInspector({
                       </td>
                       {showForm && <td title={FORM_LABEL[r.species.form]}>{r.species.form}</td>}
                       <td className="num">{formatNg(r.species.ng)}</td>
-                      {showEnds && <td className="mono">{f && sourceInfo ? fragmentPosition(f, sourceInfo.length) : '–'}</td>}
-                      {showEnds && <td>{f ? fragmentEnds(f) : '–'}</td>}
+                      {showEnds && <td className="mono">{f && sourceInfo ? fragmentPosition(f, sourceInfo.length) : '-'}</td>}
+                      {showEnds && <td>{f ? fragmentEnds(f) : '-'}</td>}
                       {showEnds && (
                         <td className="gw-row-actions">
                           {f && (

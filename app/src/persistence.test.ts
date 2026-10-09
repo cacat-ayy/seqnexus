@@ -9,7 +9,7 @@ const CORRUPT_KEY = 'seqnexus_session_corrupt'
  *
  * These matter more than the happy path: when restore fails the user loses
  * work, and the failure is invisible unless it is reported. None of these
- * cases reach IndexedDB — they all fail while reading localStorage metadata —
+ * cases reach IndexedDB (they all fail while reading localStorage metadata),
  * so they run without an IndexedDB implementation in jsdom.
  */
 describe('loadSession failure handling', () => {
@@ -69,7 +69,7 @@ describe('loadSession failure handling', () => {
   it('resets warnings from a previous load instead of accumulating them', async () => {
     localStorage.setItem(STORAGE_KEY, 'not json at all')
     await loadSession()
-    // Deliberately not consumed — a second load must not stack warnings.
+    // Deliberately not consumed: a second load must not stack warnings.
     await loadSession()
 
     expect(consumeLoadWarnings()).toHaveLength(1)

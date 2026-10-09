@@ -1,4 +1,4 @@
-/* Bulk action bar — see FeatureBulkBar.tsx. Sits directly under the sidebar
+/* Bulk action bar; see FeatureBulkBar.tsx. Sits directly under the sidebar
    header and only exists while a selection does. */
 
 .fbb {

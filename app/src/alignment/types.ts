@@ -22,11 +22,11 @@ export interface AlignedSequence {
 export interface AlignmentResult {
   sequences: AlignedSequence[]
   consensus: string
-  conservation: number[] // per-column, 0.0–1.0
+  conservation: number[] // per-column, 0.0-1.0
   score: number
-  identity: number       // fraction 0–1
-  similarity: number     // fraction 0–1
-  gaps: number           // fraction 0–1
+  identity: number       // fraction 0-1
+  similarity: number     // fraction 0-1
+  gaps: number           // fraction 0-1
   alignmentLength: number
   pairwiseIdentityMatrix?: number[][] // for MSA: NxN identity fractions
   algorithm: 'nw' | 'sw' | 'msa' | 'mafft'

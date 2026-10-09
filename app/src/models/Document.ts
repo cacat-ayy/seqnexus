@@ -360,8 +360,8 @@ export function updateAnnotation(
 /**
  * Remove many annotations in one pass.
  *
- * Calling `removeAnnotation` in a loop is O(n) per id — it rebuilds the whole
- * array each time — so deleting 50 features from a 500-feature plasmid walked
+ * Calling `removeAnnotation` in a loop is O(n) per id (it rebuilds the whole
+ * array each time), so deleting 50 features from a 500-feature plasmid walked
  * 25,000 entries. This walks it once.
  */
 export function removeAnnotations(

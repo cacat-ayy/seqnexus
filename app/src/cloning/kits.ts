@@ -51,7 +51,7 @@ export const KITS: Record<KitId, Kit> = {
     minTm: null,
     mismatchTolerance: 2,
     longOverlapFrom: { fragments: 5, overlap: 30 },
-    note: 'Tolerates a mismatch or two in the overlap. Use 20–30 bp for a few fragments and 30 bp or more beyond four.',
+    note: 'Tolerates a mismatch or two in the overlap. Use 20-30 bp for a few fragments and 30 bp or more beyond four.',
   },
   gibson: {
     id: 'gibson',

@@ -380,16 +380,16 @@ function segmentAfterDeletion(
   if (delStart <= segStart && delEnd >= segEnd) {
     return null
   }
-  // Deletion in the middle – both sides survive; return original bounds
+  // Deletion in the middle: both sides survive; return original bounds
   // (adjustCoordForDeletion will shrink the end coordinate)
   if (delStart > segStart && delEnd < segEnd) {
     return [segStart, segEnd]
   }
-  // Deletion overlaps the start – surviving portion starts after deletion
+  // Deletion overlaps the start: the surviving portion starts after deletion
   if (delStart <= segStart) {
     return [Math.max(segStart, delEnd), segEnd]
   }
-  // Deletion overlaps the end – surviving portion ends before deletion
+  // Deletion overlaps the end: the surviving portion ends before deletion
   return [segStart, Math.min(segEnd, delStart)]
 }
 

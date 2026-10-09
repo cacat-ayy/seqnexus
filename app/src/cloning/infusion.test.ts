@@ -54,7 +54,7 @@ describe('infusionAssemble', () => {
       maxOverlap: 40, // allow finding the overlap
     })
 
-    expect(result.warnings.some(w => w.includes('15–25 bp'))).toBe(true)
+    expect(result.warnings.some(w => w.includes('15-25 bp'))).toBe(true)
   })
 
   it('warns when overlap is below 15 bp', () => {

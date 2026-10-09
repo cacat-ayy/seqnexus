@@ -8,7 +8,7 @@
  *
  * The app exports FASTQ from sequencing reads; this is the matching import
  * side. Note that FASTQ carries no trace data, so records load as plain
- * sequences rather than chromatograms — the quality scores are kept here so
+ * sequences rather than chromatograms; the quality scores are kept here so
  * callers can report them, but there is nothing to draw a trace from.
  */
 
@@ -23,7 +23,7 @@ export interface FastqRecord {
  * Quality is decoded as Phred+33 (Sanger, Illumina 1.8+), which is the
  * universal encoding today.
  *
- * Phred+64 (Illumina 1.3–1.7) is deliberately not auto-detected: the two
+ * Phred+64 (Illumina 1.3-1.7) is deliberately not auto-detected: the two
  * ranges overlap, so any heuristic misreads either old +64 files or modern
  * high-quality +33 files, and a wrong score is worse than an unsupported one.
  * A +64 file decodes to implausibly high scores (~Q60+) rather than silently
@@ -35,7 +35,7 @@ const PHRED_OFFSET = 33
  * Parse FASTQ text into records.
  *
  * @throws if a record is structurally invalid (missing separator, or quality
- *         length not matching sequence length) — a silent partial parse would
+ *         length not matching sequence length): a silent partial parse would
  *         be worse than a clear failure for sequencing data.
  */
 export function parseFastq(text: string): FastqRecord[] {

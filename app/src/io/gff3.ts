@@ -40,7 +40,7 @@ export function writeGff3(doc: DocumentState): string {
       start = ann.start + 1
       end = ann.end
     } else {
-      // Origin-spanning feature on circular sequence – GFF3 doesn't natively
+      // Origin-spanning feature on circular sequence: GFF3 doesn't natively
       // support wrapping, so we emit the full span as [start+1, seqLen] and
       // note the wrap in attributes. Tools can reconstruct from Is_circular.
       start = ann.start + 1

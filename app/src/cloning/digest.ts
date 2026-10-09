@@ -4,7 +4,7 @@
  *
  * Callers here work with `CloningFragment`, which carries the two ends as
  * `overhang5`/`overhang3` strings. Those are the same spans the `End` model
- * uses — written 5'→3' along whichever strand protrudes — so two ends still
+ * uses (written 5'→3' along whichever strand protrudes), so two ends still
  * meet when one span is the reverse complement of the other.
  *
  * New code should use `digest`, `assemble` and the `Fragment` model directly;
@@ -146,8 +146,8 @@ export interface LigationOptions {
  * Which fragments a reaction is meant to use, when the caller has not said.
  *
  * With more than one source sequence, one per source: the longest, which is
- * the band you would cut out of a gel. Without that, a digest's leftovers —
- * the short pieces outside the cloning sites — count towards the intended
+ * the band you would cut out of a gel. Without that, a digest's leftovers,
+ * the short pieces outside the cloning sites, count towards the intended
  * product, and a circle made of every scrap looks as expected as the real one.
  *
  * Fragments from a single source are all required instead, since cutting one

@@ -18,7 +18,7 @@ import OligoSequence from './OligoSequence'
 
 const COMP: Record<string, string> = { A: 'T', T: 'A', G: 'C', C: 'G' }
 
-const fmtTm = (t: number | null) => (t === null || !Number.isFinite(t) ? '–' : `${t.toFixed(1)} °C`)
+const fmtTm = (t: number | null) => (t === null || !Number.isFinite(t) ? '-' : `${t.toFixed(1)} °C`)
 /** Structure Tms are estimates, and meaningless below freezing. */
 const fmtStructTm = (t: number) => (t < 0 ? '< 0 °C' : `≈ ${t.toFixed(0)} °C`)
 
@@ -112,7 +112,7 @@ export default function OligoInspector({ label, oligo, sites, constraints, templ
           </dd>
         </div>
         <div><dt>GC</dt><dd>{s.gc.toFixed(0)}%</dd></div>
-        <div><dt>3′ ΔG</dt><dd>{scored.checks.end3dG === null ? '–' : `${scored.checks.end3dG.toFixed(1)}`}</dd></div>
+        <div><dt>3′ ΔG</dt><dd>{scored.checks.end3dG === null ? '-' : `${scored.checks.end3dG.toFixed(1)}`}</dd></div>
         <div><dt>Clamp</dt><dd>{scored.checks.gcClamp ? 'yes' : 'no'}</dd></div>
       </dl>
 

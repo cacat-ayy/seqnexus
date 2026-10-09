@@ -47,7 +47,7 @@ type PresetFields = Pick<DesignSettings,
 
 export const PRESETS: { id: PresetId; label: string; hint: string; values: PresetFields }[] = [
   {
-    id: 'standard', label: 'Standard PCR', hint: '150–1000 bp, Tm around 60 °C',
+    id: 'standard', label: 'Standard PCR', hint: '150-1000 bp, Tm around 60 °C',
     values: {
       minTm: 57, maxTm: 63, optTm: 60, minLen: 18, maxLen: 25, minGC: 40, maxGC: 60,
       minProduct: 150, maxProduct: 1000, probe: false, probeMinTm: 68, probeMaxTm: 72, probeOptTm: 70,
@@ -61,14 +61,14 @@ export const PRESETS: { id: PresetId; label: string; hint: string; values: Prese
     },
   },
   {
-    id: 'long', label: 'Long amplicon', hint: '1–5 kb, slightly longer primers',
+    id: 'long', label: 'Long amplicon', hint: '1-5 kb, slightly longer primers',
     values: {
       minTm: 58, maxTm: 65, optTm: 62, minLen: 20, maxLen: 28, minGC: 40, maxGC: 60,
       minProduct: 1000, maxProduct: 5000, probe: false, probeMinTm: 68, probeMaxTm: 72, probeOptTm: 70,
     },
   },
   {
-    id: 'qpcr', label: 'qPCR with probe', hint: '70–150 bp amplicon, TaqMan probe',
+    id: 'qpcr', label: 'qPCR with probe', hint: '70-150 bp amplicon, TaqMan probe',
     values: {
       minTm: 58, maxTm: 62, optTm: 60, minLen: 18, maxLen: 24, minGC: 35, maxGC: 65,
       minProduct: 70, maxProduct: 150, probe: true, probeMinTm: 68, probeMaxTm: 72, probeOptTm: 70,

@@ -1,8 +1,8 @@
 /**
  * Deriving bases and protein from an annotation.
  *
- * This logic used to exist in three places — the hover tooltip, the linear
- * view's context menu and the plasmid map's context menu — each with its own
+ * This logic used to exist in three places (the hover tooltip, the linear
+ * view's context menu and the plasmid map's context menu), each with its own
  * copy of the origin-spanning special case. They have to agree: the context
  * menu shows the translated sequence and offers to copy it, so display and
  * clipboard reading differently is a bug the user can see.

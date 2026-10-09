@@ -23,7 +23,7 @@ export interface BandOptions {
   detectionNg: number
 }
 
-/** Ethidium bromide picks up roughly 1–5 ng in a band. */
+/** Ethidium bromide picks up roughly 1-5 ng in a band. */
 export const DEFAULT_DETECTION_NG = 2
 
 export const DEFAULT_BAND_OPTIONS: BandOptions = {

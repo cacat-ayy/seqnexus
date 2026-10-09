@@ -77,8 +77,8 @@ export function crossReactivity(left: string, right: string): number {
  *
  * Every overhang is present at two ends in the reaction: the part upstream of
  * a junction presents it, and the part downstream presents its partner. So
- * there are two ways a pair can go wrong — one overhang against the other,
- * and one against the other's partner — and a set is only as good as the
+ * there are two ways a pair can go wrong (one overhang against the other,
+ * and one against the other's partner), and a set is only as good as the
  * worse of them.
  */
 export function pairRisk(a: string, b: string): number {
@@ -117,7 +117,7 @@ export function junctionOverhangs(ends: readonly string[]): string[] {
 export interface SetFidelity {
   /**
    * Estimated share of ligation events that join the intended partners,
-   * 0–1. Above about 0.95 a set assembles cleanly.
+   * 0-1. Above about 0.95 a set assembles cleanly.
    */
   fidelity: number
   /** The pairs most likely to cross-react, worst first. */
@@ -218,7 +218,7 @@ export interface OverhangSetOptions {
   include?: string[]
   /** Overhangs to stay away from. */
   exclude?: string[]
-  /** Keep GC content in this range, as a fraction. Default 0.25–0.75. */
+  /** Keep GC content in this range, as a fraction. Default 0.25-0.75. */
   minGc?: number
   maxGc?: number
 }

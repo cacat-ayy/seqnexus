@@ -1,8 +1,8 @@
 /**
  * Part lists in, product tables out.
  *
- * A library is usually already written down somewhere — a spreadsheet of
- * promoters, or a plate of synthesised fragments — so the bins can be read
+ * A library is usually already written down somewhere (a spreadsheet of
+ * promoters, or a plate of synthesised fragments), so the bins can be read
  * from a file rather than clicked together one part at a time. What comes
  * back out is a table with a row per construct, which is what goes into a
  * lab notebook or an ordering form.

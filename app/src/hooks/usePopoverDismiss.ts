@@ -2,7 +2,7 @@ import { useEffect, useRef, type RefObject } from 'react'
 
 /**
  * Closes a popover/dropdown when a full click (mousedown + mouseup)
- * occurs outside of it. A mousedown alone won't dismiss – the user
+ * occurs outside of it. A mousedown alone won't dismiss: the user
  * must complete the click outside for it to count.
  *
  * Optionally ignores clicks on a trigger button.

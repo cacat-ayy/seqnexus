@@ -42,7 +42,7 @@ export interface AssembleOptions {
    * time: there a product that keeps a site is cut open again, which is what
    * makes Type IIS assembly specific. Ordinary restriction cloning rebuilds
    * its sites at every junction and is none the worse for it, because the
-   * enzyme is gone by then — so do not pass them for that.
+   * enzyme is gone by then, so do not pass them for that.
    */
   recutEnzymes?: RestrictionEnzyme[]
   /**

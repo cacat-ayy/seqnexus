@@ -224,7 +224,7 @@ export default function CloneWorkspace({ clone, onClose }: Props) {
    */
   const saveRows = useCallback((rows: BulkRow[], folderName: string) => {
     const store = useEditorStore.getState()
-    const folderId = store.createFolder(`${clone.name} — ${folderName}`)
+    const folderId = store.createFolder(`${clone.name}: ${folderName}`)
     for (const row of rows) {
       if (!row.product) continue
       const id = store.openDocumentState(productDocument(design, row.product, row.name))

@@ -3,7 +3,7 @@
  *
  * The ORFs / REs / Primers / Features switches carry their on-state purely
  * through an `active` class. That makes it possible to break the indicator
- * without breaking anything a type-check or a behavioural test would notice —
+ * without breaking anything a type-check or a behavioural test would notice,
  * which is exactly what happened once: an edit dropped the `${...}` out of the
  * className template and the toggles silently stopped showing any state at all.
  */
@@ -66,7 +66,7 @@ describe('panel bar toggles', () => {
     }
   })
 
-  it('toggles are independent — several can be on at once', () => {
+  it('toggles are independent: several can be on at once', () => {
     // If these were mutually exclusive the underline styling would have been
     // right; they are not, which is why they read as switches.
     render(<App />)

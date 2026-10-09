@@ -2,7 +2,7 @@
  * Bulk action bar for the feature sidebar.
  *
  * Appears only while features are selected. Every action routes through a
- * plural store action so it lands as a single undoable step — the whole point
+ * plural store action so it lands as a single undoable step, the whole point
  * of the batch layer underneath.
  */
 

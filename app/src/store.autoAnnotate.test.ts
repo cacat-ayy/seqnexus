@@ -2,7 +2,7 @@
  * Auto-annotation: proposals in, features out.
  *
  * The conversion is the part worth pinning down. It has to add exactly what
- * was picked, land as one undo entry, and leave the overlay off — and a second
+ * was picked, land as one undo entry, and leave the overlay off, and a second
  * apply of the same keys must be a no-op, because by then those proposals
  * describe features the document already has.
  */
@@ -113,7 +113,7 @@ describe('auto-annotation store', () => {
   it('will not convert the same proposal twice', () => {
     store().setAutoAnnotations([AMP, LAC])
     store().applyAutoAnnotations([matchKey(AMP)])
-    // The proposal list is unchanged — the overlap rule is what excludes it.
+    // The proposal list is unchanged: the overlap rule is what excludes it.
     expect(store().applyAutoAnnotations([matchKey(AMP)])).toBe(0)
     expect(store().doc.annotations).toHaveLength(1)
   })

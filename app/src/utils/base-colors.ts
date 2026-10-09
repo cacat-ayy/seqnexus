@@ -7,7 +7,7 @@
  * letter, which keeps them cheap enough to call per character in the draw loop.
  *
  * `textColor` is the theme's canvas foreground. Schemes use it wherever the
- * convention says "black" — MacClade's G, and every base under "None". Baking
+ * convention says "black": MacClade's G, and every base under "None". Baking
  * in an actual black would make those bases invisible on the dark themes.
  */
 
@@ -23,9 +23,9 @@ export type ColorSchemeId =
  * Where a scheme's colour lands.
  *
  * `letters` tints the glyph; `background` fills the cell behind it and draws
- * the glyph in whatever contrasts. Background is the stronger signal — colour
+ * the glyph in whatever contrasts. Background is the stronger signal: colour
  * blocks are readable at a glance and at small sizes where a thin glyph's hue
- * is hard to judge — which is why alignment viewers default to it. Letters
+ * is hard to judge, which is why alignment viewers default to it. Letters
  * stay easier to read as text.
  */
 export type ColorTarget = 'letters' | 'background'
@@ -69,7 +69,7 @@ const CLUSTAL: Palette = { A: '#3ba82c', C: '#d18a1f', G: '#cc3b36', T: '#2f74c9
 /** MacClade. Its G is black, which here means the theme foreground. */
 const MACCLADE: Palette = { A: '#1a9850', C: '#2b56c4', G: null, T: '#d7301f', U: '#d7301f' }
 
-/** Three hydrogen bonds versus two — the property that drives melting behaviour. */
+/** Three hydrogen bonds versus two, the property that drives melting behaviour. */
 const GC_AT: Palette = { G: '#2874a6', C: '#2874a6', A: '#c0392b', T: '#c0392b', U: '#c0392b' }
 
 /** Two-ring versus one-ring bases. */
@@ -88,7 +88,7 @@ const PALETTES: Record<ColorSchemeId, Palette | null> = {
  * Resolve one base to a colour under a scheme.
  *
  * Unrecognised characters (N, gaps, IUPAC ambiguity codes) fall back to the
- * theme foreground rather than a warning colour — they are common in real
+ * theme foreground rather than a warning colour: they are common in real
  * records and highlighting them would be noise, not information.
  */
 export function baseColorFor(

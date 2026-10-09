@@ -22,8 +22,8 @@ export type BlastStatus = 'WAITING' | 'READY' | 'FAILED' | 'UNKNOWN'
 export interface BlastHsp {
   bitScore: number
   evalue: number
-  identity: number      // fraction 0–1
-  positives: number     // fraction 0–1
+  identity: number      // fraction 0-1
+  positives: number     // fraction 0-1
   gaps: number
   alignLen: number
   queryFrom: number     // 1-based
@@ -47,7 +47,7 @@ export interface BlastHit {
   topScore: number
   topEvalue: number
   topIdentity: number
-  queryCoverage: number // fraction 0–1
+  queryCoverage: number // fraction 0-1
 }
 
 export interface BlastResult {

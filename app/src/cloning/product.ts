@@ -68,7 +68,7 @@ export interface Assembly {
   /**
    * Recognition sites of the assembly enzymes still present. A circular
    * product that keeps one is cut open again in a one-pot reaction, so it
-   * never accumulates — this is what makes Type IIS assembly specific.
+   * never accumulates: this is what makes Type IIS assembly specific.
    */
   recut: string[]
   /** Anything questionable about this particular product. */

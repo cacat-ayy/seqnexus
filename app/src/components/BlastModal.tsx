@@ -361,11 +361,11 @@ export default function BlastModal({ open, onClose, onPhaseChange }: Props) {
   const handleDeleteHistory = useCallback((idx: number, e: React.MouseEvent) => {
     e.stopPropagation()
     if (confirmDeleteIdx !== idx) {
-      // First click — ask for confirmation
+      // First click: ask for confirmation
       setConfirmDeleteIdx(idx)
       return
     }
-    // Second click — confirmed, delete
+    // Second click: confirmed, delete
     setConfirmDeleteIdx(null)
     removeBlastHistory(idx)
     const updated = loadBlastHistory()
@@ -487,7 +487,7 @@ export default function BlastModal({ open, onClose, onPhaseChange }: Props) {
           </button>
         </div>
 
-        {/* History chips — visible in all phases */}
+        {/* History chips, visible in all phases */}
         {history.length > 0 && (
           <div className="blast-history-bar" onClick={() => setConfirmDeleteIdx(null)}>
             {history.map((entry, i) => {

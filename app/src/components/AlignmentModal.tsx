@@ -172,7 +172,7 @@ export default function AlignmentModal({ open, onClose, onResult, onReadAlignRes
   const totalBases = useMemo(() => entries.reduce((s, e) => s + e.bases.length, 0), [entries])
   const showWarning = entries.length > 20 || totalBases > 50_000
 
-  // IDs already selected – used to prevent duplicate entries
+  // IDs already selected, used to prevent duplicate entries
   const selectedTabIds = useMemo(() => new Set(entries.filter(e => e.source === 'tab' && e.sourceId).map(e => e.sourceId!)), [entries])
   const selectedReadIds = useMemo(() => new Set(entries.filter(e => e.source === 'read' && e.sourceId).map(e => e.sourceId!)), [entries])
 
@@ -515,14 +515,14 @@ export default function AlignmentModal({ open, onClose, onResult, onReadAlignRes
                     <button
                       className={`toggle-btn ${mode === 'global' ? 'active' : ''}`}
                       onClick={() => setMode('global')}
-                      title="Needleman–Wunsch: align the sequences end to end"
+                      title="Needleman-Wunsch: align the sequences end to end"
                     >
                       Global
                     </button>
                     <button
                       className={`toggle-btn ${mode === 'local' ? 'active' : ''}`}
                       onClick={() => setMode('local')}
-                      title="Smith–Waterman: find the best matching stretch"
+                      title="Smith-Waterman: find the best matching stretch"
                     >
                       Local
                     </button>

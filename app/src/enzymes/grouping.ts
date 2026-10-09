@@ -25,7 +25,7 @@ export interface GroupedCutSite {
 /**
  * Stable identity for a grouped cut site, for hover tracking.
  *
- * Grouped sites are rebuilt on each scan, so object identity is useless here —
+ * Grouped sites are rebuilt on each scan, so object identity is useless here:
  * the delayed-hover hook needs a key that survives that and still distinguishes
  * two different enzymes cutting at nearby positions.
  */

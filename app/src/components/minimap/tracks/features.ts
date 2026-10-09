@@ -33,7 +33,7 @@ export interface FeatureTrackOptions<T extends FeatureLike> {
   features: readonly T[]
   /** Lanes per strand, including the overflow lane. */
   maxLanes?: number
-  /** "1,201–2,000"-style range label for the readout. */
+  /** "1,201-2,000"-style range label for the readout. */
   formatRange: (start: number, end: number) => string
 }
 

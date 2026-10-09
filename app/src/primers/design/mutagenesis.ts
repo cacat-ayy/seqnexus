@@ -15,7 +15,7 @@
  *   complement. Sized with the QuikChange Tm rule from the Agilent manual:
  *   Tm = 81.5 + 0.41·%GC − 675/N − %mismatch (the mismatch term dropped for
  *   insertions and deletions, where N excludes the edited bases), aiming for
- *   Tm ≥ 78 °C with 10–15 template bases each side and 25–45 nt overall.
+ *   Tm ≥ 78 °C with 10-15 template bases each side and 25-45 nt overall.
  */
 
 import { reverseComplement } from '../../models/complement'
@@ -116,7 +116,7 @@ export function designMutagenesis(req: MutationRequest): MutagenesisDesign | { e
   }
   if (!best) return { error: 'There is not enough sequence on both sides of the edit.' }
   if (best.tm < 78) warnings.push(`The QuikChange Tm only reaches ${best.tm.toFixed(1)} °C (78 °C recommended).`)
-  if (best.primer.length > 45) warnings.push(`The primers are ${best.primer.length} nt; QuikChange recommends 25–45.`)
+  if (best.primer.length > 45) warnings.push(`The primers are ${best.primer.length} nt; QuikChange recommends 25-45.`)
   return {
     forward: best.primer,
     reverse: reverseComplement(best.primer),

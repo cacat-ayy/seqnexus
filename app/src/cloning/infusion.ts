@@ -2,7 +2,7 @@
  * In-Fusion, over the same seamless assembly engine as Gibson and HiFi.
  *
  * The kit works at room temperature, so it asks nothing of the overlap's
- * melting temperature — only that it is long enough, and not much longer
+ * melting temperature, only that it is long enough, and not much longer
  * than it needs to be.
  */
 

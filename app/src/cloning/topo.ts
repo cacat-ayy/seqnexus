@@ -55,7 +55,7 @@ const DIRECTIONAL_INSERT_OVERHANG = 'CACC'
  * How the insert's clamp can read on the vector beside the cut.
  *
  * The vector's four-base overhang and the insert's CACC are two strands of
- * the same four base pairs, not two stretches to be put end to end — so in
+ * the same four base pairs, not two stretches to be put end to end, so in
  * the product those bases appear once. Depending on which strand the vector
  * is stored on, they read either as the clamp itself or as its complement.
  */
@@ -203,8 +203,8 @@ function buildTopoProduct(
 
   // Directional TOPO: the insert's CACC pairs with the vector's four-base
   // overhang, so those bases belong to both and must appear once. The clamp
-  // is kept — it is part of the finished construct, and the translation
-  // context downstream of it depends on being there — and the vector's
+  // is kept (it is part of the finished construct, and the translation
+  // context downstream of it depends on being there), and the vector's
   // matching bases are consumed instead of being written out again.
   let clampConsumed = 0
   if (variant === 'Directional' && !reverse) {
@@ -322,7 +322,7 @@ function findActiveSite(
       return { site: nearEnd, info }
     }
 
-    // No CCCTT near the ends – the vector may not be linearized at the
+    // No CCCTT near the ends: the vector may not be linearized at the
     // TOPO site, or it may not be a TOPO vector at all.
     if (sites.length > 0) {
       info.push(`Linear vector has no CCCTT near either end: it may not be linearized at the TOPO site. Found ${sites.length} internal CCCTT occurrence${sites.length > 1 ? 's' : ''}; inserting at the first one (position ${sites[0].start}). Commercial TOPO vectors are supplied pre-linearized at the activated site.`)
@@ -345,7 +345,7 @@ function findActiveSite(
     return { site: sites[0], info }
   }
 
-  // Multiple sites – try to identify the cloning site by proximity
+  // Multiple sites: try to identify the cloning site by proximity
   // to MCS/lacZ/cloning-related annotations
   const cloningKeywords = /mcs|multiple.cloning|cloning.site|lacz|lac.alpha|topo|insertion/i
   const cloningAnns = annotations.filter(a =>

@@ -9,7 +9,7 @@ import { getScanReferences, enabledSourcesSignature } from '../features/feature-
  * The scan used to live inside the Annotate modal, which was fine when the
  * results only ever appeared in that modal's list. Now the overlay can be
  * switched on from the panel bar without the modal ever opening, so the scan
- * has to belong to the app instead — it runs whenever either of them wants
+ * has to belong to the app instead: it runs whenever either of them wants
  * results, and re-runs when anything the results depend on changes:
  * the document, the similarity threshold, or which databases are enabled.
  *

@@ -2,12 +2,12 @@
  * Render-cost regression tests.
  *
  * App holds ~55 state hooks and ~49 store subscriptions, so it re-renders
- * constantly — every dialog toggle, every toast, every theme change. The
+ * constantly: every dialog toggle, every toast, every theme change. The
  * expensive children (the two canvas views, the explorer, the feature
  * sidebar) are React.memo'd so those re-renders stop at their boundary.
  *
  * memo only holds if the props App passes keep their identity. Reintroducing
- * an inline arrow — `onEditFeature={() => setFeaturesPanelOpen(true)}` — is an
+ * an inline arrow (`onEditFeature={() => setFeaturesPanelOpen(true)}`) is an
  * easy and invisible way to break that, which is what these tests guard.
  *
  * The mocks below are memo()'d stand-ins, so a failure here means App handed

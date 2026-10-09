@@ -117,7 +117,7 @@ export default function TrimCallDialog({ readIds, onClose }: Props) {
                     <tr key={read.id} className={plan.changed ? '' : 'tw-unchanged'}>
                       <td className="rs-name" title={read.data.name}>{read.data.name}</td>
                       <td className="num">{nf.format(before)}</td>
-                      <td className={`num${plan.tooShort ? ' tw-bad' : ''}`}>{nf.format(after)} <span className="aw-muted">({nf.format(plan.trimStart + 1)}–{nf.format(plan.trimEnd)})</span></td>
+                      <td className={`num${plan.tooShort ? ' tw-bad' : ''}`}>{nf.format(after)} <span className="aw-muted">({nf.format(plan.trimStart + 1)}-{nf.format(plan.trimEnd)})</span></td>
                       <td className="num">{delta === 0 ? '' : delta > 0 ? `+${nf.format(delta)}` : nf.format(delta)}</td>
                       {settings.mixed.enabled && <td className="num">{plan.mixedCalls || ''}</td>}
                       <td className="rs-issues" title={plan.notes.join('\n')}>{plan.notes.join(' · ') || (plan.changed ? '' : 'No change')}</td>

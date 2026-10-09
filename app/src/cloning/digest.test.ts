@@ -199,7 +199,7 @@ describe('digestFragments', () => {
     const ann = new Annotation({ id: 'a1', name: 'big', type: 'CDS', start: 2, end: 10, strand: 1 })
     const doc = makeDoc('test', 'AAAGAATTCAAA', 'linear', [ann])
     const { fragments: frags } = digestFragments(doc, [EcoRI])
-    // Annotation [2,10) spans the cut at position 4 – should be truncated in both fragments
+    // Annotation [2,10) spans the cut at position 4, so it is truncated in both fragments
     expect(frags[0].annotations).toHaveLength(1)
     expect(frags[0].annotations[0].start).toBe(2)
     expect(frags[0].annotations[0].end).toBe(4)

@@ -201,7 +201,7 @@ export function verifyHtml(r: VerifyReport, contigName: string, date = new Date(
   const colour = { verified: '#15803d', differences: '#b91c1c', incomplete: '#b45309' }[r.verdict]
   const featureRows = r.features.map(f => `<tr><td>${esc(f.feature.name)}</td><td>${esc(f.feature.type)}</td><td style="color:${{ verified: '#15803d', differences: '#b91c1c', incomplete: '#b45309' }[f.status]}">${STATUS_LABEL[f.status]}</td><td class="n">${f.length}</td><td class="n">${pct(f.covered)}</td><td class="n">${pct(f.bothStrands)}</td><td class="n">${f.minDepth}</td><td>${f.differences.map(d => esc(describeDifference(d))).join('<br>')}</td></tr>`).join('')
   const diffRows = r.differences.map(v => `<tr><td class="n">${v.position}</td><td>${esc(describeChange(v))}</td><td class="n">${Math.round(v.frequency * 100)}%</td><td class="n">${v.coverage}</td><td class="n">${v.pValue.toExponential(1)}</td><td>${esc(v.features.join(', '))}</td><td>${esc(v.coding ? `${v.coding.protein} (${v.coding.effect})` : '')}</td></tr>`).join('')
-  const gaps = r.uncovered.map(g => (g.from === g.to ? `${g.from}` : `${g.from}–${g.to}`)).join(', ')
+  const gaps = r.uncovered.map(g => (g.from === g.to ? `${g.from}` : `${g.from}-${g.to}`)).join(', ')
   return `<!DOCTYPE html><html><head><meta charset="utf-8"><title>${esc(contigName)}: clone verification</title><style>
 body{font:13px/1.45 -apple-system,'Segoe UI',Helvetica,Arial,sans-serif;color:#1f2937;margin:24px}
 h1{font-size:18px;margin:0 0 4px}h2{font-size:14px;margin:20px 0 6px}

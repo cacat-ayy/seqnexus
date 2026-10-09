@@ -71,7 +71,7 @@ function setCanvasFonts(mono: string, sans: string) {
 const sansFont = (spec: string) => `${spec} ${SANS_FAMILY}`
 const enzymeLabelFont = () => sansFont(ENZYME_LABEL_SPEC)
 
-/** Cached color reader – re-reads CSS only when the theme attribute changes. */
+/** Cached color reader: re-reads CSS only when the theme attribute changes. */
 let _cachedColors: CanvasColors | null = null
 let _cachedTheme: string | null = null
 function getCanvasColors(container: HTMLElement): CanvasColors {
@@ -993,7 +993,7 @@ function SequenceView({ onFindRequest, onFindClose, onAnnotateRequest, onEditFea
         const selEnd = Math.max(sel.anchor, sel.caret)
         const isSelected = selStart === annEdge.annotation.start && selEnd === annEdge.annotation.end
         if (!isSelected) {
-          // Not selected – treat as a normal annotation click (select it)
+          // Not selected: treat as a normal annotation click (select it)
           useEditorStore.getState().setSelection({ anchor: annEdge.annotation.start, caret: annEdge.annotation.end })
           return
         }
@@ -1590,7 +1590,7 @@ function SequenceView({ onFindRequest, onFindClose, onAnnotateRequest, onEditFea
     if (ctrlOrMeta && e.key === 'v') {
       if (ro) { roBlock(); e.preventDefault(); return }
       if (multi) { e.preventDefault(); refuseMultiEdit(); return }
-      // Let the native paste event fire — handled by handlePaste listener
+      // Let the native paste event fire; handled by handlePaste listener
       return
     }
     if (e.key === 'Backspace') {

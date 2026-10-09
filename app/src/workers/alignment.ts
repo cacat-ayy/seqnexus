@@ -1,6 +1,6 @@
 /**
- * Main-thread API for the built-in alignment Web Worker (Needleman–Wunsch,
- * Smith–Waterman and the simple progressive aligner). Falls back to running
+ * Main-thread API for the built-in alignment Web Worker (Needleman-Wunsch,
+ * Smith-Waterman and the simple progressive aligner). Falls back to running
  * on the main thread when a worker cannot start.
  *
  * Multiple alignment with MAFFT, MUSCLE or Kalign goes through

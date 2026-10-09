@@ -411,7 +411,7 @@ export default function App() {
       : [],
     [showAutoAnnotations, annotateModalOpen, autoAnnotations, doc.annotations, autoOverlapThreshold],
   )
-  /** Picks still on offer — a pick whose proposal is gone must not be counted. */
+  /** Picks still on offer: a pick whose proposal is gone must not be counted. */
   const pickedProposalCount = useMemo(() => {
     if (autoAnnotationPicks.size === 0) return 0
     return autoProposals.reduce((n, m) => n + (autoAnnotationPicks.has(matchKey(m)) ? 1 : 0), 0)
@@ -420,8 +420,8 @@ export default function App() {
   /**
    * ORFs a conversion would add.
    *
-   * Unlike suggestions, ORFs that a CDS already covers stay on screen — the
-   * overlay answers "where are the reading frames" — but adding them again
+   * Unlike suggestions, ORFs that a CDS already covers stay on screen (the
+   * overlay answers "where are the reading frames"), but adding them again
    * would just duplicate the feature, so they are not counted here.
    */
   const convertibleOrfList = useMemo(
@@ -662,7 +662,7 @@ export default function App() {
     return () => window.removeEventListener('keydown', handler)
   }, [])
 
-  // Ctrl+F to open find – dispatch to alignment/contig mode when active
+  // Ctrl+F to open find: dispatch to alignment/contig mode when active
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       if ((e.ctrlKey || e.metaKey) && e.key === 'f') {
@@ -715,7 +715,7 @@ export default function App() {
   const infoBtnRef = useRef<HTMLButtonElement>(null)
 
   // The toolbar must stay a single row: the theme and info buttons sit at its
-  // right end, and a second row moves them — along with the popovers they
+  // right end, and a second row moves them, along with the popovers they
   // anchor. Density is measured rather than guessed; see the hook.
   const toolbarRef = useRef<HTMLDivElement>(null)
   const toolbarFit = useToolbarDensity(toolbarRef)
@@ -780,7 +780,7 @@ export default function App() {
   }, [])
 
   // Stable identities for the props handed to SequenceView and PlasmidMap.
-  // Both are React.memo'd, and memo compares props by identity — passing these
+  // Both are React.memo'd, and memo compares props by identity: passing these
   // as inline arrows would allocate a new function on every App render and
   // defeat the memo entirely, re-rendering a canvas view whenever any of this
   // component's many state hooks changed.
@@ -2267,7 +2267,7 @@ export default function App() {
 
                 <div className="panel-bar-spacer" />
 
-                {/* Display settings. Not a toggle like its neighbours — it
+                {/* Display settings. Not a toggle like its neighbours: it
                     opens a popover: so it is separated and styled apart. */}
                 <div className="panel-bar-display" ref={displayBtnRef}>
                   <button
@@ -2399,7 +2399,7 @@ export default function App() {
                         className="status-goto-input"
                         type="text"
                         value={gotoValue}
-                        placeholder={`1–${seqLength.toLocaleString()}`}
+                        placeholder={`1-${seqLength.toLocaleString()}`}
                         onChange={e => setGotoValue(e.target.value)}
                         onKeyDown={e => {
                           if (e.key === 'Enter') {
@@ -2523,7 +2523,7 @@ export default function App() {
         onClose={() => {
           setAnnotateModalOpen(false)
           // Leave the suggestions on screen, the way closing the ORF panel
-          // leaves the ORFs — the scan the user just tuned is the point.
+          // leaves the ORFs: the scan the user just tuned is the point.
           const s = useEditorStore.getState()
           if (!s.showAutoAnnotations && s.autoAnnotations.length > 0) s.toggleAutoAnnotations()
         }}

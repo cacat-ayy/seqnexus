@@ -33,7 +33,7 @@ export interface VerifyPlan {
  *
  * The primer is looked for in a window ending `lead` bases before the seam,
  * so the seam lands where the trace is good. A junction with no usable primer
- * is reported rather than quietly skipped — it is the one place you most need
+ * is reported rather than quietly skipped: it is the one place you most need
  * to see.
  */
 export function planJunctionReads(

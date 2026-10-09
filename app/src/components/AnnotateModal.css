@@ -90,7 +90,7 @@
 }
 
 /* Marks a hit that came from an imported database rather than the built-in
-   library — worth knowing before trusting it. */
+   library, worth knowing before trusting it. */
 .ann-source-badge {
   font-size: var(--text-2xs);
   color: var(--text-muted);

@@ -92,7 +92,7 @@ export function simulatePcr(
   const annotations = carryFeatures(template.annotations, fwd.start, span, n, circular, shift)
 
   return {
-    name: `${template.name} ${fwdPrimer.name}–${revPrimer.name}`,
+    name: `${template.name} ${fwdPrimer.name}-${revPrimer.name}`,
     bases,
     annotations,
     primers: [

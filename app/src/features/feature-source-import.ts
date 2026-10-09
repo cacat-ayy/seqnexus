@@ -4,7 +4,7 @@
  * Three formats, because that is what people already have lying around: a
  * FASTA of parts, a spreadsheet exported to CSV/TSV, or an annotated GenBank
  * file whose features *are* the library. Anything that does not survive
- * validation is reported with a reason rather than dropped quietly — a
+ * validation is reported with a reason rather than dropped quietly: a
  * database that silently loses half its entries is worse than one that fails.
  */
 
@@ -164,7 +164,7 @@ function splitDelimited(line: string, delim: string): string[] {
  * `color` and `category` are optional.
  *
  * Column names match the app's own feature CSV export (io/csv.ts) where they
- * overlap — but that export carries coordinates, not bases, so a file from it
+ * overlap, but that export carries coordinates, not bases, so a file from it
  * needs a sequence column added before it can serve as a database.
  */
 function parseDelimited(text: string, defaultCategory: string): ParsedFeatureSource {
@@ -221,7 +221,7 @@ function parseGenBankLibrary(text: string, defaultCategory: string): ParsedFeatu
   }
   for (const record of records) {
     for (const ann of record.annotations) {
-      // `source` spans the whole record — importing it would add a reference
+      // `source` spans the whole record: importing it would add a reference
       // that matches the entire backbone, which is never what is wanted.
       if (ann.type === 'source') continue
       c.add({

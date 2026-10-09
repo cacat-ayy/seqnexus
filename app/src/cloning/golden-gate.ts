@@ -72,7 +72,7 @@ export function goldenGateAssemble(input: GoldenGateInput): GoldenGateResult {
   }
 
   if (allFragments.length <= input.sources.length) {
-    // Each source produced at most 1 fragment – no cuts found
+    // Each source produced at most 1 fragment: no cuts found
     warnings.push(`No ${input.enzyme.name} sites found in the source sequences`)
     return { products: [], warnings, allFragments, insertFragments: [] }
   }

@@ -20,15 +20,15 @@ export default function ReadQcSummary({ data, compact = false }: { data: TraceDa
         <dl className="read-qc-metrics">
           <div title="Mean quality after quality trimming">
             <dt>{compact ? 'Score' : 'Trace score'}</dt>
-            <dd>{qc.traceScore === null ? '–' : Math.round(qc.traceScore)}</dd>
+            <dd>{qc.traceScore === null ? '-' : Math.round(qc.traceScore)}</dd>
           </div>
           <div title="Contiguous read length: longest stretch where every 20-base window averages Q20 or better">
             <dt>CRL</dt>
-            <dd>{data.metadata.qualityMissing ? '–' : nf.format(qc.crl.length)}</dd>
+            <dd>{data.metadata.qualityMissing ? '-' : nf.format(qc.crl.length)}</dd>
           </div>
           <div title="Bases called at Q20 or better">
             <dt>QV20+</dt>
-            <dd>{data.metadata.qualityMissing ? '–' : nf.format(qc.qv20)}</dd>
+            <dd>{data.metadata.qualityMissing ? '-' : nf.format(qc.qv20)}</dd>
           </div>
         </dl>
       </div>

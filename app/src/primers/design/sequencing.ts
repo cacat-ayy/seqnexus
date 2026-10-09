@@ -1,7 +1,7 @@
 /**
  * Sequencing primers tiled across a region.
  *
- * Sanger reads start some way past the primer (the first ~30–50 bases are
+ * Sanger reads start some way past the primer (the first ~30-50 bases are
  * unreadable) and are good for a few hundred more, so primers are placed so
  * that consecutive reads overlap. Each primer is the best candidate in a
  * short window before where its read should start, and it must bind the

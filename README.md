@@ -11,13 +11,13 @@ self-contained HTML file.
 ```
 .                        the published site (GitHub Pages → seqnexus.app)
 ├── index.html               landing page (hand-written, not built)
-├── app.html                 the built editor — generated, commit it
-├── *.worker-<hash>.js       the editor's Web Workers — generated, commit them
+├── app.html                 the built editor (generated, commit it)
+├── *.worker-<hash>.js       the editor's Web Workers (generated, commit them)
 ├── impressum.html / datenschutz.html
 ├── assets/                  favicons, screenshots
 ├── wasm/                    MAFFT, MUSCLE and Kalign (biowasm), run by the alignment tool
 └── app/                     Vite + React source for the editor
-    ├── app.html                 Vite entry — builds to ../app.html
+    ├── app.html                 Vite entry, builds to ../app.html
     └── src/
 ```
 
@@ -49,7 +49,7 @@ Stale worker chunks from a previous build are pruned automatically at the start
 of each build.
 
 > `build.outDir` is the repo root, so `emptyOutDir` is pinned to `false` in
-> `app/vite.config.ts`. Do not turn it on — it would delete the repository.
+> `app/vite.config.ts`. Do not turn it on: it would delete the repository.
 
 ## Tech Stack
 
@@ -1983,7 +1983,7 @@ tetraloop bonuses.
    tables, including single internal mismatches). Keep the stretch with the
    lowest ΔG37 overall (`bestDimer` in `structure.ts`).
 2. Score that stretch as a duplex: ΔH and ΔS from the unified NN parameters,
-   the internal-mismatch parameters (Allawi & SantaLucia 1997–98, Peyret
+   the internal-mismatch parameters (Allawi & SantaLucia 1997-98, Peyret
    1999) and the initiation terms, as in the duplex Tm above.
 3. Both strands are the same molecule. At the Tm half of all strands are
    paired, so the equilibrium constant is 1/Ct instead of the 4/Ct used for
@@ -2053,7 +2053,7 @@ a polymerase can extend it into primer-dimer or self-primed product.
 For probes, the card also checks the TaqMan rules:
 - **5' base:** a G at the 5' end quenches the reporter dye.
 - **Tm margin:** the probe's Tm minus the higher Tm of the nearest flanking
-  primer pair (within 2 kb). ≥ 6 °C is good, 3–6 °C is ok, less is poor.
+  primer pair (within 2 kb). ≥ 6 °C is good, 3-6 °C is ok, less is poor.
 
 ---
 

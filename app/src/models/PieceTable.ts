@@ -330,7 +330,7 @@ export class PieceTable {
   private readonly _original: string
   private _add: string
   private _root: PTNode | null
-  /** Monotonically increasing version – bumped on every mutation. */
+  /** Monotonically increasing version, bumped on every mutation. */
   private _version = 0
 
   constructor(text: string = '') {

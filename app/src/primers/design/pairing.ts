@@ -40,7 +40,7 @@ export function evaluatePair(
   const optProduct = (ctx.minProductSize + ctx.maxProductSize) / 2
   add('Product size off centre', Math.abs(productSize - optProduct) * 0.01)
   if (productSize < ctx.minProductSize || productSize > ctx.maxProductSize) {
-    warnings.push(`Product ${productSize} bp is outside ${ctx.minProductSize}–${ctx.maxProductSize} bp`)
+    warnings.push(`Product ${productSize} bp is outside ${ctx.minProductSize}-${ctx.maxProductSize} bp`)
   }
 
   const crossDimer = crossDimerScore(fwd.sequence, rev.sequence)

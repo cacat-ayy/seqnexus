@@ -3,7 +3,7 @@
  *
  * This is what keeps the Display popover on screen: its trigger is pinned to
  * the right edge of the panel bar, so the natural left-aligned position puts
- * it past the window edge — and .main-area clips overflow, so it was both cut
+ * it past the window edge, and .main-area clips overflow, so it was both cut
  * off and unreachable.
  */
 import { renderHook } from '@testing-library/react'

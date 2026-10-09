@@ -50,7 +50,7 @@ export default function SequenceMinimap({
     [origin, seqLen],
   )
   const formatRange = useCallback(
-    (start: number, end: number) => `${formatPosition(start)}–${formatPosition((end - 1 + seqLen) % seqLen)}`,
+    (start: number, end: number) => `${formatPosition(start)}-${formatPosition((end - 1 + seqLen) % seqLen)}`,
     [formatPosition, seqLen],
   )
 

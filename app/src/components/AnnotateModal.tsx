@@ -1,6 +1,6 @@
 import './AnnotateModal.css'
 /**
- * Annotate panel — settings and results for the auto-annotation overlay.
+ * Annotate panel: settings and results for the auto-annotation overlay.
  *
  * The scan itself lives in useAutoAnnotateScan, because the overlay can be
  * switched on from the panel bar without this ever opening. What is left here
@@ -123,7 +123,7 @@ export default function AnnotateModal({ open, onClose }: Props) {
     })
   }, [])
 
-  /** Pick or unpick every hit of one feature — the "all four copies" case. */
+  /** Pick or unpick every hit of one feature, the "all four copies" case. */
   const handleToggleGroupPicks = useCallback((list: AnnotationMatch[]) => {
     const keys = list.map(matchKey)
     const current = useEditorStore.getState().autoAnnotationPicks

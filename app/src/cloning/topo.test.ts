@@ -165,7 +165,7 @@ describe('topoClone Directional', () => {
 
   it('keeps the CACC clamp in the product', () => {
     // The clamp and the vector's overhang are two strands of the same four
-    // base pairs, so they appear once — and they do appear. Deleting them
+    // base pairs, so they appear once, and they do appear. Deleting them
     // would shorten the construct and move everything downstream of it.
     const insert = makeDoc('pcr', 'CACCATG')
     const vector = makeDoc('vec', 'GGGG' + 'CCCTT' + 'GGTG' + 'CCCC', 'circular')

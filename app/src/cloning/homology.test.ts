@@ -2,7 +2,7 @@
  * Seamless assembly, run the way people run it: hand it a plasmid and a PCR
  * product carrying arms and expect the construct back.
  *
- * The first two groups are what the old engine could not do at all — it
+ * The first two groups are what the old engine could not do at all: it
  * compared one sequence's tail to another's head on the raw string, so a
  * circular vector never matched and a flipped insert never matched.
  */

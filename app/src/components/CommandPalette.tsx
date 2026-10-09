@@ -2,7 +2,7 @@
  * Command palette (Ctrl/Cmd+K).
  *
  * Every tool in the app is reachable from here, which matters because the
- * toolbar holds ~18 controls at once and had no overflow story — on a narrow
+ * toolbar holds ~18 controls at once and had no overflow story: on a narrow
  * window it simply wrapped onto a second row and pushed the canvas down.
  */
 
@@ -72,7 +72,7 @@ export default function CommandPalette({ open, onClose, commands }: Props) {
   }, [query, firstEnabled])
 
   // Focus as soon as the input exists. Deferring this to a rAF leaves a frame
-  // in which keystrokes land on <body> and are lost — long enough to swallow
+  // in which keystrokes land on <body> and are lost, long enough to swallow
   // the first character when the palette is opened mid-typing. preventScroll
   // covers what the deferral was guarding against.
   useEffect(() => {

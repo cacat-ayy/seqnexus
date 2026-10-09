@@ -6,7 +6,7 @@ import { useEffect } from 'react'
  * Without this, Tab walks straight out of a modal and into the page behind it:
  * a keyboard or screen-reader user ends up operating controls they cannot see,
  * with no way back. `aria-modal` tells assistive tech the rest of the page is
- * inert, but it does not actually stop Tab — that has to be implemented.
+ * inert, but it does not actually stop Tab; that has to be implemented.
  */
 
 const FOCUSABLE_SELECTOR = [
@@ -76,7 +76,7 @@ export function useFocusTrap(
 
       const items = focusables(container)
       if (items.length === 0) {
-        // Nothing to move to — keep focus on the dialog rather than letting it
+        // Nothing to move to: keep focus on the dialog rather than letting it
         // escape to the page behind.
         e.preventDefault()
         container.focus({ preventScroll: true })
@@ -87,7 +87,7 @@ export function useFocusTrap(
       const last = items[items.length - 1]
       const activeEl = document.activeElement as HTMLElement | null
 
-      // Focus sitting on the container (or somehow outside) — pull it to an end.
+      // Focus sitting on the container (or somehow outside): pull it to an end.
       if (!activeEl || activeEl === container || !container.contains(activeEl)) {
         e.preventDefault()
         ;(e.shiftKey ? last : first).focus()
@@ -110,7 +110,7 @@ export function useFocusTrap(
       const i = trapStack.lastIndexOf(container)
       if (i !== -1) trapStack.splice(i, 1)
 
-      // Only restore if the origin is still in the document — it may have been
+      // Only restore if the origin is still in the document: it may have been
       // unmounted while the dialog was open.
       if (previouslyFocused && document.contains(previouslyFocused)) {
         previouslyFocused.focus({ preventScroll: true })

@@ -206,7 +206,7 @@ export function seededSmithWaterman(
       startB: result.startB + refStart,
     }
   } else {
-    // seqA was the reference, seqB was the query – swap back
+    // seqA was the reference, seqB was the query: swap back
     return {
       alignedA: result.alignedB,
       alignedB: result.alignedA,
@@ -252,7 +252,7 @@ function bandedSmithWaterman(
   let cIx = new Float64Array(arrSize)
   let cIy = new Float64Array(arrSize)
 
-  // Traceback: store (mat, i, j) for each cell – but that's too much memory
+  // Traceback: store (mat, i, j) for each cell, but that's too much memory
   // for large inputs. Instead, use the same 2-pass approach: find end, reverse
   // to find start, then do banded DP on the small subregion.
 

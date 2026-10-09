@@ -5,7 +5,7 @@ import { useLayoutEffect, useState, type RefObject } from 'react'
  *
  * `full` is the designed layout. `tight` buys ~200px by squeezing padding and
  * collapsing the command palette to its icon, which is enough to keep the
- * labels on a 1280px laptop. `icons` drops the labels — the last step before
+ * labels on a 1280px laptop. `icons` drops the labels, the last step before
  * the row stops fitting at all.
  */
 export type ToolbarDensity = 'full' | 'tight' | 'icons'
@@ -46,8 +46,8 @@ function overflows(el: HTMLElement): boolean {
  *
  * The toolbar is a fixed set of buttons whose combined width lands around
  * 1300px, so a plain width breakpoint has to be guessed, and a guess that is
- * off by 20px either wraps the last two buttons onto a second row — which
- * moves the theme and info buttons, and with them their popovers — or strips
+ * off by 20px either wraps the last two buttons onto a second row (which
+ * moves the theme and info buttons, and with them their popovers) or strips
  * labels from screens wide enough to show them. So instead of modelling the
  * width in JS, each density is applied to the real element and measured: the
  * first one that does not overflow wins, whatever the fonts, zoom level or
@@ -74,7 +74,7 @@ export function useToolbarDensity(ref: RefObject<HTMLElement | null>): ToolbarFi
 
     const measure = () => {
       frame = 0
-      // A hidden toolbar (or jsdom, which does no layout) measures zero —
+      // A hidden toolbar (or jsdom, which does no layout) measures zero:
       // there is nothing to decide, and any comparison would be noise.
       if (el.clientWidth === 0) return
 

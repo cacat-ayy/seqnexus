@@ -1,4 +1,4 @@
-/* Feature/annotation editor styles – shared by FeatureSidebar and AnnotationTooltip */
+/* Feature/annotation editor styles, shared by FeatureSidebar and AnnotationTooltip */
 
 .ft-header {
   display: flex;
@@ -507,7 +507,7 @@
   max-width: 500px;
 }
 
-/* Resize handle – sits to the left of the sidebar */
+/* Resize handle: sits to the left of the sidebar */
 .fs-resize-handle {
   width: 4px;
   cursor: col-resize;
@@ -522,7 +522,7 @@
   background: var(--accent);
 }
 
-/* Header – matches .view-tabs height so the border-bottom aligns across columns */
+/* Header: matches .view-tabs height so the border-bottom aligns across columns */
 .fs-header {
   display: flex;
   align-items: center;
@@ -576,7 +576,7 @@
   color: var(--text);
 }
 
-/* Search – height matches .panel-bar so the border-bottom aligns */
+/* Search: height matches .panel-bar so the border-bottom aligns */
 .fs-search {
   display: flex;
   align-items: center;
@@ -750,7 +750,7 @@
   opacity: 0.6;
 }
 
-/* Inline eye button in annotation row – only visible on hover */
+/* Inline eye button in annotation row, only visible on hover */
 .fs-eye-inline {
   opacity: 0;
   width: 18px;

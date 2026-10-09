@@ -117,7 +117,7 @@ export function betweenSites(
 
 /**
  * The backbone: everything that is not between the two att sites, read so
- * that it runs from site 2 round to site 1 — the direction it joins the
+ * that it runs from site 2 round to site 1, the direction it joins the
  * incoming cassette in.
  */
 export function outsideSites(

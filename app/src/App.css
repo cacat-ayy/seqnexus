@@ -65,7 +65,7 @@
      where nearly all the UI lives. Derived from actual usage, not an abstract
      ideal: 11px and 12px carry the interface, 10px the badges and counts.
        --text-2xs  badges, counts, dense metadata
-       --text-xs   dense labels — the most common size in the app
+       --text-xs   dense labels, the most common size in the app
        --text-sm   body default for controls and prose
        --text-md   section and dialog titles
        --text-lg   panel titles
@@ -110,7 +110,7 @@
        toast     transient notifications, above everything interactive
        max       the error boundary, which must outrank a broken UI
      Note that a dialog establishes its own stacking context, so a tooltip
-     rendered inside one only competes with that dialog's other children —
+     rendered inside one only competes with that dialog's other children,
      which is why tooltips can sit below --z-modal without being occluded. */
   --z-base: 1;
   --z-sticky: 10;
@@ -134,7 +134,7 @@
 
      NOTE: the linear sequence view's canvas uses a different scheme
      (baseColor() in utils/color.ts: C amber, G blue). That divergence is
-     deliberate-looking but undocumented and predates this work — left alone
+     deliberate-looking but undocumented and predates this work, so it is left alone
      here because changing a scientific display convention is the user's call,
      not a refactor's. */
   --base-a: #22a366;
@@ -187,7 +187,7 @@
      track the element's own height rather than a fixed step. */
   --radius-pill: 999px;
 
-  /* Shared easing. Decelerating — motion arrives rather than stops dead. */
+  /* Shared easing. Decelerating: motion arrives rather than stops dead. */
   --ease-out: cubic-bezier(.2, .8, .3, 1);
 
   /* Minimap (components/minimap). Built on the canvas tokens, so every theme
@@ -515,7 +515,7 @@
   flex-shrink: 0;
   /* One row, always. The theme and info buttons live at the right end and
      anchor popovers to their own rects, so a wrapped second row does not just
-     look wrong — it drops those popovers a row lower than the toolbar they
+     look wrong: it drops those popovers a row lower than the toolbar they
      belong to. useToolbarDensity keeps the contents inside one row by
      measuring them; .is-wrap below is its last-resort escape hatch. */
   flex-wrap: nowrap;
@@ -523,7 +523,7 @@
 }
 
 /* Buttons keep their natural size rather than squeezing their padding away
-   under flex-shrink — both because half-squeezed buttons look broken, and
+   under flex-shrink, both because half-squeezed buttons look broken, and
    because shrinking would hide the overflow the density measurement reads. */
 .toolbar > *:not(.toolbar-spacer) { flex-shrink: 0; }
 
@@ -544,7 +544,7 @@
 
 /* Narrower than even the icon row. Wrapping is wrong, but it beats pushing
    the trailing buttons off the edge of the window where nothing can reach
-   them — at that width the popover offset is the smaller problem. */
+   them: at that width the popover offset is the smaller problem. */
 .toolbar.is-wrap { flex-wrap: wrap; }
 
 /* --- Command palette trigger ---
@@ -621,7 +621,7 @@
 
 /* Hover changes colour only. The previous translateY(-1px) lift moved the
    button out from under the pointer, which reads as jitter when skimming
-   along a row of them — and animating a transform on hover also fought the
+   along a row of them, and animating a transform on hover also fought the
    toolbar's own wrapping. Press feedback moved to :active, where a transform
    is both expected and composited. */
 .tb:hover { background: var(--bg-hover); }
@@ -700,8 +700,8 @@
 }
 
 /* --- Toolbar tooltips (ToolbarTooltip.tsx) ---
-   Name and shortcut on one line, then what the tool does, then — only while
-   the button is disabled — what it is waiting for. */
+   Name and shortcut on one line, then what the tool does, then, only while
+   the button is disabled, what it is waiting for. */
 .tb-tooltip {
   position: fixed;
   z-index: var(--z-popover);
@@ -1374,7 +1374,7 @@
   box-sizing: border-box;
 }
 
-/* These four are independent on/off switches — any combination can be active
+/* These four are independent on/off switches: any combination can be active
    at once. They used to be styled as an underlined tab strip, which says
    "which one am I looking at", not "which of these are turned on", and left
    the on-state as a 2px line tucked against the bar's own bottom border.
@@ -1408,7 +1408,7 @@
   transform: scale(.96);
 }
 
-/* Three signals at once — fill, outline and text colour — so the state does
+/* Three signals at once (fill, outline and text colour) so the state does
    not rest on hue alone and survives both colour-vision deficiency and the
    low-contrast themes. */
 .panel-bar-btn.active {
@@ -1789,7 +1789,7 @@
 
 .btn-sm { padding: var(--space-1) var(--space-2-5); font-size: var(--text-sm); }
 
-/* "Add" action buttons – dashed border, accent text */
+/* "Add" action buttons: dashed border, accent text */
 .btn-add {
   display: inline-flex;
   align-items: center;

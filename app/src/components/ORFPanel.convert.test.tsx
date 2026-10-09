@@ -2,7 +2,7 @@
  * Converting ORFs from the ORF panel.
  *
  * The panel is where people look at ORFs, so the pick-and-convert affordance
- * has to exist here too — Ctrl-click on a position badge is the list's version
+ * has to exist here too: Ctrl-click on a position badge is the list's version
  * of Ctrl-click on the canvas, which jsdom cannot exercise.
  */
 import { render, act } from '@testing-library/react'
@@ -87,7 +87,7 @@ describe('ORF panel conversion', () => {
     await act(async () => { button('Add all (2)')!.click() })
 
     expect(store().doc.annotations).toHaveLength(2)
-    // Still two reading frames — being annotated does not stop it being one.
+    // Still two reading frames: being annotated does not stop it being one.
     expect(badges()).toHaveLength(2)
     expect(button('Add all (2)')).toBeNull()
     expect(button('Add all (1)')).toBeNull()

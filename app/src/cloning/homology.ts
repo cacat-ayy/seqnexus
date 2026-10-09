@@ -2,8 +2,8 @@
  * Seamless assembly: joining fragments on a shared stretch of sequence.
  *
  * This is one engine for every kit in ./kits, because they all work the same
- * way — chew back a strand at each end, let the single strands anneal over
- * the homology, fill in and seal — and differ only in what they ask of the
+ * way (chew back a strand at each end, let the single strands anneal over
+ * the homology, fill in and seal) and differ only in what they ask of the
  * shared stretch.
  *
  * Two things here that a plain "does A's tail match B's head" search cannot
@@ -115,7 +115,7 @@ export function partFromDocument(
     : doc.sequence.bases.slice(start) + doc.sequence.bases.slice(0, end)
   return {
     id,
-    name: `${doc.name} ${start + 1}–${end}`,
+    name: `${doc.name} ${start + 1}-${end}`,
     bases,
     topology: 'linear',
     annotations: sliceAnnotations(annotations, start, end, doc.sequence.bases.length, circular),
@@ -195,8 +195,8 @@ function findWithMismatches(haystack: string, needle: string, allowed: number): 
  * depend on which way round the pair was searched: where the strands disagree
  * the product takes one part's bases over the other's, and the two searches
  * pick different parts, so the same reaction would yield two products that
- * differ by a base. Mismatch tolerance is for arms that really do disagree —
- * a silent mutation left in a primer — not for extending a good overlap.
+ * differ by a base. Mismatch tolerance is for arms that really do disagree,
+ * a silent mutation left in a primer, not for extending a good overlap.
  */
 export function findHomology(
   left: { seq: string; circular: boolean },
@@ -288,7 +288,7 @@ export function homologyAssemble(
 
   // The longest part is never flipped. Any assembly that needs it the other
   // way round is the same molecule read on the other strand, so nothing is
-  // lost — and it means the product comes out in the backbone's frame rather
+  // lost, and it means the product comes out in the backbone's frame rather
   // than on whichever strand the search happened to reach first.
   const anchor = parts.reduce(
     (best, part, i) => (part.bases.length > parts[best].bases.length ? i : best),
@@ -347,7 +347,7 @@ export function homologyAssemble(
   }
 
   // Self-circularisation: one linear part whose own ends share homology.
-  // The arms can be at most half of it, or the two would overlap each other —
+  // The arms can be at most half of it, or the two would overlap each other,
   // and a sequence trivially matches itself over its whole length, which
   // would otherwise close every fragment into a product of nothing.
   for (let a = 0; a < oriented.length; a++) {
@@ -570,12 +570,12 @@ function buildAssembly(
     if (overlap.length > kit.warnAbove) {
       warnings.push(
         `A ${overlap.length} bp overlap is longer than ${kit.name} needs ` +
-        `(${kit.minOverlap}–${kit.warnAbove} bp): check it is deliberate.`,
+        `(${kit.minOverlap}-${kit.warnAbove} bp): check it is deliberate.`,
       )
     }
     const gc = gcFraction(overlap.sequence)
     if (gc < 0.3 || gc > 0.7) {
-      warnings.push(`An overlap is ${(gc * 100).toFixed(0)}% GC, outside the 30–70% that anneals predictably.`)
+      warnings.push(`An overlap is ${(gc * 100).toFixed(0)}% GC, outside the 30-70% that anneals predictably.`)
     }
   }
 
