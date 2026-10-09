@@ -91,6 +91,18 @@ const TYPE_IIS = ENZYME_GROUPS['Golden Gate (Type IIS)'] ?? []
 const withPart = (id: string, changes: Partial<DesignPart>) => (d: CloningDesign): CloningDesign =>
   ({ ...d, parts: d.parts.map(p => (p.id === id ? { ...p, ...changes } : p)) })
 
+/** Cut every part with these, setting aside the sites picked on each map. */
+const cutEverythingWith = (enzymes: string[]) => (d: CloningDesign): CloningDesign => ({
+  ...d,
+  enzymes,
+  parts: d.parts.map(p => {
+    const rest = { ...p }
+    delete rest.enzymes
+    delete rest.keep
+    return rest
+  }),
+})
+
 const formatBp = (n: number) => (n >= 1000 ? `${(n / 1000).toFixed(n >= 10000 ? 0 : 1)} kb` : `${n} bp`)
 
 /**
@@ -148,9 +160,7 @@ export function findFixes(design: CloningDesign, max = 3, result: RunResult = ru
       .filter(f => f.id.startsWith(`${part.id}:`) && f.topology === 'linear')
       .sort((a, b) => b.top.length - a.top.length)
     if (fragments.length < 2) continue
-    const chosen = part.keep
-      ? fragments.find(f => f.source.start === part.keep!.start && f.source.end === part.keep!.end)
-      : fragments[0]
+    const chosen = chosenFragment(part, fragments)
     for (const f of fragments.slice(0, 4)) {
       if (f === chosen) continue
       attempt(`Use the ${formatBp(f.top.length)} fragment of ${part.name}`,
@@ -165,23 +175,28 @@ export function findFixes(design: CloningDesign, max = 3, result: RunResult = ru
     return fixes
   }
 
-  if (design.enzymes.length > 1) {
+  // Changing the design's enzymes only reaches parts with none of their own,
+  // so these are offered while every part follows the design.
+  const shared = design.parts.every(p => p.enzymes === undefined)
+  if (shared && design.enzymes.length > 1) {
     for (const name of design.enzymes) {
       attempt(`Leave out ${name}`, d => ({ ...d, enzymes: d.enzymes.filter(e => e !== name) }))
     }
   }
   const useful = usefulEnzymes(design)
-  for (const name of useful) {
-    if (!design.enzymes.includes(name)) attempt(`Add ${name}`, d => ({ ...d, enzymes: [...d.enzymes, name] }))
+  if (shared) {
+    for (const name of useful) {
+      if (!design.enzymes.includes(name)) attempt(`Add ${name}`, d => ({ ...d, enzymes: [...d.enzymes, name] }))
+    }
   }
   // Two enzymes clone directionally, so a pair is worth more than one.
   const pairs = useful.slice(0, 8)
   for (let i = 0; i < pairs.length; i++) {
     for (let j = i + 1; j < pairs.length; j++) {
-      attempt(`Cut with ${pairs[i]} + ${pairs[j]} instead`, d => ({ ...d, enzymes: [pairs[i], pairs[j]] }))
+      attempt(`Cut with ${pairs[i]} + ${pairs[j]} instead`, cutEverythingWith([pairs[i], pairs[j]]))
     }
   }
-  for (const name of useful) attempt(`Cut with ${name} instead`, d => ({ ...d, enzymes: [name] }))
+  for (const name of useful) attempt(`Cut with ${name} instead`, cutEverythingWith([name]))
   if (design.purify) attempt('Don’t gel-purify the fragments', d => ({ ...d, purify: false }))
   return fixes
 }

@@ -57,6 +57,20 @@ describe('the outcome of a design', () => {
     expect(findFixes(design(['EcoRI', 'PstI']), 2).length).toBeLessThanOrEqual(2)
   })
 
+  it('replaces sites picked on a map when it suggests a different digest', () => {
+    // The vector is cut on its own with EcoRI + PstI, which leaves it
+    // nothing to take the insert's BamHI end; adding to the design's list
+    // would not reach it.
+    const d = design(['EcoRI', 'BamHI'], [{ ...VECTOR, enzymes: ['EcoRI', 'PstI'] }, INSERT])
+    const fixes = findFixes(d)
+    expect(fixes.length).toBeGreaterThan(0)
+    expect(fixes.map(f => f.label).some(l => l.startsWith('Add '))).toBe(false)
+    for (const fix of fixes) {
+      if (fix.apply === 'oligos') continue
+      expect(runDesign(fix.apply(d)).products.some(isIntended)).toBe(true)
+    }
+  })
+
   it('does not guess with only one part', () => {
     expect(findFixes(design(['EcoRI'], [VECTOR]))).toEqual([])
   })

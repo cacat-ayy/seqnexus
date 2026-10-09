@@ -87,7 +87,9 @@ of each build.
   imported from EMBOSS cusp / GCG CodonFrequency), motif/homopolymer/GC/repeat
   constraints
 - **Sequence alignment** - pairwise (global/local) and multiple sequence alignment
-- **In-silico cloning** - digest/ligation, Gibson assembly, Golden Gate assembly
+- **In-silico cloning** - restriction cloning on real plasmid maps (click the
+  sites to cut), seamless assembly (HiFi/Gibson/In-Fusion/SLIC), Golden Gate,
+  Gateway, TOPO, and combinatorial libraries
 - **NGS read sets** - FASTQ(.gz) import with R1/R2 pairing, QC charts and
   verdicts, fastp trimming and minimap2 mapping (WebAssembly), FASTQ.gz export;
   mappings viewed from a whole genome down to single bases (coverage, reads
@@ -2073,6 +2075,100 @@ all possible concrete sequences and scans both strands of the target sequence.
 Results are grouped by isoschizomer family on the plasmid map to reduce visual
 clutter.
 
+### How sites are drawn in the sequence view
+
+- **Names** sit above the ruler at their cut, each in the lowest row where it
+  clears the name before it. A line gets only the rows its own names need (up
+  to five), so a line with no site carries no space for them. Names that fit
+  in none of those rows become a "+N" chip in a row above, which lists them on
+  hover and selects the stretch they cover on click. Earlier, every line had
+  three rows and the overflow was drawn into the top one over its neighbours.
+- **A bar per site** marks its recognition sequence between the ruler and the
+  bases, in lanes so sites that overlap or merely touch stay apart. This
+  replaced a tint on the bases themselves, which merged adjacent sites (the
+  usual case in a multiple cloning site) into one block. There are no bars at
+  the most zoomed-out levels, where a six-base site is under a pixel.
+- **The cut** is a step through both strands: down through the top strand at
+  its cut, across between the strands, down through the bottom strand at its
+  cut. The step's width is the overhang, so a sticky end, a blunt end and
+  which strand protrudes read at a glance. With only one strand shown, it is
+  the top-strand cut alone.
+- **Hovering** a name, a bar or a chip ties a site together: its name, its
+  line to the ruler, its bar, a tint over its bases and its cut light up, and
+  every other site fades. Names are the reliable target in a crowded stretch,
+  since they are the one part already spread out.
+
+---
+
+## Restriction Cloning
+
+A cloning design shows each part as the same plasmid map the sequence view
+draws: one tab per part, plus one for the product, modelled on SnapGene's
+Insert Fragment dialog. On a part's map you click the sites to cut at; the
+product tab draws what comes out.
+
+### Each part is cut on its own
+
+Every part carries its own enzymes, chosen by clicking its sites. A part with
+none of its own is cut with the design's enzymes, so the common case (cut
+vector and insert with the same pair) is still one list. Cutting per part is
+what makes compatible-end cloning possible: a vector opened with BamHI takes
+an insert cut with BglII, because the two leave the same four-base 5'
+protrusion, and a vector cut with EagI takes a NotI fragment for the same
+reason. One shared list cannot express that, since BglII would then also be
+used on the vector.
+
+The first click cuts at a site, a second cuts at another as well (two cuts
+take out the piece between them), and a third starts again from the site just
+clicked. Shift+click adds a site regardless, for a three-enzyme digest.
+Clicking a chosen site stops cutting there.
+
+A site stands for its enzyme, not for one position: a digest cuts everywhere
+that enzyme binds, so choosing one site marks every site of that enzyme as
+chosen, which is what will happen in the tube.
+
+### Which sites a map offers
+
+The map shows every enzyme that cuts that part exactly once, which is the set
+someone deciding where to open a vector looks at first, plus every enzyme the
+design names, wherever and however often it cuts. The single cutters are the
+commercially available enzymes with a recognition site of six bases or more
+that cut inside or beside it, one name per specificity, preferring the name
+people clone with: Type IIS enzymes are left out, because they cut away from
+their site and are chosen deliberately for Golden Gate rather than found by
+browsing. Neoschizomers stay separate, since enzymes that read the same site
+but cut it differently leave different ends. A site the host's methylation
+blocks is still drawn, faded, so the reason it cannot be used is visible
+rather than the site simply being absent.
+
+### Which piece goes into the reaction
+
+Clicking the molecule away from a site chooses which piece of the digest is
+used. Without a choice it follows from what the part is for: a vector gives
+its longest piece (cut twice, that is the backbone, and the short piece is
+what the insert replaces), an insert being taken out of a donor plasmid gives
+its shortest (the long piece is the donor's own backbone, which is discarded),
+and a linear insert gives its longest, since its ends are only the few bases
+outside the sites.
+
+### The reaction strip
+
+Under the maps, each piece is drawn with both strands written out at each end,
+as on a bench sheet, then the product. An end is green when it pairs with an
+end of another piece, amber when it pairs only with its own piece's other end
+(so that piece will close on itself) and red when it pairs with nothing, which
+is usually the whole explanation for why a design gives no product.
+
+### The product keeps the vector's numbering
+
+A circular product of a cut-and-ligate reaction is rotated so that the
+vector's first base is the product's first base, which is what SnapGene does
+and what makes the coordinates upstream of the insertion unchanged. The
+rotation moves bases, features, part spans and junctions together; a feature
+that now runs across the origin ends below its start, as elsewhere in the app.
+It is skipped when the vector's own first base was cut away or the vector went
+in reversed, since then there is no base 1 to keep.
+
 ---
 
 ## File Format Support
@@ -2521,6 +2617,10 @@ print colours on white, whatever the app's theme.
 
 - Roberts RJ et al. (2015) "REBASE - a database for DNA restriction and
   modification." *Nucleic Acids Res* 43:D298-D299.
+
+- SnapGene Support. "Insert a Restriction Fragment into a Plasmid."
+  support.snapgene.com (accessed 2026-10-09). The model for the cloning
+  workspace's per-part maps, click-to-cut sites and ends strip.
 
 - Untergasser A et al. (2012) "Primer3 - new capabilities and interfaces."
   *Nucleic Acids Res* 40(15):e115.

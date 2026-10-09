@@ -18,6 +18,8 @@ import {
   type DesignPart,
 } from './design'
 import { productDocument, productKey, runDesign, selectedProduct } from './run'
+import { rotateAssembly } from './product'
+import { PUC19_SEQUENCE } from '../demo'
 
 function filler(n: number, seed = 1): string {
   let x = (seed | 0) || 1
@@ -86,7 +88,41 @@ describe('restriction cloning through a design', () => {
   })
 
   it('asks for an enzyme when none is chosen', () => {
-    expect(runDesign({ ...base, enzymes: [] }).problems.join(' ')).toContain('at least one enzyme')
+    expect(runDesign({ ...base, enzymes: [] }).problems.join(' ')).toContain('Choose the enzymes')
+  })
+
+  it('cuts each part with its own enzymes: BglII ends go into BamHI ends', () => {
+    // AGATCT and GGATCC leave the same GATC overhang.
+    const bgl = pad(10) + 'GAATTC' + core + 'AGATCT' + pad(10)
+    const vector = { ...base.parts[0], enzymes: ['EcoRI', 'BamHI'] }
+    const insert = { ...part(doc('bgl', bgl), 'insert'), enzymes: ['EcoRI', 'BglII'] }
+    const d = design({ method: 'restriction', enzymes: [], parts: [vector, insert] })
+    const result = runDesign(d)
+    expect(result.problems).toEqual([])
+    const product = selectedProduct(d, result.products)!
+    expect(product.usesAll).toBe(true)
+    expect(product.topology).toBe('circular')
+    expect(product.sequence).toContain(core)
+  })
+
+  it('cuts a part with no enzymes of its own with the design’s', () => {
+    const d = { ...base, parts: [{ ...base.parts[0], enzymes: ['EcoRI', 'BamHI'] }, base.parts[1]] }
+    expect(selectedProduct(d, runDesign(d).products)?.usesAll).toBe(true)
+  })
+
+  it('names the part that still needs its sites picked', () => {
+    const d = { ...base, enzymes: [], parts: [{ ...base.parts[0], enzymes: ['EcoRI'] }, base.parts[1]] }
+    expect(runDesign(d).problems).toEqual(['Click the sites to cut ins at on its map.'])
+  })
+
+  it('takes the insert out of a donor plasmid, not the donor’s backbone', () => {
+    const donorBackbone = filler(1500, 7).replace(/GAATTC|GGATCC/g, 'AAAAAA')
+    const donor = part(doc('pDonor', 'GAATTC' + core + 'GGATCC' + donorBackbone, 'circular'), 'insert')
+    const d = { ...base, parts: [base.parts[0], donor] }
+    const product = selectedProduct(d, runDesign(d).products)!
+    expect(product.usesAll).toBe(true)
+    expect(product.sequence).toContain(core)
+    expect(product.size).toBeLessThan(vectorBases.length + core.length + 20)
   })
 
   it('reports the fragments so the parts list can show them', () => {
@@ -250,6 +286,16 @@ describe('a design read back from storage', () => {
     expect(back.selected).toBe('circular:ACGT')
   })
 
+  it('keeps the sites picked on each part', () => {
+    const original = design({
+      method: 'restriction',
+      parts: [{ ...part(doc('v', filler(300, 3), 'circular'), 'vector'), enzymes: ['BamHI', 'EagI'] }],
+    })
+    const back = sanitizeDesign(JSON.parse(JSON.stringify(original)))!
+    expect(back.parts[0].enzymes).toEqual(['BamHI', 'EagI'])
+    expect(sanitizeDesign({ parts: [{ name: 'x', bases: 'ACGT', enzymes: [1, 2] }] })!.parts[0].enzymes).toBeUndefined()
+  })
+
   it('throws nothing away but what it cannot read', () => {
     const back = sanitizeDesign({
       method: 'nonsense',
@@ -315,5 +361,57 @@ describe('telling when a part no longer matches its source', () => {
     // One inside it does not.
     const inside = `${bases.slice(0, 200)}${bases[200] === 'A' ? 'C' : 'A'}${bases.slice(201)}`
     expect(partMatchesSource(p, inside, 'circular')).toBe(false)
+  })
+})
+
+describe('a product numbered like its vector', () => {
+  it('starts at the vector’s first base, as the vector does', () => {
+    const insert = 'GAATTC' + 'AAAT'.repeat(60) + 'AAGCTT'
+    const d = design({
+      method: 'restriction',
+      enzymes: ['EcoRI', 'HindIII'],
+      parts: [
+        part(doc('pUC19', PUC19_SEQUENCE, 'circular', [new Annotation({ id: 'amp', name: 'AmpR', type: 'CDS', start: 1625, end: 2486, strand: -1, color: '#f00' })]), 'vector'),
+        part(doc('ins', 'CC' + insert + 'GG'), 'insert'),
+      ],
+    })
+    const product = selectedProduct(d, runDesign(d).products)!
+    expect(product.usesAll).toBe(true)
+    // Everything before the EcoRI site keeps its numbering.
+    expect(product.sequence.slice(0, 390)).toBe(PUC19_SEQUENCE.slice(0, 390))
+    // AmpR, after the insertion, moves by what went in less what came out.
+    const amp = product.annotations.find(a => a.name === 'AmpR')!
+    const shift = product.size - PUC19_SEQUENCE.length
+    expect(amp.start).toBe(1625 + shift)
+    expect(amp.end).toBe(2486 + shift)
+    // The junctions are where the sites are.
+    for (const j of product.junctions) {
+      const around = product.sequence.slice(j.at - 5, j.at + 5)
+      expect(/GAATTC|AAGCTT/.test(around)).toBe(true)
+    }
+  })
+})
+
+describe('turning a circular product', () => {
+  const base = {
+    name: 'p', description: '', topology: 'circular' as const, size: 10, sequence: 'ABCDEFGHIJ',
+    annotations: [{ id: 'f', name: 'f', type: 'misc_feature', start: 2, end: 6, strand: 1 as const, color: '#000' }],
+    parts: [{ fragmentId: 'a', name: 'a', sourceName: 'a', reversed: false, start: 0, end: 6 },
+      { fragmentId: 'b', name: 'b', sourceName: 'b', reversed: false, start: 6, end: 10 }],
+    junctions: [{ leftPart: 0, rightPart: 1, at: 6 }, { leftPart: 1, rightPart: 0, at: 0 }],
+    usesAll: true, nicked: false, recut: [], warnings: [],
+  }
+
+  it('moves the bases, the features, the parts and the junctions together', () => {
+    const r = rotateAssembly(base, 4)
+    expect(r.sequence).toBe('EFGHIJABCD')
+    expect(r.annotations[0]).toMatchObject({ start: 8, end: 2 })
+    expect(r.parts.map(p => [p.start, p.end])).toEqual([[6, 2], [2, 6]])
+    expect(r.junctions.map(j => j.at)).toEqual([2, 6])
+    expect(r.sequence.slice(r.junctions[0].at, r.junctions[0].at + 1)).toBe('G')
+  })
+
+  it('leaves a linear product alone', () => {
+    expect(rotateAssembly({ ...base, topology: 'linear' }, 3)).toEqual({ ...base, topology: 'linear' })
   })
 })

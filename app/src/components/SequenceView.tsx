@@ -32,7 +32,7 @@ import { groupCutSites, enzymeGroupKey, type GroupedCutSite } from '../enzymes/g
 import AnnotationTooltip from './AnnotationTooltip'
 import { copyText } from '../utils/clipboard'
 import { useDelayedHover, type HoverTarget } from '../hooks/useDelayedHover'
-import EnzymeTooltip from './EnzymeTooltip'
+import EnzymeTooltip, { SiteListTooltip } from './EnzymeTooltip'
 import SequenceContextMenu from './SequenceContextMenu'
 import ConfirmDialog from './ConfirmDialog'
 import { selectionTm, SELECTION_TM_MAX } from '../utils/selection-tm'
@@ -93,7 +93,8 @@ import { isPrimerItemId, type PrimerItem } from '../primers/display'
 import PrimerTooltip from './primers/PrimerTooltip'
 import { useSequenceTracks, useTranslationSettings } from './useSequenceTracks'
 import {
-  annVisibleRange, stackAnnotations, lowerBoundGroups, assignEnzymeTiers, paintSequenceRows,
+  annVisibleRange, stackAnnotations, lowerBoundGroups, layoutSiteRow, assignSiteLanes, measureSiteRows,
+  paintSequenceRows, type SiteChip,
   readSequenceColors, ENZYME_LABEL_SPEC, type SequenceColors, type RowStacks,
 } from './sequence-paint'
 
@@ -110,12 +111,15 @@ function baseX(i: number, rowStart: number, L: ZoomLayout): number {
  * feature translations are on, rows reserve one translation row per coding
  * feature they cross, so a row without a CDS carries no blank band, plus one
  * for the selection's translation in the rows given as `selectionRows`
- * (inclusive [first, last] row ranges).
+ * (inclusive [first, last] row ranges). Each row also gets the rows of
+ * cut-site names and lanes of site bars it needs, so a row with no site
+ * carries no space for them and a crowded one gets enough.
  */
 function buildRowLayout(
   L: ZoomLayout,
   annTree: IntervalTree,
   seqLen: number,
+  groupedSites: GroupedCutSite[],
   perRowTranslations: boolean,
   selectionRows: [number, number][] = [],
 ): RowLayoutMap {
@@ -159,6 +163,7 @@ function buildRowLayout(
     if (perRowTranslations) rl.translations[r] = Math.min(cds + Math.min(sel, 1), 6)
   }
   rl.perRowTranslations = perRowTranslations
+  measureSiteRows(rl, groupedSites, i => [i * bpr, Math.min((i + 1) * bpr, seqLen)], L, measureLabelWidth)
   rl.build(L)
   return rl
 }
@@ -178,7 +183,7 @@ function hitTestAnnotation(
   const rowStart = rowIndex * L.basesPerRow
   const rowEnd = Math.min(rowStart + L.basesPerRow, seqLen)
   const rowY = rl.rowY(rowIndex)
-  const annStartY = rowY + L.enzymeLabelAreaH + L.rulerHeight + L.seqLineHeight + L.annotationGap
+  const annStartY = rowY + rl.seqTop(rowIndex, L) + L.seqLineHeight + L.annotationGap
   if (py < annStartY) return null
   const annEndY = annStartY + rl.lanes[rowIndex] * (L.annotationRowH + L.annotationGap)
   if (py > annEndY) return null
@@ -218,7 +223,7 @@ function hitTestAnnotationEdge(
   const rowStart = rowIndex * L.basesPerRow
   const rowEnd = Math.min(rowStart + L.basesPerRow, seqLen)
   const rowY = rl.rowY(rowIndex)
-  const annStartY = rowY + L.enzymeLabelAreaH + L.rulerHeight + L.seqLineHeight + L.annotationGap
+  const annStartY = rowY + rl.seqTop(rowIndex, L) + L.seqLineHeight + L.annotationGap
   if (py < annStartY) return null
   const annEndY = annStartY + rl.lanes[rowIndex] * (L.annotationRowH + L.annotationGap)
   if (py > annEndY) return null
@@ -279,7 +284,46 @@ function measureLabelWidth(text: string): number {
 }
 
 
+/** No sites, as one array, so a cache can tell "still none" by identity. */
+const NO_SITES: GroupedCutSite[] = []
+
 // --- Hit-test for enzyme labels (tier area above ruler) ---
+
+/** The line under a canvas y, with its span, or null outside the sequence. */
+function rowAt(py: number, seqLen: number, L: ZoomLayout, rl: RowLayoutMap) {
+  const rowIndex = rl.rowAtY(py)
+  const totalRows = Math.ceil(seqLen / L.basesPerRow)
+  if (rowIndex < 0 || rowIndex >= totalRows) return null
+  const rowStart = rowIndex * L.basesPerRow
+  return { rowIndex, rowStart, rowEnd: Math.min(rowStart + L.basesPerRow, seqLen), rowY: rl.rowY(rowIndex) }
+}
+
+/** The name, or the "+N" chip, under a point in a line's name rows. */
+function hitTestSiteName(
+  px: number,
+  py: number,
+  seqLen: number,
+  groupedSites: GroupedCutSite[],
+  L: ZoomLayout,
+  rl: RowLayoutMap,
+): { group: GroupedCutSite } | { chip: SiteChip } | null {
+  if (seqLen === 0 || groupedSites.length === 0 || L.maxEnzymeTiers === 0) return null
+  const row = rowAt(py, seqLen, L, rl)
+  if (!row) return null
+  const labelAreaBottom = row.rowY + rl.labelAreaH(row.rowIndex, L)
+  if (py < row.rowY || py > labelAreaBottom) return null
+
+  // Rows are drawn bottom-up: tier 0 sits on the ruler.
+  const tierFromBottom = Math.floor((labelAreaBottom - py) / L.enzymeLabelTierH)
+  const { labels, chips } = layoutSiteRow(groupedSites, row.rowStart, row.rowEnd, L, measureLabelWidth)
+  for (const lbl of labels) {
+    if (lbl.tier === tierFromBottom && px >= lbl.x && px <= lbl.x + lbl.width) return { group: lbl.group }
+  }
+  for (const chip of chips) {
+    if (chip.tier === tierFromBottom && px >= chip.x && px <= chip.x + chip.width) return { chip }
+  }
+  return null
+}
 
 function hitTestEnzymeLabel(
   px: number,
@@ -289,33 +333,30 @@ function hitTestEnzymeLabel(
   L: ZoomLayout,
   rl: RowLayoutMap,
 ): GroupedCutSite | null {
-  if (seqLen === 0 || groupedSites.length === 0 || L.maxEnzymeTiers === 0) return null
-  const rowIndex = rl.rowAtY(py)
-  const totalRows = Math.ceil(seqLen / L.basesPerRow)
-  if (rowIndex < 0 || rowIndex >= totalRows) return null
-  const rowStart = rowIndex * L.basesPerRow
-  const rowEnd = Math.min(rowStart + L.basesPerRow, seqLen)
-  const rowY = rl.rowY(rowIndex)
-
-  // Enzyme label area is at the top of the row
-  const labelAreaTop = rowY
-  const labelAreaBottom = rowY + L.enzymeLabelAreaH
-  if (py < labelAreaTop || py > labelAreaBottom) return null
-
-  // Determine which tier was clicked
-  // Tiers are drawn bottom-up: tier 0 is at the bottom of the label area
-  const tierFromBottom = Math.floor((labelAreaBottom - py) / L.enzymeLabelTierH)
-
-  const labels = assignEnzymeTiers(groupedSites, rowStart, rowEnd, L, measureLabelWidth)
-  for (const lbl of labels) {
-    if (lbl.tier !== tierFromBottom) continue
-    if (px >= lbl.x && px <= lbl.x + lbl.width) return lbl.group
-  }
-  return null
+  const hit = hitTestSiteName(px, py, seqLen, groupedSites, L, rl)
+  return hit && 'group' in hit ? hit.group : null
 }
 
-// --- Hit-test for enzyme recognition site highlight on sequence ---
+function hitTestSiteChip(
+  px: number,
+  py: number,
+  seqLen: number,
+  groupedSites: GroupedCutSite[],
+  L: ZoomLayout,
+  rl: RowLayoutMap,
+): SiteChip | null {
+  const hit = hitTestSiteName(px, py, seqLen, groupedSites, L, rl)
+  return hit && 'chip' in hit ? hit.chip : null
+}
 
+// --- Hit-test for a site's bar under the ruler, or its bases ---
+
+/**
+ * The site under a point: its bar in the band between the ruler and the
+ * bases, or with `onBases`, any of its bases. Hover asks for bars only, so
+ * pointing at plain-looking bases does not pop up a card; the context menu
+ * asks for both, so right-clicking a site's bases still offers its actions.
+ */
 function hitTestEnzymeHighlight(
   px: number,
   py: number,
@@ -323,29 +364,41 @@ function hitTestEnzymeHighlight(
   groupedSites: GroupedCutSite[],
   L: ZoomLayout,
   rl: RowLayoutMap,
+  onBases = false,
 ): GroupedCutSite | null {
   if (seqLen === 0 || groupedSites.length === 0) return null
-  const rowIndex = rl.rowAtY(py)
-  const totalRows = Math.ceil(seqLen / L.basesPerRow)
-  if (rowIndex < 0 || rowIndex >= totalRows) return null
-  const rowStart = rowIndex * L.basesPerRow
-  const rowEnd = Math.min(rowStart + L.basesPerRow, seqLen)
-  const rowY = rl.rowY(rowIndex)
+  const row = rowAt(py, seqLen, L, rl)
+  if (!row) return null
+  const { rowIndex, rowStart, rowEnd, rowY } = row
+  const seqTop = rowY + rl.seqTop(rowIndex, L)
+  const bandH = rl.siteBandH(rowIndex, L)
+  const span = (group: GroupedCutSite) => [
+    baseX(Math.max(group.recognitionStart, rowStart), rowStart, L),
+    baseX(Math.min(group.recognitionEnd, rowEnd) - 1, rowStart, L) + L.bpWidth,
+  ]
 
-  // Sequence area starts after enzyme label area + ruler
-  const seqTop = rowY + L.enzymeLabelAreaH + L.rulerHeight
-  const seqBottom = seqTop + L.seqLineHeight
-  if (py < seqTop || py > seqBottom) return null
+  if (bandH > 0 && py >= seqTop - bandH && py < seqTop) {
+    const { lanes, count } = assignSiteLanes(groupedSites, rowStart, rowEnd, L)
+    // The bars are thin, so the whole band counts: the lane under the
+    // pointer first, then any bar at that x, a couple of pixels either side.
+    const laneHere = Math.min(count - 1, Math.max(0,
+      Math.floor((seqTop - L.siteBandPad - py) / L.siteLaneH)))
+    let fallback: GroupedCutSite | null = null
+    for (const [group, lane] of lanes) {
+      const [x1, x2] = span(group)
+      if (px < x1 - 2 || px > x2 + 2) continue
+      if (lane === laneHere) return group
+      fallback ??= group
+    }
+    return fallback
+  }
 
-  const searchStart = lowerBoundGroups(groupedSites, rowStart - 20)
-  for (let i = searchStart; i < groupedSites.length; i++) {
+  if (!onBases || py < seqTop || py > seqTop + L.seqLineHeight) return null
+  for (let i = lowerBoundGroups(groupedSites, rowStart - 40); i < groupedSites.length; i++) {
     const group = groupedSites[i]
     if (group.recognitionStart >= rowEnd) break
     if (group.recognitionEnd <= rowStart) continue
-    const aStart = Math.max(group.recognitionStart, rowStart)
-    const aEnd = Math.min(group.recognitionEnd, rowEnd)
-    const x1 = baseX(aStart, rowStart, L)
-    const x2 = baseX(aEnd - 1, rowStart, L) + L.bpWidth
+    const [x1, x2] = span(group)
     if (px >= x1 && px <= x2) return group
   }
   return null
@@ -425,7 +478,7 @@ function hitTestSelectionEdge(
   const startRow = Math.floor(selStart / L.basesPerRow)
   const startRowStart = startRow * L.basesPerRow
   const startX = baseX(selStart, startRowStart, L)
-  const startY = rl.rowY(startRow) - scrollTop + L.enzymeLabelAreaH + L.rulerHeight
+  const startY = rl.rowY(startRow) - scrollTop + rl.seqTop(startRow, L)
   if (Math.abs(px - startX) <= TOLERANCE && py >= startY - KNOB_SLOP && py <= startY + L.seqLineHeight) {
     return 'start'
   }
@@ -434,7 +487,7 @@ function hitTestSelectionEdge(
   const endRow = Math.floor((selEnd - 1) / L.basesPerRow)
   const endRowStart = endRow * L.basesPerRow
   const endX = baseX(selEnd - 1, endRowStart, L) + L.bpWidth
-  const endY = rl.rowY(endRow) - scrollTop + L.enzymeLabelAreaH + L.rulerHeight
+  const endY = rl.rowY(endRow) - scrollTop + rl.seqTop(endRow, L)
   if (Math.abs(px - endX) <= TOLERANCE && py >= endY && py <= endY + L.seqLineHeight + KNOB_SLOP) {
     return 'end'
   }
@@ -460,7 +513,11 @@ function SequenceView({ onFindRequest, onFindClose, onAnnotateRequest, onEditFea
   const spacerRef = useRef<HTMLDivElement>(null)
   const layoutRef = useRef<ZoomLayout>(getLayout(14, 800))
   const rowLayoutRef = useRef<RowLayoutMap>(new RowLayoutMap(0))
-  const rowLayoutCacheRef = useRef<{ key: string; baseKey: string; tree: IntervalTree; map: RowLayoutMap; layoutKey: string } | null>(null)
+  const rowLayoutCacheRef = useRef<{
+    key: string; baseKey: string; tree: IntervalTree; map: RowLayoutMap; layoutKey: string
+    /** What the name rows and bar lanes were counted from. */
+    sites: GroupedCutSite[]; siteKey: string
+  } | null>(null)
   const stackCacheRef = useRef<{ key: string; tree: IntervalTree; stacks: Map<number, { rows: Annotation[][]; overflow: number }> } | null>(null)
   const canvasTopRef = useRef(0)
   const isDragging = useRef(false)
@@ -512,7 +569,7 @@ function SequenceView({ onFindRequest, onFindClose, onAnnotateRequest, onEditFea
   // Enzyme popover: same delay as the feature popover, so the two behave
   // identically on the same canvas.
   const { target: enzymeTooltip, show: showEnzymeTooltip, hide: hideEnzymeTooltip } =
-    useDelayedHover<HoverTarget & { group: GroupedCutSite }>()
+    useDelayedHover<HoverTarget & { group: GroupedCutSite; more?: GroupedCutSite[] }>()
   // Feature popover: delayed on appear, immediate on leave. See useDelayedHover.
   const { target: annTooltip, show: showAnnTooltip, hide: hideAnnTooltip } = useDelayedHover<HoverTarget>()
 
@@ -701,15 +758,21 @@ function SequenceView({ onFindRequest, onFindClose, onAnnotateRequest, onEditFea
       }
     }
     const rlKey = `${rlCacheKey}|${selRows.map(r => r.join('-')).join(',')}`
-    const rlLayoutKey = `${rlCacheKey}_${L.annotationRowH}_${L.annotationGap}_${L.rulerHeight}_${L.seqLineHeight}_${L.enzymeLabelAreaH}_${L.translationRowH}_${L.translationGap}_${L.maxTranslationRows}_${L.rowPaddingBottom}`
+    const rlLayoutKey = `${rlCacheKey}_${L.annotationRowH}_${L.annotationGap}_${L.rulerHeight}_${L.seqLineHeight}_${L.maxEnzymeTiers}_${L.maxSiteLanes}_${L.translationRowH}_${L.translationGap}_${L.maxTranslationRows}_${L.rowPaddingBottom}`
     let rl: RowLayoutMap
     // Where to scroll to keep the view still when only the selection's
     // translation rows changed: rows growing above the view would otherwise
     // push what the user is looking at down.
     let scrollFix: number | null = null
+    // Name rows depend on where each name lands, so on the width of a base
+    // as well as on the sites.
+    const siteKey = `${L.bpWidth.toFixed(4)}_${L.leftMargin}_${L.maxEnzymeTiers}_${L.maxSiteLanes}`
+    const sitesForRows = L.maxEnzymeTiers > 0 ? groupedSites : NO_SITES
     if (rowLayoutCacheRef.current
         && rowLayoutCacheRef.current.key === rlKey
-        && rowLayoutCacheRef.current.tree === annTree) {
+        && rowLayoutCacheRef.current.tree === annTree
+        && rowLayoutCacheRef.current.sites === sitesForRows
+        && rowLayoutCacheRef.current.siteKey === siteKey) {
       rl = rowLayoutCacheRef.current.map
       // Only rebuild offsets if layout constants changed
       if (rowLayoutCacheRef.current.layoutKey !== rlLayoutKey) {
@@ -718,10 +781,14 @@ function SequenceView({ onFindRequest, onFindClose, onAnnotateRequest, onEditFea
       }
     } else {
       const prev = rowLayoutCacheRef.current
-      rl = buildRowLayout(L, annTree, seqLen, perRowTranslations, selRows)
-      rowLayoutCacheRef.current = { key: rlKey, baseKey: rlCacheKey, tree: annTree, map: rl, layoutKey: rlLayoutKey }
+      rl = buildRowLayout(L, annTree, seqLen, sitesForRows, perRowTranslations, selRows)
+      rowLayoutCacheRef.current = {
+        key: rlKey, baseKey: rlCacheKey, tree: annTree, map: rl, layoutKey: rlLayoutKey,
+        sites: sitesForRows, siteKey,
+      }
       if (prev && prev.baseKey === rlCacheKey && prev.tree === annTree) {
-        // Same rows, only the selection's band changed: hold the top visible row.
+        // Same rows, only the selection's band or the sites changed (which
+        // resize rows): hold the top visible row.
         const st = container.scrollTop
         const topRow = prev.map.rowAtY(st)
         scrollFix = rl.rowY(topRow) + (st - prev.map.rowY(topRow))
@@ -811,7 +878,7 @@ function SequenceView({ onFindRequest, onFindClose, onAnnotateRequest, onEditFea
         const rs = row * L.basesPerRow
         const re = Math.min(rs + L.basesPerRow, seqLen)
         const x = c < re ? baseX(c, rs, L) : baseX(re - 1, rs, L) + L.bpWidth
-        const y = rl.rowY(row) + L.enzymeLabelAreaH + L.rulerHeight
+        const y = rl.rowY(row) + rl.seqTop(row, L)
         caretEl.style.display = ''
         caretEl.style.height = `${L.seqLineHeight}px`
         caretEl.style.transform = `translate(${x - 1}px, ${y}px)`
@@ -920,8 +987,19 @@ function SequenceView({ onFindRequest, onFindClose, onAnnotateRequest, onEditFea
     // Check enzyme label click (above ruler only) - select recognition site
     const groupedSitesNow = groupedSitesRef.current
     const hitLabel = hitTestEnzymeLabel(px, py + canvasTopRef.current, seqLen, groupedSitesNow, layoutRef.current, rowLayoutRef.current)
+      // A site's bar is as good a handle on it as its name.
+      ?? hitTestEnzymeHighlight(px, py + canvasTopRef.current, seqLen, groupedSitesNow, layoutRef.current, rowLayoutRef.current)
     if (hitLabel) {
       pick({ anchor: hitLabel.recognitionStart, caret: hitLabel.recognitionEnd })
+      return
+    }
+    // A "+N" chip selects the stretch its sites cover.
+    const hitChip = hitTestSiteChip(px, py + canvasTopRef.current, seqLen, groupedSitesNow, layoutRef.current, rowLayoutRef.current)
+    if (hitChip) {
+      pick({
+        anchor: Math.min(...hitChip.groups.map(g => g.recognitionStart)),
+        caret: Math.max(...hitChip.groups.map(g => g.recognitionEnd)),
+      })
       return
     }
 
@@ -1123,6 +1201,20 @@ function SequenceView({ onFindRequest, onFindClose, onAnnotateRequest, onEditFea
     const hitLabel = hitTestEnzymeLabel(px, py + canvasTopRef.current, seqLen, groupedSitesNow, layoutRef.current, rowLayoutRef.current)
     const hitHighlight = !hitLabel ? hitTestEnzymeHighlight(px, py + canvasTopRef.current, seqLen, groupedSitesNow, layoutRef.current, rowLayoutRef.current) : null
     const hitEnzyme = hitLabel || hitHighlight
+    const hitChip = !hitEnzyme
+      ? hitTestSiteChip(px, py + canvasTopRef.current, seqLen, groupedSitesNow, layoutRef.current, rowLayoutRef.current)
+      : null
+    if (hitChip) {
+      if (hoveredEnzymeGroupRef.current) setHoveredEnzymeGroup(null)
+      showEnzymeTooltip({
+        x: e.clientX, y: e.clientY,
+        key: `chip:${hitChip.groups.map(enzymeGroupKey).join(',')}`,
+        group: hitChip.groups[0], more: hitChip.groups,
+      })
+      hideAnnTooltip()
+      canvas.style.cursor = 'pointer'
+      return
+    }
     if (hitEnzyme) {
       setHoveredEnzymeGroup(hitEnzyme)
       showEnzymeTooltip({ x: e.clientX, y: e.clientY, key: enzymeGroupKey(hitEnzyme), group: hitEnzyme })
@@ -1268,7 +1360,7 @@ function SequenceView({ onFindRequest, onFindClose, onAnnotateRequest, onEditFea
     const hitAnn = hitTestAnnotation(px, py + canvasTopRef.current, seqLen, stacksAt, layoutRef.current, rowLayoutRef.current)
     const groupedSitesNow = groupedSitesRef.current
     const hitLabel = hitTestEnzymeLabel(px, py + canvasTopRef.current, seqLen, groupedSitesNow, layoutRef.current, rowLayoutRef.current)
-    const hitHighlight = !hitLabel ? hitTestEnzymeHighlight(px, py + canvasTopRef.current, seqLen, groupedSitesNow, layoutRef.current, rowLayoutRef.current) : null
+    const hitHighlight = !hitLabel ? hitTestEnzymeHighlight(px, py + canvasTopRef.current, seqLen, groupedSitesNow, layoutRef.current, rowLayoutRef.current, true) : null
     const hitEnzymeGroup = hitLabel || hitHighlight
     // Clear hover tooltips - the context menu will embed tooltip content
     hideAnnTooltip()
@@ -1711,7 +1803,11 @@ function SequenceView({ onFindRequest, onFindClose, onAnnotateRequest, onEditFea
         showAnnotations: showAnnotationTracksRef.current,
         translationRows: translationRowsRef.current,
       })
-      const rl = buildRowLayout(L, annTreeRef.current, seqLen, perRowTranslations)
+      const doc = docRef.current
+      const sites = showEnzymesNow
+        ? groupCutSites(enzymeCutSitesRef.current, doc.metadata?.damMethylated || false, doc.metadata?.dcmMethylated || false)
+        : NO_SITES
+      const rl = buildRowLayout(L, annTreeRef.current, seqLen, sites, perRowTranslations)
       if (rl.totalHeight + 4 > viewH) break
       best = z
     }
@@ -1838,13 +1934,15 @@ function SequenceView({ onFindRequest, onFindClose, onAnnotateRequest, onEditFea
       <div ref={caretRef} className="seq-caret" aria-hidden="true" />
       <div ref={dragPillRef} className="seq-drag-pill" aria-hidden="true" />
       {/* Hover tooltips - hidden when context menu is open */}
-      {!ctxMenu && enzymeTooltip && (
+      {!ctxMenu && enzymeTooltip && (enzymeTooltip.more ? (
+        <SiteListTooltip x={enzymeTooltip.x + 12} y={enzymeTooltip.y - 10} groups={enzymeTooltip.more} />
+      ) : (
         <EnzymeTooltipPopup
           x={enzymeTooltip.x + 12}
           y={enzymeTooltip.y - 10}
           group={enzymeTooltip.group}
         />
-      )}
+      ))}
       {!ctxMenu && annTooltip && (() => {
         const primerItem = primerItemById.get(annTooltip.key)
         if (primerItem) {

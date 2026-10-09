@@ -350,3 +350,50 @@ describe('spliced features and several selected ranges', () => {
     expect(three - one).toBe(2)
   })
 })
+
+describe('the cloning workspace options', () => {
+  const crowded = Array.from({ length: 60 }, (_, i) => ({
+    key: `e${i}`, label: `Enz${i}`, cutPos: 400 + i * 2, methEffect: null,
+  }))
+  const texts = (items: SceneItem[]) =>
+    items.filter((i): i is Extract<SceneItem, { kind: 'text' }> => i.kind === 'text')
+
+  it('keeps a chosen site on a map too crowded for every name', () => {
+    const scene = buildPlasmidScene(input({ enzymeGroups: crowded, pickedEnzymeKeys: new Set(['e59']) }))
+    const label = texts(scene.items).find(t => t.text === 'Enz59')
+    expect(label).toBeDefined()
+    expect(label!.fill).toBe(resolvePlasmidColors(getPlasmidStyle('modern'), null).accent)
+  })
+
+  it('draws a band per marked stretch, in its own colour', () => {
+    const scene = buildPlasmidScene(input({
+      regions: [{ start: 10, end: 400, color: 'hsl(1 50% 50%)' }, { start: 2600, end: 20, color: 'hsl(2 50% 50%)' }],
+    }))
+    const fills = scene.items.filter(i => i.kind === 'arcBand').map(i => (i as { fill: string }).fill)
+    expect(fills).toContain('hsl(1 50% 50%)')
+    expect(fills).toContain('hsl(2 50% 50%)')
+  })
+
+  it('can leave the caret off', () => {
+    const lines = (over: Partial<PlasmidSceneInput>) =>
+      buildPlasmidScene(input(over)).items.filter(i => i.kind === 'line').length
+    expect(lines({ showCaret: false })).toBe(lines({}) - 1)
+  })
+
+  it('writes a note in the middle in place of the selection count', () => {
+    const scene = buildPlasmidScene(input({
+      selection: { anchor: 10, caret: 50 }, selectionLength: 40, centreNote: 'Keeps 2,635 bp',
+    }))
+    const all = texts(scene.items).map(t => t.text)
+    expect(all).toContain('Keeps 2,635 bp')
+    expect(all).not.toContain('40 bp selected')
+  })
+
+  it('breaks the backbone of a linear molecule, and only when asked', () => {
+    const rings = (over: Partial<PlasmidSceneInput>) =>
+      buildPlasmidScene(input({ topology: 'linear', ...over })).items.filter(i => i.kind === 'ring').length
+    expect(rings({})).toBe(1)
+    expect(rings({ openEnds: true })).toBe(0)
+    expect(buildPlasmidScene(input({ openEnds: true })).items.some(i => i.kind === 'ring')).toBe(true)
+  })
+})

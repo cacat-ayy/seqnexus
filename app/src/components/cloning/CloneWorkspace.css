@@ -172,7 +172,7 @@
   position: absolute;
   top: calc(100% + 4px);
   right: 0;
-  z-index: 20;
+  z-index: var(--z-dropdown);
   min-width: 220px;
   max-height: 280px;
   overflow-y: auto;
@@ -236,8 +236,7 @@
 .cw-part-top { display: flex; align-items: center; gap: var(--space-1-5); min-height: 28px; }
 
 .cw-part-toggle {
-  flex: 1;
-  min-width: 0;
+  flex-shrink: 0;
   display: inline-flex;
   align-items: center;
   gap: var(--space-1);
@@ -248,6 +247,23 @@
   cursor: pointer;
   text-align: left;
 }
+
+.cw-part-name {
+  flex: 1;
+  min-width: 0;
+  display: inline-flex;
+  padding: var(--space-0-5) 0;
+  border: none;
+  background: transparent;
+  color: var(--text);
+  cursor: pointer;
+  text-align: left;
+}
+
+.cw-part-name:hover .cw-part-title { color: var(--accent); }
+.cw-part.selected { background: color-mix(in srgb, var(--accent) 7%, transparent); }
+
+.cw-field-note { font-size: var(--text-xs); font-weight: 400; color: var(--text-faint); line-height: 1.4; }
 
 .cw-chevron { flex-shrink: 0; color: var(--text-muted); transition: transform 0.12s; }
 [aria-expanded='true'] > .cw-chevron { transform: rotate(90deg); }
@@ -337,114 +353,88 @@
 
 .cw-icon-btn:hover { background: var(--bg-alt); color: var(--text); }
 
-/* ---- Stage: the map, and what it gives underneath ---- */
+/* ---- Stage: a map per part and one for the product, as tabs ---- */
 .cw-stage {
   display: flex;
   flex-direction: column;
-  gap: var(--space-3);
+  gap: var(--space-2);
   flex: 1;
   min-height: 0;
   width: 100%;
-  max-width: 820px;
+  max-width: 980px;
   margin: 0 auto;
 }
 
+.cw-tabs {
+  display: flex;
+  gap: var(--space-0-5);
+  flex-shrink: 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+  /* The rule under the tabs, drawn inside so the active tab's underline sits on it. */
+  box-shadow: inset 0 -1px 0 var(--border);
+}
+
+.cw-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1-5);
+  max-width: 240px;
+  padding: var(--space-1-5) var(--space-3);
+  border: none;
+  border-bottom: 2px solid transparent;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+  font-weight: 500;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.cw-tab:hover { color: var(--text); }
+.cw-tab.active { color: var(--text); border-bottom-color: var(--accent); }
+.cw-tab-product { margin-left: auto; }
+.cw-tab-swatch { width: 8px; height: 8px; border-radius: var(--radius-pill); flex-shrink: 0; }
+.cw-tab-name { overflow: hidden; text-overflow: ellipsis; }
+.cw-tab-role { font-size: var(--text-2xs); color: var(--text-faint); text-transform: uppercase; letter-spacing: 0.04em; }
+.cw-tab-dot { width: 7px; height: 7px; border-radius: var(--radius-pill); }
+.cw-tab-dot.ok { background: var(--success); }
+.cw-tab-dot.partial { background: var(--warning); }
+.cw-tab-dot.none { background: var(--danger); }
+
+/* The map is drawn on the canvas colour, so the card it sits in is too:
+   the square the canvas paints then disappears into it. */
 .cw-map {
+  position: relative;
   flex: 1;
-  min-height: 240px;
+  min-height: 260px;
   display: flex;
-  align-items: center;
-  justify-content: center;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-card);
+  background: var(--canvas-bg);
+  overflow: hidden;
 }
 
-.cw-result { flex-shrink: 0; max-height: 45%; overflow-y: auto; }
-
-/* ---- Diagram ---- */
-.cw-diagram {
-  display: flex;
-  flex-direction: column;
+.cw-map-empty {
   align-items: center;
   justify-content: center;
-  gap: var(--space-2);
-  width: 100%;
-  height: 100%;
-}
-
-/* The ring takes all the room it is given, so the labels grow with it. */
-.cw-diagram-ring svg { width: 100%; height: 100%; max-width: 560px; max-height: 560px; }
-
-.cw-diagram-empty {
   text-align: center;
   color: var(--text-muted);
   font-size: var(--text-md);
 }
 
-.cw-arc {
-  stroke: var(--bg-alt);
-  stroke-width: 1.5;
-  cursor: pointer;
-  transition: filter 0.1s;
-}
-
-.cw-arc:hover, .cw-arc.hovered { filter: brightness(1.18); }
-.cw-arc-name { font-size: var(--text-2xs); font-weight: 600; pointer-events: none; }
-
-.cw-junction line { stroke: var(--text-muted); stroke-width: 1.5; }
-
-.cw-junction text {
-  font-family: var(--font-mono);
-  font-size: var(--text-2xs);
-  fill: var(--text-muted);
-}
-
-.cw-ring-name { font-size: var(--text-md); font-weight: 600; fill: var(--text); }
-.cw-ring-size { font-size: var(--text-xs); fill: var(--text-muted); }
-
-.cw-line {
+.cw-maphint {
   display: flex;
-  width: 100%;
-  max-width: 640px;
-  height: 60px;
-  border-radius: var(--radius-sm);
-  overflow: hidden;
-  border: 1px solid var(--border);
-}
-
-.cw-block {
-  position: relative;
-  display: flex;
-  flex-direction: column;
   align-items: center;
   justify-content: center;
-  min-width: 0;
-  padding: 0 4px;
-  cursor: pointer;
-  overflow: hidden;
-  border-right: 1px solid var(--bg-alt);
+  gap: var(--space-3);
+  flex-shrink: 0;
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+  text-align: center;
 }
 
-.cw-block:last-child { border-right: none; }
-.cw-block.hovered { filter: brightness(1.18); }
-
-.cw-block-name {
-  font-size: var(--text-sm);
-  font-weight: 600;
-  /* Over a fixed mid-tone part colour (cloning/colors.ts), not a themed
-     surface, so white with a shadow reads on every fill and theme. */
-  color: var(--on-accent);
-  text-shadow: 0 1px 2px rgb(0 0 0 / 0.4);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  max-width: 100%;
-}
-
-.cw-block-junction {
-  font-family: var(--font-mono);
-  font-size: var(--text-sm);
-  color: var(--on-accent);
-  opacity: 0.85;
-}
+.cw-result { flex-shrink: 0; max-height: 40%; overflow-y: auto; }
 
 .cw-line-caption {
   margin: 0;
@@ -453,37 +443,114 @@
   text-align: center;
 }
 
-.cw-loose { display: flex; flex-direction: column; gap: var(--space-2); width: 100%; max-width: 560px; }
-.cw-loose-part { display: flex; align-items: center; gap: var(--space-2); cursor: pointer; }
-.cw-loose-part.hovered .cw-loose-body { background: var(--bg-hover); }
-
-.cw-loose-body {
+/* ---- A map ---- */
+.cm {
+  position: relative;
   flex: 1;
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: var(--space-2);
-  padding: var(--space-2) var(--space-3);
-  border: 2px solid;
-  border-radius: var(--radius-sm);
-  background: var(--bg);
   min-width: 0;
+  min-height: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
 }
 
-.cw-loose-body.circular { border-radius: var(--radius-card); }
-.cw-loose-name { font-size: var(--text-md); font-weight: 600; color: var(--text); }
-.cw-loose-size { font-size: var(--text-sm); color: var(--text-muted); white-space: nowrap; }
+.cm canvas { display: block; }
 
-/* The end a part is left with, written beside it. */
-.cw-loose-end {
-  width: 84px;
+.cm-tip {
+  position: absolute;
+  z-index: var(--z-popover);
+  max-width: 260px;
+  padding: var(--space-1-5) var(--space-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-input);
+  background: var(--bg-alt);
+  box-shadow: var(--shadow-popover);
+  font-size: var(--text-xs);
+  line-height: 1.45;
+  color: var(--text-secondary);
+  pointer-events: none;
+}
+
+.cm-tip-title { font-size: var(--text-sm); font-weight: 600; color: var(--text); }
+
+/* ---- The reaction strip: pieces with their ends, then the product ---- */
+.cw-strip {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
   flex-shrink: 0;
-  font-family: var(--font-mono);
-  font-size: var(--text-sm);
-  color: var(--text-muted);
+  padding: var(--space-2) var(--space-1);
+  overflow-x: auto;
+  border-top: 1px solid var(--border-light);
 }
 
-.cw-loose-end.left { text-align: right; }
+.cw-strip-group { display: inline-flex; align-items: center; gap: var(--space-2); flex-shrink: 0; }
+.cw-strip-op { color: var(--text-faint); flex-shrink: 0; }
+
+.cw-piece {
+  display: inline-flex;
+  align-items: flex-end;
+  gap: var(--space-1);
+  padding: var(--space-1) var(--space-1-5);
+  border: 1px solid transparent;
+  border-radius: var(--radius-input);
+  background: transparent;
+  color: var(--text);
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.cw-piece:hover { background: var(--bg-hover); }
+.cw-piece.active { border-color: var(--border); background: var(--bg-alt); }
+
+.cw-piece-body {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  min-width: 72px;
+  max-width: 150px;
+  padding: var(--space-1) var(--space-2);
+  border: 2px solid var(--border);
+  border-radius: var(--radius-input);
+  background: var(--bg);
+}
+
+.cw-piece-name {
+  max-width: 100%;
+  font-size: var(--text-xs);
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cw-piece-size { font-size: var(--text-2xs); color: var(--text-muted); white-space: nowrap; }
+
+.cw-piece-product .cw-piece-body { border-radius: var(--radius-card); }
+.cw-piece-product.ok .cw-piece-body { border-color: var(--success); background: var(--success-bg); }
+.cw-piece-product.partial .cw-piece-body { border-color: var(--warning); background: var(--warning-bg); }
+.cw-piece-product.none .cw-piece-body { border-color: var(--danger); background: var(--danger-bg); }
+
+.cw-end { display: inline-flex; flex-direction: column; gap: var(--space-0-5); }
+.cw-end.left { align-items: flex-end; }
+.cw-end.right { align-items: flex-start; }
+.cw-end-enzyme { font-size: var(--text-2xs); font-weight: 600; color: var(--text-secondary); }
+
+.cw-end-strands {
+  display: flex;
+  flex-direction: column;
+  padding: var(--space-0-5) var(--space-1);
+  border-radius: var(--radius-xs);
+  font-family: var(--font-mono);
+  font-size: var(--text-2xs);
+  line-height: 1.25;
+  white-space: pre;
+}
+
+.cw-end.pairs .cw-end-strands { background: var(--success-bg); color: var(--success); }
+.cw-end.self .cw-end-strands { background: var(--warning-bg); color: var(--warning); }
+.cw-end.none .cw-end-strands { background: var(--danger-bg); color: var(--danger); }
 
 /* ---- What the reaction gives ---- */
 .cw-outcome { display: flex; flex-direction: column; gap: var(--space-2); }

@@ -76,6 +76,8 @@ export type HitRegion =
       span: number
     }
   | { kind: 'point'; id: string; type: 'enzyme'; x: number; y: number; r: number }
+  /** A cut-site name: the box its text fills, centred on x, y and turned by `rotate`. */
+  | { kind: 'label'; id: string; type: 'enzyme'; x: number; y: number; w: number; h: number; rotate: number }
 
 export interface PlasmidScene {
   size: number
@@ -165,6 +167,20 @@ export interface PlasmidSceneInput {
   /** Draw the name, length and topology in the middle. Default true. The
    *  explorer's hover card turns both off: it prints the same facts itself. */
   showCentre?: boolean
+
+  /** Cut sites drawn as chosen: accent ticks, bold accent labels placed
+   *  before any other site's, so a crowded map never drops them. */
+  pickedEnzymeKeys?: ReadonlySet<string>
+  /** Stretches marked on the backbone, each in its own colour. An end below
+   *  its start runs across the origin. */
+  regions?: readonly { start: number; end: number; color: string }[]
+  /** Mark the caret when nothing is selected. Default true. */
+  showCaret?: boolean
+  /** A line under the length in the middle, in place of the selection count. */
+  centreNote?: string
+  /** Break the backbone at the origin of a linear sequence, with an end bar
+   *  each side, so a linear molecule does not read as a circle. */
+  openEnds?: boolean
 }
 
 // ---- Inner label placement ----
@@ -276,6 +292,7 @@ export function buildPlasmidScene(input: PlasmidSceneInput): PlasmidScene {
     gcPercent, legend, displayOrigin, name, topology,
     showFeatureLabels = true, showCentre = true,
     searchHits = [], currentSearchHit = -1,
+    pickedEnzymeKeys, regions = [], showCaret = true, centreNote, openEnds = false,
   } = input
 
   const items: SceneItem[] = []
@@ -334,11 +351,40 @@ export function buildPlasmidScene(input: PlasmidSceneInput): PlasmidScene {
     }
   }
 
+  // --- Marked stretches, on the backbone like the selection ---
+  for (const r of regions) {
+    if (r.start === r.end) continue
+    items.push({
+      kind: 'arcBand', cx, cy, radius: baseRadius,
+      startAngle: posToAngle(r.start, seqLen), span: annArcSpan(r.start, r.end, seqLen),
+      width: style.arcWidth / 2 + 4, strand: 0, fill: r.color, alpha: 0.85,
+    })
+  }
+
   // --- Backbone ---
-  items.push({
-    kind: 'ring', cx, cy, radius: baseRadius,
-    width: style.backboneWidth, stroke: colors.backbone,
-  })
+  if (openEnds && topology === 'linear') {
+    // The gap is a few pixels whatever the map's size, so it reads as a
+    // break without hiding more than a base or two.
+    const gap = Math.min(5 / baseRadius, 0.05)
+    items.push({
+      kind: 'arcBand', cx, cy, radius: baseRadius,
+      startAngle: -Math.PI / 2 + gap, span: TWO_PI - 2 * gap,
+      width: style.backboneWidth, strand: 0, fill: colors.backbone,
+    })
+    for (const a of [-Math.PI / 2 + gap, -Math.PI / 2 - gap]) {
+      items.push({
+        kind: 'line',
+        x1: cx + Math.cos(a) * (baseRadius - 6), y1: cy + Math.sin(a) * (baseRadius - 6),
+        x2: cx + Math.cos(a) * (baseRadius + 6), y2: cy + Math.sin(a) * (baseRadius + 6),
+        stroke: colors.backbone, width: 1.5,
+      })
+    }
+  } else {
+    items.push({
+      kind: 'ring', cx, cy, radius: baseRadius,
+      width: style.backboneWidth, stroke: colors.backbone,
+    })
+  }
 
   // --- Find hits ---
   // A mark on the backbone per hit, at least a few pixels long so a 6 bp
@@ -496,29 +542,36 @@ export function buildPlasmidScene(input: PlasmidSceneInput): PlasmidScene {
   for (const group of enzymeGroups) {
     const angle = posToAngle(group.cutPos, seqLen)
     const hovered = group.key === hoveredEnzymeKey
+    const picked = pickedEnzymeKeys?.has(group.key) ?? false
+    const ink = picked ? colors.accent : colors.enzyme
     const alpha = group.methEffect === 'blocked' ? 0.25 : group.methEffect === 'impaired' ? 0.5 : 1
-    const from = baseRadius - 10
-    const to = baseRadius + 10
+    const from = baseRadius - (picked ? 14 : 10)
+    const to = baseRadius + (picked ? 14 : 10)
     items.push({
       kind: 'line',
       x1: cx + Math.cos(angle) * from, y1: cy + Math.sin(angle) * from,
       x2: cx + Math.cos(angle) * to, y2: cy + Math.sin(angle) * to,
-      stroke: colors.enzyme, width: hovered ? 3 : 1.5, alpha,
+      stroke: ink, width: hovered || picked ? 3 : 1.5, alpha,
     })
     const mx = cx + Math.cos(angle) * baseRadius
     const my = cy + Math.sin(angle) * baseRadius
-    items.push({ kind: 'dot', x: mx, y: my, r: hovered ? 4 : 2.5, fill: colors.enzyme, alpha })
-    hitRegions.push({ kind: 'point', id: group.key, type: 'enzyme', x: mx, y: my, r: 14 })
+    items.push({ kind: 'dot', x: mx, y: my, r: hovered || picked ? 4 : 2.5, fill: ink, alpha })
+    hitRegions.push({ kind: 'point', id: group.key, type: 'enzyme', x: mx, y: my, r: 10 })
 
     if (style.showEnzymeLabels) {
-      const f = font(style.enzymeSize, hovered)
+      const f = font(style.enzymeSize, hovered || picked)
       innerLabels.push({
         text: group.label, angle,
-        width: measureText(group.label, f),
-        fill: colors.enzyme, font: f,
-        priority: 1,
+        // Laid out at its bold width whether or not it is bold, so hovering a
+        // name (which bolds it) cannot widen it, push it to another row and
+        // put a different name under the pointer.
+        width: measureText(group.label, font(style.enzymeSize, true)),
+        fill: ink, font: f,
+        // Ruler numbers are 0, so a chosen site still yields to them; it
+        // goes before every other site, which is what keeps it on the map.
+        priority: picked ? 0.5 : 1,
         leader: true,
-        leaderColor: colors.enzyme,
+        leaderColor: ink,
         hitId: group.key,
       })
     }
@@ -534,6 +587,7 @@ export function buildPlasmidScene(input: PlasmidSceneInput): PlasmidScene {
       x1: cx - centreW / 2 - 8, y1: cy - 34,
       x2: cx + centreW / 2 + 8, y2: cy + 40,
     }
+    const lineHeight = Math.max(style.tickSize, style.enzymeSize) + 3
     const placed = placeInnerLabels(
       innerLabels,
       baseRadius - 20,
@@ -541,7 +595,7 @@ export function buildPlasmidScene(input: PlasmidSceneInput): PlasmidScene {
       40,
       reserved,
       cx, cy,
-      Math.max(style.tickSize, style.enzymeSize) + 3,
+      lineHeight,
     )
     for (const label of placed) {
       if (label.leader && label.radius < baseRadius - 24) {
@@ -566,13 +620,17 @@ export function buildPlasmidScene(input: PlasmidSceneInput): PlasmidScene {
         halo: style.labelHalo ? colors.bg : undefined,
       })
       if (label.hitId) {
-        // The name is as clickable as the tick on the backbone, which matters
-        // once a leader line has pulled it well away from its own cut site.
+        // The name is clickable over the whole of its text. In a multiple
+        // cloning site the ticks on the backbone sit a pixel or two apart and
+        // cannot be told apart by pointing, but the placement has already
+        // spread the names out, so the name is the reliable target.
         hitRegions.push({
-          kind: 'point', id: label.hitId, type: 'enzyme',
+          kind: 'label', id: label.hitId, type: 'enzyme',
           x: cx + Math.cos(label.angle) * label.radius,
           y: cy + Math.sin(label.angle) * label.radius,
-          r: 12,
+          w: label.width,
+          h: lineHeight,
+          rotate,
         })
       }
     }
@@ -665,7 +723,7 @@ export function buildPlasmidScene(input: PlasmidSceneInput): PlasmidScene {
   }
 
   // --- Caret ---
-  if (!hasSelection) {
+  if (!hasSelection && showCaret) {
     const a = posToAngle(selection.caret, seqLen)
     items.push({
       kind: 'line',
@@ -704,7 +762,13 @@ export function buildPlasmidScene(input: PlasmidSceneInput): PlasmidScene {
 
     // With several ranges, their total and how many.
     const rangeCount = selectionArcs.length
-    if (rangeCount > 0) {
+    if (centreNote) {
+      items.push({
+        kind: 'text', x: cx, y: cy + 26, text: centreNote,
+        font: font(style.centreMetaSize), fill: colors.accent,
+        align: 'center', baseline: 'middle',
+      })
+    } else if (rangeCount > 0) {
       items.push({
         kind: 'text', x: cx, y: cy + 26,
         text: rangeCount > 1

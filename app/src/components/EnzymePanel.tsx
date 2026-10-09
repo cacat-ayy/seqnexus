@@ -194,6 +194,21 @@ export default function EnzymePanel({ open, onClose }: Props) {
     prevSiteCount.current = count
   }, [filteredResult.sites.length, toggleEnzymes, open])
 
+  // Closing the dialog shows what it found. The effect above only fires when
+  // the count changes while it is open, so reopening it with the same
+  // results (or after switching the sites off) used to close on nothing
+  // shown. Watching the close itself covers every way out: the close
+  // button, Escape, the backdrop and running a gel.
+  const siteCountRef = useRef(0)
+  siteCountRef.current = filteredResult.sites.length
+  const wasOpen = useRef(open)
+  useEffect(() => {
+    if (wasOpen.current && !open && siteCountRef.current > 0 && !useEditorStore.getState().showEnzymes) {
+      toggleEnzymes()
+    }
+    wasOpen.current = open
+  }, [open, toggleEnzymes])
+
   const handleSiteClick = useCallback((site: CutSite) => {
     setSelection({ anchor: site.position, caret: site.position + site.enzyme.recognition.length })
   }, [setSelection])

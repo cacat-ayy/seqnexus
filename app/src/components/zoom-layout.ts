@@ -28,12 +28,20 @@ export interface ZoomLayout {
   translationGap: number
   rowPaddingBottom: number
   rowHeight: number
-  /** Height of one enzyme label tier above the ruler */
+  /** Height of one row of cut-site names above the ruler. */
   enzymeLabelTierH: number
-  /** Max number of enzyme label tiers */
+  /**
+   * Most rows of names a line may have; 0 when sites are hidden. Each line
+   * has only the rows its own names need (RowLayoutMap.tiers), plus one for
+   * "+N" chips when even this many cannot hold them all.
+   */
   maxEnzymeTiers: number
-  /** Total height reserved for enzyme labels above the ruler */
-  enzymeLabelAreaH: number
+  /** Height of one lane of recognition-site bars under the ruler. */
+  siteLaneH: number
+  /** Most lanes of site bars a line may have; 0 when there are no bars. */
+  maxSiteLanes: number
+  /** Space under the bars, before the sequence. */
+  siteBandPad: number
 }
 
 const ZOOM_BPR = [
@@ -127,8 +135,12 @@ export function getLayout(
     : mode === 'dots' ? 8 : 4
 
   const enzymeLabelTierH = 14
-  const maxEnzymeTiers = showEnzymes ? 3 : 0
-  const enzymeLabelAreaH = maxEnzymeTiers * enzymeLabelTierH
+  const maxEnzymeTiers = showEnzymes ? 5 : 0
+  // A bar per recognition site, in lanes where sites overlap. Not at line
+  // zoom, where a six-base site is under a pixel wide.
+  const siteLaneH = 3
+  const maxSiteLanes = showEnzymes && mode !== 'line' ? 3 : 0
+  const siteBandPad = 2
 
   // Zero lanes means the annotation area collapses entirely — stackAnnotations
   // places nothing, and rowHeightForLanes reserves no space for it.
@@ -137,7 +149,8 @@ export function getLayout(
   // Letter rows get a little more air: rows without features now end right
   // under the complement, and the selection handle reaches below it.
   const rowPaddingBottom = mode === 'letters' ? 10 : 6
-  const rowHeight = enzymeLabelAreaH + rulerHeight + seqLineHeight
+  // A line with no cut sites: no names, no bars.
+  const rowHeight = rulerHeight + seqLineHeight
     + (maxAnnotationRows > 0 ? annotationGap + maxAnnotationRows * (annotationRowH + annotationGap) : 0)
     + maxTranslationRows * (12 + 1) + rowPaddingBottom
 
@@ -147,24 +160,38 @@ export function getLayout(
     annotationRowH, annotationGap, maxAnnotationRows,
     maxTranslationRows, translationRowH: 12, translationGap: 1,
     rowPaddingBottom, rowHeight,
-    enzymeLabelTierH, maxEnzymeTiers, enzymeLabelAreaH,
+    enzymeLabelTierH, maxEnzymeTiers, siteLaneH, maxSiteLanes, siteBandPad,
   }
 }
 
+/** Height of a line's cut-site names: as many rows as it uses, one more for chips. */
+export function labelAreaHeight(L: ZoomLayout, tiers: number): number {
+  if (L.maxEnzymeTiers === 0) return 0
+  return Math.max(0, Math.min(tiers, L.maxEnzymeTiers + 1)) * L.enzymeLabelTierH
+}
+
+/** Height of a line's band of recognition-site bars. */
+export function siteBandHeight(L: ZoomLayout, lanes: number): number {
+  const n = Math.max(0, Math.min(lanes, L.maxSiteLanes))
+  return n > 0 ? n * L.siteLaneH + L.siteBandPad : 0
+}
+
 /**
- * Height of a row with a specific number of annotation lanes and
- * translation rows. The translation count defaults to the layout's maximum,
- * which is what every row needs when whole reading frames are shown.
+ * Height of a row with a specific number of annotation lanes, translation
+ * rows, rows of cut-site names and lanes of site bars. The translation count
+ * defaults to the layout's maximum, which is what every row needs when whole
+ * reading frames are shown.
  */
 export function rowHeightForLanes(
   L: ZoomLayout, annLanes: number, translationRows = L.maxTranslationRows,
+  tiers = 0, siteLanes = 0,
 ): number {
   const clampedLanes = Math.min(annLanes, L.maxAnnotationRows)
   const annArea = clampedLanes > 0
     ? L.annotationGap + clampedLanes * (L.annotationRowH + L.annotationGap)
     : 0
   const clampedTranslations = Math.max(0, Math.min(translationRows, L.maxTranslationRows))
-  return L.enzymeLabelAreaH + L.rulerHeight + L.seqLineHeight + annArea
+  return labelAreaHeight(L, tiers) + L.rulerHeight + siteBandHeight(L, siteLanes) + L.seqLineHeight + annArea
     + clampedTranslations * (L.translationRowH + L.translationGap) + L.rowPaddingBottom
 }
 
@@ -183,6 +210,10 @@ export class RowLayoutMap {
    * one should not carry their blank space.
    */
   readonly translations: Uint8Array
+  /** Rows of cut-site names each line uses, counting the chip row (see layoutSiteRow). */
+  readonly tiers: Uint8Array
+  /** Lanes of recognition-site bars each line uses. */
+  readonly siteLanes: Uint8Array
   perRowTranslations = false
   readonly totalRows: number
   totalHeight: number
@@ -195,6 +226,8 @@ export class RowLayoutMap {
     this.totalRows = totalRows
     this.lanes = new Uint8Array(totalRows)
     this.translations = new Uint8Array(totalRows)
+    this.tiers = new Uint8Array(totalRows)
+    this.siteLanes = new Uint8Array(totalRows)
     this.totalHeight = 0
     this._uniformH = 0
     this._offsets = null
@@ -206,33 +239,41 @@ export class RowLayoutMap {
     return Math.min(this.translations[rowIndex] ?? 0, L.maxTranslationRows)
   }
 
-  /** Build layout from the lane counts. Uses the O(1) uniform path when every row is the same height. */
+  /** Height of the cut-site names at the top of a line. */
+  labelAreaH(rowIndex: number, L: ZoomLayout): number {
+    return labelAreaHeight(L, this.tiers[rowIndex] ?? 0)
+  }
+
+  /** Height of the band of site bars between a line's ruler and its bases. */
+  siteBandH(rowIndex: number, L: ZoomLayout): number {
+    return siteBandHeight(L, this.siteLanes[rowIndex] ?? 0)
+  }
+
+  /** From a line's top edge to the top of its bases. */
+  seqTop(rowIndex: number, L: ZoomLayout): number {
+    return this.labelAreaH(rowIndex, L) + L.rulerHeight + this.siteBandH(rowIndex, L)
+  }
+
+  /** Build layout from the per-row counts. Uses the O(1) uniform path when every row is the same height. */
   build(L: ZoomLayout): void {
-    const maxLanes = L.maxAnnotationRows
-    const maxTrans = L.maxTranslationRows
-    // Row height depends only on (lanes, translations); key them into one index.
-    const keyAt = (i: number) =>
-      Math.min(this.lanes[i], maxLanes) * (maxTrans + 1) + this.translationRowsAt(i, L)
-    const first = this.totalRows > 0 ? keyAt(0) : 0
+    const heightAt = (i: number) =>
+      rowHeightForLanes(L, this.lanes[i], this.translationRowsAt(i, L), this.tiers[i], this.siteLanes[i])
+    const first = this.totalRows > 0 ? heightAt(0) : 0
     let uniform = true
     for (let i = 1; i < this.totalRows; i++) {
-      if (keyAt(i) !== first) { uniform = false; break }
+      if (heightAt(i) !== first) { uniform = false; break }
     }
-    const heightOfKey = (key: number) =>
-      rowHeightForLanes(L, Math.floor(key / (maxTrans + 1)), key % (maxTrans + 1))
     if (uniform) {
-      this._uniformH = heightOfKey(first)
+      this._uniformH = first
       this.totalHeight = this.totalRows * this._uniformH
       this._offsets = null
     } else {
       this._uniformH = 0
-      const heightByKey: number[] = []
-      for (let k = 0; k < (maxLanes + 1) * (maxTrans + 1); k++) heightByKey[k] = heightOfKey(k)
       const offsets = new Float64Array(this.totalRows + 1)
       let y = 0
       for (let i = 0; i < this.totalRows; i++) {
         offsets[i] = y
-        y += heightByKey[keyAt(i)]
+        y += heightAt(i)
       }
       offsets[this.totalRows] = y
       this.totalHeight = y

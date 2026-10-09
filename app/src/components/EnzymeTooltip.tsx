@@ -263,3 +263,26 @@ export default function EnzymeTooltip({ x, y, group }: { x: number; y: number; g
     </HoverCard>
   )
 }
+
+/**
+ * The sites behind a "+N" chip: names that no row of a crowded line had room
+ * for, each listed with where it starts.
+ */
+export function SiteListTooltip({ x, y, groups }: { x: number; y: number; groups: GroupedCutSite[] }) {
+  return (
+    <HoverCard x={x} y={y} className="enzyme-tooltip" pinKey={`sites:${groups.map(g => `${g.label}@${g.recognitionStart}`).join(',')}`}>
+      <div className="enzyme-tooltip-title">{groups.length} more site{groups.length === 1 ? '' : 's'} here</div>
+      <table className="enzyme-tooltip-table">
+        <tbody>
+          {groups.map(g => (
+            <tr key={`${g.label}@${g.recognitionStart}`}>
+              <td>{g.label}</td>
+              <td>{(g.recognitionStart + 1).toLocaleString()}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      <div className="enzyme-tooltip-position">Click to select the stretch they cover, or zoom in to see each name</div>
+    </HoverCard>
+  )
+}

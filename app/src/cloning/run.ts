@@ -13,7 +13,7 @@ import { Annotation } from '../models/Annotation'
 import type { DocumentState } from '../models/Document'
 import { getEnzyme, type RestrictionEnzyme } from '../enzymes/db'
 import type { Assembly } from './product'
-import { canonical } from './product'
+import { canonical, rotateAssembly } from './product'
 import { assemble } from './assemble'
 import { digest } from './cut'
 import type { Fragment } from './fragment'
@@ -24,6 +24,7 @@ import { junctionOverhangs, setFidelity } from './fidelity'
 import {
   partBases,
   partLength,
+  partEnzymes,
   partTopology,
   vectorsFirst,
   type CloningDesign,
@@ -72,9 +73,13 @@ function toHomologyPart(part: DesignPart): HomologyPart {
 /**
  * Which fragment of a digest a part contributes.
  *
- * The user can say, by `keep`. Otherwise the longest one, which is the band
- * you would cut out of a gel — and for a vector cut twice that is the
- * backbone, which is what people mean.
+ * The user can say, by `keep` (clicking a piece on the part's map). Otherwise
+ * it follows from what the part is for. A vector gives its longest piece: cut
+ * twice, that is the backbone, and the short piece is what the insert
+ * replaces. An insert taken out of a plasmid gives its shortest: the long
+ * piece is the donor's own backbone, which is what gets thrown away. A linear
+ * insert (a PCR product cut near both ends) gives its longest, the middle,
+ * since the ends are only the few bases outside the sites.
  */
 export function chosenFragment(part: DesignPart, fragments: Fragment[]): Fragment | null {
   const cut = fragments.filter(f => f.topology === 'linear')
@@ -83,7 +88,8 @@ export function chosenFragment(part: DesignPart, fragments: Fragment[]): Fragmen
     const hit = cut.find(f => f.source.start === part.keep!.start && f.source.end === part.keep!.end)
     if (hit) return hit
   }
-  return cut.reduce((a, b) => (b.top.length > a.top.length ? b : a))
+  const shortest = part.role === 'insert' && partTopology(part) === 'circular'
+  return cut.reduce((a, b) => (shortest ? b.top.length < a.top.length : b.top.length > a.top.length) ? b : a)
 }
 
 function enzymesOf(names: readonly string[]): RestrictionEnzyme[] {
@@ -93,24 +99,33 @@ function enzymesOf(names: readonly string[]): RestrictionEnzyme[] {
 /** Restriction digest and ligation, and Golden Gate, which differ only a little. */
 function runCut(design: CloningDesign, typeIIS: boolean): RunResult {
   const parts = vectorsFirst(design.parts)
-  const enzymes = typeIIS ? enzymesOf([design.typeIIS]) : enzymesOf(design.enzymes)
-  if (enzymes.length === 0) {
-    return empty([typeIIS ? 'Choose a Type IIS enzyme.' : 'Choose at least one enzyme.'])
+  // Golden Gate is one pot, so one enzyme cuts everything. Restriction parts
+  // are cut separately, each with its own enzymes.
+  const enzymesFor = (part: DesignPart) =>
+    typeIIS ? enzymesOf([design.typeIIS]) : enzymesOf(partEnzymes(part, design))
+  const unchosen = parts.filter(p => enzymesFor(p).length === 0)
+  if (typeIIS && unchosen.length > 0) return empty(['Choose a Type IIS enzyme.'])
+  if (unchosen.length === parts.length) {
+    return empty(['Choose the enzymes, or click the sites to cut on each part’s map.'])
   }
 
   const warnings: string[] = []
   const all: Fragment[] = []
   const kept: Fragment[] = []
-  const uncut: string[] = []
+  // A part still waiting for its sites stops the reaction, but the others
+  // are digested anyway, so their maps show the pieces they would give.
+  const uncut: string[] = unchosen.map(p => `Click the sites to cut ${p.name} at on its map.`)
 
   for (const part of parts) {
+    const enzymes = enzymesFor(part)
+    if (enzymes.length === 0) continue
     const result = digest(partDoc(part), enzymes, { idPrefix: part.id })
     warnings.push(...result.warnings)
     all.push(...result.fragments)
 
     const keep = chosenFragment(part, result.fragments)
     if (!keep) {
-      uncut.push(part.name)
+      uncut.push(`${enzymes.map(e => e.name).join(' + ')} does not cut ${part.name}, so it has no ends to join.`)
       continue
     }
     kept.push(part.dephosphorylated
@@ -119,14 +134,9 @@ function runCut(design: CloningDesign, typeIIS: boolean): RunResult {
   }
 
   if (uncut.length > 0) {
-    return {
-      products: [],
-      warnings,
-      problems: uncut.map(name =>
-        `${enzymes.map(e => e.name).join(' + ')} does not cut ${name}, so it has no ends to join.`),
-      fragments: all,
-    }
+    return { products: [], warnings, problems: uncut, fragments: all }
   }
+  const enzymes = typeIIS ? enzymesOf([design.typeIIS]) : []
 
   // Purified, only the chosen fragments are in the tube. Otherwise everything
   // the digests produced is, which is what shows the off-target products.
@@ -141,11 +151,12 @@ function runCut(design: CloningDesign, typeIIS: boolean): RunResult {
     }).filter(i => i >= 0),
   )
 
+  const vector = parts.find(p => p.role === 'vector')
   const products = assemble(pool, {
     required,
     noFlip,
     ...(typeIIS ? { recutEnzymes: enzymes } : {}),
-  })
+  }).map(product => (vector ? inVectorFrame(product, vector, pool) : product))
 
   const result: RunResult = { products, warnings, problems: [], fragments: all }
 
@@ -172,6 +183,27 @@ function runCut(design: CloningDesign, typeIIS: boolean): RunResult {
   }
 
   return result
+}
+
+/**
+ * A circular product numbered the way its vector is: the vector's base 1 is
+ * the product's base 1, as it is in SnapGene, so a feature upstream of the
+ * insertion keeps its coordinates and the map opens in the orientation the
+ * vector is always drawn in. Left as assembled when the vector's own first
+ * base was cut out or the vector went in reversed, since then there is no
+ * base 1 to keep.
+ */
+function inVectorFrame(product: Assembly, vector: DesignPart, pool: Fragment[]): Assembly {
+  if (product.topology !== 'circular') return product
+  const piece = product.parts.find(p => p.fragmentId.startsWith(`${vector.id}:`))
+  const fragment = piece && pool.find(f => f.id === piece.fragmentId)
+  if (!piece || !fragment || piece.reversed || fragment.reversed) return product
+  const length = partLength(vector)
+  const { start, end } = fragment.source
+  // The piece holds base 0 when it runs across the origin, starts there, or
+  // is the whole circle opened at one cut.
+  if (!(start >= end || start === 0)) return product
+  return rotateAssembly(product, piece.start + ((length - start) % length))
 }
 
 function runHomology(design: CloningDesign): RunResult {

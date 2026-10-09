@@ -30,7 +30,7 @@ export const METHOD_LABEL: Record<CloningMethodId, string> = {
 
 /** One line on what each method is for, shown when choosing one. */
 export const METHOD_BLURB: Record<CloningMethodId, string> = {
-  'restriction': 'Cut vector and insert with the same enzymes and ligate the ends.',
+  'restriction': 'Cut each part at the sites you click on its map, and ligate the ends.',
   'golden-gate': 'Type IIS enzymes cut beside their sites, so parts join seamlessly in one pot.',
   'homology': 'HiFi, Gibson, In-Fusion: parts join on shared ends, in any order.',
   'gateway': 'Recombine a cassette between att sites into a destination vector.',
@@ -59,6 +59,15 @@ export interface DesignPart {
   region?: { start: number; end: number }
   /** Pin the part to one orientation, or let the engine try both. */
   orientation: PartOrientation
+  /**
+   * Restriction cloning: the enzymes this part is cut with, chosen by clicking
+   * its sites on the map. Unset, it is cut with the design's enzymes, so one
+   * list still does for the common case of cutting everything the same way.
+   * Per part is what lets a vector cut with BamHI take an insert cut with
+   * BglII: different sites, the same GATC overhang. Empty, every site was
+   * clicked off again and the part is not cut.
+   */
+  enzymes?: string[]
   /** Restriction cloning: take the phosphates off this part's ends. */
   dephosphorylated?: boolean
   /**
@@ -73,7 +82,10 @@ export interface DesignPart {
 export interface CloningDesign {
   method: CloningMethodId
   parts: DesignPart[]
-  /** Restriction cloning. */
+  /**
+   * Restriction cloning: shown on every part's map, and what cuts any part
+   * that has no enzymes of its own.
+   */
   enzymes: string[]
   /** Golden Gate. */
   typeIIS: string
@@ -192,6 +204,11 @@ export function partTopology(part: DesignPart): 'linear' | 'circular' {
   return part.region ? 'linear' : part.topology
 }
 
+/** The enzymes a part is cut with in restriction cloning. */
+export function partEnzymes(part: DesignPart, design: CloningDesign): string[] {
+  return part.enzymes ?? design.enzymes
+}
+
 /** Order parts so vectors come first: the backbone reads first in a product. */
 export function vectorsFirst(parts: DesignPart[]): DesignPart[] {
   return [...parts.filter(p => p.role === 'vector'), ...parts.filter(p => p.role !== 'vector')]
@@ -229,6 +246,8 @@ export function sanitizeDesign(raw: unknown): CloningDesign | null {
       ...(region && typeof region.start === 'number' && typeof region.end === 'number'
         ? { region: { start: region.start, end: region.end } } : {}),
       orientation: q.orientation === 'forward' || q.orientation === 'reverse' ? q.orientation : 'auto',
+      ...(Array.isArray(q.enzymes) && q.enzymes.every(e => typeof e === 'string')
+        ? { enzymes: q.enzymes as string[] } : {}),
       ...(q.dephosphorylated === true ? { dephosphorylated: true } : {}),
       ...(keep && typeof keep.start === 'number' && typeof keep.end === 'number'
         ? { keep: { start: keep.start, end: keep.end } } : {}),

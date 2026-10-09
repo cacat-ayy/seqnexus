@@ -21,7 +21,7 @@ import type { Selection, SearchState } from '../store'
 import { selectionSegments, selectionIsReverse } from '../store'
 import { getLayout, getRenderMode, letterCellWidth, RowLayoutMap, type ZoomLayout } from '../components/zoom-layout'
 import {
-  paintSequenceRows, stackAnnotations, type RowStack, type SequenceColors,
+  paintSequenceRows, stackAnnotations, measureSiteRows, ENZYME_LABEL_SPEC, type RowStack, type SequenceColors,
   type SelectionTranslation,
 } from '../components/sequence-paint'
 import type { GroupedCutSite } from '../enzymes/grouping'
@@ -362,6 +362,9 @@ export function planSequencePdf(src: SequencePdfSource, opts: SequencePdfOptions
     return stack
   })
   rl.perRowTranslations = perRowTranslations
+  // Each line gets the rows of cut-site names and lanes of site bars it
+  // needs, measured in the PDF's own font, exactly as the painter lays them out.
+  measureSiteRows(rl, src.groupedSites, i => rows[i], L, t => pdfMeasure(`${ENZYME_LABEL_SPEC} ${PDF_FAMILIES.sans}`, t))
   rl.build(L)
 
   // --- Pages ---

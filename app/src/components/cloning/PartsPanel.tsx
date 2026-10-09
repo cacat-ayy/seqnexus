@@ -1,17 +1,19 @@
 /**
  * The parts going into a design, and what to do with each.
  *
- * A part is a sequence, or a stretch of one. Each sits on one line — its
- * colour, name, size and role — with a second line saying what it goes into
- * the reaction as, and anything set away from the default. The settings that
- * are rarely touched (which way round it may go, which fragment of its digest
- * is used, whether its ends were dephosphorylated) open beneath it on click.
+ * A part is a sequence, or a stretch of one. Each sits on one line (its
+ * colour, name, size and role) with a second line saying what it goes into
+ * the reaction as, and anything set away from the default. Clicking its name
+ * brings its map to the front, which is where it is cut. The settings that
+ * are rarely touched (which way round it may go, whether its ends were
+ * dephosphorylated) open beneath it from the arrow.
  */
 
 import { useState } from 'react'
 import { ChevronRight, Crosshair, Trash2, TriangleAlert } from 'lucide-react'
 import type { Fragment } from '../../cloning/fragment'
 import { endLabel } from '../../cloning/ends'
+import { keptFragment } from '../../cloning/outcome'
 import {
   partLength,
   partTopology,
@@ -28,6 +30,10 @@ interface Props {
   sources: ReadonlyMap<string, { name: string; hash: string }>
   hovered: string | null
   onHover: (id: string | null) => void
+  /** The part whose map is in front. */
+  selected: string
+  /** Bring a part's map to the front. */
+  onSelect: (id: string) => void
   onChange: (id: string, patch: Partial<DesignPart>, coalesceKey?: string) => void
   onRemove: (id: string) => void
   onRefresh: (id: string) => void
@@ -36,13 +42,6 @@ interface Props {
 
 function formatBp(n: number): string {
   return n >= 1000 ? `${(n / 1000).toFixed(n >= 10000 ? 0 : 1)} kb` : `${n} bp`
-}
-
-/** The digest fragments a part could contribute, longest first. */
-function fragmentsOf(part: DesignPart, fragments: Fragment[]): Fragment[] {
-  return fragments
-    .filter(f => f.id.startsWith(`${part.id}:`) && f.topology === 'linear')
-    .sort((a, b) => b.top.length - a.top.length)
 }
 
 const ORIENTATION_NOTE: Record<PartOrientation, string | null> = {
@@ -57,6 +56,8 @@ export default function PartsPanel({
   sources,
   hovered,
   onHover,
+  selected,
+  onSelect,
   onChange,
   onRemove,
   onRefresh,
@@ -83,13 +84,13 @@ export default function PartsPanel({
       {design.parts.map((part, index) => {
         const source = part.source ? sources.get(part.source.id) : undefined
         const stale = !!part.source && !!source && source.hash !== part.source.hash
-        const options = cut ? fragmentsOf(part, fragments) : []
-        const chosen = part.keep
-          ? options.find(f => f.source.start === part.keep!.start && f.source.end === part.keep!.end)
-          : options[0]
+        const chosen = cut ? keptFragment(part, fragments) : null
         const open = expanded.has(part.id)
 
         const summary = [
+          design.method === 'restriction' && part.enzymes
+            ? (part.enzymes.length > 0 ? `cut with ${part.enzymes.join(' + ')}` : 'not cut')
+            : null,
           cut && chosen ? `${formatBp(chosen.top.length)} piece, ends ${endLabel(chosen.left!)} · ${endLabel(chosen.right!)}` : null,
           ORIENTATION_NOTE[part.orientation],
           part.region ? 'selection only' : null,
@@ -99,7 +100,7 @@ export default function PartsPanel({
         return (
           <div
             key={part.id}
-            className={`cw-part ${hovered === part.id ? 'hovered' : ''} ${open ? 'open' : ''}`}
+            className={`cw-part ${hovered === part.id ? 'hovered' : ''} ${open ? 'open' : ''} ${selected === part.id ? 'selected' : ''}`}
             onMouseEnter={() => onHover(part.id)}
             onMouseLeave={() => onHover(null)}
           >
@@ -111,9 +112,16 @@ export default function PartsPanel({
                   className="cw-part-toggle"
                   onClick={() => toggle(part.id)}
                   aria-expanded={open}
+                  aria-label={open ? 'Hide settings' : 'Show settings'}
                   title={open ? 'Hide settings' : 'Show settings'}
                 >
                   <ChevronRight size={14} className="cw-chevron" />
+                </button>
+                <button
+                  className="cw-part-name"
+                  onClick={() => onSelect(part.id)}
+                  title={`Show ${part.name} on the map`}
+                >
                   <span className="cw-part-title">{part.name}</span>
                 </button>
                 <span className="cw-part-size">
@@ -181,25 +189,6 @@ export default function PartsPanel({
                       <option value="reverse">Reverse complement</option>
                     </select>
                   </label>
-                  {cut && options.length > 1 && (
-                    <label className="cw-detail">
-                      <span>Fragment</span>
-                      <select
-                        className="select"
-                        value={chosen ? `${chosen.source.start}:${chosen.source.end}` : ''}
-                        onChange={e => {
-                          const [start, end] = e.target.value.split(':').map(Number)
-                          onChange(part.id, { keep: { start, end } })
-                        }}
-                      >
-                        {options.map(f => (
-                          <option key={f.id} value={`${f.source.start}:${f.source.end}`}>
-                            {formatBp(f.top.length)} · {endLabel(f.left!)} – {endLabel(f.right!)}
-                          </option>
-                        ))}
-                      </select>
-                    </label>
-                  )}
                   {design.method === 'restriction' && (
                     <label className="cw-detail-check" title="Stops this part closing on itself">
                       <input

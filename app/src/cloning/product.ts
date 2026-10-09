@@ -167,3 +167,29 @@ function leastRotation(s: string): string {
   }
   return ss.slice(k, k + n)
 }
+
+/**
+ * The same circular product written from another starting base: what was at
+ * `offset` is at 0 afterwards. Features, parts and junctions move with their
+ * bases; one that now runs across the origin ends below its start, which is
+ * how the rest of the app writes that.
+ */
+export function rotateAssembly(product: Assembly, offset: number): Assembly {
+  const n = product.size
+  const k = ((offset % n) + n) % n
+  if (product.topology !== 'circular' || n === 0 || k === 0) return product
+  const at = (pos: number) => (((pos - k) % n) + n) % n
+  // An end is a boundary, so one landing on the new origin is the far end.
+  const until = (pos: number) => at(pos) || n
+  return {
+    ...product,
+    sequence: product.sequence.slice(k) + product.sequence.slice(0, k),
+    annotations: product.annotations.map(a => {
+      const moved = { ...a, start: at(a.start), end: until(a.end) }
+      delete moved.segments
+      return moved
+    }),
+    parts: product.parts.map(p => ({ ...p, start: at(p.start), end: until(p.end) })),
+    junctions: product.junctions.map(j => ({ ...j, at: at(j.at) })),
+  }
+}

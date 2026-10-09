@@ -217,7 +217,7 @@ export function lowerBoundGroups(groups: GroupedCutSite[], minPos: number): numb
   return lo
 }
 
-// --- Label tier assignment ---
+// --- Cut-site layout for one line: names in rows, bars in lanes ---
 
 export interface TieredLabel {
   group: GroupedCutSite
@@ -229,51 +229,153 @@ export interface TieredLabel {
   tier: number
 }
 
+/** Names that did not fit in any row, gathered into one "+N" chip. */
+export interface SiteChip {
+  groups: GroupedCutSite[]
+  x: number
+  width: number
+  /** Always the row above the last row of names. */
+  tier: number
+  text: string
+}
+
+export interface SiteRowLayout {
+  labels: TieredLabel[]
+  chips: SiteChip[]
+  /** Rows of names the line needs, the chip row included. */
+  tiers: number
+}
+
 /** Enzyme label font size and weight; the family is the caller's sans. */
 export const ENZYME_LABEL_SPEC = '10px'
 const ENZYME_LABEL_PAD = 6 // horizontal padding between labels
+/** Space inside a chip either side of its text. */
+const CHIP_PAD = 4
+/**
+ * How far a site's cut can be from the start of its recognition sequence,
+ * so a search by recognition start still finds every site cutting in a line.
+ * Type IIS enzymes cut up to about 20 bases away; this leaves room.
+ */
+const CUT_REACH = 40
+
+/** The sites whose names belong on a line: those that cut in it, in cut order. */
+function sitesCuttingIn(groups: GroupedCutSite[], rowStart: number, rowEnd: number): GroupedCutSite[] {
+  const out: GroupedCutSite[] = []
+  for (let i = lowerBoundGroups(groups, rowStart - CUT_REACH); i < groups.length; i++) {
+    const group = groups[i]
+    if (group.recognitionStart >= rowEnd + CUT_REACH) break
+    if (group.fwdCut >= rowStart && group.fwdCut < rowEnd) out.push(group)
+  }
+  // A Type IIS site can cut before a site that starts earlier.
+  return out.sort((a, b) => a.fwdCut - b.fwdCut)
+}
 
 /**
- * Assign enzyme labels to tiers so they don't overlap horizontally.
- * Labels are placed at the cut site x-position, stacked into the lowest
- * available tier. Capped at maxTiers.
+ * Lay out the cut-site names of one line.
+ *
+ * Each name sits at its cut, in the lowest row where it clears the name
+ * before it. A line gets only the rows its names need, up to
+ * `L.maxEnzymeTiers`. Names that fit in none of those used to be pushed into
+ * the top row anyway, printing over each other; they now become a "+N" chip
+ * in one more row above, listing them on hover. Neighbouring chips merge, so
+ * the chip row cannot overprint either.
  */
-export function assignEnzymeTiers(
+export function layoutSiteRow(
   groups: GroupedCutSite[],
   rowStart: number,
   rowEnd: number,
   L: ZoomLayout,
   measureLabelWidth: (text: string) => number,
-): TieredLabel[] {
+): SiteRowLayout {
   const labels: TieredLabel[] = []
-  if (L.maxEnzymeTiers === 0) return labels
+  const chips: SiteChip[] = []
+  if (L.maxEnzymeTiers === 0 || groups.length === 0) return { labels, chips, tiers: 0 }
 
-  // Track the right edge of the last label placed in each tier
+  // The right edge of the last name placed in each row.
   const tierRightEdge: number[] = new Array(L.maxEnzymeTiers).fill(-Infinity)
+  const overflow: { group: GroupedCutSite; x: number }[] = []
+  let used = 0
 
-  for (const group of groups) {
-    // Position label at the cut site x
-    const cutPos = group.fwdCut
-    if (cutPos < rowStart || cutPos >= rowEnd) continue
-    const labelX = baseX(cutPos, rowStart, L)
+  for (const group of sitesCuttingIn(groups, rowStart, rowEnd)) {
+    const labelX = baseX(group.fwdCut, rowStart, L)
     const labelW = measureLabelWidth(group.label)
-
-    // Find lowest tier where this label fits
-    let tier = 0
-    for (let t = 0; t < L.maxEnzymeTiers; t++) {
-      if (labelX >= tierRightEdge[t]) {
-        tier = t
-        break
-      }
-      if (t === L.maxEnzymeTiers - 1) {
-        tier = t // force into top tier
-      }
+    const tier = tierRightEdge.findIndex(edge => labelX >= edge)
+    if (tier < 0) {
+      overflow.push({ group, x: labelX })
+      continue
     }
-
     tierRightEdge[tier] = labelX + labelW + ENZYME_LABEL_PAD
     labels.push({ group, x: labelX, width: labelW, tier })
+    used = Math.max(used, tier + 1)
   }
-  return labels
+
+  for (const { group, x } of overflow) {
+    const last = chips[chips.length - 1]
+    if (last && x < last.x + last.width + ENZYME_LABEL_PAD) {
+      last.groups.push(group)
+      last.text = `+${last.groups.length}`
+      last.width = measureLabelWidth(last.text) + CHIP_PAD * 2
+      continue
+    }
+    chips.push({ groups: [group], x, width: measureLabelWidth('+1') + CHIP_PAD * 2, tier: L.maxEnzymeTiers, text: '+1' })
+  }
+
+  return { labels, chips, tiers: chips.length > 0 ? L.maxEnzymeTiers + 1 : used }
+}
+
+/**
+ * Lanes for the recognition-site bars of one line: each site in the lowest
+ * lane where it does not overlap the site before it, so sites that abut or
+ * share bases (the usual case in a multiple cloning site) stay apart. More
+ * overlapping sites than lanes share the last lane.
+ */
+export function assignSiteLanes(
+  groups: GroupedCutSite[],
+  rowStart: number,
+  rowEnd: number,
+  L: ZoomLayout,
+): { lanes: Map<GroupedCutSite, number>; count: number } {
+  const lanes = new Map<GroupedCutSite, number>()
+  if (L.maxSiteLanes === 0 || groups.length === 0) return { lanes, count: 0 }
+  const laneEnd: number[] = new Array(L.maxSiteLanes).fill(-Infinity)
+  let count = 0
+  for (let i = lowerBoundGroups(groups, rowStart - CUT_REACH); i < groups.length; i++) {
+    const group = groups[i]
+    if (group.recognitionStart >= rowEnd) break
+    if (group.recognitionEnd <= rowStart) continue
+    const start = Math.max(group.recognitionStart, rowStart)
+    // Strictly after: sites that merely abut alternate lanes, so their edge shows.
+    let lane = laneEnd.findIndex(end => start > end)
+    if (lane < 0) lane = L.maxSiteLanes - 1
+    laneEnd[lane] = Math.max(laneEnd[lane], group.recognitionEnd)
+    lanes.set(group, lane)
+    count = Math.max(count, lane + 1)
+  }
+  return { lanes, count }
+}
+
+/**
+ * Fill a row layout's per-line name rows and bar lanes, before `build`.
+ * The view and the PDF export both call this, so they size lines alike.
+ */
+export function measureSiteRows(
+  rl: { tiers: Uint8Array; siteLanes: Uint8Array; totalRows: number },
+  groups: GroupedCutSite[],
+  rowSpan: (rowIndex: number) => [number, number],
+  L: ZoomLayout,
+  measureLabelWidth: (text: string) => number,
+): void {
+  rl.tiers.fill(0)
+  rl.siteLanes.fill(0)
+  if (groups.length === 0 || L.maxEnzymeTiers === 0) return
+  for (let i = 0; i < rl.totalRows; i++) {
+    const [rowStart, rowEnd] = rowSpan(i)
+    // Most lines of a long sequence have no site: skip them without laying out.
+    const first = lowerBoundGroups(groups, rowStart - CUT_REACH)
+    if (first >= groups.length || groups[first].recognitionStart >= rowEnd + CUT_REACH) continue
+    rl.tiers[i] = layoutSiteRow(groups, rowStart, rowEnd, L, measureLabelWidth).tiers
+    rl.siteLanes[i] = assignSiteLanes(groups, rowStart, rowEnd, L).count
+  }
 }
 
 /**
@@ -290,6 +392,10 @@ export interface RowGeometry {
   rowY(rowIndex: number): number
   rowH(rowIndex: number): number
   translationRowsAt(rowIndex: number, L: ZoomLayout): number
+  /** Height of the line's cut-site names (see measureSiteRows). */
+  labelAreaH(rowIndex: number, L: ZoomLayout): number
+  /** Height of the line's band of site bars. */
+  siteBandH(rowIndex: number, L: ZoomLayout): number
 }
 
 /** A feature edge being dragged, drawn as a dashed preview of the new extent. */
@@ -387,19 +493,23 @@ export function paintSequenceRows(
     const rowY = rl.rowY(rowIdx)
     let cy = rowY
 
-    // --- Enzyme labels above ruler (SnapGene-style tiered labels) ---
-    if (groupedSites.length > 0 && L.maxEnzymeTiers > 0) {
-      const tieredLabels = assignEnzymeTiers(groupedSites, rowStart, rowEnd, L, t => s.measure(enzymeLabelFont(), t))
-      const labelAreaBottom = rowY + L.enzymeLabelAreaH
+    // --- Cut-site names above the ruler, in as many rows as this line needs ---
+    // With a site hovered, the others fade, so its name, line, bar and cut
+    // read as one thing even in a crowded stretch.
+    const labelAreaH = rl.labelAreaH(rowIdx, L)
+    const fadeOthers = hoveredEnzymeGroup ? 0.35 : 1
+    if (groupedSites.length > 0 && labelAreaH > 0) {
+      const siteRow = layoutSiteRow(groupedSites, rowStart, rowEnd, L, t => s.measure(enzymeLabelFont(), t))
+      const labelAreaBottom = rowY + labelAreaH
+      const rulerLineYAbs = labelAreaBottom + 14
 
-      for (const lbl of tieredLabels) {
+      for (const lbl of siteRow.labels) {
         const isHovered = sameGroup(hoveredEnzymeGroup, lbl.group)
-        const methDim = lbl.group.methEffect
-        if (methDim) ctx.globalAlpha = methDim === 'blocked' ? 0.25 : 0.5
+        const methDim = lbl.group.methEffect === 'blocked' ? 0.25 : lbl.group.methEffect === 'impaired' ? 0.5 : 1
+        ctx.globalAlpha = methDim * (isHovered ? 1 : fadeOthers)
         // Tier 0 is closest to ruler (bottom of label area)
         const tierY = labelAreaBottom - (lbl.tier + 1) * L.enzymeLabelTierH
 
-        // Draw label text
         ctx.font = enzymeLabelFont(isHovered)
         ctx.fillStyle = COLORS.enzyme
         ctx.textBaseline = 'top'
@@ -408,9 +518,8 @@ export function paintSequenceRows(
 
         // Leader line from label down to ruler line
         const cutX = baseX(lbl.group.fwdCut, rowStart, L)
-        const rulerLineYAbs = labelAreaBottom + 14
-        ctx.strokeStyle = isHovered ? COLORS.enzymeBgHover : COLORS.enzymeBg
-        ctx.lineWidth = 1
+        ctx.strokeStyle = isHovered ? COLORS.enzyme : COLORS.enzymeBg
+        ctx.lineWidth = isHovered ? 1.5 : 1
         ctx.beginPath()
         ctx.moveTo(cutX, tierY + L.enzymeLabelTierH)
         ctx.lineTo(cutX, rulerLineYAbs)
@@ -424,11 +533,28 @@ export function paintSequenceRows(
         ctx.lineTo(cutX, rulerLineYAbs + 4)
         ctx.closePath()
         ctx.fill()
-        if (methDim) ctx.globalAlpha = 1
       }
+
+      // "+N" chips for names no row had room for.
+      ctx.font = enzymeLabelFont()
+      for (const chip of siteRow.chips) {
+        const chipY = labelAreaBottom - (chip.tier + 1) * L.enzymeLabelTierH + 1
+        const holdsHovered = chip.groups.some(g => sameGroup(hoveredEnzymeGroup, g))
+        ctx.globalAlpha = holdsHovered ? 1 : fadeOthers
+        ctx.strokeStyle = COLORS.enzyme
+        ctx.lineWidth = 1
+        ctx.beginPath()
+        ctx.roundRect(chip.x + 0.5, chipY + 0.5, chip.width - 1, L.enzymeLabelTierH - 3, 3)
+        ctx.stroke()
+        ctx.fillStyle = COLORS.enzyme
+        ctx.textBaseline = 'top'
+        ctx.textAlign = 'left'
+        ctx.fillText(chip.text, chip.x + 4, chipY + 1)
+      }
+      ctx.globalAlpha = 1
     }
 
-    cy += L.enzymeLabelAreaH
+    cy += labelAreaH
 
     // --- Ruler ---
     ctx.fillStyle = COLORS.ruler
@@ -514,33 +640,39 @@ export function paintSequenceRows(
 
     cy += L.rulerHeight
 
+    // --- A bar per recognition site, between the ruler and the bases ---
+    // These replace a tint on the bases themselves, which turned sites that
+    // abut or overlap (as they do in a multiple cloning site) into one block
+    // with no visible edges. Overlapping sites go in separate lanes.
+    const siteBandH = rl.siteBandH(rowIdx, L)
+    if (groupedSites.length > 0 && siteBandH > 0) {
+      const { lanes } = assignSiteLanes(groupedSites, rowStart, rowEnd, L)
+      const barH = L.siteLaneH - 1
+      for (const [group, lane] of lanes) {
+        const isHovered = sameGroup(hoveredEnzymeGroup, group)
+        const methDim = group.methEffect === 'blocked' ? 0.25 : group.methEffect === 'impaired' ? 0.5 : 1
+        const x1 = baseX(Math.max(group.recognitionStart, rowStart), rowStart, L)
+        const x2 = baseX(Math.min(group.recognitionEnd, rowEnd) - 1, rowStart, L) + L.bpWidth
+        // Lane 0 sits right on the bases; more lanes stack up towards the ruler.
+        const y = cy + siteBandH - L.siteBandPad - (lane + 1) * L.siteLaneH
+        ctx.globalAlpha = methDim * (isHovered ? 1 : 0.7 * fadeOthers)
+        ctx.fillStyle = COLORS.enzyme
+        ctx.fillRect(x1 + 0.5, y, Math.max(1, x2 - x1 - 1), barH)
+      }
+      ctx.globalAlpha = 1
+    }
+    cy += siteBandH
+
     const forwardY = cy
 
-    // --- Enzyme recognition site highlights (subtle tint on sequence) ---
-    if (groupedSites.length > 0) {
-      const searchStart = lowerBoundGroups(groupedSites, rowStart - 20)
-      for (let gi = searchStart; gi < groupedSites.length; gi++) {
-        const group = groupedSites[gi]
-        if (group.recognitionStart >= rowEnd) break
-        if (group.recognitionEnd <= rowStart) continue
-        const aStart = Math.max(group.recognitionStart, rowStart)
-        const aEnd = Math.min(group.recognitionEnd, rowEnd)
-        const x1 = baseX(aStart, rowStart, L)
-        const x2 = baseX(aEnd - 1, rowStart, L) + L.bpWidth
-
-        const isHovered = sameGroup(hoveredEnzymeGroup, group)
-        if (group.methEffect) ctx.globalAlpha = group.methEffect === 'blocked' ? 0.25 : 0.5
-        ctx.fillStyle = isHovered ? COLORS.enzymeBgHover : COLORS.enzymeBg
+    // --- The hovered site, tinted on both strands ---
+    if (hoveredEnzymeGroup && groupedSites.length > 0) {
+      const group = hoveredEnzymeGroup
+      if (group.recognitionStart < rowEnd && group.recognitionEnd > rowStart) {
+        const x1 = baseX(Math.max(group.recognitionStart, rowStart), rowStart, L)
+        const x2 = baseX(Math.min(group.recognitionEnd, rowEnd) - 1, rowStart, L) + L.bpWidth
+        ctx.fillStyle = COLORS.enzymeBgHover
         ctx.fillRect(x1, cy, x2 - x1, L.seqLineHeight)
-        if (isHovered) {
-          ctx.strokeStyle = COLORS.enzymeBgHover
-          ctx.lineWidth = 1
-          ctx.beginPath()
-          ctx.moveTo(x1, cy + L.seqLineHeight)
-          ctx.lineTo(x2, cy + L.seqLineHeight)
-          ctx.stroke()
-        }
-        if (group.methEffect) ctx.globalAlpha = 1
       }
     }
 
@@ -1439,64 +1571,45 @@ export function paintSequenceRows(
       }
     }
 
-    // --- Enzyme cut-site dashed lines (drawn after all row content) ---
-    if (groupedSites.length > 0) {
-      const searchStart = lowerBoundGroups(groupedSites, rowStart - 20)
-      const lineTop = rowY + L.enzymeLabelAreaH + L.rulerHeight
-      const lineBottom = rowY + rl.rowH(rowIdx) - L.rowPaddingBottom
-      ctx.lineWidth = 1
-      ctx.setLineDash([2, 3])
-      // Normal lines (no methylation effect)
-      ctx.strokeStyle = COLORS.enzymeBg
-      ctx.beginPath()
-      let hasNormal = false
-      let hasHovered = false
-      let hasMethDimmed = false
-      for (let gi = searchStart; gi < groupedSites.length; gi++) {
+    // --- Where each site cuts, drawn over the bases (after all row content) ---
+    // With both strands as letters, a step: down through the top strand at
+    // its cut, across between the strands, down through the bottom strand at
+    // its cut. The step's width is the overhang, so a sticky end, a blunt end
+    // and which strand protrudes all read at a glance. Without a second
+    // strand there is only the top-strand cut to show.
+    if (groupedSites.length > 0 && L.maxEnzymeTiers > 0) {
+      const xAt = (pos: number) => (pos >= rowEnd ? baseX(rowEnd - 1, rowStart, L) + L.bpWidth : baseX(pos, rowStart, L))
+      const inRow = (pos: number) => pos >= rowStart && pos <= rowEnd
+      const clamp = (pos: number) => Math.min(Math.max(pos, rowStart), rowEnd)
+      const topY = forwardY
+      const midY = forwardY + strandH + L.strandGap / 2
+      const botY = forwardY + L.seqLineHeight
+      for (let gi = lowerBoundGroups(groupedSites, rowStart - CUT_REACH); gi < groupedSites.length; gi++) {
         const group = groupedSites[gi]
-        if (group.recognitionStart >= rowEnd) break
-        if (group.fwdCut < rowStart || group.fwdCut >= rowEnd) continue
-        if (sameGroup(hoveredEnzymeGroup, group)) { hasHovered = true; continue }
-        if (group.methEffect) { hasMethDimmed = true; continue }
-        hasNormal = true
-        const cutX = baseX(group.fwdCut, rowStart, L)
-        ctx.moveTo(cutX, lineTop)
-        ctx.lineTo(cutX, lineBottom)
-      }
-      if (hasNormal) ctx.stroke()
-      // Methylation-dimmed lines
-      if (hasMethDimmed) {
-        ctx.strokeStyle = COLORS.enzymeBg
-        for (let gi = searchStart; gi < groupedSites.length; gi++) {
-          const group = groupedSites[gi]
-          if (group.recognitionStart >= rowEnd) break
-          if (group.fwdCut < rowStart || group.fwdCut >= rowEnd) continue
-          if (sameGroup(hoveredEnzymeGroup, group) || !group.methEffect) continue
-          ctx.globalAlpha = group.methEffect === 'blocked' ? 0.25 : 0.5
-          ctx.beginPath()
-          const cutX = baseX(group.fwdCut, rowStart, L)
-          ctx.moveTo(cutX, lineTop)
-          ctx.lineTo(cutX, lineBottom)
-          ctx.stroke()
-        }
-        ctx.globalAlpha = 1
-      }
-      // Hovered lines
-      if (hasHovered) {
-        ctx.strokeStyle = COLORS.enzymeBgHover
+        if (group.recognitionStart >= rowEnd + CUT_REACH) break
+        const fwd = group.fwdCut
+        let rev = group.sites[0]?.revCut ?? fwd
+        // A cut pair straddling the origin of a circle: read it the short way.
+        if (topology === 'circular' && Math.abs(rev - fwd) > seqLen / 2) rev += rev < fwd ? seqLen : -seqLen
+        if (!inRow(fwd) && !inRow(rev) && !(Math.min(fwd, rev) < rowStart && Math.max(fwd, rev) > rowEnd)) continue
+
+        const isHovered = sameGroup(hoveredEnzymeGroup, group)
+        const methDim = group.methEffect === 'blocked' ? 0.25 : group.methEffect === 'impaired' ? 0.5 : 1
+        ctx.globalAlpha = methDim * (isHovered ? 1 : 0.8 * fadeOthers)
+        ctx.strokeStyle = COLORS.enzyme
+        ctx.lineWidth = isHovered ? 2 : 1.25
         ctx.beginPath()
-        for (let gi = searchStart; gi < groupedSites.length; gi++) {
-          const group = groupedSites[gi]
-          if (group.recognitionStart >= rowEnd) break
-          if (group.fwdCut < rowStart || group.fwdCut >= rowEnd) continue
-          if (!sameGroup(hoveredEnzymeGroup, group)) continue
-          const cutX = baseX(group.fwdCut, rowStart, L)
-          ctx.moveTo(cutX, lineTop)
-          ctx.lineTo(cutX, lineBottom)
+        if (strandH > 0) {
+          if (inRow(fwd)) { ctx.moveTo(xAt(fwd), topY); ctx.lineTo(xAt(fwd), midY) }
+          if (fwd !== rev) { ctx.moveTo(xAt(clamp(fwd)), midY); ctx.lineTo(xAt(clamp(rev)), midY) }
+          if (inRow(rev)) { ctx.moveTo(xAt(rev), midY); ctx.lineTo(xAt(rev), botY) }
+        } else if (inRow(fwd)) {
+          ctx.moveTo(xAt(fwd), topY)
+          ctx.lineTo(xAt(fwd), botY)
         }
         ctx.stroke()
       }
-      ctx.setLineDash([])
+      ctx.globalAlpha = 1
     }
 
     rowSepYs.push(rowY + rl.rowH(rowIdx) - 1)

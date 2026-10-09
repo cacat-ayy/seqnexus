@@ -31,6 +31,7 @@ import { renderSceneToCanvas, type Viewport } from '../plasmid/renderCanvas'
 import { plasmidToPng, plasmidToSvgBlob } from '../plasmid/exportImage'
 import { resolvePlasmidColors } from '../plasmid/styles'
 import { angleToPos, normalizeAngle, arcSelection } from '../plasmid/geometry'
+import { hitTestScene } from '../plasmid/hit'
 import { usePlasmidSceneData } from '../plasmid/usePlasmidSceneData'
 
 /**
@@ -259,29 +260,8 @@ function PlasmidMap(_props: PlasmidMapProps) {
     }
   }, [])
 
-  /** Topmost hit region under a scene point, searched newest first so the
-   *  outer rings win over the ones they are drawn on top of. */
-  const hitTest = useCallback((x: number, y: number, scn: PlasmidScene) => {
-    const cx = scn.size / 2
-    const cy = scn.size / 2
-    const dx = x - cx
-    const dy = y - cy
-    const dist = Math.hypot(dx, dy)
-    const angle = Math.atan2(dy, dx)
-
-    // Points (enzymes) take precedence: they are small and deliberate.
-    for (const r of scn.hitRegions) {
-      if (r.kind !== 'point') continue
-      if ((x - r.x) ** 2 + (y - r.y) ** 2 < r.r * r.r) return r
-    }
-    for (let i = scn.hitRegions.length - 1; i >= 0; i--) {
-      const r = scn.hitRegions[i]
-      if (r.kind !== 'arc') continue
-      if (dist < r.radius - r.halfWidth || dist > r.radius + r.halfWidth) continue
-      if (normalizeAngle(angle - r.startAngle) <= r.span) return r
-    }
-    return null
-  }, [])
+  /** What is under a scene point; see plasmid/hit for the order. */
+  const hitTest = useCallback((x: number, y: number, scn: PlasmidScene) => hitTestScene(scn, x, y), [])
 
   // --- Pointer handlers ---
 

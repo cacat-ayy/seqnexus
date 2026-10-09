@@ -1,10 +1,10 @@
 /**
  * A cloning design as a workspace in the centre panel.
  *
- * Left: the parts and the method. Middle: the design drawn. Right: what the
- * reaction gives. Nothing is behind a Simulate button — the design is re-run
- * on every change, so the product and the reason there isn't one are always
- * in front of you.
+ * Left: the method and the parts. Middle: a map per part and one for the
+ * product, as tabs (see ./MapStage). Nothing is behind a Simulate button: the
+ * design is re-run on every change, so the product and the reason there is
+ * not one are always in front of you.
  *
  * The design lives in the store as an explorer item. Every change goes
  * through `updateClone`, which keeps its undo history, so Ctrl+Z and Ctrl+Y
@@ -25,6 +25,7 @@ import {
   METHOD_LABEL,
   needsOligos,
   partBases,
+  partEnzymes,
   partFromDoc,
   partTopology,
   sequenceHash,
@@ -38,12 +39,11 @@ import { findFixes, type DesignFix } from '../../cloning/outcome'
 import { binsFromDesign, type BulkRow, type DesignBin } from '../../cloning/bulk'
 import EnzymeField, { type CutTarget } from '../EnzymeField'
 import { partColor } from './colors'
-import AssemblyDiagram from './AssemblyDiagram'
 import LibraryPanel from './LibraryPanel'
 import OligosPanel from './OligosPanel'
 import JunctionInspector from './JunctionInspector'
 import PartsPanel from './PartsPanel'
-import ProductsPanel from './ProductsPanel'
+import MapStage from './MapStage'
 
 interface Props {
   clone: CloneDoc
@@ -67,6 +67,15 @@ export default function CloneWorkspace({ clone, onClose }: Props) {
 
   const { design } = clone
   const [hovered, setHovered] = useState<string | null>(null)
+  // Which map is in front: a part's id, or the product. A restriction design
+  // opens on the first part still waiting for its sites, since choosing them
+  // is the next thing to do; anything else opens on what it makes.
+  const [tab, setTab] = useState<string>(() => {
+    const d = clone.design
+    const waiting = d.method === 'restriction' ? vectorsFirst(d.parts).find(p => partEnzymes(p, d).length === 0) : undefined
+    return waiting?.id ?? 'product'
+  })
+  const shownTab = tab === 'product' || design.parts.some(p => p.id === tab) ? tab : 'product'
   const [addOpen, setAddOpen] = useState(false)
   const [mode, setMode] = useState<'one' | 'library'>('one')
   const [aside, setAside] = useState<'none' | 'oligos' | 'junctions'>('none')
@@ -158,10 +167,10 @@ export default function CloneWorkspace({ clone, onClose }: Props) {
       const from = Math.min(selection.anchor, selection.caret)
       const to = Math.max(selection.anchor, selection.caret)
       const region = useSelection && to > from ? { start: from, end: to } : undefined
-      updateClone(clone.id, d => ({
-        ...d,
-        parts: [...d.parts, partFromDoc(doc, { sourceId: tab.id, ...(region ? { region } : {}) })],
-      }))
+      const added = partFromDoc(doc, { sourceId: tab.id, ...(region ? { region } : {}) })
+      updateClone(clone.id, d => ({ ...d, parts: [...d.parts, added] }))
+      // Its map comes to the front: deciding where it is cut is the next step.
+      setTab(added.id)
       setAddOpen(false)
     },
     [tabs, activeTabId, liveDoc, selection, clone.id, updateClone],
@@ -233,7 +242,9 @@ export default function CloneWorkspace({ clone, onClose }: Props) {
     if (!chosen) return
     const store = useEditorStore.getState()
     const id = store.openDocumentState(productDocument(design, chosen))
-    const enzymes = design.method === 'golden-gate' ? [design.typeIIS] : design.enzymes
+    const enzymes = design.method === 'golden-gate'
+      ? [design.typeIIS]
+      : [...new Set(design.parts.flatMap(p => partEnzymes(p, design)))]
     store.createGel({
       name: `${chosen.name} check`,
       state: digestWorkspace(id, enzymes.length > 0 ? enzymes : []),
@@ -348,6 +359,9 @@ export default function CloneWorkspace({ clone, onClose }: Props) {
                     placeholder="Type e.g. EcoRI+PstI"
                     suggestTitle={design.parts.length > 1 ? 'Recent, then vector once + inserts' : 'Recent and single cutters'}
                   />
+                  <span className="cw-field-note">
+                    Shown on every map, and they cut any part you have not clicked sites on.
+                  </span>
                 </div>
                 <label className="cw-check">
                   <input
@@ -464,6 +478,8 @@ export default function CloneWorkspace({ clone, onClose }: Props) {
               sources={sources}
               hovered={hovered}
               onHover={setHovered}
+              selected={shownTab}
+              onSelect={setTab}
               onChange={patchPart}
               onRemove={removePart}
               onRefresh={refreshPart}
@@ -493,37 +509,21 @@ export default function CloneWorkspace({ clone, onClose }: Props) {
               onSaveRows={saveRows}
             />
           ) : (
-            <div className="cw-stage">
-              <div className="cw-map">
-                <AssemblyDiagram
-                  design={design}
-                  product={chosen}
-                  fragments={result.fragments}
-                  hovered={hovered}
-                  onHover={setHovered}
-                  onPick={id => setHovered(id)}
-                />
-              </div>
-              {design.parts.length > 0 && (
-                <div className="cw-result">
-                  <ProductsPanel
-                    design={design}
-                    products={result.products}
-                    selected={chosen}
-                    problems={result.problems}
-                    warnings={result.warnings}
-                    fixes={fixes}
-                    {...(result.fidelity ? { fidelity: result.fidelity } : {})}
-                    onSelect={key => patch({ selected: key })}
-                    onOpen={product => {
-                      openDocumentState(productDocument(design, product))
-                      notify.success(`${product.name} opened as a sequence`)
-                    }}
-                    onFix={applyFix}
-                  />
-                </div>
-              )}
-            </div>
+            <MapStage
+              design={design}
+              result={result}
+              chosen={chosen}
+              fixes={fixes}
+              tab={shownTab}
+              onTab={setTab}
+              onPart={patchPart}
+              onSelectProduct={key => patch({ selected: key })}
+              onOpenProduct={product => {
+                openDocumentState(productDocument(design, product))
+                notify.success(`${product.name} opened as a sequence`)
+              }}
+              onFix={applyFix}
+            />
           )}
         </div>
       </div>
