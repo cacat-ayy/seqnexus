@@ -1,4 +1,4 @@
-import './SequencePropertiesModal.css'
+import './SequencePropertiesDialog.css'
 import { useState, useCallback, useRef, useEffect } from 'react'
 import { X } from 'lucide-react'
 import { useEditorStore } from '../store'
@@ -10,7 +10,7 @@ interface Props {
   onClose: () => void
 }
 
-export default function SequencePropertiesModal({ open, onClose }: Props) {
+export default function SequencePropertiesDialog({ open, onClose }: Props) {
   const doc = useEditorStore(s => s.doc)
   const updateDocumentProperties = useEditorStore(s => s.updateDocumentProperties)
 

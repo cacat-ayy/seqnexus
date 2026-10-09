@@ -1,0 +1,54 @@
+/* ===== Export filename dialog ===== */
+
+.export-dialog-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: var(--z-modal-nested);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--backdrop);
+  animation: export-fade-in 0.15s ease;
+}
+
+@keyframes export-fade-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+.export-dialog {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-input);
+  box-shadow: var(--shadow-popover);
+  padding: var(--space-4) var(--space-5);
+  min-width: 320px;
+  max-width: 420px;
+  animation: export-pop-in 0.15s ease;
+}
+
+@keyframes export-pop-in {
+  from { opacity: 0; transform: scale(0.96) translateY(4px); }
+  to   { opacity: 1; transform: scale(1) translateY(0); }
+}
+
+.export-dialog-title {
+  font-size: var(--text-md);
+  font-weight: 600;
+  color: var(--text);
+  margin-bottom: var(--space-2-5);
+}
+
+.export-dialog-input {
+  font-family: monospace;
+  box-sizing: border-box;
+}
+
+.export-dialog-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-2);
+  margin-top: var(--space-3);
+}
+
+

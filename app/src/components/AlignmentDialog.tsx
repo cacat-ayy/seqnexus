@@ -1,4 +1,4 @@
-import './AlignmentModal.css'
+import './AlignmentDialog.css'
 /**
  * Alignment modal: input → running → done (opens panel).
  *
@@ -59,7 +59,7 @@ let _pasteCounter = 0
 
 type Phase = 'input' | 'running'
 
-export default function AlignmentModal({ open, onClose, onResult, onReadAlignResult, initialEntries }: Props) {
+export default function AlignmentDialog({ open, onClose, onResult, onReadAlignResult, initialEntries }: Props) {
   const tabs = useEditorStore(s => s.tabs)
   const seqReads = useEditorStore(s => s.sequencingReads)
   const folders = useEditorStore(s => s.folders)

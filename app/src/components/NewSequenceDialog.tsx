@@ -1,4 +1,4 @@
-import './NewSequenceModal.css'
+import './NewSequenceDialog.css'
 import { useState, useCallback, useRef, useEffect } from 'react'
 import { X } from 'lucide-react'
 import { useExitAnimation } from '../hooks/useExitAnimation'
@@ -33,7 +33,7 @@ function countBases(raw: string): number {
   return cleanSequence(raw).length
 }
 
-export default function NewSequenceModal({ open, onClose, onSubmit }: Props) {
+export default function NewSequenceDialog({ open, onClose, onSubmit }: Props) {
   const [name, setName] = useState('Untitled')
   const [description, setDescription] = useState('')
   const [sequence, setSequence] = useState('')

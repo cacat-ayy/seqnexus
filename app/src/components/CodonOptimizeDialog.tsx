@@ -1,4 +1,4 @@
-import './CodonOptimizeModal.css'
+import './CodonOptimizeDialog.css'
 /**
  * Codon optimization.
  *
@@ -74,7 +74,7 @@ function MetricRow(
   )
 }
 
-export default function CodonOptimizeModal({ open, onClose }: Props) {
+export default function CodonOptimizeDialog({ open, onClose }: Props) {
   const doc = useEditorStore(s => s.doc)
   const selection = useEditorStore(s => s.selection)
   const readOnly = useEditorStore(s => s.readOnly)

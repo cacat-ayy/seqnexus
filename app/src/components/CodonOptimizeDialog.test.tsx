@@ -7,7 +7,7 @@
  */
 import { render, act, fireEvent } from '@testing-library/react'
 import { describe, it, expect, beforeEach } from 'vitest'
-import CodonOptimizeModal from './CodonOptimizeModal'
+import CodonOptimizeDialog from './CodonOptimizeDialog'
 import { useEditorStore } from '../store'
 import { DEFAULT_CODON_SETTINGS } from '../codon/settings'
 import { translate } from '../utils/codon'
@@ -42,7 +42,7 @@ function metricRow(label: string): string[] {
 }
 
 async function openModal() {
-  render(<CodonOptimizeModal open onClose={() => {}} />)
+  render(<CodonOptimizeDialog open onClose={() => {}} />)
   await settle()
 }
 

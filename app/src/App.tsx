@@ -12,14 +12,14 @@ import EmptyState from './components/EmptyState'
 import DisplayPopover from './components/DisplayPopover'
 import { downloadBlob } from './utils/download'
 import './components/Shell.css'
-import FindModal from './components/FindModal'
-const AnnotateModal = lazy(() => import('./components/AnnotateModal'))
-import NewSequenceModal, { type NewSequenceResult } from './components/NewSequenceModal'
+import FindDialog from './components/FindDialog'
+const AnnotateDialog = lazy(() => import('./components/AnnotateDialog'))
+import NewSequenceDialog, { type NewSequenceResult } from './components/NewSequenceDialog'
 import ExplorerPanel from './components/explorer/ExplorerPanel'
 import { exportSelection, countSelectable } from './explorer/selection'
-import SequencePropertiesModal from './components/SequencePropertiesModal'
+import SequencePropertiesDialog from './components/SequencePropertiesDialog'
 import SequenceStatsPopover from './components/SequenceStatsPopover'
-const CodonOptimizeModal = lazy(() => import('./components/CodonOptimizeModal'))
+const CodonOptimizeDialog = lazy(() => import('./components/CodonOptimizeDialog'))
 const GelWorkspace = lazy(() => import('./components/gel/GelWorkspace'))
 const CloneWorkspace = lazy(() => import('./components/cloning/CloneWorkspace'))
 import {
@@ -74,21 +74,21 @@ import {
   Combine,
   SlidersHorizontal,
 } from 'lucide-react'
-const BlastModal = lazy(() => import('./components/BlastModal'))
+const BlastDialog = lazy(() => import('./components/BlastDialog'))
 const CommandPalette = lazy(() => import('./components/CommandPalette'))
 import type { Command } from './commands'
-import ExportModal, { type ExportMode } from './components/ExportModal'
+import ExportDialog, { type ExportMode } from './components/ExportDialog'
 import { type ExportFormat, type ExportItemKind, defaultFormatForKind, formatsForKind } from './components/exportFormats'
-import SessionExportModal from './components/SessionExportModal'
-import SessionImportModal from './components/SessionImportModal'
+import SessionExportDialog from './components/SessionExportDialog'
+import SessionImportDialog from './components/SessionImportDialog'
 import { exportSessionToJson, importSessionFromJson, remapSessionIds, type SessionExportOptions } from './persistence'
-import FilenamePrompt from './components/ExportDialog'
+import FilenamePrompt from './components/FilenamePrompt'
 import SequencePdfDialog from './components/SequencePdfDialog'
 import { isFocusTrapActive } from './hooks/useFocusTrap'
 import { BUILD_DATE, CITATION_BIBTEX, CITATION_TEXT } from './citation'
 import { copyText } from './utils/clipboard'
-import FetchModal from './components/FetchModal'
-const AlignmentModal = lazy(() => import('./components/AlignmentModal'))
+import FetchDialog from './components/FetchDialog'
+const AlignmentDialog = lazy(() => import('./components/AlignmentDialog'))
 const AlignmentWorkspace = lazy(() => import('./components/alignment/AlignmentWorkspace'))
 const ReadWorkspace = lazy(() => import('./components/sanger/ReadWorkspace'))
 const ReadSetView = lazy(() => import('./components/sanger/ReadSetView'))
@@ -397,7 +397,7 @@ export default function App() {
   const [blastModalOpen, setBlastModalOpen] = useState(false)
   const [blastPhase, setBlastPhase] = useState<'input' | 'polling' | 'results'>('input')
   const [alignModalOpen, setAlignModalOpen] = useState(false)
-  const [alignInitialEntries, setAlignInitialEntries] = useState<import('./components/AlignmentModal').AlignmentInitialEntry[] | undefined>(undefined)
+  const [alignInitialEntries, setAlignInitialEntries] = useState<import('./components/AlignmentDialog').AlignmentInitialEntry[] | undefined>(undefined)
 
   /**
    * Auto-annotation runs for the overlay and for the modal's list alike, so
@@ -800,7 +800,7 @@ export default function App() {
   }, [])
   const handleQuickAlign = useCallback((tabIds: string[], readIds?: string[]) => {
     const state = useEditorStore.getState()
-    const entries: import('./components/AlignmentModal').AlignmentInitialEntry[] = []
+    const entries: import('./components/AlignmentDialog').AlignmentInitialEntry[] = []
     for (const id of tabIds) {
       const tab = state.tabs.find(t => t.id === id)
       if (tab) entries.push({ id: `tab_${id}_${Date.now()}`, name: tab.doc.name, bases: tab.doc.sequence.bases, source: 'tab', sourceId: id })
@@ -2292,7 +2292,7 @@ export default function App() {
               {/* View area */}
                 <div className="view-and-panels">
                   <div className="view-area">
-                    <FindModal open={showFind} focusRequest={findRequest} onClose={handleCloseFind} />
+                    <FindDialog open={showFind} focusRequest={findRequest} onClose={handleCloseFind} />
                     {/* Empty state hints for active panels with no results */}
                     {/* Worker results arrive asynchronously, so a screen
                         reader gets no cue that a search finished empty. */}
@@ -2477,7 +2477,7 @@ export default function App() {
         </Suspense>
       )}
 
-      <NewSequenceModal
+      <NewSequenceDialog
         open={newSeqModalOpen}
         onClose={() => setNewSeqModalOpen(false)}
         onSubmit={handleNewSequenceSubmit}
@@ -2518,7 +2518,7 @@ export default function App() {
 
 
       <Suspense fallback={null}>
-      <AnnotateModal
+      <AnnotateDialog
         open={annotateModalOpen}
         onClose={() => {
           setAnnotateModalOpen(false)
@@ -2528,16 +2528,16 @@ export default function App() {
           if (!s.showAutoAnnotations && s.autoAnnotations.length > 0) s.toggleAutoAnnotations()
         }}
       />
-      <SequencePropertiesModal
+      <SequencePropertiesDialog
         open={propertiesModalOpen}
         onClose={() => setPropertiesModalOpen(false)}
       />
-      <BlastModal
+      <BlastDialog
         open={blastModalOpen}
         onClose={() => setBlastModalOpen(false)}
         onPhaseChange={setBlastPhase}
       />
-      <AlignmentModal
+      <AlignmentDialog
         open={alignModalOpen}
         onClose={() => { setAlignModalOpen(false); setAlignInitialEntries(undefined) }}
         initialEntries={alignInitialEntries}
@@ -2568,7 +2568,7 @@ export default function App() {
           <AssembleDialog readIds={assembleReadIds} onClose={() => setAssembleReadIds(null)} />
         </Suspense>
       )}
-      <FetchModal
+      <FetchDialog
         open={fetchModalOpen}
         onClose={() => setFetchModalOpen(false)}
         onFetched={(doc) => {
@@ -2576,12 +2576,12 @@ export default function App() {
           setFetchModalOpen(false)
         }}
       />
-      <SessionExportModal
+      <SessionExportDialog
         open={sessionExportOpen}
         onClose={() => setSessionExportOpen(false)}
         onExport={handleSessionExport}
       />
-      <SessionImportModal
+      <SessionImportDialog
         open={sessionImportOpen}
         filename={sessionImportData?.filename ?? ''}
         tabCount={sessionImportParsedRef.current?.tabs.length ?? 0}
@@ -2591,7 +2591,7 @@ export default function App() {
         onReplace={handleSessionReplace}
         onMerge={handleSessionMerge}
       />
-      <CodonOptimizeModal
+      <CodonOptimizeDialog
         open={codonModalOpen}
         onClose={() => setCodonModalOpen(false)}
       />
@@ -2667,7 +2667,7 @@ export default function App() {
         }
 
         return (
-          <ExportModal
+          <ExportDialog
             open={exportModalOpen}
             defaultName={defaultName}
             annotationCount={singleKind === 'sequence' ? doc.annotations.length : 0}

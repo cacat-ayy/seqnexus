@@ -20,7 +20,7 @@ interface Props {
   onExport: (filename: string, opts: SessionExportOptions) => void
 }
 
-export default function SessionExportModal({ open, onClose, onExport }: Props) {
+export default function SessionExportDialog({ open, onClose, onExport }: Props) {
   const tabs = useEditorStore(s => s.tabs)
   const reads = useEditorStore(s => s.sequencingReads)
   const alignments = useEditorStore(s => s.alignments)

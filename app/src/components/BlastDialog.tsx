@@ -1,4 +1,4 @@
-import './BlastModal.css'
+import './BlastDialog.css'
 /**
  * NCBI BLAST search modal.
  *
@@ -115,7 +115,7 @@ function ncbiAccessionUrl(accession: string, program: string): string {
   return `https://www.ncbi.nlm.nih.gov/nuccore/${encodeURIComponent(accession)}`
 }
 
-export default function BlastModal({ open, onClose, onPhaseChange }: Props) {
+export default function BlastDialog({ open, onClose, onPhaseChange }: Props) {
   // --- Store ---
   const doc = useEditorStore(s => s.doc)
   const selection = useEditorStore(s => s.selection)

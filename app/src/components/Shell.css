@@ -1,5 +1,5 @@
 /* App shell pieces: status bar, empty state, shared button sizes, drop
-   overlay, properties panel. They used to live in FindModal.css, which only
+   overlay, properties panel. They used to live in FindDialog.css, which only
    ever had them because it was imported early. */
 
 /* Status bar */

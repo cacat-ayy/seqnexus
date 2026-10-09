@@ -2027,3 +2027,51 @@
   white-space: nowrap;
   pointer-events: none;
 }
+
+/* ===== Figure and workspace dialogs =====
+   The backdrop and frame every workspace dialog uses: the alignment, contig,
+   read and NGS dialogs all build on these, so they live here rather than in
+   one workspace's stylesheet. */
+.aw-figure-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: var(--z-modal);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--backdrop);
+}
+.aw-figure {
+  display: flex;
+  flex-direction: column;
+  width: min(1180px, 94vw);
+  height: min(780px, 90vh);
+  background: var(--bg-alt);
+  border: 1px solid var(--border-hover);
+  border-radius: var(--radius-popover);
+  box-shadow: var(--shadow-popover);
+  overflow: hidden;
+}
+.aw-figure-body { display: flex; flex: 1; min-height: 0; }
+.aw-figure-preview {
+  flex: 1;
+  min-width: 0;
+  overflow: auto;
+  padding: var(--space-3);
+  background: repeating-conic-gradient(var(--bg) 0% 25%, var(--bg-alt) 0% 50%) 50% / 16px 16px;
+}
+.aw-figure-preview img {
+  display: block;
+  max-width: 100%;
+  height: auto;
+  box-shadow: var(--shadow-sm);
+}
+.aw-figure-options {
+  width: 260px;
+  flex-shrink: 0;
+  overflow-y: auto;
+  padding: var(--space-3);
+  border-left: 1px solid var(--border);
+  align-items: stretch;
+}
+.aw-figure-save { display: flex; flex-wrap: wrap; gap: var(--space-1-5); }

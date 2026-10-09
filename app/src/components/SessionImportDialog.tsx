@@ -21,7 +21,7 @@ interface Props {
   onMerge: () => void
 }
 
-export default function SessionImportModal({ open, filename, tabCount, readCount, alignmentCount, onClose, onReplace, onMerge }: Props) {
+export default function SessionImportDialog({ open, filename, tabCount, readCount, alignmentCount, onClose, onReplace, onMerge }: Props) {
   const { visible, closing, onAnimationEnd } = useExitAnimation(open)
   const backdropRef = useRef<HTMLDivElement>(null)
   useFocusTrap(backdropRef, open)

@@ -1,4 +1,4 @@
-import './FetchModal.css'
+import './FetchDialog.css'
 /**
  * Modal for fetching sequences from NCBI by accession.
  *
@@ -26,7 +26,7 @@ interface Props {
 /** Records longer than this are confirmed before downloading. */
 const LARGE_RECORD_BP = 10_000_000
 
-export default function FetchModal({ open, onClose, onFetched }: Props) {
+export default function FetchDialog({ open, onClose, onFetched }: Props) {
   const [query, setQuery] = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)

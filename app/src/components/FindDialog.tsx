@@ -1,4 +1,4 @@
-import './FindModal.css'
+import './FindDialog.css'
 /**
  * The Find panel for the sequence view.
  *
@@ -49,7 +49,7 @@ let savedPos: { left: number; top: number } | null = null
 
 const keyOf = (sel: { anchor: number; caret: number }) => `${sel.anchor}:${sel.caret}`
 
-export default function FindModal({ open, focusRequest, onClose }: FindModalProps) {
+export default function FindDialog({ open, focusRequest, onClose }: FindModalProps) {
   const search = useEditorStore(s => s.search)
   const setSearch = useEditorStore(s => s.setSearch)
   const nextMatch = useEditorStore(s => s.nextMatch)

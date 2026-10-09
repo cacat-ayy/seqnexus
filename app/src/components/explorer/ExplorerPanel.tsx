@@ -45,7 +45,7 @@ import { useDelayedHover, type HoverTarget } from '../../hooks/useDelayedHover'
 import {
   loadExplorerSettings, saveExplorerSettings, clampWidth, SIDEBAR_MIN,
 } from '../../utils/explorer-settings'
-import type { ExportItemKind } from '../ExportModal'
+import type { ExportItemKind } from '../ExportDialog'
 import { ALN_EXTENSIONS } from '../../msa/formats'
 
 interface Props {

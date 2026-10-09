@@ -1,4 +1,4 @@
-import './AnnotateModal.css'
+import './AnnotateDialog.css'
 /**
  * Annotate panel: settings and results for the auto-annotation overlay.
  *
@@ -32,7 +32,7 @@ interface Props {
 
 const IMPORT_ACCEPT = '.fasta,.fa,.fas,.fna,.txt,.csv,.tsv,.gb,.gbk,.genbank'
 
-export default function AnnotateModal({ open, onClose }: Props) {
+export default function AnnotateDialog({ open, onClose }: Props) {
   const annotations = useEditorStore(s => s.doc.annotations)
   const matches = useEditorStore(s => s.autoAnnotations)
   const scanning = useEditorStore(s => s.autoAnnotateScanning)

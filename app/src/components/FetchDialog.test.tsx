@@ -16,7 +16,7 @@ vi.mock('../fetch/ncbi', async importOriginal => ({
   fetchNCBI: ncbi.fetch,
 }))
 
-import FetchModal from './FetchModal'
+import FetchDialog from './FetchDialog'
 import { ncbiRecordSummary } from '../fetch/ncbi'
 
 const GB = 'LOCUS       pX   12 bp    DNA     linear\nORIGIN\n        1 atgaaatttg gg\n//\n'
@@ -28,12 +28,12 @@ beforeEach(() => {
 
 function open() {
   const onFetched = vi.fn()
-  render(<FetchModal open onClose={() => {}} onFetched={onFetched} />)
+  render(<FetchDialog open onClose={() => {}} onFetched={onFetched} />)
   fireEvent.change(screen.getByPlaceholderText(/L09137/), { target: { value: 'NC_000001.11' } })
   return onFetched
 }
 
-describe('FetchModal', () => {
+describe('FetchDialog', () => {
   it('offers NCBI only, and says how to bring in Addgene or SnapGene files', () => {
     open()
     expect(screen.queryByRole('button', { name: 'Addgene' })).toBeNull()
