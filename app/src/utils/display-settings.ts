@@ -28,6 +28,7 @@ import {
 } from '../codon/translation-display'
 import { DEFAULT_GENETIC_CODE_ID, GENETIC_CODES } from '../codon/genetic-codes'
 import { DEFAULT_PROTEIN_SCHEME, PROTEIN_SCHEMES, type ProteinSchemeId } from './residue-colors'
+import { DEFAULT_PKA_SET, PKA_SETS, type PkaSetId } from '../protein/properties'
 import { STORAGE_KEYS } from '../storage/keys'
 
 const STORAGE_KEY = STORAGE_KEYS.displaySettings
@@ -58,6 +59,8 @@ export interface DisplaySettings {
   threeLetterAminoAcids: boolean
   /** How a protein document's residues are coloured. Its own choice: a base scheme says nothing about residues. */
   proteinColorScheme: ProteinSchemeId
+  /** Which pKa values the isoelectric point and charge are computed with. */
+  proteinPkaSet: PkaSetId
 }
 
 export const DEFAULT_DISPLAY_SETTINGS: DisplaySettings = {
@@ -80,6 +83,7 @@ export const DEFAULT_DISPLAY_SETTINGS: DisplaySettings = {
   aminoAcidStyle: DEFAULT_AMINO_ACID_STYLE,
   threeLetterAminoAcids: false,
   proteinColorScheme: DEFAULT_PROTEIN_SCHEME,
+  proteinPkaSet: DEFAULT_PKA_SET,
 }
 
 const VALID_SCHEMES = new Set(COLOR_SCHEMES.map(s => s.id))
@@ -89,6 +93,7 @@ const VALID_FRAMES = new Set(TRANSLATION_FRAMES.map(f => f.id))
 const VALID_AA_STYLES = new Set(AMINO_ACID_STYLES.map(s => s.id))
 const VALID_CODES = new Set(GENETIC_CODES.map(c => c.id))
 const VALID_PROTEIN_SCHEMES = new Set(PROTEIN_SCHEMES.map(s => s.id))
+const VALID_PKA_SETS = new Set(PKA_SETS.map(s => s.id))
 
 /**
  * Read preferences synchronously, before first paint.
@@ -142,6 +147,9 @@ export function loadDisplaySettings(): DisplaySettings {
       proteinColorScheme: VALID_PROTEIN_SCHEMES.has(parsed.proteinColorScheme as ProteinSchemeId)
         ? parsed.proteinColorScheme as ProteinSchemeId
         : DEFAULT_DISPLAY_SETTINGS.proteinColorScheme,
+      proteinPkaSet: VALID_PKA_SETS.has(parsed.proteinPkaSet as PkaSetId)
+        ? parsed.proteinPkaSet as PkaSetId
+        : DEFAULT_DISPLAY_SETTINGS.proteinPkaSet,
     }
   } catch {
     return { ...DEFAULT_DISPLAY_SETTINGS }

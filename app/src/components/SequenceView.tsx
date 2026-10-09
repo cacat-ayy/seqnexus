@@ -36,6 +36,7 @@ import EnzymeTooltip, { SiteListTooltip } from './EnzymeTooltip'
 import SequenceContextMenu from './SequenceContextMenu'
 import ConfirmDialog from './ConfirmDialog'
 import { selectionTm, SELECTION_TM_MAX } from '../utils/selection-tm'
+import { proteinMass, formatMass } from '../protein/properties'
 import SequenceMinimap from './minimap/SequenceMinimap'
 import { createViewportSource } from './minimap/viewport'
 
@@ -488,9 +489,11 @@ interface SequenceViewProps {
   onFindClose?: () => void
   onAnnotateRequest?: () => void
   onEditFeature?: (annId: string) => void
+  /** Protein only: search a DNA document for a peptide. */
+  onFindInDna?: (tabId: string, peptide: string) => void
 }
 
-function SequenceView({ onFindRequest, onFindClose, onAnnotateRequest, onEditFeature }: SequenceViewProps) {
+function SequenceView({ onFindRequest, onFindClose, onAnnotateRequest, onEditFeature, onFindInDna }: SequenceViewProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const containerRef = useRef<HTMLDivElement>(null)
   const spacerRef = useRef<HTMLDivElement>(null)
@@ -1099,11 +1102,13 @@ function SequenceView({ onFindRequest, onFindClose, onAnnotateRequest, onEditFea
     const seqLen = d.sequence.length
     const origin = (d.sequence.topology === 'circular' ? d.metadata?.displayOrigin : 0) || 0
     const dp = (p: number) => displayPosition(p, origin, seqLen).toLocaleString()
-    const tm = d.sequence.alphabet === 'dna' && len <= SELECTION_TM_MAX ? selectionTm(d.sequence.basesIn(start, end)) : null
+    const protein = d.sequence.alphabet === 'protein'
+    const tm = !protein && len <= SELECTION_TM_MAX ? selectionTm(d.sequence.basesIn(start, end)) : null
     pill.textContent = [
       `${dp(start)}..${dp(end - 1)}`,
       `${len.toLocaleString()} ${unitOf(d.sequence.alphabet)}`,
       ...(tm !== null ? [`Tm ${tm.toFixed(1)} °C`] : []),
+      ...(protein ? [formatMass(proteinMass(d.sequence.basesIn(start, end)).average)] : []),
     ].join('  ·  ')
     pill.style.display = 'block'
     const rect = container.getBoundingClientRect()
@@ -1971,6 +1976,7 @@ function SequenceView({ onFindRequest, onFindClose, onAnnotateRequest, onEditFea
           onEditFeature={onEditFeature}
           onAnnotateRequest={onAnnotateRequest}
           onDeleteAnnotation={a => setDeleteConfirm({ annId: a.id, annName: a.name })}
+          onFindInDna={onFindInDna}
         />
       )}
 

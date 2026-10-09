@@ -25,6 +25,7 @@ describe('display settings persistence', () => {
       aminoAcidStyle: 'none',
       threeLetterAminoAcids: false,
       proteinColorScheme: 'polarity',
+      proteinPkaSet: 'emboss',
     })
   })
 

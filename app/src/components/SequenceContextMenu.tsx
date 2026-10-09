@@ -13,11 +13,12 @@
 
 import type { ReactNode } from 'react'
 import {
-  ClipboardPaste, Combine, Copy, Crosshair, ExternalLink, MoveLeft, MoveRight, PanelRight, Pencil, Replace,
-  SquareDashedMousePointer, Tag, Trash2, TriangleAlert, Undo2,
+  Atom, ClipboardPaste, Combine, Copy, Crosshair, Dna, ExternalLink, MoveLeft, MoveRight, PanelRight, Pencil, Replace,
+  SquareDashedMousePointer, Tag, TextSearch, Trash2, TriangleAlert, Undo2,
 } from 'lucide-react'
 import {
   useEditorStore, selectionRange, selectionSegments, extraSelectionsOf, selectedRanges, joinedSegments,
+  selectionIsReverse,
   type Selection,
 } from '../store'
 import type { Annotation } from '../models/Annotation'
@@ -150,6 +151,7 @@ function EnzymeHead({ group }: { group: GroupedCutSite }) {
 
 export default function SequenceContextMenu({
   target, annotations, primerItemById, siteCountOf, onClose, onEditFeature, onAnnotateRequest, onDeleteAnnotation,
+  onFindInDna,
 }: {
   target: SequenceMenuTarget
   /** Everything drawn as a feature: user features, ORFs, proposals. */
@@ -161,6 +163,8 @@ export default function SequenceContextMenu({
   onAnnotateRequest?: () => void
   /** Ask before deleting; the confirm dialog belongs to the view. */
   onDeleteAnnotation: (ann: Annotation) => void
+  /** Protein only: search a DNA document for a peptide, in the six frames. */
+  onFindInDna?: (tabId: string, peptide: string) => void
 }) {
   const doc = useEditorStore(s => s.doc)
   const selection = useEditorStore(s => s.selection)
@@ -186,6 +190,13 @@ export default function SequenceContextMenu({
   // cloning: those items are left out rather than offered and refused.
   const protein = doc.sequence.alphabet === 'protein'
   const unit = protein ? 'aa' : 'bp'
+  // The DNA a protein came from, and the DNA documents a peptide can be
+  // looked for in (the source first).
+  const link = protein ? doc.metadata?.translatedFrom : undefined
+  const dnaTabs = useEditorStore(s => s.tabs)
+    .filter(t => t.doc.sequence.alphabet !== 'protein')
+    .sort((a, b) => (a.id === link?.tabId ? -1 : b.id === link?.tabId ? 1 : 0))
+  const linkedOpen = !!link && dnaTabs.some(t => t.id === link.tabId)
 
   /** Run an action, then close. */
   const act = (fn: () => void) => () => { fn(); onClose() }
@@ -311,6 +322,12 @@ export default function SequenceContextMenu({
             FASTA
           </MenuItem>
         </Submenu>
+        {translatable && (
+          <MenuItem icon={<Atom size={ICON} />} onSelect={act(() => useEditorStore.getState().translateToProtein({ annotation: ann }))}
+            title="Open the feature's protein as a document of its own, linked back to these codons">
+            Translate to Protein
+          </MenuItem>
+        )}
         {isUserAnn && !readOnly && (
           <MenuItem icon={<Pencil size={ICON} />} shortcut="Double-click" onSelect={act(() => {
             useEditorStore.getState().setEditAnnotation(ann.id)
@@ -421,6 +438,30 @@ export default function SequenceContextMenu({
             </MenuItem>
           )}
         </Submenu>
+        {!protein && !multi && selectionLen >= 3 && (
+          <MenuItem icon={<Atom size={ICON} />} onSelect={act(() => {
+            const [s, e] = segs[0]
+            useEditorStore.getState().translateToProtein({ start: s, end: e, reverse: selectionIsReverse(selection, doc.sequence.topology) })
+          })} title="Translate the selection in frame from its first base, read in the direction it was dragged">
+            Translate Selection to Protein
+          </MenuItem>
+        )}
+        {protein && linkedOpen && (
+          <MenuItem icon={<Dna size={ICON} />} onSelect={act(() => useEditorStore.getState().showTranslationSource())}
+            title={`Select the codons of these residues in ${link!.tabName}`}>
+            Show Codons in {link!.tabName}
+          </MenuItem>
+        )}
+        {protein && onFindInDna && dnaTabs.length > 0 && !multi && selectionLen >= 2 && selectionLen <= 1000 && (
+          <Submenu icon={<TextSearch size={ICON} />} label="Find in DNA">
+            {dnaTabs.slice(0, 12).map(t => (
+              <MenuItem key={t.id} onSelect={act(() => onFindInDna(t.id, selectedBases()))}
+                title="Search the six reading frames for this peptide">
+                {t.doc.name}
+              </MenuItem>
+            ))}
+          </Submenu>
+        )}
         {canMakePrimer && (
           <Submenu icon={<MoveRight size={ICON} />} label="New Primer from Selection">
             <MenuItem icon={<MoveRight size={ICON} />} onSelect={act(() => newPrimer(1))}>Forward</MenuItem>
@@ -458,6 +499,25 @@ export default function SequenceContextMenu({
             {multi ? 'Add Joined Annotation…' : hasSelection ? 'Add Annotation to Selection…' : 'Add Annotation Here…'}
           </MenuItem>
         )}
+        {protein && linkedOpen && doc.annotations.length > 0 && (
+          <MenuItem icon={<Dna size={ICON} />} onSelect={act(() => useEditorStore.getState().transferFeaturesToSource())}
+            title="Add this protein's features to the DNA, on the codons they cover">
+            Add Features to {link!.tabName}
+          </MenuItem>
+        )}
+      </div>,
+    )
+  }
+
+  // A protein with no selection and no feature under the pointer still
+  // offers its codons, so the link is reachable from anywhere on it.
+  if (protein && linkedOpen && !hasSelection && !ann) {
+    sections.push(
+      <div key="link" role="group" aria-label="Source DNA">
+        <MenuItem icon={<Dna size={ICON} />} onSelect={act(() => useEditorStore.getState().showTranslationSource())}
+          title={`Select the whole coding region in ${link!.tabName}`}>
+          Show in {link!.tabName}
+        </MenuItem>
       </div>,
     )
   }

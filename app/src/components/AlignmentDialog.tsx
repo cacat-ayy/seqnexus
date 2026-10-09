@@ -785,7 +785,7 @@ export default function AlignmentDialog({ open, onClose, onResult, onReadAlignRe
                                       </span>
                                       <FileText size={13} />
                                       <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis' }}>{t.doc.name}</span>
-                                      <span className="align-add-menu-item-sub">{alreadyAdded ? 'added' : `${t.doc.sequence.length.toLocaleString()} bp`}</span>
+                                      <span className="align-add-menu-item-sub">{alreadyAdded ? 'added' : `${t.doc.sequence.length.toLocaleString()} ${t.doc.sequence.alphabet === 'protein' ? 'aa' : 'bp'}`}</span>
                                     </button>
                                   )
                                 })}

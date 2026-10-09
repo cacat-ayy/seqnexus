@@ -28,6 +28,7 @@ import {
   DEFAULT_CODON_SETTINGS,
 } from '../codon/settings'
 import { combinedMetrics, runOptimization, type OptimizationRun } from '../codon/run'
+import { backTranslate } from '../codon/back-translate'
 import { notify } from '../toast'
 import { useExitAnimation } from '../hooks/useExitAnimation'
 import { useFocusTrap } from '../hooks/useFocusTrap'
@@ -124,15 +125,29 @@ export default function CodonOptimizeDialog({ open, onClose }: Props) {
       ?? null,
   [settings.usageTableId, customTables])
 
-  const selectionRange = selection.anchor !== selection.caret
+  // A protein is back-translated: every residue gets the host's favourite
+  // codon, and that DNA is what the optimizer then works on, whole. The
+  // target choice does not apply, and nothing can be applied in place.
+  const protein = doc.sequence.alphabet === 'protein'
+  const seed = useMemo(
+    () => (protein && table ? backTranslate(doc.sequence.bases, code, table) : null),
+    [protein, table, doc.sequence, code],
+  )
+  const workingSequence = useMemo(
+    () => (seed ? new Sequence(seed.bases) : doc.sequence),
+    [seed, doc.sequence],
+  )
+  const target = protein ? 'whole' : settings.target
+
+  const selectionRange = !protein && selection.anchor !== selection.caret
     ? { start: Math.min(selection.anchor, selection.caret), end: Math.max(selection.anchor, selection.caret) }
     : null
 
   /** How much sequence the current target covers, for the size guard. */
-  const targetSize = settings.target === 'selection'
+  const targetSize = target === 'selection'
     ? (selectionRange ? selectionRange.end - selectionRange.start : 0)
-    : settings.target === 'whole'
-      ? doc.sequence.length
+    : target === 'whole'
+      ? workingSequence.length
       : features
         .filter(f => featureIds.size === 0 || featureIds.has(f.id))
         .reduce((n, f) => n + Math.abs(f.end - f.start), 0)
@@ -150,9 +165,9 @@ export default function CodonOptimizeDialog({ open, onClose }: Props) {
     const timer = setTimeout(() => {
       try {
         const run = runOptimization({
-          kind: settings.target,
-          sequence: doc.sequence,
-          annotations: doc.annotations,
+          kind: target,
+          sequence: workingSequence,
+          annotations: protein ? [] : doc.annotations,
           code,
           table,
           constraints: constraintSetFor(settings),
@@ -181,7 +196,7 @@ export default function CodonOptimizeDialog({ open, onClose }: Props) {
 
     return () => { cancelled = true; clearTimeout(timer) }
     // eslint-disable-next-line react-hooks/exhaustive-deps -- selectionRange is rebuilt each render; its values are covered by `selection`
-  }, [open, table, code, settings, featureIds, doc.sequence, doc.annotations, selection, autoRun, manualRun])
+  }, [open, table, code, settings, target, protein, featureIds, workingSequence, doc.annotations, selection, autoRun, manualRun])
 
   const before = useMemo(() => result ? combinedMetrics(result.regions, 'before') : null, [result])
   const after = useMemo(() => result ? combinedMetrics(result.regions, 'after') : null, [result])
@@ -224,7 +239,28 @@ export default function CodonOptimizeDialog({ open, onClose }: Props) {
 
   /** Put the result in a new tab and leave this document alone. */
   const handleOpenCopy = useCallback(() => {
-    if (!result || result.edits.length === 0) return
+    if (!result) return
+    if (protein) {
+      // The back-translation as DNA, with the protein as one coding feature.
+      const chars = workingSequence.bases.split('')
+      for (const edit of result.edits) {
+        for (let i = 0; i < edit.bases.length; i++) chars[edit.start + i] = edit.bases[i]
+      }
+      const bases = chars.join('')
+      openDocumentState({
+        name: `${doc.name} (back-translated)`,
+        description: `Back-translated from ${doc.name} with ${table?.name ?? 'the chosen'} codon usage`,
+        sequence: new Sequence(bases),
+        annotations: bases.length >= 3
+          ? [new Annotation({ id: 'cds_bt', name: doc.name, type: 'CDS', start: 0, end: bases.length, strand: 1 })]
+          : [],
+        metadata: { origin: 'optimized' },
+      })
+      notify.success(`Opened "${doc.name} (back-translated)" (${bases.length} bp)`)
+      onClose()
+      return
+    }
+    if (result.edits.length === 0) return
     const chars = doc.sequence.bases.split('')
     for (const edit of result.edits) {
       for (let i = 0; i < edit.bases.length; i++) chars[edit.start + i] = edit.bases[i]
@@ -238,7 +274,7 @@ export default function CodonOptimizeDialog({ open, onClose }: Props) {
     })
     notify.success(`Opened "${doc.name} (optimized)"`)
     onClose()
-  }, [result, doc, openDocumentState, onClose])
+  }, [result, doc, protein, workingSequence, table, openDocumentState, onClose])
 
   const backdropRef = useRef<HTMLDivElement>(null)
   useFocusTrap(backdropRef, open)
@@ -271,7 +307,7 @@ export default function CodonOptimizeDialog({ open, onClose }: Props) {
     >
       <div className="modal-dialog cod-modal" role="dialog" aria-modal="true" aria-labelledby="codon-modal-title">
         <div className="modal-header">
-          <h3 className="modal-title" id="codon-modal-title">Codon optimization</h3>
+          <h3 className="modal-title" id="codon-modal-title">{protein ? 'Back-translate to DNA' : 'Codon optimization'}</h3>
           <button className="modal-close" onClick={onClose} aria-label="Close">
             <X size={16} />
           </button>
@@ -280,6 +316,22 @@ export default function CodonOptimizeDialog({ open, onClose }: Props) {
         <div className="modal-body cod-body">
           {/* --- Settings --- */}
           <div className="cod-settings">
+            {protein && (
+              <section className="cod-section">
+                <h4 className="cod-heading">Target</h4>
+                <p className="cod-note">
+                  The whole protein ({doc.sequence.length} aa). Every residue gets the
+                  codon the host uses most, and that sequence is then optimized with the
+                  settings below, so the constraints apply to it too.
+                </p>
+                {seed && seed.unencodable.length > 0 && (
+                  <p className="cod-note cod-note-warn">
+                    No codon exists for {seed.unencodable.join(', ')}; those residues are left out.
+                  </p>
+                )}
+              </section>
+            )}
+            {!protein && (
             <section className="cod-section">
               <h4 className="cod-heading">Target</h4>
               <div className="cod-radios">
@@ -338,6 +390,7 @@ export default function CodonOptimizeDialog({ open, onClose }: Props) {
                 </ul>
               )}
             </section>
+            )}
 
             <section className="cod-section">
               <h4 className="cod-heading">Genetic code and usage</h4>
@@ -853,6 +906,7 @@ export default function CodonOptimizeDialog({ open, onClose }: Props) {
 
         <div className="modal-footer">
           <button className="btn" onClick={onClose}>Cancel</button>
+          {!protein && (
           <button
             className="btn"
             onClick={handleApply}
@@ -866,15 +920,16 @@ export default function CodonOptimizeDialog({ open, onClose }: Props) {
           >
             Apply to sequence
           </button>
+          )}
           {/* The primary action: it cannot lose anything, where applying
               rewrites the document the user is looking at. */}
           <button
             className="btn btn-primary"
             onClick={handleOpenCopy}
-            disabled={!result || result.totalChanges === 0}
-            title="Open the result as a new sequence and leave this one untouched"
+            disabled={!result || (!protein && result.totalChanges === 0)}
+            title={protein ? 'Open the DNA as a new sequence, with the protein as its coding feature' : 'Open the result as a new sequence and leave this one untouched'}
           >
-            Open as new sequence
+            {protein ? 'Open as DNA' : 'Open as new sequence'}
           </button>
         </div>
       </div>

@@ -10,7 +10,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { ListPlus, Loader2, Search, X } from 'lucide-react'
 import { applyEdits, useEditorStore } from '../../store'
-import { toUid } from '../../explorer/types'
+import { tabUid, toUid } from '../../explorer/types'
 import { cleanResidues, detectKind, ungapped, type AlnDoc, type RowInput } from '../../msa/model'
 import { parseFasta } from '../../msa/formats/fasta'
 import { addToAlignment, profileCost } from '../../msa/profile'
@@ -62,7 +62,7 @@ export default function AddSequencesPanel({ doc, onApply, onClose, onBusy }: Pro
     for (const t of tabs) {
       out.push({
         key: `t:${t.id}`, name: t.doc.name, seq: t.doc.sequence.bases,
-        source: { uid: toUid('sequence', t.id), name: t.doc.name }, what: 'Sequence',
+        source: { uid: tabUid(t), name: t.doc.name }, what: t.doc.sequence.alphabet === 'protein' ? 'Protein' : 'Sequence',
       })
     }
     for (const r of reads) {

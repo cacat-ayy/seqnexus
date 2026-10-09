@@ -6,7 +6,7 @@
  * works on `ExplorerItem` and never branches on kind again.
  */
 
-import { Lock, TriangleAlert, Globe, FlaskConical, Wand2, Activity, TestTube, Link2, Scissors } from 'lucide-react'
+import { Lock, TriangleAlert, Globe, FlaskConical, Wand2, Activity, TestTube, Link2, Scissors, Atom } from 'lucide-react'
 import type { LibraryOligo } from '../primers/oligo'
 import { oligoTm } from '../primers/display'
 import type {
@@ -71,6 +71,7 @@ const ORIGIN_BADGE: Partial<Record<NonNullable<DocumentOrigin>, ItemBadge>> = {
   gel: { key: 'origin', label: 'Extracted from a gel', icon: Scissors, tone: 'neutral' },
   optimized: { key: 'origin', label: 'Codon optimized', icon: Wand2, tone: 'neutral' },
   consensus: { key: 'origin', label: 'Called from a trace', icon: Activity, tone: 'neutral' },
+  translation: { key: 'origin', label: 'Translated from DNA', icon: Atom, tone: 'neutral' },
 }
 
 /**
@@ -138,7 +139,8 @@ export function sequenceToItem(tab: DocumentTab, ctx: AdapterContext): ExplorerI
       ? [formatAa(tab.doc.sequence.length), formatCount(features, 'feature')]
       : [formatBp(tab.doc.sequence.length), circular ? 'circular' : 'linear', formatCount(features, 'feature')],
     badges,
-    derivedFrom: [],
+    // A translated protein nests under the DNA it came from.
+    derivedFrom: tab.doc.metadata?.translatedFrom ? [toUid('sequence', tab.doc.metadata.translatedFrom.tabId)] : [],
   }
 }
 

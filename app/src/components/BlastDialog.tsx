@@ -12,7 +12,7 @@ import { X, Loader2, Copy, ChevronDown, ChevronRight, ArrowUp, ArrowDown, Search
 import { useEditorStore, selectionRange } from '../store'
 import { submitBlast, pollBlast, fetchResults } from '../blast/client'
 import { parseBlastJson } from '../blast/parser'
-import type { BlastProgram, BlastResult, BlastHit } from '../blast/types'
+import { PROTEIN_QUERY_PROGRAMS, alignsAsProtein, hitsAreProtein, type BlastProgram, type BlastResult, type BlastHit } from '../blast/types'
 import { useExitAnimation } from '../hooks/useExitAnimation'
 import { useFocusTrap } from '../hooks/useFocusTrap'
 import { copyText } from '../utils/clipboard'
@@ -109,9 +109,7 @@ function removeBlastHistory(index: number) {
 
 /** Build NCBI accession URL. */
 function ncbiAccessionUrl(accession: string, program: string): string {
-  // blastx/tblastx search protein DBs
-  const isProtein = program === 'blastx' || program === 'tblastx'
-  if (isProtein) return `https://www.ncbi.nlm.nih.gov/protein/${encodeURIComponent(accession)}`
+  if (hitsAreProtein(program)) return `https://www.ncbi.nlm.nih.gov/protein/${encodeURIComponent(accession)}`
   return `https://www.ncbi.nlm.nih.gov/nuccore/${encodeURIComponent(accession)}`
 }
 
@@ -133,6 +131,15 @@ export default function BlastDialog({ open, onClose, onPhaseChange }: Props) {
   const [querySource, setQuerySource] = useState<'full' | 'selection'>('full')
   const [program, setProgram] = useState<BlastProgram>(saved.current?.program ?? 'megablast')
   const [database, setDatabase] = useState(saved.current?.database ?? 'core_nt')
+  // A protein query takes blastp or tblastn; a DNA query the others. The
+  // saved program may be for the other kind, so it is swapped on open.
+  const proteinQuery = doc.sequence.alphabet === 'protein'
+  const unit = proteinQuery ? 'aa' : 'bp'
+  useEffect(() => {
+    if (!open) return
+    if (proteinQuery && !PROTEIN_QUERY_PROGRAMS.includes(program)) { setProgram('blastp'); setDatabase('nr') }
+    if (!proteinQuery && PROTEIN_QUERY_PROGRAMS.includes(program)) { setProgram('megablast'); setDatabase('core_nt') }
+  }, [open, proteinQuery, program])
   const [evalue, setEvalue] = useState(saved.current?.evalue ?? '10')
   const [maxHits, setMaxHits] = useState(saved.current?.maxHits ?? '25')
 
@@ -239,7 +246,7 @@ export default function BlastDialog({ open, onClose, onPhaseChange }: Props) {
   // --- Submit ---
   const handleSubmit = useCallback(async () => {
     if (queryLen < 10) {
-      setError('Query too short: minimum 10 bases.')
+      setError(`Query too short: minimum 10 ${proteinQuery ? 'residues' : 'bases'}.`)
       return
     }
 
@@ -310,7 +317,7 @@ export default function BlastDialog({ open, onClose, onPhaseChange }: Props) {
       setError(err instanceof Error ? err.message : 'BLAST submission failed')
       setPhaseAndNotify('input')
     }
-  }, [querySequence, queryLen, program, database, evalue, maxHits, doc.name, setPhaseAndNotify])
+  }, [querySequence, queryLen, program, database, evalue, maxHits, doc.name, proteinQuery, setPhaseAndNotify])
 
   const handleCancelSearch = useCallback(() => {
     if (pollRef.current) clearInterval(pollRef.current)
@@ -497,7 +504,7 @@ export default function BlastDialog({ open, onClose, onPhaseChange }: Props) {
                 key={entry.rid}
                 className={`blast-history-chip ${activeHistoryIdx === i ? 'active' : ''} ${isConfirming ? 'confirming' : ''}`}
                 onClick={() => { setConfirmDeleteIdx(null); handleSelectHistory(i) }}
-                title={`${entry.result.program} · ${entry.result.database} · ${entry.result.queryLen.toLocaleString()} bp · ${entry.result.hits.length} hits`}
+                title={`${entry.result.program} · ${entry.result.database} · ${entry.result.queryLen.toLocaleString()} ${PROTEIN_QUERY_PROGRAMS.includes(entry.result.program as BlastProgram) ? 'aa' : 'bp'} · ${entry.result.hits.length} hits`}
               >
                 <span className="blast-chip-name">{entry.result.queryName || 'Untitled'}</span>
                 <span className="blast-chip-meta">{entry.result.hits.length} hits · {timeAgo(entry.timestamp)}</span>
@@ -526,7 +533,7 @@ export default function BlastDialog({ open, onClose, onPhaseChange }: Props) {
                       checked={querySource === 'full'}
                       onChange={() => setQuerySource('full')}
                     />
-                    Full sequence ({doc ? doc.sequence.length.toLocaleString() : 0} bp)
+                    Full sequence ({doc ? doc.sequence.length.toLocaleString() : 0} {unit})
                   </label>
                   <label className={`blast-radio ${!selRange ? 'blast-radio-disabled' : ''}`}>
                     <input
@@ -535,7 +542,7 @@ export default function BlastDialog({ open, onClose, onPhaseChange }: Props) {
                       onChange={() => setQuerySource('selection')}
                       disabled={!selRange}
                     />
-                    Selection only {selRange ? `(${(selRange[1] - selRange[0]).toLocaleString()} bp)` : '(none)'}
+                    Selection only {selRange ? `(${(selRange[1] - selRange[0]).toLocaleString()} ${unit})` : '(none)'}
                   </label>
                 </div>
               </div>
@@ -548,10 +555,19 @@ export default function BlastDialog({ open, onClose, onPhaseChange }: Props) {
                   value={program}
                   onChange={e => setProgram(e.target.value as BlastProgram)}
                 >
-                  <option value="megablast">megablast (fast, high similarity)</option>
-                  <option value="blastn">blastn (somewhat similar)</option>
-                  <option value="blastx">blastx (translated query vs protein DB)</option>
-                  <option value="tblastx">tblastx (translated query vs translated DB)</option>
+                  {proteinQuery ? (
+                    <>
+                      <option value="blastp">blastp (protein vs protein DB)</option>
+                      <option value="tblastn">tblastn (protein vs translated nucleotide DB)</option>
+                    </>
+                  ) : (
+                    <>
+                      <option value="megablast">megablast (fast, high similarity)</option>
+                      <option value="blastn">blastn (somewhat similar)</option>
+                      <option value="blastx">blastx (translated query vs protein DB)</option>
+                      <option value="tblastx">tblastx (translated query vs translated DB)</option>
+                    </>
+                  )}
                 </select>
               </div>
 
@@ -616,7 +632,7 @@ export default function BlastDialog({ open, onClose, onPhaseChange }: Props) {
               {/* Query length warning */}
               {queryLen > 100_000 && (
                 <div className="blast-warn">
-                  Query is {queryLen.toLocaleString()} bp: large queries may take a long time.
+                  Query is {queryLen.toLocaleString()} {unit}: large queries may take a long time.
                 </div>
               )}
 
@@ -666,7 +682,7 @@ export default function BlastDialog({ open, onClose, onPhaseChange }: Props) {
                   {result.hits.length} hit{result.hits.length !== 1 ? 's' : ''} found
                   {' · '}{result.program} · {result.database}
                   {result.queryName && <> · <strong>{result.queryName}</strong></>}
-                  {' · '}query {result.queryLen.toLocaleString()} bp
+                  {' · '}query {result.queryLen.toLocaleString()} {PROTEIN_QUERY_PROGRAMS.includes(result.program as BlastProgram) ? 'aa' : 'bp'}
                   {result.message && <span className="blast-msg"> · {result.message}</span>}
                 </span>
                 {ncbiResultsUrl && (
@@ -844,7 +860,7 @@ function HitRow({
                       HSP {hi + 1}: score {Math.round(h.bitScore)}, E={formatEvalue(h.evalue)}, {(h.identity * 100).toFixed(1)}% identity
                     </div>
                   )}
-                  <AlignmentBlock hsp={h} isProtein={program === 'blastx' || program === 'tblastx'} />
+                  <AlignmentBlock hsp={h} isProtein={alignsAsProtein(program)} />
                 </div>
               ))}
             </div>

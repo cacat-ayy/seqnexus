@@ -95,6 +95,18 @@
   padding-left: var(--space-2);
 }
 
+/* A sentence in place of controls: what a back-translation works on. */
+.cod-note {
+  margin: 0 0 var(--space-2);
+  font-size: var(--text-xs);
+  line-height: 1.5;
+  color: var(--text-secondary);
+}
+
+.cod-note-warn {
+  color: var(--warning);
+}
+
 .cod-feature-list {
   list-style: none;
   margin: 0 0 var(--space-1);

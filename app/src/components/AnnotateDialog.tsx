@@ -18,6 +18,7 @@ import { X, Search, Loader2, ChevronDown, ChevronRight, Upload, Trash2, Database
 import { useEditorStore } from '../store'
 import { FEATURE_CATEGORIES } from '../features/common-features'
 import { getScanReferences, sourceIdForMatch, customCategories } from '../features/feature-sources'
+import { PROTEIN_FEATURE_CATEGORIES, getProteinFeatures } from '../features/protein-features'
 import { parseFeatureSource, describeImport, FeatureSourceError } from '../features/feature-source-import'
 import { matchKey, proposalsFrom } from '../utils/auto-annotations'
 import type { AnnotationMatch } from '../workers/annotate-list'
@@ -76,17 +77,24 @@ export default function AnnotateDialog({ open, onClose }: Props) {
     [featureSources],
   )
 
+  // A protein is scanned against the protein library, which has its own
+  // categories and no databases to import or switch off.
+  const protein = useEditorStore(s => s.doc.sequence.alphabet === 'protein')
   const categories = useMemo(
-    () => [...FEATURE_CATEGORIES, ...customCategories(featureSources)],
-    [featureSources],
+    () => (protein ? [...PROTEIN_FEATURE_CATEGORIES] : [...FEATURE_CATEGORIES, ...customCategories(featureSources)]),
+    [featureSources, protein],
   )
 
   const filtered = useMemo(() => {
     let list = proposals
     if (categoryFilter !== 'All') {
       const catByName = new Map<string, string>()
-      for (const s of featureSources) {
-        for (const f of s.features) catByName.set(`${f.name}\u0000${f.type}`, f.category)
+      if (protein) {
+        for (const f of getProteinFeatures()) catByName.set(`${f.name}\u0000${f.type}`, f.category)
+      } else {
+        for (const s of featureSources) {
+          for (const f of s.features) catByName.set(`${f.name}\u0000${f.type}`, f.category)
+        }
       }
       list = list.filter(m => catByName.get(`${m.refName}\u0000${m.refType}`) === categoryFilter)
     }
@@ -98,7 +106,7 @@ export default function AnnotateDialog({ open, onClose }: Props) {
       )
     }
     return list
-  }, [proposals, search, categoryFilter, featureSources])
+  }, [proposals, search, categoryFilter, featureSources, protein])
 
   const grouped = useMemo(() => {
     const map = new Map<string, AnnotationMatch[]>()
@@ -189,7 +197,21 @@ export default function AnnotateDialog({ open, onClose }: Props) {
 
         <div className="modal-body">
             <div className="ann-find">
+              {/* A protein has one library and nothing to import. */}
+              {protein && (
+                <div className="ann-sources">
+                  <div className="ann-sources-head">
+                    <span className="ann-sources-title"><Database size={13} /> Protein library</span>
+                  </div>
+                  <p className="ann-library-note">
+                    Epitope and purification tags, fusion partners, protease sites, linkers,
+                    localization signals and 2A peptides, plus the coding entries of the
+                    DNA library translated. Short peptides are matched exactly.
+                  </p>
+                </div>
+              )}
               {/* Databases to scan against */}
+              {!protein && (
               <div className="ann-sources">
                 <div className="ann-sources-head">
                   <span className="ann-sources-title"><Database size={13} /> Databases</span>
@@ -239,6 +261,7 @@ export default function AnnotateDialog({ open, onClose }: Props) {
                   </div>
                 )}
               </div>
+              )}
 
               {/* Controls row */}
               <div className="ann-controls">

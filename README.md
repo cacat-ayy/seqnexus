@@ -68,7 +68,10 @@ of each build.
 - **Multi-document tabs** with session persistence (localStorage + IndexedDB)
 - **Proteins** as documents of their own: FASTA and GenPept in and out, the
   same viewer with residue colour schemes, features, find and numbering from
-  any residue; see [Proteins](#proteins)
+  any residue; mass, pI and charge, extinction coefficient and the sequence
+  indices; translated from a coding feature and linked back to its codons;
+  back-translation, tag and protease-site annotation, blastp; see
+  [Proteins](#proteins)
 - **Three zoom modes** (21 levels): line → dots → letters
 - **Linear and circular views** with split mode (resizable divider)
 - **GenBank import/export** with streaming parser for large files (>1MB)
@@ -2302,12 +2305,99 @@ sequence's numbering shifts a linear one's instead (`-24` shows the first
 residue as 25). One field, two meanings told apart by sign, so every place
 that already formats a position through `displayPosition` handles both.
 
+### Properties
+
+The Stats button of a protein opens its properties, computed from the
+residues on every render (the maths is O(n) and a protein is short). With a
+selection the numbers are of the selected residues, and a switch goes back
+to the whole protein; the selection readout in the status bar and the drag
+pill show the mass of a selection as well. The constants follow ExPASy
+ProtParam, which the tests check against for a published 121-residue report
+(mass, formula, charged residues, pI, GRAVY, aliphatic and instability
+index all agree; the instability index to within 0.02).
+
+- **Mass.** The sum of the average residue masses plus one water, and the
+  monoisotopic mass. Selenocysteine and pyrrolysine have their own masses;
+  B, Z and J take the mean of what they stand for, X the mean of the
+  twenty; stops and gaps weigh nothing. The elemental formula leaves the
+  ambiguity codes out.
+- **Charge and pI.** Net charge by Henderson-Hasselbalch over the N
+  terminus, Lys, Arg, His (positive) and the C terminus, Asp, Glu, Cys,
+  Tyr (negative). The pI is where it crosses zero, found by bisection to
+  0.001 pH. Four pKa sets are offered, since the set is most of why two
+  calculators disagree: EMBOSS (the default, what the `iep` program
+  reports), Bjellqvist (the ExPASy values, with their residue-specific
+  terminal pKa), Lehninger (free amino acids) and Grimsley (averages
+  measured in folded proteins). A slider gives the charge at any pH, and a
+  titration curve shows it from 0 to 14 with the pI marked.
+- **Absorbance at 280 nm.** Pace et al. (1995): 5500 per Trp, 1490 per
+  Tyr, 125 per cystine. Three values: every Cys reduced, every pair of Cys
+  as a cystine, and the disulfides the document annotates (`disulfide`
+  features). A280 of a 1 mg/mL solution is ε over the average mass.
+- **Indices.** GRAVY (the mean Kyte-Doolittle hydropathy), the aliphatic
+  index of Ikai (1980), the instability index of Guruprasad et al. (1990)
+  with its 40 threshold, and aromaticity (the fraction of Phe, Trp and Tyr).
+- **Composition** with the residue colours of the view.
+
+### DNA and protein
+
+A coding feature, or a selection, is translated into a protein document of
+its own from the context menu (the selection is read in frame from its
+first base, in the direction it was dragged). The protein remembers its
+source: the document, the feature, the coding span and strand, the exons
+of a spliced feature, the `/codon_start` offset and the genetic code. A
+single trailing stop is dropped; internal stops are kept so a nonsense
+mutation shows. Features inside the coding region come along at residue
+resolution, the coding feature itself excepted.
+
+In the protein, a chip beside the name says where it came from and selects
+the codons of the current residue selection in the DNA (or the whole coding
+region). The context menu adds "Show codons in …", and "Add features to …",
+which puts the protein's features on the DNA at the codons they cover,
+skipping any the DNA already has, as one undo step on the DNA. The mapping
+walks exons, so a feature across an intron becomes a joined feature. In the
+explorer a translated protein nests under its DNA.
+
+"Find in DNA" takes a selected peptide to any open DNA document and
+searches its six frames, through the protein search that already exists.
+
+### Back-translation
+
+For a protein the codon optimizer becomes a back-translator: every residue
+gets the codon the chosen host uses most (B, Z and J as Asp, Glu and Ile;
+X, U and O have no codon and are reported), and that DNA is then optimized
+with the same settings and constraints as any coding sequence, so a motif
+to avoid is avoided here too. "Open as DNA" opens the result with the
+protein as its one coding feature. There is nothing to apply in place.
+
+### Auto-annotation
+
+A protein is scanned against a protein library instead of the DNA
+databases: a curated list of epitope and purification tags (His6, FLAG,
+HA, Myc, V5, Strep, Avi, ALFA, HiBiT, Spy and Snoop tags and others),
+protease sites (TEV, thrombin, HRV 3C, enterokinase, Factor Xa), linkers,
+localization signals (NLS, NES, KDEL, HDEL, SKL) and 2A peptides, plus the
+coding entries of the DNA library translated with the standard code, so
+the same GFP or kanR is found on a plasmid and on its protein. The scan is
+the DNA matcher on residues, with a 3-mer seed and one strand. Peptides
+shorter than ten residues are matched exactly, since a six-residue tag with
+one mismatch is not that tag; longer entries take the similarity threshold.
+Proposals, picks and conversion work as for DNA.
+
+### Alignment, BLAST and find
+
+Protein documents appear in the alignment dialog, which already recognised
+protein letters and switches to BLOSUM62 and the protein colour schemes.
+BLAST offers blastp and tblastn for a protein query and swaps its saved
+program when the open document changes kind; hits of a protein search link
+to NCBI's protein records.
+
 ### Limits
 
-Physical properties (mass, pI, extinction coefficient, hydropathy), the
-DNA-to-protein link, auto-annotation of tags and protease sites, UniProt
-import and the domain map are later phases of the protein work and are not in
-this version.
+UniProt import, the graph tracks (hydropathy, charge), motif search, the
+domain map, proteolysis and the structure panel are later phases of the
+protein work and are not in this version. The three-letter spelling is not
+drawn on a protein's canvas.
 
 ---
 
@@ -2720,6 +2810,36 @@ print colours on white, whatever the app's theme.
 - Waterhouse AM, Procter JB, Martin DMA, Clamp M, Barton GJ (2009) "Jalview
   Version 2: a multiple sequence alignment editor and analysis workbench."
   *Bioinformatics* 25:1189-1191. (The Zappo residue colours.)
+
+- Pace CN, Vajdos F, Fee L, Grimsley G, Gray T (1995) "How to measure and
+  predict the molar absorption coefficient of a protein." *Protein Science*
+  4:2411-2423. (The extinction coefficient at 280 nm.)
+
+- Bjellqvist B, Hughes GJ, Pasquali C, Paquet N, Ravier F, Sanchez JC,
+  Frutiger S, Hochstrasser D (1993) "The focusing positions of polypeptides
+  in immobilized pH gradients can be predicted from their amino acid
+  sequences." *Electrophoresis* 14:1023-1031. (The ExPASy pKa set.)
+
+- Grimsley GR, Scholtz JM, Pace CN (2009) "A summary of the measured pK
+  values of the ionizable groups in folded proteins." *Protein Science*
+  18:247-251.
+
+- Rice P, Longden I, Bleasby A (2000) "EMBOSS: The European Molecular
+  Biology Open Software Suite." *Trends in Genetics* 16:276-277. (The
+  default pKa set, from the `iep` program.)
+
+- Guruprasad K, Reddy BVB, Pandit MW (1990) "Correlation between stability
+  of a protein and its dipeptide composition: a novel approach for predicting
+  in vivo stability of a protein from its primary sequence." *Protein
+  Engineering* 4:155-161. (The instability index.)
+
+- Ikai A (1980) "Thermostability and aliphatic index of globular proteins."
+  *J Biochem* 88:1895-1898.
+
+- Gasteiger E, Hoogland C, Gattiker A, Duvaud S, Wilkins MR, Appel RD,
+  Bairoch A (2005) "Protein identification and analysis tools on the ExPASy
+  server." In: Walker JM (ed) *The Proteomics Protocols Handbook*, Humana
+  Press, 571-607. (ProtParam, which the properties are checked against.)
 
 - SantaLucia J Jr. (1998) "A unified view of polymer, dumbbell, and
   oligonucleotide DNA nearest-neighbor thermodynamics."

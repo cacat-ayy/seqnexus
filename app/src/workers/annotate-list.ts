@@ -36,12 +36,14 @@ export function annotateFromList(
   references: ReferenceAnnotation[],
   minSimilarity: number,
   bestMatchOnly: boolean,
+  protein = false,
 ): Promise<AnnotationMatch[]> {
   const request: AnnotateListRequest = {
     documentBases,
     references,
     minSimilarity,
     bestMatchOnly,
+    protein,
   }
 
   return new Promise((resolve, reject) => {

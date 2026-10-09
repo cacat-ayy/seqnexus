@@ -35,6 +35,8 @@ import {
 import { geneticCode } from './codon/genetic-codes'
 import type { ColorSchemeId, ColorTarget } from './utils/base-colors'
 import type { ProteinSchemeId } from './utils/residue-colors'
+import type { PkaSetId } from './protein/properties'
+import { codingLength, residuesToDna, translationDocument, translationSource, type TranslationRequest } from './protein/link'
 import { loadDisplaySettings, saveDisplaySettings, type DisplaySettings } from './utils/display-settings'
 import type { PlasmidStyleId } from './plasmid/styles'
 import type { Ab1Data } from './io/ab1'
@@ -564,6 +566,9 @@ interface EditorStore {
   /** Residue colours of a protein document. */
   proteinColorScheme: ProteinSchemeId
   setProteinColorScheme: (id: ProteinSchemeId) => void
+  /** pKa values behind a protein's pI and charge. */
+  proteinPkaSet: PkaSetId
+  setProteinPkaSet: (id: PkaSetId) => void
 
   // Hover state (cross-view, not per-tab)
   hoveredAnnotationId: string | null
@@ -692,6 +697,23 @@ interface EditorStore {
   // Tab management
   openDocument: (name: string, bases: string, topology?: 'linear' | 'circular', description?: string, origin?: DocumentOrigin, alphabet?: Alphabet) => string
   openDocumentState: (state: DocumentState) => string
+  /**
+   * Translate a coding feature or a selection of the active DNA document
+   * into a new protein tab that remembers where it came from. Returns the
+   * new tab's id, or null when there is nothing to translate.
+   */
+  translateToProtein: (req: TranslationRequest) => string | null
+  /**
+   * From a translated protein, open the DNA it came from and select the
+   * codons of the current residue selection (or of the whole protein).
+   */
+  showTranslationSource: () => void
+  /**
+   * Add the protein's features to the DNA it came from, at codon
+   * resolution, skipping those the DNA already has. Switches to the DNA so
+   * the addition is one undo step there. Returns how many were added.
+   */
+  transferFeaturesToSource: () => number
   closeTab: (tabId: string) => void
   /**
    * The last few deleted items of any kind, newest last, so a delete can be
@@ -1144,6 +1166,7 @@ function displaySnapshot(s: EditorStore): DisplaySettings {
     aminoAcidStyle: s.aminoAcidStyle,
     threeLetterAminoAcids: s.threeLetterAminoAcids,
     proteinColorScheme: s.proteinColorScheme,
+    proteinPkaSet: s.proteinPkaSet,
   }
 }
 
@@ -1500,6 +1523,11 @@ export const useEditorStore = create<EditorStore>((set, get) => {
         setProteinColorScheme: (id: ProteinSchemeId) => {
           set({ proteinColorScheme: id })
           persist({ proteinColorScheme: id })
+        },
+        proteinPkaSet: initial.proteinPkaSet,
+        setProteinPkaSet: (id: PkaSetId) => {
+          set({ proteinPkaSet: id })
+          persist({ proteinPkaSet: id })
         },
         setColorScheme: (id: ColorSchemeId) => {
           set({ colorScheme: id })
@@ -2124,6 +2152,80 @@ export const useEditorStore = create<EditorStore>((set, get) => {
         primerDesign: tab.primerDesign,
       }))
       return tab.id
+    },
+
+    translateToProtein(req) {
+      const tab = getActiveTab()
+      if (!tab || tab.doc.sequence.alphabet === 'protein') return null
+      const link = translationSource(tab.doc, tab.id, req, get().translationCodeId)
+      if (codingLength(link) < 3) {
+        notify.warning('Nothing to translate: fewer than three bases')
+        return null
+      }
+      const protein = translationDocument(tab.doc, link, req)
+      const id = get().openDocumentState(protein)
+      notify.success(`Translated "${protein.name}" (${protein.sequence.length} aa)`, {
+        action: { label: 'Back to DNA', onClick: () => get().setActiveTab(tab.id) },
+      })
+      return id
+    },
+
+    showTranslationSource() {
+      const tab = getActiveTab()
+      const link = tab?.doc.metadata?.translatedFrom
+      if (!tab || !link) return
+      const source = get().tabs.find(t => t.id === link.tabId)
+      if (!source) {
+        notify.warning(`"${link.tabName}" is no longer open`, { detail: 'The DNA this protein was translated from was closed.' })
+        return
+      }
+      const sel = tab.selection
+      const [rs, re] = sel.anchor !== sel.caret
+        ? [Math.min(sel.anchor, sel.caret), Math.max(sel.anchor, sel.caret)]
+        : [0, tab.doc.sequence.length]
+      const range = residuesToDna(link, rs, re)
+      get().setActiveTab(source.id)
+      if (!range || range.end > source.doc.sequence.length) {
+        notify.warning('The codons could not be found', { detail: `"${source.doc.name}" has changed since the protein was translated.` })
+        return
+      }
+      const s = get()
+      s.smoothScrollRequested = true
+      s.setSelection({ anchor: range.start, caret: range.end, reverse: range.strand === -1 })
+    },
+
+    transferFeaturesToSource() {
+      const tab = getActiveTab()
+      const link = tab?.doc.metadata?.translatedFrom
+      if (!tab || !link) return 0
+      const source = get().tabs.find(t => t.id === link.tabId)
+      if (!source) {
+        notify.warning(`"${link.tabName}" is no longer open`)
+        return 0
+      }
+      const existing = new Set(source.doc.annotations.map(a => `${a.name}\u0000${a.start}\u0000${a.end}`))
+      const added: AnnotationData[] = []
+      for (const a of tab.doc.annotations) {
+        const r = residuesToDna(link, a.start, a.end)
+        if (!r || r.end > source.doc.sequence.length) continue
+        if (existing.has(`${a.name}\u0000${r.start}\u0000${r.end}`)) continue
+        added.push({
+          id: `ann_${Date.now().toString(36)}_${added.length}`,
+          name: a.name, type: a.type, start: r.start, end: r.end, strand: r.strand,
+          color: a.color, qualifiers: a.qualifiers,
+          ...(r.segments ? { segments: r.segments } : {}),
+        })
+      }
+      get().setActiveTab(source.id)
+      if (added.length === 0) {
+        notify.info(`"${source.doc.name}" already has these features`)
+        return 0
+      }
+      get().addAnnotations(added)
+      notify.success(`Added ${added.length} feature${added.length === 1 ? '' : 's'} to "${source.doc.name}"`, {
+        action: { label: 'Back to protein', onClick: () => get().setActiveTab(tab.id) },
+      })
+      return added.length
     },
 
     openDocumentState(state) {

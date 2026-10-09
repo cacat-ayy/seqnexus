@@ -9,29 +9,12 @@ import { X, ChevronRight, ChevronDown } from 'lucide-react'
 import { useEditorStore } from '../store'
 import type { Annotation } from '../models/Annotation'
 import { codonUsage } from '../utils/codon-usage'
-import { residueColorFor } from '../utils/residue-colors'
+import ProteinProperties from './ProteinProperties'
 
 const AA_NAMES: Record<string, string> = {
   A:'Ala',C:'Cys',D:'Asp',E:'Glu',F:'Phe',G:'Gly',H:'His',I:'Ile',
   K:'Lys',L:'Leu',M:'Met',N:'Asn',P:'Pro',Q:'Gln',R:'Arg',S:'Ser',
   T:'Thr',V:'Val',W:'Trp',Y:'Tyr','*':'Stop',
-}
-
-/** The twenty standard residues, in the order the composition lists them. */
-const RESIDUES = 'ACDEFGHIKLMNPQRSTVWY'
-
-/** Count of each residue; letters outside the twenty (X, B, U, stops) are "other". */
-function countResidues(residues: string): { counts: Map<string, number>; other: number } {
-  const counts = new Map<string, number>()
-  for (const r of RESIDUES) counts.set(r, 0)
-  let other = 0
-  for (let i = 0; i < residues.length; i++) {
-    const ch = residues[i].toUpperCase()
-    const n = counts.get(ch)
-    if (n === undefined) other++
-    else counts.set(ch, n + 1)
-  }
-  return { counts, other }
 }
 
 // --- Nucleotide colors ---
@@ -170,10 +153,6 @@ export default function SequenceStatsPopover({ anchorRef, onClose }: Props) {
   const seqLen = bases.length
   const isDs = doc.metadata?.strandedness !== 'single'
   const protein = doc.sequence.alphabet === 'protein'
-  const proteinScheme = useEditorStore(s => s.proteinColorScheme)
-  // Residue composition, for a protein only; the nucleotide stats below are
-  // computed regardless and simply not shown.
-  const residueStats = useMemo(() => (protein ? countResidues(bases) : null), [protein, bases])
 
   const stats = useMemo(() => {
     const counts = countNucleotides(bases)
@@ -220,46 +199,15 @@ export default function SequenceStatsPopover({ anchorRef, onClose }: Props) {
       : 'Tm estimation not available for sequences >10,000 bp'
   const extTooltip = 'Molar extinction coefficient at 260 nm, estimated as ~6,600 M⁻¹cm⁻¹ per base pair (dsDNA). Used to calculate concentration from absorbance via Beer-Lambert law: c = A₂₆₀ / (ε × l).'
 
-  if (protein && residueStats) {
-    // The composition bar and rows take the residue colours of the view, so
-    // the two read together. "Other" (X, U, stops) stays uncoloured.
-    const rows = [...residueStats.counts.entries()].sort((a, b) => b[1] - a[1])
+  if (protein) {
     return (
-      <div className="stats-popover" ref={popRef} style={popStyle}>
+      <div className="stats-popover stats-protein" ref={popRef} style={popStyle}>
         <div className="popover-header">
-          <span>Protein Statistics</span>
+          <span>Protein Properties</span>
           <button className="popover-close" onClick={onClose}><X size={14} /></button>
         </div>
 
-        <div className="stats-section">
-          <div className="stats-section-title">SEQUENCE</div>
-          <div className="stats-row">
-            <span>Length</span>
-            <span>{seqLen.toLocaleString()} aa</span>
-          </div>
-          {seqLen > 0 && (
-            <div className="stats-nuc-bar">
-              {rows.filter(([, n]) => n > 0).map(([aa, n]) => (
-                <div key={aa} className="stats-nuc-bar-seg" style={{ width: `${n / seqLen * 100}%`, background: residueColorFor(proteinScheme, aa, 'currentColor') }} />
-              ))}
-            </div>
-          )}
-          {rows.map(([aa, n]) => (
-            <div className="stats-row" key={aa}>
-              <span className="stats-nuc-label">
-                <span className="stats-nuc-dot" style={{ background: residueColorFor(proteinScheme, aa, 'currentColor') }} />
-                {aa} <span className="stats-muted">{AA_NAMES[aa]}</span>
-              </span>
-              <span>{n.toLocaleString()} ({seqLen > 0 ? (n / seqLen * 100).toFixed(1) : '0.0'}%)</span>
-            </div>
-          ))}
-          {residueStats.other > 0 && (
-            <div className="stats-row">
-              <span className="stats-nuc-label">Other (X, U, O, stops)</span>
-              <span>{residueStats.other.toLocaleString()}</span>
-            </div>
-          )}
-        </div>
+        <ProteinProperties doc={doc} />
 
         <div className="stats-section">
           <div className="stats-section-title">ANNOTATIONS</div>

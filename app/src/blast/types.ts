@@ -2,7 +2,20 @@
  * Types for NCBI BLAST search integration.
  */
 
-export type BlastProgram = 'blastn' | 'megablast' | 'blastx' | 'tblastx'
+export type BlastProgram = 'blastn' | 'megablast' | 'blastx' | 'tblastx' | 'blastp' | 'tblastn'
+
+/** Programs that take a protein query. */
+export const PROTEIN_QUERY_PROGRAMS: readonly BlastProgram[] = ['blastp', 'tblastn']
+
+/** Programs whose hits are protein records (the others hit nucleotide records). */
+export function hitsAreProtein(program: string): boolean {
+  return program === 'blastx' || program === 'tblastx' || program === 'blastp'
+}
+
+/** Programs whose alignments are shown as residues. */
+export function alignsAsProtein(program: string): boolean {
+  return program === 'blastx' || program === 'tblastx' || program === 'blastp' || program === 'tblastn'
+}
 
 export interface BlastParams {
   query: string

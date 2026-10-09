@@ -20,6 +20,8 @@ export interface AnnotateListRequest {
   references: ReferenceAnnotation[]
   minSimilarity: number  // 0-100 (percentage)
   bestMatchOnly: boolean // if true, keep only the best match per reference per location
+  /** Residues rather than bases: one strand, no reverse complement. */
+  protein?: boolean
 }
 
 export interface AnnotationMatch {
@@ -135,12 +137,13 @@ function searchReference(
   k: number,
   minSimilarity: number,
   bestMatchOnly: boolean,
+  protein = false,
 ): AnnotationMatch[] {
   const refUpper = ref.sequence.toUpperCase()
   const refLen = refUpper.length
   if (refLen === 0 || refLen > docUpper.length) return []
 
-  const rcRef = reverseComplement(refUpper)
+  const rcRef = protein ? refUpper : reverseComplement(refUpper)
   const matches: AnnotationMatch[] = []
 
   // Pre-compute k-mer positions for both strands
@@ -165,8 +168,8 @@ function searchReference(
     }
   }
 
-  // Search reverse strand
-  const revCandidates = findCandidatePositions(docUpper.length, rcRef, revKmerPos, kmerIndex, k, minSimilarity)
+  // Search reverse strand. A protein has none.
+  const revCandidates = protein ? [] : findCandidatePositions(docUpper.length, rcRef, revKmerPos, kmerIndex, k, minSimilarity)
   for (const pos of revCandidates) {
     const docSub = docUpper.slice(pos, pos + refLen)
     const sim = percentIdentity(rcRef, docSub, minSimilarity)
@@ -214,18 +217,20 @@ function searchReference(
 
 /** Every reference found in the document, sorted by position. */
 export function scanForReferences(req: AnnotateListRequest): AnnotationMatch[] {
-  const { documentBases, references, minSimilarity, bestMatchOnly } = req
+  const { documentBases, references, minSimilarity, bestMatchOnly, protein = false } = req
   const docUpper = documentBases.toUpperCase()
 
-  // Choose k based on document size (larger k = faster but less sensitive)
-  const k = docUpper.length > 100000 ? 10 : docUpper.length > 10000 ? 8 : 6
+  // Choose k based on document size (larger k = faster but less sensitive).
+  // Residues carry more information per letter than bases, and a protein
+  // is short, so a shorter seed keeps short tags findable.
+  const k = protein ? 3 : docUpper.length > 100000 ? 10 : docUpper.length > 10000 ? 8 : 6
 
   // Build k-mer index of the document once
   const kmerIndex = buildKmerIndex(docUpper, k)
 
   const allMatches: AnnotationMatch[] = []
   for (const ref of references) {
-    allMatches.push(...searchReference(docUpper, ref, kmerIndex, k, minSimilarity, bestMatchOnly))
+    allMatches.push(...searchReference(docUpper, ref, kmerIndex, k, minSimilarity, bestMatchOnly, protein))
   }
   allMatches.sort((a, b) => a.start - b.start)
   return allMatches

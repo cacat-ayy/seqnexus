@@ -33,8 +33,33 @@ export type DocumentOrigin =
   | 'gel'        // a band cut out of a virtual gel
   | 'optimized'  // output of the codon optimizer
   | 'consensus'  // called from a chromatogram or contig
+  | 'translation' // a protein translated from a coding feature or selection
   | 'paste'      // pasted sequence text
   | 'new'        // created empty
+
+/**
+ * Where a translated protein came from: the document, the feature (if one)
+ * and the coding bases it was read from, so the protein can point back at
+ * its codons and features can cross between the two at codon resolution.
+ * The source may have been closed or edited since; everything that uses
+ * this checks the source still exists and clamps to it.
+ */
+export interface TranslationSource {
+  tabId: string
+  /** The source's name when the protein was made, for the chip when the tab is gone. */
+  tabName: string
+  annotationId?: string
+  /** The coding span on the forward strand, [start, end). */
+  start: number
+  end: number
+  strand: 1 | -1
+  /** Exons of a spliced feature, in forward-strand order; absent for one piece. */
+  segments?: [number, number][]
+  /** Bases skipped before the first codon (/codon_start). */
+  codonOffset: number
+  /** Genetic code (NCBI table id) the protein was read with. */
+  codeId: number
+}
 
 export interface SequenceMetadata {
   strandedness?: Strandedness
@@ -50,6 +75,8 @@ export interface SequenceMetadata {
    */
   displayOrigin?: number
   origin?: DocumentOrigin
+  /** Protein only: the DNA it was translated from. */
+  translatedFrom?: TranslationSource
 }
 
 export interface DocumentState {

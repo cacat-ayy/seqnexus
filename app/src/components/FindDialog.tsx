@@ -28,10 +28,20 @@ import {
   Search, ChevronUp, ChevronDown, ChevronRight, X, ArrowLeftRight, Regex, Replace, ReplaceAll,
 } from 'lucide-react'
 
+/** A search handed to the panel from elsewhere, such as a peptide to find in a DNA document. */
+export interface FindPreset {
+  query: string
+  options: SearchOptions
+  /** Changes on every new preset, so the same query can be asked for twice. */
+  nonce: number
+}
+
 interface FindModalProps {
   open: boolean
   /** Changes on every request to find (Ctrl+F, the toolbar), open or not. */
   focusRequest: number
+  /** A query and options to search instead of the selection. */
+  preset?: FindPreset | null
   onClose: () => void
 }
 
@@ -49,7 +59,7 @@ let savedPos: { left: number; top: number } | null = null
 
 const keyOf = (sel: { anchor: number; caret: number }) => `${sel.anchor}:${sel.caret}`
 
-export default function FindDialog({ open, focusRequest, onClose }: FindModalProps) {
+export default function FindDialog({ open, focusRequest, preset, onClose }: FindModalProps) {
   const search = useEditorStore(s => s.search)
   const setSearch = useEditorStore(s => s.setSearch)
   const nextMatch = useEditorStore(s => s.nextMatch)
@@ -113,13 +123,26 @@ export default function FindDialog({ open, focusRequest, onClose }: FindModalPro
   // Runs on every request to find, so Ctrl+F on an open panel focuses it
   // again, and picks up a selection made since the last search. Waits for
   // the card to mount: on the first open it renders one pass after `open`.
+  // A preset (a peptide to find in this DNA) takes the place of the selection
+  // as the query, with its own options.
+  const presetNonceRef = useRef(0)
+  useEffect(() => {
+    if (!open || !visible || !preset || preset.nonce === presetNonceRef.current) return
+    presetNonceRef.current = preset.nonce
+    pendingQueryRef.current = preset.query
+    setQuery(preset.query)
+    setOptions({ ...preset.options })
+    setSearchNonce(k => k + 1)
+  }, [open, visible, preset])
+
   useEffect(() => {
     if (!open || !visible) return
     const st = useEditorStore.getState()
     const L = st.doc.sequence.length
     const segs = selectionSegments(st.selection, st.doc.sequence.topology, L)
     const len = segs.reduce((n, [s, e]) => n + e - s, 0)
-    if (len > 0 && len <= PREFILL_MAX && keyOf(st.selection) !== lastHitRef.current) {
+    const presetPending = !!preset && preset.nonce !== presetNonceRef.current
+    if (!presetPending && len > 0 && len <= PREFILL_MAX && keyOf(st.selection) !== lastHitRef.current) {
       const text = segs.map(([s, e]) => st.doc.sequence.basesIn(s, e)).join('').toUpperCase()
       // Hold the search back until this query is in state: searching the
       // old one first would move the selection off the bases being searched.
@@ -134,7 +157,7 @@ export default function FindDialog({ open, focusRequest, onClose }: FindModalPro
       inputRef.current?.select()
     })
     return () => cancelAnimationFrame(id)
-  }, [focusRequest, open, visible])
+  }, [focusRequest, open, visible, preset])
 
   // ---- Search ----
   // Also on a tab switch: the query belongs to the panel, the hits to the
