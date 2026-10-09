@@ -27,8 +27,9 @@ import {
   TRANSLATION_FRAMES, type AminoAcidStyleId, type TranslationFrameId,
 } from '../codon/translation-display'
 import { DEFAULT_GENETIC_CODE_ID, GENETIC_CODES } from '../codon/genetic-codes'
+import { STORAGE_KEYS } from '../storage/keys'
 
-const STORAGE_KEY = 'seqnexus:display-settings'
+const STORAGE_KEY = STORAGE_KEYS.displaySettings
 
 export interface DisplaySettings {
   colorScheme: ColorSchemeId

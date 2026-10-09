@@ -12,8 +12,9 @@
  */
 
 import { create } from 'zustand'
+import { STORAGE_KEYS } from '../storage/keys'
 
-const STORAGE_KEY = 'seqnexus:backup'
+const STORAGE_KEY = STORAGE_KEYS.backup
 const DAY_MS = 24 * 60 * 60 * 1000
 
 /** How often to remind, in days. 0 is off. */

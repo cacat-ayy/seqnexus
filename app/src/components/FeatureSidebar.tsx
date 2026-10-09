@@ -22,11 +22,12 @@ import './FeatureSidebar.css'
 import './ContextMenuPopup.css'
 
 import { FEATURE_TYPES, PRESET_COLORS } from '../utils/annotation-constants'
+import { STORAGE_KEYS } from '../storage/keys'
 
 const SIDEBAR_MIN = 200
 const SIDEBAR_MAX = 500
 const SIDEBAR_DEFAULT = 280
-const STORAGE_KEY_WIDTH = 'seqnexus_feature_sidebar_width'
+const STORAGE_KEY_WIDTH = STORAGE_KEYS.featureSidebarWidth
 
 // --- Qualifiers sub-editor ---
 

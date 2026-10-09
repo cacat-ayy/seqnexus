@@ -75,6 +75,7 @@ import type {
 import type { CodonUsageTable } from './codon/usage-tables'
 import { defaultWorkspace, laneUsesSequence, MAX_LANES, type GelWorkspaceState } from './gel/workspace'
 import type { GelLane } from './gel/model'
+import { STORAGE_KEYS } from './storage/keys'
 
 const MAX_UNDO = 100
 
@@ -1439,7 +1440,7 @@ const emptyDoc: DocumentState = {
   annotations: [],
 }
 
-const SIDEBAR_TAB_KEY = 'seqnexus_feature_sidebar_tab'
+const SIDEBAR_TAB_KEY = STORAGE_KEYS.featureSidebarTab
 
 function loadSidebarTab(): SidebarTab {
   try {

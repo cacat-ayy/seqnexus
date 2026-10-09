@@ -8,6 +8,7 @@ import { useRef, useCallback, useEffect } from 'react'
 import { X, Replace, Merge } from 'lucide-react'
 import { useExitAnimation } from '../hooks/useExitAnimation'
 import { useFocusTrap } from '../hooks/useFocusTrap'
+import './SessionDialog.css'
 
 interface Props {
   open: boolean
@@ -43,7 +44,7 @@ export default function SessionImportModal({ open, filename, tabCount, readCount
 
   return (
     <div className={closing ? 'modal-backdrop closing' : 'modal-backdrop'} onAnimationEnd={onAnimationEnd} ref={backdropRef} onClick={handleBackdropClick} onKeyDown={handleKeyDown} tabIndex={-1}>
-      <div className="modal-dialog" role="dialog" aria-modal="true" aria-labelledby="session-import-modal-title" style={{ maxWidth: 400 }}>
+      <div className="modal-dialog session-dialog" role="dialog" aria-modal="true" aria-labelledby="session-import-modal-title">
         <div className="modal-header">
           <h3 className="modal-title" id="session-import-modal-title">Import Session</h3>
           <button className="modal-close" onClick={onClose} aria-label="Close">
@@ -51,21 +52,21 @@ export default function SessionImportModal({ open, filename, tabCount, readCount
           </button>
         </div>
 
-        <div className="modal-body" style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-          <p style={{ margin: 0, fontSize: 13 }}>
+        <div className="modal-body session-body">
+          <p className="session-name">
             <strong>{filename}</strong>
           </p>
-          <p style={{ margin: 0, fontSize: 12, color: 'var(--text-muted)' }}>
+          <p className="session-note">
             Contains {tabCount} sequence{tabCount !== 1 ? 's' : ''}
             {readCount > 0 && <>, {readCount} read{readCount !== 1 ? 's' : ''}</>}
             {alignmentCount > 0 && <>, {alignmentCount} alignment{alignmentCount !== 1 ? 's' : ''}</>}
           </p>
-          <p style={{ margin: 0, fontSize: 12, color: 'var(--text-muted)' }}>
+          <p className="session-note">
             How should this session be imported?
           </p>
         </div>
 
-        <div className="modal-footer" style={{ gap: 8 }}>
+        <div className="modal-footer">
           <button className="btn" onClick={onClose}>Cancel</button>
           <button className="btn" onClick={onMerge} title="Add imported items alongside existing ones">
             <Merge size={14} />

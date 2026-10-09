@@ -9,6 +9,7 @@
 
 import type { PrimerConstraints } from '../scoring'
 import type { ProbeConstraints } from './types'
+import { STORAGE_KEYS } from '../../storage/keys'
 
 export interface DesignSettings {
   preset: PresetId | 'custom'
@@ -162,7 +163,7 @@ export function settingsProblem(s: DesignSettings): string | null {
   return null
 }
 
-const STORAGE_KEY = 'seqnexus:primer-design'
+const STORAGE_KEY = STORAGE_KEYS.primerDesign
 
 export function loadSettings(): DesignSettings {
   try {

@@ -49,10 +49,11 @@ import { mappingStorageList } from './ngs/builder'
 import { qcStorageId } from './ngs/qcreport/storage'
 import type { ReadSetRecord } from './ngs/types'
 import { notify } from './toast'
+import { STORAGE_KEYS } from './storage/keys'
 
-const STORAGE_KEY = 'seqnexus_session'
+const STORAGE_KEY = STORAGE_KEYS.session
 /** Where an unreadable session payload is parked so autosave cannot clobber it. */
-const CORRUPT_KEY = 'seqnexus_session_corrupt'
+const CORRUPT_KEY = STORAGE_KEYS.sessionCorrupt
 const SAVE_DEBOUNCE_MS = 1000
 
 // ---- Undo history serialization ----

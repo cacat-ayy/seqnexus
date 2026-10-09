@@ -236,11 +236,10 @@
   flex-shrink: 0;
 }
 
-.ann-swatch {
+/* The result list's swatch, a size up from the sidebar's .ann-swatch. */
+.ann-match-swatch {
   width: 10px;
   height: 10px;
-  border-radius: var(--radius-sm);
-  flex-shrink: 0;
 }
 
 .ann-result-match {

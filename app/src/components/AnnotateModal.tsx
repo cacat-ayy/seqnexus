@@ -349,7 +349,7 @@ export default function AnnotateModal({ open, onClose }: Props) {
                         <span className="ann-result-chevron">
                           {isCollapsed ? <ChevronRight size={14} /> : <ChevronDown size={14} />}
                         </span>
-                        <span className="ann-swatch" style={{ backgroundColor: matchList[0].color }} />
+                        <span className="ann-swatch ann-match-swatch" style={{ backgroundColor: matchList[0].color }} />
                         <span>{name}</span>
                         <span className="ft-type-badge">{matchList[0].refType}</span>
                         {customSource && <span className="ann-source-badge">{customSource}</span>}

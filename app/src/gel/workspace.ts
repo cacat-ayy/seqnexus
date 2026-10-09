@@ -12,7 +12,7 @@ import { DEFAULT_LADDER_ID, getLadder } from './ladders'
 import { AGAROSE_MAX, AGAROSE_MIN, GEL_FORMATS } from './migration'
 import {
   DEFAULT_CONDITIONS, DEFAULT_PCR_NG, DEFAULT_SAMPLE_NG, DEFAULT_SIZES_NG,
-  type FormMix, type GelBuffer, type GelConditions, type GelFormat, type GelLane, type LaneSample,
+  type FormMix, type GelConditions, type GelFormat, type GelLane, type LaneSample,
 } from './model'
 import { DEFAULT_LOOK, getLook, type GelLookId } from './render/looks'
 import { NO_EFFECTS, type GelEffects } from './render/raster'
@@ -185,26 +185,6 @@ export function defaultWorkspace(active: ActiveSequence | null): GelWorkspaceSta
 // Persistence
 // ---------------------------------------------------------------------------
 
-export const WORKSPACE_STORAGE_KEY = 'seqnexus_gel_workspace'
-/** The modal's lane table, before the workspace. Read once to migrate. */
-export const LEGACY_GEL_KEY = 'seqnexus_gel'
-export const LEGACY_DISPLAY_KEY = 'seqnexus_gel_display'
-
-interface LegacyLane {
-  type?: 'ladder' | 'digest' | 'uncut'
-  ladderName?: string
-  sequenceTabId?: string
-  enzymeNames?: string[]
-}
-
-interface LegacyGel {
-  lanes?: LegacyLane[]
-  gelPct?: number
-  buffer?: GelBuffer
-  massIntensity?: boolean
-  dyeFront?: number
-}
-
 function clamp(v: unknown, lo: number, hi: number, fallback: number): number {
   return typeof v === 'number' && Number.isFinite(v) ? Math.min(hi, Math.max(lo, v)) : fallback
 }
@@ -278,56 +258,6 @@ export function sanitizeWorkspace(raw: unknown): GelWorkspaceState | null {
     })),
     display: sanitizeDisplay(saved.display),
   }
-}
-
-/** Convert the old modal's lane table to lanes. */
-export function migrateLegacy(legacy: LegacyGel, displayRaw: Partial<GelDisplay> | null): GelWorkspaceState | null {
-  if (!Array.isArray(legacy.lanes) || legacy.lanes.length === 0) return null
-  const lanes: GelLane[] = legacy.lanes.slice(0, MAX_LANES).map(l => {
-    let sample: LaneSample = { kind: 'empty' }
-    if (l.type === 'ladder') {
-      sample = { kind: 'ladder', ladderId: getLadder(l.ladderName ?? '')?.id ?? DEFAULT_LADDER_ID }
-    } else if (l.sequenceTabId) {
-      const enzymes = l.type === 'digest' ? (l.enzymeNames ?? []) : []
-      // The old table left a digest lane without enzymes blank.
-      sample = l.type === 'digest' && enzymes.length === 0
-        ? { kind: 'empty' }
-        : { kind: 'sequence', sourceId: l.sequenceTabId, enzymes, ng: DEFAULT_SAMPLE_NG }
-    }
-    return { id: newLaneId(), sample }
-  })
-  return {
-    conditions: sanitizeConditions({ agarosePct: legacy.gelPct, buffer: legacy.buffer, dyeFront: legacy.dyeFront }),
-    lanes,
-    display: sanitizeDisplay({ ...displayRaw, massThickness: legacy.massIntensity ?? true }),
-  }
-}
-
-function readJson<T>(key: string): T | null {
-  try {
-    const raw = localStorage.getItem(key)
-    return raw ? JSON.parse(raw) as T : null
-  } catch {
-    return null
-  }
-}
-
-/**
- * The single gel kept in local storage before gels were session items, in
- * either of its two old shapes. Read once, to become the first gel item.
- */
-export function loadStoredWorkspace(): GelWorkspaceState | null {
-  const saved = sanitizeWorkspace(readJson(WORKSPACE_STORAGE_KEY))
-  if (saved) return saved
-  const legacy = readJson<LegacyGel>(LEGACY_GEL_KEY)
-  return legacy ? migrateLegacy(legacy, readJson<Partial<GelDisplay>>(LEGACY_DISPLAY_KEY)) : null
-}
-
-/** Forget the local-storage gel once it lives in the session. */
-export function clearStoredWorkspace(): void {
-  try {
-    for (const key of [WORKSPACE_STORAGE_KEY, LEGACY_GEL_KEY, LEGACY_DISPLAY_KEY]) localStorage.removeItem(key)
-  } catch { /* storage blocked: nothing to clear */ }
 }
 
 // ---------------------------------------------------------------------------

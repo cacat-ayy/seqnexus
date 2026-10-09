@@ -16,6 +16,7 @@ import type { BlastProgram, BlastResult, BlastHit } from '../blast/types'
 import { useExitAnimation } from '../hooks/useExitAnimation'
 import { useFocusTrap } from '../hooks/useFocusTrap'
 import { copyText } from '../utils/clipboard'
+import { STORAGE_KEYS } from '../storage/keys'
 
 interface Props {
   open: boolean
@@ -30,8 +31,8 @@ type SortDir = 'asc' | 'desc'
 const POLL_INTERVAL = 15_000
 const TIMEOUT_MS = 15 * 60 * 1000 // 15 minutes
 
-const LS_BLAST_SETTINGS = 'seqnexus:blast-settings'
-const LS_BLAST_HISTORY = 'seqnexus:blast-history'
+const LS_BLAST_SETTINGS = STORAGE_KEYS.blastSettings
+const LS_BLAST_HISTORY = STORAGE_KEYS.blastHistory
 const MAX_BLAST_HISTORY = 10
 
 function formatEvalue(e: number): string {
@@ -79,19 +80,7 @@ function saveSettings(s: { program: BlastProgram; database: string; evalue: stri
 function loadBlastHistory(): BlastHistoryEntry[] {
   try {
     const raw = localStorage.getItem(LS_BLAST_HISTORY)
-    if (!raw) {
-      // Migrate from old single-result format
-      const old = localStorage.getItem('seqnexus:blast-result')
-      if (old) {
-        const parsed = JSON.parse(old)
-        localStorage.removeItem('seqnexus:blast-result')
-        const entry: BlastHistoryEntry = { result: parsed.result, rid: parsed.rid, timestamp: Date.now() }
-        localStorage.setItem(LS_BLAST_HISTORY, JSON.stringify([entry]))
-        return [entry]
-      }
-      return []
-    }
-    return JSON.parse(raw)
+    return raw ? JSON.parse(raw) : []
   } catch { return [] }
 }
 

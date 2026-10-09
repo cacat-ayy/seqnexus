@@ -9,6 +9,7 @@
 import type { BaseEdit, SequencingRead } from '../store'
 import { DEFAULT_MIXED, planMixedCalls, type MixedSettings } from './mixed'
 import { DEFAULT_TRIM, planTrim, type TrimSettings } from './trim'
+import { STORAGE_KEYS } from '../storage/keys'
 
 export interface ProcessSettings {
   trimEnabled: boolean
@@ -76,7 +77,7 @@ function sameEdits(a: readonly BaseEdit[], b: readonly BaseEdit[]): boolean {
 // Remembered settings (the vector is chosen per use: it names an open sequence)
 // ---------------------------------------------------------------------------
 
-const KEY = 'seqnexus_trim_settings'
+const KEY = STORAGE_KEYS.trimSettings
 
 export function loadProcessSettings(): ProcessSettings {
   try {

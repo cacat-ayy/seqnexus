@@ -246,13 +246,13 @@
   margin-top: var(--space-0-5);
 }
 
-.ft-del-btn {
-  color: var(--danger) !important;
-  border-color: var(--danger) !important;
+.btn.ft-del-btn {
+  color: var(--danger);
+  border-color: var(--danger);
 }
 
-.ft-del-btn:hover {
-  background: var(--danger-bg) !important;
+.btn.ft-del-btn:hover {
+  background: var(--danger-bg);
 }
 
 .ft-empty {
@@ -416,10 +416,10 @@
   margin-bottom: var(--space-0-5);
 }
 
-.ft-qual-val-input {
+.input.ft-qual-val-input {
   flex: 1;
-  font-size: var(--text-xs) !important;
-  padding: var(--space-0-5) var(--space-1) !important;
+  font-size: var(--text-xs);
+  padding: var(--space-0-5) var(--space-1);
 }
 
 .ft-qual-del {
@@ -454,10 +454,10 @@
   gap: var(--space-1);
 }
 
-.ft-qual-key-select {
+.select.ft-qual-key-select {
   width: 80px;
   flex-shrink: 0;
-  font-size: var(--text-xs) !important;
+  font-size: var(--text-xs);
 }
 
 .ft-qual-add-actions {
@@ -481,13 +481,6 @@
 
 .ft-qual-add-btn:hover {
   opacity: .8;
-}
-
-/* --- FeatureSidebar overrides --- */
-
-.ft-summary:hover .fs-eye-inline,
-.fs-eye-inline.hidden {
-  opacity: .5;
 }
 
 .fs-item.dimmed .ft-summary {
@@ -767,8 +760,9 @@
 .fs-eye-inline.hidden {
   opacity: 0.5;
 }
-.fs-eye-inline:hover {
-  opacity: 1 !important;
+.ft-summary .fs-eye-inline:hover,
+.fs-eye-inline.hidden:hover {
+  opacity: 1;
 }
 
 /* Annotation item */

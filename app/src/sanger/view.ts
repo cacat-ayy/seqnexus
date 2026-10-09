@@ -9,6 +9,7 @@
  */
 
 import type { TraceBase } from '../io/trace'
+import { STORAGE_KEYS } from '../storage/keys'
 
 /** Column widths in pixels; below LETTER_MIN_WIDTH calls are drawn as ticks. */
 export const ZOOM_WIDTHS = [2, 3, 4, 6, 8, 10, 12, 14, 17, 20, 24, 30, 38] as const
@@ -64,7 +65,7 @@ export const DEFAULT_TRACE_VIEW: TraceView = {
   stackHeight: 64,
 }
 
-const KEY = 'seqnexus_trace_view'
+const KEY = STORAGE_KEYS.traceView
 
 export function loadTraceView(): TraceView {
   try {

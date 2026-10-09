@@ -21,6 +21,7 @@ import { parseEnzymeList } from '../gel/parse'
 import { findCutSites, cuttingSites } from '../enzymes/finder'
 import { findUnblockedSites } from '../cloning/digest'
 import type { SequenceSource } from '../gel/simulate'
+import { STORAGE_KEYS } from '../storage/keys'
 
 /** A sequence the enzymes are for. */
 export interface CutTarget {
@@ -39,7 +40,7 @@ interface Props {
   suggestTitle?: string
 }
 
-const RECENT_KEY = 'seqnexus_gel_recent_enzymes'
+const RECENT_KEY = STORAGE_KEYS.gelRecentEnzymes
 const MAX_RECENT = 8
 const MAX_OPTIONS = 40
 

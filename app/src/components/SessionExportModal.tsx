@@ -12,6 +12,7 @@ import { useExitAnimation } from '../hooks/useExitAnimation'
 import { useFocusTrap } from '../hooks/useFocusTrap'
 import { estimateExportSize, type SessionExportOptions } from '../persistence'
 import { formatBytes } from '../utils/format'
+import './SessionDialog.css'
 
 interface Props {
   open: boolean
@@ -74,7 +75,7 @@ export default function SessionExportModal({ open, onClose, onExport }: Props) {
 
   return (
     <div className={closing ? 'modal-backdrop closing' : 'modal-backdrop'} onAnimationEnd={onAnimationEnd} ref={backdropRef} onClick={handleBackdropClick} onKeyDown={handleKeyDown} tabIndex={-1}>
-      <div className="modal-dialog" role="dialog" aria-modal="true" aria-labelledby="session-export-modal-title" style={{ maxWidth: 420 }}>
+      <div className="modal-dialog session-dialog" role="dialog" aria-modal="true" aria-labelledby="session-export-modal-title">
         <div className="modal-header">
           <h3 className="modal-title" id="session-export-modal-title">Export Session</h3>
           <button className="modal-close" onClick={onClose} aria-label="Close">
@@ -82,17 +83,17 @@ export default function SessionExportModal({ open, onClose, onExport }: Props) {
           </button>
         </div>
 
-        <div className="modal-body" style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-          <p style={{ margin: 0, fontSize: 12, color: 'var(--text-muted)' }}>
+        <div className="modal-body session-body">
+          <p className="session-note">
             Choose what to include in the session file.
           </p>
 
-          <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13 }}>
+          <label className="session-option">
             <input type="checkbox" checked disabled />
             <span>Sequences ({tabs.length})</span>
           </label>
 
-          <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, opacity: reads.length === 0 ? 0.4 : 1 }}>
+          <label className={reads.length === 0 ? 'session-option is-empty' : 'session-option'}>
             <input
               type="checkbox"
               checked={includeReads}
@@ -100,10 +101,10 @@ export default function SessionExportModal({ open, onClose, onExport }: Props) {
               onChange={e => setIncludeReads(e.target.checked)}
             />
             <span>Sequencing reads ({reads.length})</span>
-            {reads.length > 0 && <span style={{ fontSize: 10, color: 'var(--text-muted)' }}>includes trace data</span>}
+            {reads.length > 0 && <span className="session-option-hint">includes trace data</span>}
           </label>
 
-          <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, opacity: alignments.length === 0 ? 0.4 : 1 }}>
+          <label className={alignments.length === 0 ? 'session-option is-empty' : 'session-option'}>
             <input
               type="checkbox"
               checked={includeAlignments}
@@ -113,7 +114,7 @@ export default function SessionExportModal({ open, onClose, onExport }: Props) {
             <span>Alignments ({alignments.length})</span>
           </label>
 
-          <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, opacity: contigs.length === 0 ? 0.4 : 1 }}>
+          <label className={contigs.length === 0 ? 'session-option is-empty' : 'session-option'}>
             <input
               type="checkbox"
               checked={includeContigs}
@@ -123,11 +124,11 @@ export default function SessionExportModal({ open, onClose, onExport }: Props) {
             <span>Contigs ({contigs.length})</span>
           </label>
 
-          <div style={{ borderTop: '1px solid var(--border)', paddingTop: 10, marginTop: 4 }}>
-            <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 8 }}>
+          <div className="session-filename">
+            <div className="session-size">
               Estimated size: <strong>{formatBytes(estimatedSize)}</strong>
             </div>
-            <label style={{ fontSize: 12, color: 'var(--text-muted)' }}>
+            <label className="session-field">
               Filename
               <input
                 ref={filenameRef}
@@ -135,7 +136,6 @@ export default function SessionExportModal({ open, onClose, onExport }: Props) {
                 type="text"
                 value={filename}
                 onChange={e => setFilename(e.target.value)}
-                style={{ width: '100%', marginTop: 4, fontSize: 13 }}
                 onKeyDown={e => { if (e.key === 'Enter') handleExport() }}
               />
             </label>

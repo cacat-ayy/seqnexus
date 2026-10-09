@@ -86,11 +86,6 @@
 .empty-state-text { font-size: var(--text-md); }
 .empty-state-hint { font-size: var(--text-sm); color: var(--text-faint); }
 
-/* Buttons: use shared .btn from App.css */
-.btn-primary { background: var(--accent); color: var(--on-accent); border-color: var(--accent); }
-.btn-primary:hover { background: var(--accent-hover); box-shadow: var(--shadow-sm); }
-.btn-sm { padding: var(--space-1) var(--space-2-5); font-size: var(--text-sm); }
-
 /* Drop overlay */
 .drop-overlay {
   position: absolute;

@@ -15,8 +15,9 @@ import {
   DENSITIES, GROUP_BY_OPTIONS, SORT_OPTIONS,
   type Density, type GroupBy, type SortBy, type SortDir,
 } from '../explorer/types'
+import { STORAGE_KEYS } from '../storage/keys'
 
-const STORAGE_KEY = 'seqnexus:explorer-settings'
+const STORAGE_KEY = STORAGE_KEYS.explorerSettings
 
 export const SIDEBAR_MIN = 180
 export const SIDEBAR_MAX = 520

@@ -24,6 +24,7 @@ import SequencingTask from './workbench/SequencingTask'
 import CheckTask from './workbench/CheckTask'
 import { SettingsSection } from './workbench/SettingsSection'
 import './workbench.css'
+import { STORAGE_KEYS } from '../../storage/keys'
 
 type Task = 'pcr' | 'cloning' | 'mutagenesis' | 'sequencing' | 'check'
 
@@ -35,7 +36,7 @@ const TASKS: { id: Task; label: string }[] = [
   { id: 'check', label: 'Check a primer' },
 ]
 
-const TASK_KEY = 'seqnexus:primer-task'
+const TASK_KEY = STORAGE_KEYS.primerTask
 
 function loadTask(): Task {
   try {

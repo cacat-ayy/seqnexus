@@ -20,6 +20,7 @@ import type { MinimapHit, MinimapTheme, MinimapTrack, TrackArea } from './types'
 import type { ViewportSource } from './viewport'
 import { dragViewport, grabViewport, niceTickInterval, posAtX } from './geometry'
 import { readTheme } from './theme'
+import { STORAGE_KEYS } from '../../storage/keys'
 
 export interface MinimapProps {
   /** Which view this is; the collapsed state is remembered per kind. */
@@ -58,7 +59,7 @@ const TRACK_GAP = 2
 const COLLAPSED_H = 10
 const MIN_VIEWPORT_PX = 3
 
-const STORAGE_PREFIX = 'seqnexus_minimap_collapsed_'
+const STORAGE_PREFIX = STORAGE_KEYS.minimapCollapsedPrefix
 
 const defaultFormat = (pos: number) => (Math.floor(pos) + 1).toLocaleString()
 

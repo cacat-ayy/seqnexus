@@ -46,7 +46,6 @@ import { closeAnalyse, openAnalyse, useAnalyseRequest } from './components/ngs/a
 import { isReadFile } from './ngs/detect'
 import { libraryMatches } from './primers/library'
 import { notify } from './toast'
-import { loadStoredWorkspace, clearStoredWorkspace } from './gel/workspace'
 import { METHOD_BLURB, METHOD_LABEL, type CloningMethodId } from './cloning/design'
 import { useSessionPersistence } from './hooks/useSessionPersistence'
 import { useBackupReminder } from './hooks/useBackupReminder'
@@ -105,6 +104,7 @@ const ImportAlignmentsDialog = lazy(() => import('./components/ngs/ImportAlignme
 import type { AlnDoc } from './msa/model'
 import { contigToAlignment } from './assembly/export'
 import { ALIGNMENT_ONLY_EXTENSIONS, ALN_EXTENSIONS, detectFormat, fastaLooksAligned, readAlignment, writeAlignment, type AlnFormatId } from './msa/formats'
+import { STORAGE_KEYS } from './storage/keys'
 
 export type ThemeName =
   | 'light' | 'dark' | 'midnight' | 'solarized' | 'nature'
@@ -478,11 +478,7 @@ export default function App() {
   const undoGel = useEditorStore(s => s.undoGel)
   const redoGel = useEditorStore(s => s.redoGel)
 
-  /**
-   * Open the most recently edited gel, or start one from the sequence in
-   * view. The very first gel adopts the one kept in local storage before
-   * gels were session items.
-   */
+  /** Open the most recently edited gel, or start one from the sequence in view. */
   const openGel = useCallback(() => {
     const s = useEditorStore.getState()
     if (s.gels.length > 0) {
@@ -490,9 +486,7 @@ export default function App() {
       s.setActiveGel(latest.id)
       return
     }
-    const stored = loadStoredWorkspace()
-    s.createGel(stored ? { state: stored, name: 'Gel 1' } : undefined)
-    if (stored) clearStoredWorkspace()
+    s.createGel()
   }, [])
 
   const openCloning = useCallback(() => {
@@ -688,7 +682,7 @@ export default function App() {
 
   // Split view resizable divider
   const [splitFraction, setSplitFraction] = useState(() => {
-    const saved = localStorage.getItem('seqnexus_split_fraction')
+    const saved = localStorage.getItem(STORAGE_KEYS.splitFraction)
     return saved ? Math.max(0.15, Math.min(0.7, parseFloat(saved))) : 0.4
   })
   const splitContainerRef = useRef<HTMLDivElement>(null)
@@ -709,7 +703,7 @@ export default function App() {
 
   const handleSplitPointerUp = useCallback(() => {
     isDraggingSplit.current = false
-    localStorage.setItem('seqnexus_split_fraction', String(splitFraction))
+    localStorage.setItem(STORAGE_KEYS.splitFraction, String(splitFraction))
   }, [splitFraction])
 
   // Theme & info popovers

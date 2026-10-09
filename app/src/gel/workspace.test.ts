@@ -1,7 +1,7 @@
-import { describe, it, expect, beforeEach } from 'vitest'
+import { describe, it, expect } from 'vitest'
 import {
-  defaultLanes, suggestDigest, loadStoredWorkspace, clearStoredWorkspace, sanitizeWorkspace, migrateLegacy, autoLaneLabel, shortLadderName,
-  formPresetId, FORM_PRESETS, MAX_LANES, WORKSPACE_STORAGE_KEY, LEGACY_GEL_KEY, LEGACY_DISPLAY_KEY, DEFAULT_DISPLAY,
+  defaultLanes, suggestDigest, sanitizeWorkspace, autoLaneLabel, shortLadderName,
+  formPresetId, FORM_PRESETS, MAX_LANES, DEFAULT_DISPLAY,
   type ActiveSequence,
 } from './workspace'
 import { DEFAULT_CONDITIONS } from './model'
@@ -61,67 +61,27 @@ describe('defaultLanes', () => {
   })
 })
 
-describe('persistence', () => {
-  beforeEach(() => localStorage.clear())
-
-  it('round-trips a workspace', () => {
+describe('sanitizeWorkspace', () => {
+  it('keeps a well-formed workspace as it is', () => {
     const state = {
       conditions: { ...DEFAULT_CONDITIONS, agarosePct: 2, buffer: 'TBE' as const },
       lanes: [{ id: 'a', label: 'Mine', sample: { kind: 'ladder' as const, ladderId: '100bp' } }],
       display: { ...DEFAULT_DISPLAY, look: 'inverted' as const, labelMode: 'names' as const },
     }
-    localStorage.setItem(WORKSPACE_STORAGE_KEY, JSON.stringify(state))
-    expect(loadStoredWorkspace()).toEqual(state)
+    expect(sanitizeWorkspace(JSON.parse(JSON.stringify(state)))).toEqual(state)
   })
 
   it('repairs out-of-range or unknown values', () => {
-    localStorage.setItem(WORKSPACE_STORAGE_KEY, JSON.stringify({
+    const ws = sanitizeWorkspace({
       conditions: { agarosePct: 10, buffer: 'XYZ', format: 'huge', dyeFront: 5 },
       lanes: Array.from({ length: 30 }, (_, i) => ({ id: `l${i}`, sample: { kind: 'bogus' } })),
       display: { look: 'neon', exposure: 9 },
-    }))
-    const ws = loadStoredWorkspace()!
+    })!
     expect(ws.conditions).toEqual({ agarosePct: 3, buffer: 'TAE', format: 'mini', dyeFront: 1 })
     expect(ws.lanes).toHaveLength(MAX_LANES)
     expect(ws.lanes[0].sample).toEqual({ kind: 'empty' })
     expect(ws.display.look).toBe('uv')
     expect(ws.display.exposure).toBe(2)
-  })
-
-  it('migrates the old modal lane table', () => {
-    localStorage.setItem(LEGACY_GEL_KEY, JSON.stringify({
-      gelPct: 0.8, buffer: 'TBE', massIntensity: false,
-      lanes: [
-        { type: 'ladder', ladderName: '100 bp DNA Ladder' },
-        { type: 'uncut', sequenceTabId: 't1', enzymeNames: [] },
-        { type: 'digest', sequenceTabId: 't1', enzymeNames: ['EcoRI'] },
-        { type: 'digest', sequenceTabId: 't1', enzymeNames: [] },
-        { type: 'digest', sequenceTabId: '', enzymeNames: [] },
-      ],
-    }))
-    localStorage.setItem(LEGACY_DISPLAY_KEY, JSON.stringify({ look: 'sybr-safe' }))
-    const ws = loadStoredWorkspace()!
-    expect(ws.lanes.map((l: { sample: unknown }) => l.sample)).toEqual([
-      { kind: 'ladder', ladderId: '100bp' },
-      { kind: 'sequence', sourceId: 't1', enzymes: [], ng: 500 },
-      { kind: 'sequence', sourceId: 't1', enzymes: ['EcoRI'], ng: 500 },
-      { kind: 'empty' },
-      { kind: 'empty' },
-    ])
-    expect(ws.conditions.agarosePct).toBe(0.8)
-    expect(ws.conditions.buffer).toBe('TBE')
-    expect(ws.display.look).toBe('sybr-safe')
-    expect(ws.display.massThickness).toBe(false)
-  })
-
-  it('returns null with nothing saved, and for an empty old table', () => {
-    expect(loadStoredWorkspace()).toBeNull()
-    expect(migrateLegacy({ lanes: [] }, null)).toBeNull()
-  })
-
-  it('survives corrupt storage', () => {
-    localStorage.setItem(WORKSPACE_STORAGE_KEY, '{not json')
-    expect(loadStoredWorkspace()).toBeNull()
   })
 })
 
@@ -168,17 +128,7 @@ describe('suggestDigest readability', () => {
   })
 })
 
-describe('stored workspace', () => {
-  beforeEach(() => localStorage.clear())
-
-  it('is forgotten once it has become a gel', () => {
-    localStorage.setItem(WORKSPACE_STORAGE_KEY, JSON.stringify({ lanes: [] , conditions: {}, display: {} }))
-    localStorage.setItem(LEGACY_GEL_KEY, '{}')
-    clearStoredWorkspace()
-    expect(localStorage.getItem(WORKSPACE_STORAGE_KEY)).toBeNull()
-    expect(localStorage.getItem(LEGACY_GEL_KEY)).toBeNull()
-  })
-
+describe('sanitizeWorkspace samples', () => {
   it('keeps PCR and size lanes, repairing their numbers', () => {
     const ws = sanitizeWorkspace({
       lanes: [
