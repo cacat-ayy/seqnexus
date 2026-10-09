@@ -29,6 +29,7 @@ import {
 import { DEFAULT_GENETIC_CODE_ID, GENETIC_CODES } from '../codon/genetic-codes'
 import { DEFAULT_PROTEIN_SCHEME, PROTEIN_SCHEMES, type ProteinSchemeId } from './residue-colors'
 import { DEFAULT_PKA_SET, PKA_SETS, type PkaSetId } from '../protein/properties'
+import { DEFAULT_PROTEIN_SCALE, PROTEIN_SCALES, SCALE_WINDOWS, type ProteinScaleId } from '../protein/scales'
 import { STORAGE_KEYS } from '../storage/keys'
 
 const STORAGE_KEY = STORAGE_KEYS.displaySettings
@@ -61,6 +62,12 @@ export interface DisplaySettings {
   proteinColorScheme: ProteinSchemeId
   /** Which pKa values the isoelectric point and charge are computed with. */
   proteinPkaSet: PkaSetId
+  /** The graph track under a protein's features, or none. */
+  proteinScale: ProteinScaleId | 'none'
+  /** Residues the graph's window spans; 0 takes the scale's own default. */
+  proteinScaleWindow: number
+  /** Record replaced and deleted residues of a protein as variant features. */
+  trackVariants: boolean
 }
 
 export const DEFAULT_DISPLAY_SETTINGS: DisplaySettings = {
@@ -84,6 +91,11 @@ export const DEFAULT_DISPLAY_SETTINGS: DisplaySettings = {
   threeLetterAminoAcids: false,
   proteinColorScheme: DEFAULT_PROTEIN_SCHEME,
   proteinPkaSet: DEFAULT_PKA_SET,
+  // Off until asked for: the track takes a row's height from every row.
+  proteinScale: DEFAULT_PROTEIN_SCALE,
+  proteinScaleWindow: 0,
+  // On: a mutation written into a protein is the thing most worth a record.
+  trackVariants: true,
 }
 
 const VALID_SCHEMES = new Set(COLOR_SCHEMES.map(s => s.id))
@@ -94,6 +106,8 @@ const VALID_AA_STYLES = new Set(AMINO_ACID_STYLES.map(s => s.id))
 const VALID_CODES = new Set(GENETIC_CODES.map(c => c.id))
 const VALID_PROTEIN_SCHEMES = new Set(PROTEIN_SCHEMES.map(s => s.id))
 const VALID_PKA_SETS = new Set(PKA_SETS.map(s => s.id))
+const VALID_SCALES = new Set(PROTEIN_SCALES.map(s => s.id))
+const VALID_WINDOWS = new Set<number>(SCALE_WINDOWS)
 
 /**
  * Read preferences synchronously, before first paint.
@@ -150,6 +164,15 @@ export function loadDisplaySettings(): DisplaySettings {
       proteinPkaSet: VALID_PKA_SETS.has(parsed.proteinPkaSet as PkaSetId)
         ? parsed.proteinPkaSet as PkaSetId
         : DEFAULT_DISPLAY_SETTINGS.proteinPkaSet,
+      proteinScale: parsed.proteinScale === 'none' || VALID_SCALES.has(parsed.proteinScale as ProteinScaleId)
+        ? parsed.proteinScale as ProteinScaleId | 'none'
+        : DEFAULT_DISPLAY_SETTINGS.proteinScale,
+      proteinScaleWindow: parsed.proteinScaleWindow === 0 || VALID_WINDOWS.has(parsed.proteinScaleWindow as number)
+        ? parsed.proteinScaleWindow as number
+        : DEFAULT_DISPLAY_SETTINGS.proteinScaleWindow,
+      trackVariants: typeof parsed.trackVariants === 'boolean'
+        ? parsed.trackVariants
+        : DEFAULT_DISPLAY_SETTINGS.trackVariants,
     }
   } catch {
     return { ...DEFAULT_DISPLAY_SETTINGS }

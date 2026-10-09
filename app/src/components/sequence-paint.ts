@@ -24,6 +24,7 @@ import {
 } from '../codon/translation-display'
 import type { ReadingFrame } from '../codon/translation-display'
 import { isAutoAnnotationId, keyFromAutoId } from '../utils/auto-annotations'
+import { keyFromMotifId } from '../utils/motif-features'
 import { annotationCode, codonStartOffset } from '../utils/annotation-sequence'
 import { keyFromOrfId } from '../utils/orf-features'
 import { isPrimerItemId, type PrimerItem } from '../primers/display'
@@ -398,6 +399,21 @@ export interface RowGeometry {
   siteBandH(rowIndex: number, L: ZoomLayout): number
 }
 
+/** Pixels a row reserves for the graph track when one is shown. */
+export const GRAPH_TRACK_H = 30
+
+/** A windowed residue scale to draw under each row of a protein. */
+export interface GraphTrack {
+  /** One value per residue; NaN where the scale has none. */
+  values: Float32Array
+  /** The plot's extent and its guide line. */
+  min: number
+  max: number
+  mid: number
+  /** Caption in the row's margin. */
+  label: string
+}
+
 /** A feature edge being dragged, drawn as a dashed preview of the new extent. */
 export interface AnnotationEdgeDrag {
   annId: string
@@ -435,6 +451,9 @@ export interface SequencePaintScene {
   annEdgeDrag: AnnotationEdgeDrag | null
   autoPicks: ReadonlySet<string>
   orfPicks: ReadonlySet<string>
+  motifPicks: ReadonlySet<string>
+  /** A protein's graph track: one value per residue, drawn in the row's graphH. Null draws none. */
+  graph: GraphTrack | null
   primerItemById: ReadonlyMap<string, PrimerItem>
   /** Frames to translate; empty means the feature (annotation) modes. */
   translationFrames: readonly ReadingFrame[]
@@ -957,8 +976,9 @@ export function paintSequenceRows(
       ann: Annotation; x1: number; x2: number; cy: number; isStart: boolean; isEnd: boolean
       cutStart?: boolean; cutEnd?: boolean; label?: boolean
     }[] = []
-    // Thin lines across a spliced feature's introns, drawn under the bars.
-    const intronLines: { x1: number; x2: number; y: number; color: string }[] = []
+    // Thin lines across a spliced feature's introns, drawn under the bars;
+    // a disulfide's two cysteines are joined by an arc over the lane instead.
+    const intronLines: { x1: number; x2: number; y: number; color: string; arc?: boolean }[] = []
     let annCy = cy
     for (const annRow of annRows) {
       for (const ann of annRow) {
@@ -992,6 +1012,7 @@ export function paintSequenceRows(
                 intronLines.push({
                   x1: baseX(a, rowStart, L), x2: baseX(b - 1, rowStart, L) + L.bpWidth,
                   y: annCy + L.annotationRowH / 2, color: ann.color,
+                  arc: ann.type === 'disulfide',
                 })
               }
             }
@@ -1076,6 +1097,7 @@ export function paintSequenceRows(
     // the solid ones.
     const autoPicks = s.autoPicks
     const orfPicksNow = s.orfPicks
+    const motifPicksNow = s.motifPicks
     const colorGroups = new Map<string, typeof annBatch>()
     const proposalBatch: typeof annBatch = []
     const primerBatch: typeof annBatch = []
@@ -1085,7 +1107,9 @@ export function paintSequenceRows(
         continue
       }
       const orfK = keyFromOrfId(a.ann.id)
-      if (isAutoAnnotationId(a.ann.id) || (orfK !== null && orfPicksNow.has(orfK))) {
+      const motifK = keyFromMotifId(a.ann.id)
+      if (isAutoAnnotationId(a.ann.id) || (orfK !== null && orfPicksNow.has(orfK))
+        || (motifK !== null && motifPicksNow.has(motifK))) {
         proposalBatch.push(a)
         continue
       }
@@ -1096,10 +1120,21 @@ export function paintSequenceRows(
 
     for (const line of intronLines) {
       ctx.strokeStyle = visibleStroke(line.color)
-      ctx.lineWidth = 1
+      ctx.lineWidth = line.arc ? 1.5 : 1
       ctx.beginPath()
-      ctx.moveTo(line.x1, line.y)
-      ctx.lineTo(line.x2, line.y)
+      if (line.arc) {
+        // The bond as an arc from the top of one cysteine's block to the
+        // other's, rising above the lane; a bond that runs off the row is
+        // an arc to the edge, so it still reads as leaving.
+        const top = line.y - L.annotationRowH / 2
+        // Shallow: it rises into the gap under the residues, not over them.
+        const lift = Math.min(L.annotationGap + 4, Math.max(3, (line.x2 - line.x1) / 20))
+        ctx.moveTo(line.x1, top)
+        ctx.quadraticCurveTo((line.x1 + line.x2) / 2, top - lift, line.x2, top)
+      } else {
+        ctx.moveTo(line.x1, line.y)
+        ctx.lineTo(line.x2, line.y)
+      }
       ctx.stroke()
     }
 
@@ -1137,8 +1172,10 @@ export function paintSequenceRows(
       if (a.ann.id === hoveredAnnotationId) continue
       const autoKey = keyFromAutoId(a.ann.id)
       const orfK = keyFromOrfId(a.ann.id)
+      const motifK = keyFromMotifId(a.ann.id)
       const picked = (autoKey !== null && autoPicks.has(autoKey))
         || (orfK !== null && orfPicksNow.has(orfK))
+        || (motifK !== null && motifPicksNow.has(motifK))
       ctx.fillStyle = a.ann.color
       ctx.globalAlpha = picked ? 0.35 : 0.14
       ctx.beginPath()
@@ -1268,6 +1305,68 @@ export function paintSequenceRows(
       ctx.fillStyle = COLORS.text
       ctx.fillText(label, px, py)
       ctx.globalAlpha = 1
+    }
+
+    // --- Graph track (a protein's windowed scale), under the feature lanes ---
+    //
+    // A filled curve from the guide line, one point per residue, so a
+    // hydrophobic stretch reads as a hill over the residues that make it.
+    // The caption sits in the row's margin, where the position labels are.
+    if (L.graphH > 0 && s.graph) {
+      const g = s.graph
+      const top = cy + 2
+      const h = L.graphH - 4
+      const span = g.max - g.min || 1
+      const yOf = (v: number) => top + h * (1 - Math.max(0, Math.min(1, (v - g.min) / span)))
+      const midY = Math.round(yOf(g.mid)) + 0.5
+      const x0 = baseX(rowStart, rowStart, L)
+      const x1 = baseX(rowEnd - 1, rowStart, L) + L.bpWidth
+      ctx.strokeStyle = COLORS.rulerTick
+      ctx.lineWidth = 1
+      ctx.beginPath()
+      ctx.moveTo(x0, midY)
+      ctx.lineTo(x1, midY)
+      ctx.stroke()
+
+      const xAt = (i: number) => baseX(i, rowStart, L) + L.bpWidth / 2
+      ctx.beginPath()
+      ctx.moveTo(x0, midY)
+      for (let i = rowStart; i < rowEnd; i++) {
+        const v = g.values[i]
+        ctx.lineTo(xAt(i), Number.isNaN(v) ? midY : yOf(v))
+      }
+      ctx.lineTo(x1, midY)
+      ctx.closePath()
+      ctx.fillStyle = COLORS.caret
+      ctx.globalAlpha = 0.14
+      ctx.fill()
+      ctx.globalAlpha = 0.85
+      ctx.beginPath()
+      let pen = false
+      for (let i = rowStart; i < rowEnd; i++) {
+        const v = g.values[i]
+        if (Number.isNaN(v)) { pen = false; continue }
+        if (!pen) { ctx.moveTo(xAt(i), yOf(v)); pen = true }
+        else ctx.lineTo(xAt(i), yOf(v))
+      }
+      ctx.strokeStyle = COLORS.caret
+      ctx.lineWidth = 1.25
+      ctx.stroke()
+      ctx.globalAlpha = 1
+
+      // The caption sits inside the band, haloed in the background colour
+      // so it reads over the curve: the margin is sized for position
+      // labels and a scale's name does not fit there.
+      ctx.font = sansFont('10px')
+      ctx.textAlign = 'left'
+      ctx.textBaseline = 'top'
+      ctx.lineJoin = 'round'
+      ctx.lineWidth = 3
+      ctx.strokeStyle = COLORS.bg
+      ctx.strokeText(g.label, x0 + 2, top)
+      ctx.fillStyle = COLORS.complement
+      ctx.fillText(g.label, x0 + 2, top)
+      cy += L.graphH
     }
 
     // --- Amino acid translation (letters mode only) ---

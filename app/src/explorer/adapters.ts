@@ -6,7 +6,7 @@
  * works on `ExplorerItem` and never branches on kind again.
  */
 
-import { Lock, TriangleAlert, Globe, FlaskConical, Wand2, Activity, TestTube, Link2, Scissors, Atom } from 'lucide-react'
+import { Lock, TriangleAlert, Globe, FlaskConical, Wand2, Activity, TestTube, Link2, Scissors, Atom, Database } from 'lucide-react'
 import type { LibraryOligo } from '../primers/oligo'
 import { oligoTm } from '../primers/display'
 import type {
@@ -72,6 +72,7 @@ const ORIGIN_BADGE: Partial<Record<NonNullable<DocumentOrigin>, ItemBadge>> = {
   optimized: { key: 'origin', label: 'Codon optimized', icon: Wand2, tone: 'neutral' },
   consensus: { key: 'origin', label: 'Called from a trace', icon: Activity, tone: 'neutral' },
   translation: { key: 'origin', label: 'Translated from DNA', icon: Atom, tone: 'neutral' },
+  uniprot: { key: 'origin', label: 'Fetched from UniProt', icon: Database, tone: 'neutral' },
 }
 
 /**

@@ -139,6 +139,8 @@ describe('sequence PDF', () => {
     primerItemById: new Map(),
     autoPicks: new Set(),
     orfPicks: new Set(),
+    motifPicks: new Set(),
+    graph: null,
     translationFrames: [],
     translationRows: 2,
     translateSelection: false,

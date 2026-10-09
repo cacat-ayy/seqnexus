@@ -89,15 +89,16 @@ import { buildResiduePalette } from '../utils/residue-colors'
 import { isValidSequence, unitOf } from '../models/alphabet'
 import { keyFromAutoId } from '../utils/auto-annotations'
 import { keyFromOrfId } from '../utils/orf-features'
+import { keyFromMotifId } from '../utils/motif-features'
 import { isWidgetKeyTarget } from '../utils/key-target'
 import { basesFromPaste } from '../utils/paste-bases'
 import { notify } from '../toast'
 import { isPrimerItemId, type PrimerItem } from '../primers/display'
 import PrimerTooltip from './primers/PrimerTooltip'
-import { useSequenceTracks, useTranslationSettings } from './useSequenceTracks'
+import { useSequenceTracks, useTranslationSettings, useProteinGraph } from './useSequenceTracks'
 import {
   annVisibleRange, stackAnnotations, lowerBoundGroups, layoutSiteRow, assignSiteLanes, measureSiteRows,
-  paintSequenceRows, type SiteChip,
+  paintSequenceRows, type SiteChip, GRAPH_TRACK_H,
   readSequenceColors, ENZYME_LABEL_SPEC, type SequenceColors, type RowStacks,
 } from './sequence-paint'
 import { clearMeasureCache, measureText } from '../utils/measure-text'
@@ -550,6 +551,7 @@ function SequenceView({ onFindRequest, onFindClose, onAnnotateRequest, onEditFea
   const allEnzymeCutSites = useEditorStore(s => s.enzymeCutSites)
   const autoAnnotationPicks = useEditorStore(s => s.autoAnnotationPicks)
   const orfPicks = useEditorStore(s => s.orfPicks)
+  const motifPicks = useEditorStore(s => s.motifPicks)
   const enzymeCutSites = useMemo(() => (showEnzymes ? allEnzymeCutSites : []), [showEnzymes, allEnzymeCutSites])
 
   // Used by the delete confirmation
@@ -622,6 +624,8 @@ function SequenceView({ onFindRequest, onFindClose, onAnnotateRequest, onEditFea
   const siteCountOf = (item: PrimerItem) =>
     (item.preview ? designPreview.sites : primerSites).get(item.primer.id)?.length ?? 1
   const { translationFrames, translationRows, translateSelection, translationCode } = useTranslationSettings(doc.sequence.alphabet)
+  // A protein's graph track (hydropathy and the like), null for DNA or none.
+  const graph = useProteinGraph(doc)
 
   // --- Refs mirroring frequently-changing state ---
   // Allows draw() and event handlers to stay referentially stable
@@ -650,6 +654,8 @@ function SequenceView({ onFindRequest, onFindClose, onAnnotateRequest, onEditFea
   const allAnnotationsRef = useRef(allAnnotations)
   const autoPicksRef = useRef(autoAnnotationPicks)
   const orfPicksRef = useRef(orfPicks)
+  const motifPicksRef = useRef(motifPicks)
+  const graphRef = useRef(graph)
   const primerItemByIdRef = useRef(primerItemById)
   const onFindRequestRef = useRef(onFindRequest)
 
@@ -678,6 +684,8 @@ function SequenceView({ onFindRequest, onFindClose, onAnnotateRequest, onEditFea
   allAnnotationsRef.current = allAnnotations
   autoPicksRef.current = autoAnnotationPicks
   orfPicksRef.current = orfPicks
+  motifPicksRef.current = motifPicks
+  graphRef.current = graph
   primerItemByIdRef.current = primerItemById
   onFindRequestRef.current = onFindRequest
   const onFindCloseRef = useRef(onFindClose)
@@ -695,6 +703,7 @@ function SequenceView({ onFindRequest, onFindClose, onAnnotateRequest, onEditFea
       showComplement: showComplementRef.current,
       showAnnotations: showAnnotationTracksRef.current,
       translationRows: translationRowsRef.current,
+      graphHeight: graphRef.current ? GRAPH_TRACK_H : 0,
     })
     layoutRef.current = L
     publishBasesPerRow(L.basesPerRow)
@@ -750,7 +759,7 @@ function SequenceView({ onFindRequest, onFindClose, onAnnotateRequest, onEditFea
       }
     }
     const rlKey = `${rlCacheKey}|${selRows.map(r => r.join('-')).join(',')}`
-    const rlLayoutKey = `${rlCacheKey}_${L.annotationRowH}_${L.annotationGap}_${L.rulerHeight}_${L.seqLineHeight}_${L.maxEnzymeTiers}_${L.maxSiteLanes}_${L.translationRowH}_${L.translationGap}_${L.maxTranslationRows}_${L.rowPaddingBottom}`
+    const rlLayoutKey = `${rlCacheKey}_${L.annotationRowH}_${L.annotationGap}_${L.rulerHeight}_${L.seqLineHeight}_${L.maxEnzymeTiers}_${L.maxSiteLanes}_${L.translationRowH}_${L.translationGap}_${L.maxTranslationRows}_${L.rowPaddingBottom}_${L.graphH}`
     let rl: RowLayoutMap
     // Where to scroll to keep the view still when only the selection's
     // translation rows changed: rows growing above the view would otherwise
@@ -916,6 +925,8 @@ function SequenceView({ onFindRequest, onFindClose, onAnnotateRequest, onEditFea
       annEdgeDrag: annEdgeDrag.current,
       autoPicks: autoPicksRef.current,
       orfPicks: orfPicksRef.current,
+      motifPicks: motifPicksRef.current,
+      graph: graphRef.current,
       primerItemById: primerItemByIdRef.current,
       translationFrames: translationFramesRef.current,
       translationCode: translationCodeRef.current,
@@ -1036,6 +1047,11 @@ function SequenceView({ onFindRequest, onFindClose, onAnnotateRequest, onEditFea
         const orfK = keyFromOrfId(hitAnn.id)
         if (orfK !== null) {
           useEditorStore.getState().toggleOrfPick(orfK)
+          return
+        }
+        const motifK = keyFromMotifId(hitAnn.id)
+        if (motifK !== null) {
+          useEditorStore.getState().toggleMotifPick(motifK)
           return
         }
       }
@@ -1800,6 +1816,7 @@ function SequenceView({ onFindRequest, onFindClose, onAnnotateRequest, onEditFea
         showComplement: showComplementRef.current,
         showAnnotations: showAnnotationTracksRef.current,
         translationRows: translationRowsRef.current,
+        graphHeight: graphRef.current ? GRAPH_TRACK_H : 0,
       })
       const doc = docRef.current
       const sites = showEnzymesNow
@@ -1897,7 +1914,7 @@ function SequenceView({ onFindRequest, onFindClose, onAnnotateRequest, onEditFea
   // Redraw when any render-affecting state changes
   useEffect(() => {
     draw()
-  }, [doc, selection, extraSelections, search, annTree, zoomLevel, hoveredAnnotationId, enzymeCutSites, hoveredEnzymeGroup, showEnzymes, autoAnnotationPicks, orfPicks, translationFrames, translationRows, translateSelection, translationCode, aminoAcidStyle, threeLetterAminoAcids, proteinColorScheme, draw])
+  }, [doc, selection, extraSelections, search, annTree, zoomLevel, hoveredAnnotationId, enzymeCutSites, hoveredEnzymeGroup, showEnzymes, autoAnnotationPicks, orfPicks, motifPicks, graph, translationFrames, translationRows, translateSelection, translationCode, aminoAcidStyle, threeLetterAminoAcids, colorScheme, colorTarget, proteinColorScheme, draw])
 
   const showMinimap = doc.sequence.length >= MINIMAP_SEQ_THRESHOLD
 

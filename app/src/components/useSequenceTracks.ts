@@ -15,6 +15,9 @@ import type { Alphabet } from '../models/alphabet'
 import { IntervalTree } from '../models/IntervalTree'
 import { orfColor } from '../workers/orf-finder'
 import { orfIdFor, orfName } from '../utils/orf-features'
+import { motifIdFor } from '../utils/motif-features'
+import { proteinScale, scaleProfile } from '../protein/scales'
+import type { GraphTrack } from './sequence-paint'
 import { proposalsFrom, proposalAnnotations } from '../utils/auto-annotations'
 import { usePrimerSites, useDesignPreview } from '../primers/usePrimerSites'
 import { primerItems, type PrimerItem } from '../primers/display'
@@ -25,6 +28,9 @@ export function useSequenceTracks(doc: DocumentState) {
   const hiddenAnnotationIds = useEditorStore(s => s.hiddenAnnotationIds)
   const showOrfs = useEditorStore(s => s.showOrfs)
   const allOrfResults = useEditorStore(s => s.orfResults)
+  const showMotifs = useEditorStore(s => s.showMotifs)
+  const allMotifResults = useEditorStore(s => s.motifResults)
+  const motifCategoriesOff = useEditorStore(s => s.motifCategoriesOff)
   const designPicks = useEditorStore(s => s.primerDesign.picks)
   const designBatch = useEditorStore(s => s.primerDesign.batch)
   const showAutoAnnotations = useEditorStore(s => s.showAutoAnnotations)
@@ -49,6 +55,23 @@ export function useSequenceTracks(doc: DocumentState) {
       return new Annotation(data)
     })
   }, [showOrfs, allOrfResults])
+
+  // Motif hits on a protein, drawn like ORFs: an overlay of what the scan
+  // found, with the id carrying the hit's identity so a pick survives a
+  // re-scan. Categories switched off in the panel are left out here too.
+  const motifAnnotations = useMemo(() => {
+    if (!showMotifs || allMotifResults.length === 0) return []
+    const off = new Set(motifCategoriesOff)
+    return allMotifResults.filter(h => !off.has(h.category)).map(hit => new Annotation({
+      id: motifIdFor(hit),
+      name: hit.name,
+      type: hit.type,
+      start: hit.start,
+      end: hit.end,
+      strand: 0,
+      color: hit.color,
+    }))
+  }, [showMotifs, allMotifResults, motifCategoriesOff])
 
   // Primers: one lane item per binding site, spanning its tails too. Saved
   // primers and the workbench's unsaved picks go through the same path; the
@@ -98,19 +121,43 @@ export function useSequenceTracks(doc: DocumentState) {
     for (const ann of autoAnnotations) {
       tree.insert(ann)
     }
+    for (const ann of motifAnnotations) {
+      tree.insert(ann)
+    }
     return tree
-  }, [visibleAnnotations, orfAnnotations, allPrimerItems, autoAnnotations])
+  }, [visibleAnnotations, orfAnnotations, allPrimerItems, autoAnnotations, motifAnnotations])
 
   // Combined list for hit-testing (visible annotations + ORFs + primers + proposals)
   const allAnnotations = useMemo(() => {
-    const extra = [...orfAnnotations, ...allPrimerItems.map(i => i.annotation), ...autoAnnotations]
+    const extra = [...orfAnnotations, ...allPrimerItems.map(i => i.annotation), ...autoAnnotations, ...motifAnnotations]
     if (extra.length === 0) return visibleAnnotations
     return [...visibleAnnotations, ...extra]
-  }, [visibleAnnotations, orfAnnotations, allPrimerItems, autoAnnotations])
+  }, [visibleAnnotations, orfAnnotations, allPrimerItems, autoAnnotations, motifAnnotations])
 
   return {
     primerSites, designPreview, allPrimerItems, primerItemById, visibleAnnotations, annTree, allAnnotations,
   }
+}
+
+/**
+ * A protein's graph track, from the scale and window chosen in the display
+ * popover; null for DNA or when none is chosen. The view and the PDF export
+ * build it here, so both draw the same curve.
+ */
+export function useProteinGraph(doc: DocumentState): GraphTrack | null {
+  const scaleId = useEditorStore(s => s.proteinScale)
+  const windowPref = useEditorStore(s => s.proteinScaleWindow)
+  const protein = doc.sequence.alphabet === 'protein'
+  return useMemo(() => {
+    if (!protein || scaleId === 'none') return null
+    const scale = proteinScale(scaleId)
+    const window = windowPref || scale.window
+    return {
+      values: scaleProfile(doc.sequence.bases, scale, window),
+      min: scale.min, max: scale.max, mid: scale.mid,
+      label: `${scale.short} ${window}`,
+    }
+  }, [protein, scaleId, windowPref, doc])
 }
 
 /**

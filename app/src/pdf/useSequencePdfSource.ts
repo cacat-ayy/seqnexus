@@ -13,7 +13,7 @@ import { useEditorStore } from '../store'
 import { groupCutSites } from '../enzymes/grouping'
 import { buildBasePalette } from '../utils/base-colors'
 import { buildResiduePalette } from '../utils/residue-colors'
-import { useSequenceTracks, useTranslationSettings } from '../components/useSequenceTracks'
+import { useSequenceTracks, useTranslationSettings, useProteinGraph } from '../components/useSequenceTracks'
 import { useBasesPerRow } from '../components/sequence-view-controls'
 import { usePlasmidSceneData } from '../plasmid/usePlasmidSceneData'
 import { buildPlasmidScene } from '../plasmid/scene'
@@ -41,7 +41,9 @@ export function useSequencePdfSource(): SequencePdfSource {
   const cutSites = useEditorStore(s => s.enzymeCutSites)
   const autoPicks = useEditorStore(s => s.autoAnnotationPicks)
   const orfPicks = useEditorStore(s => s.orfPicks)
+  const motifPicks = useEditorStore(s => s.motifPicks)
   const screenBasesPerRow = useBasesPerRow()
+  const graph = useProteinGraph(doc)
 
   const { annTree, primerItemById, visibleAnnotations } = useSequenceTracks(doc)
   const { translationFrames, translationRows, translateSelection, translationCode } = useTranslationSettings(doc.sequence.alphabet)
@@ -107,6 +109,8 @@ export function useSequencePdfSource(): SequencePdfSource {
     primerItemById,
     autoPicks,
     orfPicks,
+    motifPicks,
+    graph,
     translationFrames,
     translationRows,
     translateSelection,
@@ -124,7 +128,7 @@ export function useSequencePdfSource(): SequencePdfSource {
     screenBasesPerRow,
     plasmidScene,
   }), [
-    doc, annTree, visibleAnnotations, groupedSites, primerItemById, autoPicks, orfPicks,
+    doc, annTree, visibleAnnotations, groupedSites, primerItemById, autoPicks, orfPicks, motifPicks, graph,
     translationFrames, translationRows, translateSelection, translationCode, aminoAcidStyle,
     threeLetter, basePalette, paintBackground, showComplement, showAnnotations, colors,
     selection, search, zoomLevel, screenBasesPerRow, plasmidScene,

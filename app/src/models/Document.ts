@@ -14,6 +14,7 @@ import { Sequence, Topology } from './Sequence'
 import type { Alphabet, PieceTableSnapshot } from './Sequence'
 import { Annotation, AnnotationData, adjustAnnotation } from './Annotation'
 import type { PrimerData } from '../primers/oligo'
+import type { UniProtReference } from '../fetch/uniprot'
 
 export type Strandedness = 'single' | 'double'
 
@@ -34,6 +35,7 @@ export type DocumentOrigin =
   | 'optimized'  // output of the codon optimizer
   | 'consensus'  // called from a chromatogram or contig
   | 'translation' // a protein translated from a coding feature or selection
+  | 'uniprot'    // fetched from UniProtKB
   | 'paste'      // pasted sequence text
   | 'new'        // created empty
 
@@ -77,6 +79,8 @@ export interface SequenceMetadata {
   origin?: DocumentOrigin
   /** Protein only: the DNA it was translated from. */
   translatedFrom?: TranslationSource
+  /** Protein only: the UniProt entry it was fetched from, with where its structures are. */
+  uniprot?: UniProtReference
 }
 
 export interface DocumentState {

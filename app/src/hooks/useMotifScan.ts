@@ -1,0 +1,45 @@
+import { useEffect } from 'react'
+import { useEditorStore } from '../store'
+import { scanMotifs, type MotifHit } from '../protein/motifs'
+import { transmembraneSegments } from '../protein/scales'
+
+/** The hydropathy rule's hits ride the motif overlay, as one more category. */
+export const TM_MOTIF_ID = 'tm-hydropathy'
+
+/** Kyte-Doolittle membrane spans as motif hits, so the overlay and the panel show them beside the patterns. */
+export function transmembraneHits(residues: string): MotifHit[] {
+  return transmembraneSegments(residues).map(([start, end]) => ({
+    motifId: TM_MOTIF_ID,
+    name: 'Membrane span (hydropathy)',
+    category: 'Structural',
+    type: 'transmembrane',
+    color: '#74b816', // the transmembrane feature colour, data as in the library
+    start, end,
+    sequence: residues.slice(start, end).toUpperCase(),
+  }))
+}
+
+/**
+ * Keep the motif hits in step with the protein, whenever the overlay or the
+ * panel wants them. A regular-expression scan of a short protein against a
+ * few dozen patterns is cheap, so it runs on the residues themselves (a
+ * substitution moves a site) rather than on the length as the library scan
+ * does. A DNA document has no motifs: its hits are cleared.
+ */
+export function useMotifScan(panelOpen: boolean): void {
+  const showMotifs = useEditorStore(s => s.showMotifs)
+  const activeTabId = useEditorStore(s => s.activeTabId)
+  const protein = useEditorStore(s => s.doc.sequence.alphabet === 'protein')
+  const bases = useEditorStore(s => (protein ? s.doc.sequence.bases : ''))
+  const wanted = (showMotifs || panelOpen) && protein
+
+  useEffect(() => {
+    const store = useEditorStore.getState()
+    if (!wanted) {
+      if (store.motifResults.length > 0) store.setMotifResults([])
+      return
+    }
+    const hits = [...scanMotifs(bases), ...transmembraneHits(bases)].sort((a, b) => a.start - b.start || a.end - b.end)
+    store.setMotifResults(hits)
+  }, [wanted, activeTabId, bases])
+}

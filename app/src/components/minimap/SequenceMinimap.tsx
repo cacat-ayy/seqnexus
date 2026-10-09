@@ -18,6 +18,8 @@ import type { ViewportSource } from './viewport'
 import { buildGcIndex } from './geometry'
 import { featureTrack } from './tracks/features'
 import { gcTrack } from './tracks/gc'
+import { scaleTrack } from './tracks/scale'
+import { proteinScale, scaleProfile } from '../../protein/scales'
 import { cutSiteTrack, toCutMarks, ENZYME_ITEM_PREFIX } from './tracks/cutSites'
 import { markerTrack } from './tracks/markers'
 
@@ -77,14 +79,24 @@ export default function SequenceMinimap({
   // No GC profile for a protein: there are no bases to count.
   const protein = sequence.alphabet === 'protein'
   const gcIndex = useMemo(() => (protein ? null : buildGcIndex(sequence.bases)), [protein, sequence.bases])
+  // A protein shows the graph track the view shows, over its whole length.
+  const scaleId = useEditorStore(s => s.proteinScale)
+  const windowPref = useEditorStore(s => s.proteinScaleWindow)
+  const profile = useMemo(() => {
+    if (!protein || scaleId === 'none' || seqLen === 0) return null
+    const scale = proteinScale(scaleId)
+    const window = windowPref || scale.window
+    return scaleTrack(scaleProfile(sequence.bases, scale, window), scale, window)
+  }, [protein, scaleId, windowPref, sequence.bases, seqLen])
   const tracks = useMemo(() => {
     const out: MinimapTrack[] = []
     if (cutMarks) out.push(cutSiteTrack(cutMarks, formatPosition))
     out.push(featureTrack({ features: annTree.all(), formatRange }))
     if (searchTrack) out.push(searchTrack)
     if (gcIndex) out.push(gcTrack(gcIndex))
+    if (profile) out.push(profile)
     return out
-  }, [cutMarks, annTree, formatPosition, formatRange, gcIndex, searchTrack])
+  }, [cutMarks, annTree, formatPosition, formatRange, gcIndex, searchTrack, profile])
 
   const segments = useMemo(
     () => [selection, ...extraSelections].flatMap(r => selectionSegments(r, sequence.topology, seqLen)),

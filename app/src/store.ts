@@ -1,7 +1,7 @@
 import { create } from 'zustand'
 import { notify } from './toast'
 import { Sequence, type Alphabet } from './models/Sequence'
-import type { AnnotationData } from './models/Annotation'
+import type { Annotation, AnnotationData } from './models/Annotation'
 import {
   DocumentState,
   snapshot,
@@ -25,6 +25,7 @@ import {
   addPrimers,
   updatePrimer,
   removePrimers,
+  displayPosition,
 } from './models/Document'
 import { newPrimerId, primerOligoFromFeature, type PrimerData, type LibraryOligo, type OligoRole } from './primers/oligo'
 import { reverseComplement } from './models/complement'
@@ -60,6 +61,10 @@ import type { AnnotationMatch } from './workers/annotate-list'
 import { matchToAnnotationData } from './workers/annotate-list'
 import { matchKey, proposalsFrom } from './utils/auto-annotations'
 import { orfKey, convertibleOrfs, orfToAnnotationData } from './utils/orf-features'
+import { motifKey, convertibleMotifs, motifToAnnotationData } from './utils/motif-features'
+import type { MotifHit } from './protein/motifs'
+import type { ProteinScaleId } from './protein/scales'
+import { variantForEdit, variantAnnotation, isRecordedVariant, mergedDeletion } from './protein/variants'
 import {
   builtinSource, toStoredSource, BUILTIN_SOURCE_ID, type FeatureSource, type StoredFeatureSource,
 } from './features/feature-sources'
@@ -124,6 +129,7 @@ export interface DocumentTab {
   showOrfs: boolean
   showEnzymes: boolean
   showAutoAnnotations: boolean
+  showMotifs: boolean
   // Cached analysis results (preserved across tab switches)
   orfResults: ORFResult[]
   enzymeCutSites: CutSite[]
@@ -569,6 +575,14 @@ interface EditorStore {
   /** pKa values behind a protein's pI and charge. */
   proteinPkaSet: PkaSetId
   setProteinPkaSet: (id: PkaSetId) => void
+  /** The graph track under a protein's features, and its window (0: the scale's own). */
+  proteinScale: ProteinScaleId | 'none'
+  setProteinScale: (id: ProteinScaleId | 'none') => void
+  proteinScaleWindow: number
+  setProteinScaleWindow: (window: number) => void
+  /** Record replaced and deleted residues of a protein as variant features. */
+  trackVariants: boolean
+  setTrackVariants: (on: boolean) => void
 
   // Hover state (cross-view, not per-tab)
   hoveredAnnotationId: string | null
@@ -598,6 +612,21 @@ interface EditorStore {
   enzymeMinCuts: number
   enzymeMaxCuts: number
   setEnzymeParams: (params: Partial<{ enzymeSubset: string; enzymeSearchQuery: string; enzymeFilterByCount: boolean; enzymeMinCuts: number; enzymeMaxCuts: number }>) => void
+
+  // Motif display state (cross-view). The scan is the app's (useMotifScan),
+  // as the auto-annotation scan is; the results live here for the overlay,
+  // the panel bar and the panel.
+  motifResults: MotifHit[]
+  setMotifResults: (hits: MotifHit[]) => void
+  /** Motif keys picked for conversion into features. Transient, not per tab. */
+  motifPicks: Set<string>
+  toggleMotifPick: (key: string) => void
+  clearMotifPicks: () => void
+  /** Turn the picked hits (or all of them) into features; one undo entry. */
+  applyMotifs: (keys?: Iterable<string>) => number
+  /** Motif categories switched off in the panel; the overlay follows. */
+  motifCategoriesOff: string[]
+  setMotifCategoriesOff: (off: string[]) => void
 
   // ORF display state (cross-view)
   orfResults: ORFResult[]
@@ -690,9 +719,12 @@ interface EditorStore {
   showOrfs: boolean
   showEnzymes: boolean
   showAutoAnnotations: boolean
+  /** Protein only: the motif hits drawn as an overlay. */
+  showMotifs: boolean
   toggleOrfs: () => void
   toggleEnzymes: () => void
   toggleAutoAnnotations: () => void
+  toggleMotifs: () => void
 
   // Tab management
   openDocument: (name: string, bases: string, topology?: 'linear' | 'circular', description?: string, origin?: DocumentOrigin, alphabet?: Alphabet) => string
@@ -1090,6 +1122,7 @@ function makeTab(doc: DocumentState): DocumentTab {
     showOrfs: false,
     showEnzymes: false,
     showAutoAnnotations: false,
+    showMotifs: false,
     orfResults: [],
     enzymeCutSites: [],
     enzymeNames: [],
@@ -1167,6 +1200,9 @@ function displaySnapshot(s: EditorStore): DisplaySettings {
     threeLetterAminoAcids: s.threeLetterAminoAcids,
     proteinColorScheme: s.proteinColorScheme,
     proteinPkaSet: s.proteinPkaSet,
+    proteinScale: s.proteinScale,
+    proteinScaleWindow: s.proteinScaleWindow,
+    trackVariants: s.trackVariants,
   }
 }
 
@@ -1296,6 +1332,7 @@ export const useEditorStore = create<EditorStore>((set, get) => {
         showOrfs: active.showOrfs,
         showEnzymes: active.showEnzymes,
         showAutoAnnotations: active.showAutoAnnotations,
+        showMotifs: active.showMotifs,
       } : {}),
     })
   }
@@ -1325,6 +1362,42 @@ export const useEditorStore = create<EditorStore>((set, get) => {
     if (get().showAnnotationTracks) return
     set({ showAnnotationTracks: true })
     saveDisplaySettings(displaySnapshot(get()))
+  }
+
+  /**
+   * A protein edit written down as a variant feature, when tracking is on.
+   *
+   * The residues are read from the document before the edit and the feature
+   * is added to the edited one, so both land in the same undo entry. A
+   * deletion that meets one already recorded extends it: Backspace held
+   * down is one deletion, not five.
+   */
+  interface BeforeEdit { protein: boolean; bases: string; annotations: readonly Annotation[]; origin: number }
+
+  /** What withVariant needs, read before the sequence is edited in place. */
+  function beforeEdit(doc: DocumentState): BeforeEdit {
+    const protein = doc.sequence.isProtein && get().trackVariants
+    return { protein, bases: protein ? doc.sequence.bases : '', annotations: doc.annotations, origin: doc.metadata?.displayOrigin ?? 0 }
+  }
+
+  function withVariant(before: BeforeEdit, start: number, end: number, replacement: string, edited: DocumentState): DocumentState {
+    if (!before.protein) return edited
+    const { bases, origin } = before
+    const numberAt = (i: number) => displayPosition(i, origin, bases.length)
+    const v = variantForEdit(bases, start, end, replacement, numberAt)
+    if (!v) return edited
+    if (v.kind === 'del') {
+      const prev = before.annotations.find(a => isRecordedVariant(a, 'del')
+        && (a.start === end || (a.start === start && a.end === end)))
+      const prevOriginal = prev?.qualifiers.original?.[0]
+      const prevPosition = Number(prev?.qualifiers.position?.[0])
+      if (prev && prevOriginal && Number.isFinite(prevPosition)) {
+        const merged = mergedDeletion({ original: prevOriginal, position: prevPosition }, v, start, edited.sequence.length)
+        const without = { ...edited, annotations: edited.annotations.filter(a => a.id !== prev.id) }
+        return addAnnotation(without, variantAnnotation(merged))
+      }
+    }
+    return addAnnotation(edited, variantAnnotation(v))
   }
 
   /** "feature “lacZ”" for one item, "3 features" for several. */
@@ -1529,6 +1602,21 @@ export const useEditorStore = create<EditorStore>((set, get) => {
           set({ proteinPkaSet: id })
           persist({ proteinPkaSet: id })
         },
+        proteinScale: initial.proteinScale,
+        setProteinScale: (id: ProteinScaleId | 'none') => {
+          set({ proteinScale: id })
+          persist({ proteinScale: id })
+        },
+        proteinScaleWindow: initial.proteinScaleWindow,
+        setProteinScaleWindow: (window: number) => {
+          set({ proteinScaleWindow: window })
+          persist({ proteinScaleWindow: window })
+        },
+        trackVariants: initial.trackVariants,
+        setTrackVariants: (on: boolean) => {
+          set({ trackVariants: on })
+          persist({ trackVariants: on })
+        },
         setColorScheme: (id: ColorSchemeId) => {
           set({ colorScheme: id })
           persist({ colorScheme: id })
@@ -1637,6 +1725,42 @@ export const useEditorStore = create<EditorStore>((set, get) => {
       set({ orfPicks: next })
     },
     clearOrfPicks: () => set({ orfPicks: new Set() }),
+
+    // Motif hits follow the ORF pattern: the scan hook writes the results,
+    // picks are transient, and a conversion adds features in one step and
+    // leaves the overlay on (the hits are still where they were).
+    motifResults: [],
+    setMotifResults: (hits) => {
+      set({ motifResults: hits })
+      const picks = get().motifPicks
+      if (picks.size > 0) {
+        const keys = new Set(hits.map(motifKey))
+        const kept = new Set([...picks].filter(k => keys.has(k)))
+        if (kept.size !== picks.size) set({ motifPicks: kept })
+      }
+    },
+    motifPicks: new Set<string>(),
+    toggleMotifPick: (key) => {
+      const next = new Set(get().motifPicks)
+      if (next.has(key)) next.delete(key)
+      else next.add(key)
+      set({ motifPicks: next })
+    },
+    clearMotifPicks: () => set({ motifPicks: new Set() }),
+    applyMotifs: (keys) => {
+      const state = get()
+      const off = new Set(state.motifCategoriesOff)
+      const shown = state.motifResults.filter(h => !off.has(h.category))
+      const convertible = convertibleMotifs(shown, state.doc.annotations)
+      const wanted = keys ? new Set(keys) : null
+      const chosen = wanted ? convertible.filter(h => wanted.has(motifKey(h))) : convertible
+      if (chosen.length === 0) return 0
+      get().addAnnotations(chosen.map(motifToAnnotationData))
+      set({ motifPicks: new Set() })
+      return chosen.length
+    },
+    motifCategoriesOff: [],
+    setMotifCategoriesOff: (off) => set({ motifCategoriesOff: off }),
     applyOrfs: (keys) => {
       const state = get()
       // Re-filter rather than trust the caller: an ORF the document has since
@@ -1864,6 +1988,14 @@ export const useEditorStore = create<EditorStore>((set, get) => {
       updateActiveTab({ showOrfs: next })
       // Picks are about what is on screen; hiding the overlay forgets them.
       if (!next) set({ orfPicks: new Set() })
+    },
+    showMotifs: false,
+    toggleMotifs: () => {
+      const tab = getActiveTab()
+      if (!tab) return
+      const next = !tab.showMotifs
+      updateActiveTab({ showMotifs: next })
+      if (!next) set({ motifPicks: new Set() })
     },
     toggleEnzymes: () => {
       const tab = getActiveTab()
@@ -2148,6 +2280,9 @@ export const useEditorStore = create<EditorStore>((set, get) => {
         autoAnnotations: [],
         autoAnnotationPicks: new Set<string>(),
         orfPicks: new Set<string>(),
+        showMotifs: tab.showMotifs,
+        motifResults: [],
+        motifPicks: new Set<string>(),
         lastOpenedTabId: tab.id,
         primerDesign: tab.primerDesign,
       }))
@@ -2248,6 +2383,9 @@ export const useEditorStore = create<EditorStore>((set, get) => {
         autoAnnotations: [],
         autoAnnotationPicks: new Set<string>(),
         orfPicks: new Set<string>(),
+        showMotifs: tab.showMotifs,
+        motifResults: [],
+        motifPicks: new Set<string>(),
         lastOpenedTabId: tab.id,
         primerDesign: tab.primerDesign,
       }))
@@ -2469,9 +2607,13 @@ export const useEditorStore = create<EditorStore>((set, get) => {
         enzymeNames: tab.enzymeNames,
         primerDesign: tab.primerDesign,
         autoAnnotations: tab.autoAnnotations,
+        showMotifs: tab.showMotifs,
+        // Motif hits are recomputed by the scan hook for the incoming tab.
+        motifResults: [],
         // Picks belong to what was on screen, not to the app.
         autoAnnotationPicks: new Set<string>(),
         orfPicks: new Set<string>(),
+        motifPicks: new Set<string>(),
       })
     },
 
@@ -2552,6 +2694,7 @@ export const useEditorStore = create<EditorStore>((set, get) => {
         readOnly: rt.readOnly ?? false,
         hiddenAnnotationIds: rt.hiddenAnnotationIds ?? [],
         showOrfs: rt.showOrfs ?? false,
+        showMotifs: false,
         showEnzymes: rt.showEnzymes ?? false,
         showAutoAnnotations: rt.showAutoAnnotations ?? false,
         orfResults: [],
@@ -2655,6 +2798,7 @@ export const useEditorStore = create<EditorStore>((set, get) => {
         readOnly: rt.readOnly ?? false,
         hiddenAnnotationIds: rt.hiddenAnnotationIds ?? [],
         showOrfs: rt.showOrfs ?? false,
+        showMotifs: false,
         showEnzymes: rt.showEnzymes ?? false,
         showAutoAnnotations: rt.showAutoAnnotations ?? false,
         orfResults: [],
@@ -2796,8 +2940,9 @@ export const useEditorStore = create<EditorStore>((set, get) => {
     delete(start, end) {
       const tab = getActiveTab()
       if (!tab || tab.readOnly) return
-      pushUndo(`Delete ${Math.abs(end - start).toLocaleString()} bp`)
-      updateActiveTab({ doc: deleteBasesInPlace(tab.doc, start, end) })
+      pushUndo(`Delete ${Math.abs(end - start).toLocaleString()} ${tab.doc.sequence.isProtein ? 'aa' : 'bp'}`)
+      const before = beforeEdit(tab.doc)
+      updateActiveTab({ doc: withVariant(before, start, end, '', deleteBasesInPlace(tab.doc, start, end)) })
     },
 
     deleteTwo(start1, end1, start2, end2, insertAtZero) {
@@ -2813,8 +2958,9 @@ export const useEditorStore = create<EditorStore>((set, get) => {
     replace(start, end, fragment) {
       const tab = getActiveTab()
       if (!tab || tab.readOnly) return
-      pushUndo(`Replace ${Math.abs(end - start).toLocaleString()} bp`)
-      updateActiveTab({ doc: replaceBasesInPlace(tab.doc, start, end, fragment) })
+      pushUndo(`Replace ${Math.abs(end - start).toLocaleString()} ${tab.doc.sequence.isProtein ? 'aa' : 'bp'}`)
+      const before = beforeEdit(tab.doc)
+      updateActiveTab({ doc: withVariant(before, start, end, fragment, replaceBasesInPlace(tab.doc, start, end, fragment)) })
     },
 
     // All of these route through transact(), so each is exactly one undo entry

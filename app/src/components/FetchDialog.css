@@ -61,3 +61,39 @@
   margin-top: var(--space-1);
   font-style: italic;
 }
+
+/* Source choice: a segmented row above the accession field */
+.fetch-sources {
+  display: flex;
+  gap: var(--space-1);
+  margin-bottom: var(--space-3);
+}
+
+.fetch-source {
+  flex: 1;
+  padding: var(--space-1-5) var(--space-2);
+  font-size: var(--text-xs);
+  font-family: inherit;
+  color: var(--text-secondary);
+  background: var(--bg-alt);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-input);
+  cursor: pointer;
+  transition: background var(--dur-fast), color var(--dur-fast), border-color var(--dur-fast);
+}
+
+.fetch-source:hover {
+  background: var(--bg-hover);
+  color: var(--text);
+}
+
+.fetch-source.active {
+  color: var(--accent);
+  background: var(--accent-bg);
+  border-color: var(--accent);
+}
+
+.fetch-source:disabled {
+  opacity: 0.6;
+  cursor: default;
+}

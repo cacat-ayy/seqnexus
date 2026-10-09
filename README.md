@@ -2234,9 +2234,9 @@ chosen by hand.
 Everything that needs bases is left out of a protein's view rather than
 offered and refused: the complement strand, the translation rows, restriction
 enzymes, ORFs, primers, the plasmid map and split view, GC content, Tm and
-codon usage, methylation, cloning, codon optimization and (for now) BLAST.
-The panel bar shows only Features and Display; the toolbar buttons for those
-tools are disabled with a note saying why. The feature type list offers
+codon usage, methylation and cloning. The panel bar shows Features, Motifs,
+Auto and Display; the toolbar buttons for the DNA tools are disabled with a
+note saying why, and the ORF finder's slot holds the motif finder. The feature type list offers
 protein feature keys (Region, Domain, Site, Chain, sig_peptide, transmembrane,
 disulfide and so on, the GenPept keys and the UniProt categories spelt as one
 word so they survive export) instead of promoters and terminators.
@@ -2392,12 +2392,140 @@ BLAST offers blastp and tblastn for a protein query and swaps its saved
 program when the open document changes kind; hits of a protein search link
 to NCBI's protein records.
 
+### Graph tracks
+
+A protein can carry one graph track under its feature lanes, drawn as a
+filled curve on every row of the sequence view, along the minimap, and in
+the PDF. The curve is the mean of a per-residue scale over a window centred
+on each residue; the window is cut short at the two ends so every residue
+has a value (ProtScale leaves the first and last half-windows blank), and
+residues the scale does not know (X, B, Z, a stop) are left out of the mean
+rather than counted as zero. Two prefix sums make the profile O(n) whatever
+the window. The scales, their default windows and their sources:
+
+| Scale | Window | Guide | Source |
+|-------|--------|-------|--------|
+| Hydropathy | 9 | 0; above is hydrophobic | Kyte and Doolittle (1982) |
+| Hydrophilicity | 7 | 0; peaks are exposed, likely antigenic | Hopp and Woods (1981) |
+| Hydrophobicity | 9 | 0 | Eisenberg et al. (1984), the consensus scale |
+| Charge at pH 7 | 9 | 0 | Side-chain charge by Henderson-Hasselbalch with the EMBOSS pKa values; Lys, Arg, His positive, Asp, Glu, Cys, Tyr negative, the rest zero |
+| Flexibility | 9 | 1 | Vihinen et al. (1994) normalized B-factors |
+
+The windows are ProtScale's defaults, and any odd window from 1 to 21 can
+be chosen instead. The minimap's copy of the track is the same values
+averaged into one bin per pixel, with the value under the pointer in the
+hover readout.
+
+### Motifs and sites
+
+The motif finder sits where the ORF finder sits for DNA and answers the same
+question for residues: where are the things worth a feature. It scans the
+protein against a short library of patterns written in PROSITE notation
+(`N-{P}-[ST]-{P}`: elements separated by hyphens, `x` any residue, `[..]`
+one of, `{..}` none of, `(n)` or `(n,m)` repeats, `<` and `>` the ends),
+which a small parser turns into a regular expression. Every occurrence is
+reported, overlaps included, by matching in a lookahead at each position.
+
+The library is deliberately short. PROSITE's full set of patterns finds a
+site every few residues of any protein, which is why its own tools hide the
+frequent patterns by default; what is kept here is what a lab checks a
+construct for. The categories: modification sites (the N-glycosylation
+sequon, kinase and myristoylation sites, amidation, sumoylation, the CAAX
+box), processing sites (furin, caspase-3, the acid-labile Asp-Pro bond),
+targeting signals (mono- and bipartite nuclear localization signals, ER
+retention, PTS1, RGD), binding and catalytic signatures (the P-loop,
+EF-hand, C2H2 zinc finger, the serine and cysteine protease active sites),
+the leucine zipper, and the sequence liabilities a developability review
+flags (deamidation, Asp isomerization, oxidation-prone and glycation-prone
+pairs). Each entry names its PROSITE accession or the paper it comes from;
+the panel shows the pattern beside the hits. A pattern this short also
+matches by chance, so a hit is a place to look, not a finding, and the panel
+says so.
+
+Membrane spans ride the same overlay as one more category, from the rule of
+Kyte and Doolittle (1982): a 19-residue window whose mean hydropathy
+exceeds 1.6. Each residue whose window passes marks a candidate; runs of
+them, widened to the window they were judged by and merged where they
+touch, are the segments, and segments shorter than 15 residues are dropped.
+Only whole windows count, so the ends of a protein do not pass on half a
+window of leucines. The rule finds hydrophobic stretches, not whether the
+protein is in a membrane at all, which is why its hits are provisional
+features until converted.
+
+Hits are drawn as an overlay like ORFs, in the colour of their category:
+Ctrl-click picks one, the panel bar converts the picked ones (or all of
+them) into features of the type the pattern names (`glycosylation`,
+`modified_residue`, `Site`, `Motif`, `active_site`, `transmembrane`) as one
+undo step. A hit the document already has a feature for, by name and
+residues, is not added twice. Categories can be switched off in the panel
+and the overlay follows. The scan is a regular-expression pass over a short
+protein and runs on the residues themselves, so a substitution moves a site
+at once.
+
+### UniProt and NCBI protein import
+
+"Import by Accession" takes a UniProt accession or entry name (`P69905`,
+`HBA_HUMAN`), an NCBI protein accession (`NP_000509.1`, GenPept from the
+`protein` database) or a nucleotide accession, guessing the source from the
+accession's shape: UniProt accessions follow a fixed pattern (a letter, a
+digit, then letters and digits in the published arrangement), RefSeq
+proteins start `NP_`, `XP_`, `WP_`, `YP_` or `AP_`, GenBank proteins are
+three letters and five or seven digits. The guess can be overridden.
+
+A UniProt entry comes through the REST service's JSON, which the server
+sends with CORS headers so the page can ask for it directly. The document
+is named after the gene (or the entry name), described by the recommended
+protein name and organism, and carries the entry's features as annotations
+on their residues: chains, peptides, signal and transit peptides, domains
+(zinc fingers and DNA-binding regions among them), regions (coiled coils,
+compositional bias, topological domains), motifs, repeats, membrane
+segments, active and binding sites, modified residues (lipidation and
+cross-links among them), glycosylation, disulfide bonds and natural and
+mutagenesis variants. A natural variant is named in the short HGVS form
+(`p.D7G`) with the original and the alternative residues as qualifiers.
+Secondary structure (helix, turn, strand), sequence conflicts, the initiator
+methionine and features without a fixed position are left out: they are
+about the record, not the protein. The entry's PDB identifiers and whether
+AlphaFold has a model are kept in the document's metadata for the structure
+viewer.
+
+### Disulfide bonds
+
+A disulfide is a feature of type `disulfide` with two one-residue segments,
+one per cysteine, so the feature model that already carries exons carries
+bonds. It is drawn as an arc from one cysteine to the other over the feature
+lane rather than as a bar with a line across; the properties panel counts
+it for the extinction coefficient. Two cysteines selected together (Ctrl-
+click) offer "Add Disulfide Bond" in the context menu. In GenPept the bond
+is written as `bond(48,52)`, which is the format's own notation and what
+the reader already accepted.
+
+### Variants
+
+A protein in a lab is usually a variant of something, so an edit to a
+protein is written down. Replacing selected residues (typing over a
+selection, pasting, or "Mutate to" in the context menu, which lists the
+twenty residues and a stop for a single selected residue) and deleting
+residues create a `variant` feature on the residues the edit left behind,
+named in the one-letter HGVS short form the literature uses (`p.K27M`,
+`p.K27del`, `p.K27_L29del`, `p.K27_L28insAG`, `p.K27_V28delinsRST`,
+`p.K27*`), with the recommended three-letter name (`p.Lys27Met`) in the
+note and the original residues, the replacement and the position as
+qualifiers. Positions follow the displayed numbering. The feature and the
+edit are one undo step. A deletion that meets one already recorded extends
+it, so Backspace held down is one deletion and not five. Inserting at the
+caret is not recorded: a protein typed in from scratch is not a variant of
+its first residue. The feature list, grouped by type, is the mutation list;
+"Add features to" carries variants to the DNA with everything else. The
+record can be switched off in the display settings.
+
 ### Limits
 
-UniProt import, the graph tracks (hydropathy, charge), motif search, the
-domain map, proteolysis and the structure panel are later phases of the
-protein work and are not in this version. The three-letter spelling is not
-drawn on a protein's canvas.
+The domain map, proteolysis, secondary structure prediction and the
+structure panel are later phases of the protein work and are not in this
+version. The three-letter spelling is not drawn on a protein's canvas. The
+motif library is a curated subset of PROSITE, not the database; a pattern
+file cannot yet be imported.
 
 ---
 
@@ -2840,6 +2968,36 @@ print colours on white, whatever the app's theme.
   Bairoch A (2005) "Protein identification and analysis tools on the ExPASy
   server." In: Walker JM (ed) *The Proteomics Protocols Handbook*, Humana
   Press, 571-607. (ProtParam, which the properties are checked against.)
+
+- Hopp TP, Woods KR (1981) "Prediction of protein antigenic determinants
+  from amino acid sequences." *Proc Natl Acad Sci USA* 78:3824-3828.
+
+- Eisenberg D, Schwarz E, Komaromy M, Wall R (1984) "Analysis of membrane
+  and surface protein sequences with the hydrophobic moment plot." *J Mol
+  Biol* 179:125-142. (The consensus hydrophobicity scale.)
+
+- Vihinen M, Torkkila E, Riikonen P (1994) "Accuracy of protein flexibility
+  predictions." *Proteins* 19:141-149.
+
+- Sigrist CJA, de Castro E, Cerutti L, Cuche BA, Hulo N, Bridge A, Bougueleret
+  L, Xenarios I (2013) "New and continuing developments at PROSITE."
+  *Nucleic Acids Res* 41:D344-D347. (The pattern notation and the PS
+  patterns in the motif library.)
+
+- Dingwall C, Laskey RA (1991) "Nuclear targeting sequences: a consensus?"
+  *Trends Biochem Sci* 16:478-481. (The bipartite nuclear localization
+  signal.)
+
+- Robinson NE, Robinson AB (2001) "Molecular clocks." *Proc Natl Acad Sci
+  USA* 98:944-949. (Deamidation rates by sequence context.)
+
+- The UniProt Consortium (2023) "UniProt: the Universal Protein
+  Knowledgebase in 2023." *Nucleic Acids Res* 51:D523-D531.
+
+- den Dunnen JT, Dalgleish R, Maglott DR, Hart RK, Greenblatt MS,
+  McGowan-Jordan J, Roux AF, Smith T, Antonarakis SE, Taschner PEM (2016)
+  "HGVS recommendations for the description of sequence variants: 2016
+  update." *Hum Mutat* 37:564-569. (The variant names.)
 
 - SantaLucia J Jr. (1998) "A unified view of polymer, dumbbell, and
   oligonucleotide DNA nearest-neighbor thermodynamics."

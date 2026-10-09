@@ -40,6 +40,8 @@ import { emptyDesign, METHOD_LABEL, partFromDoc, type CloningMethodId } from '..
 const CLONING_METHODS: CloningMethodId[] = ['homology', 'restriction', 'golden-gate']
 import ContextMenuPopup, { MenuItem, MenuSeparator, Submenu } from './ContextMenuPopup'
 import type { GroupedCutSite } from '../enzymes/grouping'
+import { threeLetter } from '../protein/variants'
+import { displayPosition } from '../models/Document'
 
 export interface SequenceMenuTarget {
   x: number
@@ -462,6 +464,20 @@ export default function SequenceContextMenu({
             ))}
           </Submenu>
         )}
+        {protein && !readOnly && !multi && selectionLen === 1 && (
+          <Submenu icon={<Pencil size={ICON} />} label={`Mutate ${selectedBases().toUpperCase()}${displayPosition(segs[0][0], doc.metadata?.displayOrigin ?? 0, doc.sequence.length)} to`}>
+            {[...'ACDEFGHIKLMNPQRSTVWY*'].filter(r => r !== selectedBases().toUpperCase()).map(r => (
+              <MenuItem key={r} onSelect={act(() => {
+                const [s, e] = segs[0]
+                const store = useEditorStore.getState()
+                store.replace(s, e, r)
+                store.setSelection({ anchor: s, caret: e })
+              })} title={r === '*' ? 'A stop: truncates the protein here' : `Replace this residue with ${threeLetter(r)}`}>
+                {r === '*' ? 'Stop (*)' : `${r}  ${threeLetter(r)}`}
+              </MenuItem>
+            ))}
+          </Submenu>
+        )}
         {canMakePrimer && (
           <Submenu icon={<MoveRight size={ICON} />} label="New Primer from Selection">
             <MenuItem icon={<MoveRight size={ICON} />} onSelect={act(() => newPrimer(1))}>Forward</MenuItem>
@@ -497,6 +513,23 @@ export default function SequenceContextMenu({
         {canAnnotate && (
           <MenuItem icon={<Tag size={ICON} />} onSelect={act(addAnnotation)}>
             {multi ? 'Add Joined Annotation…' : hasSelection ? 'Add Annotation to Selection…' : 'Add Annotation Here…'}
+          </MenuItem>
+        )}
+        {protein && multi && ranges.length === 2 && segs.length === 2 && segs.every(([s, e]) => e - s === 1)
+          && segs.every(([s]) => doc.sequence.basesIn(s, s + 1).toUpperCase() === 'C') && (
+          <MenuItem icon={<Atom size={ICON} />} onSelect={act(() => {
+            const [a, b] = [...segs].sort((x, y) => x[0] - y[0])
+            const origin = doc.metadata?.displayOrigin ?? 0
+            const n = (i: number) => displayPosition(i, origin, doc.sequence.length)
+            useEditorStore.getState().addAnnotation({
+              id: `ann_${Date.now().toString(36)}`,
+              name: `Cys${n(a[0])}-Cys${n(b[0])}`,
+              type: 'disulfide',
+              start: a[0], end: b[1], strand: 0,
+              segments: [[a[0], a[1]], [b[0], b[1]]],
+            })
+          })} title="A bond between the two selected cysteines, drawn as an arc and counted for the extinction coefficient">
+            Add Disulfide Bond
           </MenuItem>
         )}
         {protein && linkedOpen && doc.annotations.length > 0 && (

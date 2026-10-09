@@ -7,6 +7,7 @@ import SequenceView from './components/SequenceView'
 import PlasmidMap from './components/PlasmidMap'
 import EnzymePanel from './components/EnzymePanel'
 import ORFPanel from './components/ORFPanel'
+import MotifPanel from './components/MotifPanel'
 import FeatureSidebar from './components/FeatureSidebar'
 import EmptyState from './components/EmptyState'
 import DisplayPopover from './components/DisplayPopover'
@@ -51,6 +52,8 @@ import { useToolbarDensity } from './hooks/useToolbarDensity'
 import { ToolbarTooltip } from './components/ToolbarTooltip'
 import { tip } from './components/toolbarTip'
 import { useAutoAnnotateScan } from './hooks/useAutoAnnotateScan'
+import { useMotifScan } from './hooks/useMotifScan'
+import { motifKey, convertibleMotifs } from './utils/motif-features'
 import { proposalsFrom, matchKey } from './utils/auto-annotations'
 import { convertibleOrfs, orfKey } from './utils/orf-features'
 import ConvertActions from './components/ConvertActions'
@@ -68,7 +71,7 @@ import {
   X, ChevronDown as ChevronDownSmall,
   SunMoon, Info, List, Lock, LockOpen, Tag, Globe, GalleryVertical, AlignLeft, ArrowLeft, Wand2, Route, Shapes,
   Combine,
-  SlidersHorizontal,
+  SlidersHorizontal, Atom,
 } from 'lucide-react'
 const BlastDialog = lazy(() => import('./components/BlastDialog'))
 const CommandPalette = lazy(() => import('./components/CommandPalette'))
@@ -238,6 +241,12 @@ export default function App() {
   const autoAnnotateScanning = useEditorStore(s => s.autoAnnotateScanning)
   const applyAutoAnnotations = useEditorStore(s => s.applyAutoAnnotations)
   const orfResults = useEditorStore(s => s.orfResults)
+  const showMotifs = useEditorStore(s => s.showMotifs)
+  const toggleMotifs = useEditorStore(s => s.toggleMotifs)
+  const motifResults = useEditorStore(s => s.motifResults)
+  const motifCategoriesOff = useEditorStore(s => s.motifCategoriesOff)
+  const motifPicks = useEditorStore(s => s.motifPicks)
+  const applyMotifs = useEditorStore(s => s.applyMotifs)
   const enzymeCutSites = useEditorStore(s => s.enzymeCutSites)
   const enzymeNames = useEditorStore(s => s.enzymeNames)
   const setEnzymeCutSites = useEditorStore(s => s.setEnzymeCutSites)
@@ -308,6 +317,7 @@ export default function App() {
   const [fileMenuOpen, setFileMenuOpen] = useState(false)
   const [newSeqModalOpen, setNewSeqModalOpen] = useState(false)
   const [orfModalOpen, setOrfModalOpen] = useState(false)
+  const [motifPanelOpen, setMotifPanelOpen] = useState(false)
   const [enzymeModalOpen, setEnzymeModalOpen] = useState(false)
   const [annotateModalOpen, setAnnotateModalOpen] = useState(false)
   const [codonModalOpen, setCodonModalOpen] = useState(false)
@@ -324,6 +334,7 @@ export default function App() {
    * the scan belongs here rather than inside either of them.
    */
   useAutoAnnotateScan(annotateModalOpen)
+  useMotifScan(motifPanelOpen)
   /** Matches worth offering: the ones the document does not already cover. */
   const autoProposals = useMemo(
     () => (showAutoAnnotations || annotateModalOpen)
@@ -353,8 +364,25 @@ export default function App() {
     if (orfPicks.size === 0) return 0
     return convertibleOrfList.reduce((n, o) => n + (orfPicks.has(orfKey(o)) ? 1 : 0), 0)
   }, [convertibleOrfList, orfPicks])
+  /**
+   * Motif hits a conversion would add: the shown categories, less the hits
+   * the document already has a feature for (same name, same residues).
+   */
+  const shownMotifs = useMemo(() => {
+    if (!showMotifs) return []
+    const off = new Set(motifCategoriesOff)
+    return motifResults.filter(h => !off.has(h.category))
+  }, [showMotifs, motifResults, motifCategoriesOff])
+  const convertibleMotifList = useMemo(
+    () => convertibleMotifs(shownMotifs, doc.annotations),
+    [shownMotifs, doc.annotations],
+  )
+  const pickedMotifCount = useMemo(() => {
+    if (motifPicks.size === 0) return 0
+    return convertibleMotifList.reduce((n, h) => n + (motifPicks.has(motifKey(h)) ? 1 : 0), 0)
+  }, [convertibleMotifList, motifPicks])
   /** Once anything is picked anywhere, the how-to-pick hint has done its job. */
-  const anyPicked = pickedProposalCount + pickedOrfCount
+  const anyPicked = pickedProposalCount + pickedOrfCount + pickedMotifCount
 
   const addAlignment = useEditorStore(s => s.addAlignment)
   const contigs = useEditorStore(s => s.contigs)
@@ -1192,6 +1220,17 @@ export default function App() {
   )
   const handleAddAllOrfs = useCallback(() => convertOrfs(), [convertOrfs])
 
+  /** The same for motif hits, which land as the site or motif features they were drawn as. */
+  const convertMotifs = useCallback((keys?: Iterable<string>) => {
+    const added = applyMotifs(keys)
+    if (added > 0) notify.success(`Added ${added} motif${added === 1 ? '' : 's'} as features`)
+  }, [applyMotifs])
+  const handleAddPickedMotifs = useCallback(
+    () => convertMotifs(useEditorStore.getState().motifPicks),
+    [convertMotifs],
+  )
+  const handleAddAllMotifs = useCallback(() => convertMotifs(), [convertMotifs])
+
   // The single source of truth for "things the user can do". The palette reads
   // this; so should the toolbar overflow menu when it lands, rather than
   // duplicating the list. `disabled` is computed rather than filtered so a
@@ -1250,7 +1289,7 @@ export default function App() {
     { id: 'import-file', label: 'Import File…', group: 'File', icon: FileUp, keywords: 'open load genbank fasta', run: () => fileInputRef.current?.click() },
     { id: 'import-folder', label: 'Import Folder…', group: 'File', icon: FolderUp, run: () => folderInputRef.current?.click() },
     { id: 'import-clipboard', label: 'Import from Clipboard', group: 'File', icon: ClipboardPaste, run: handleImportClipboard },
-    { id: 'fetch', label: 'Fetch from NCBI…', group: 'File', icon: Globe, keywords: 'download accession', run: () => setFetchModalOpen(true) },
+    { id: 'fetch', label: 'Import by Accession…', group: 'File', icon: Globe, keywords: 'fetch download ncbi uniprot genpept accession', run: () => setFetchModalOpen(true) },
     { id: 'export', label: 'Export…', group: 'File', icon: Save, shortcut: `${mod}⇧S`, disabled: noDoc, run: () => { setBulkExportItems({}); setExportModalOpen(true) } },
     { id: 'export-pdf', label: 'Export PDF…', group: 'File', icon: FileText, shortcut: `${mod}P`, keywords: 'print figure publication', disabled: !sequenceShown, run: openPdfExport },
     { id: 'session-export', label: 'Export Session', group: 'File', run: () => setSessionExportOpen(true) },
@@ -1265,6 +1304,7 @@ export default function App() {
     // --- Analyse ---
     { id: 'annotate', label: 'Annotate Features', group: 'Analyse', icon: Tag, disabled: noDoc, run: () => setAnnotateModalOpen(true) },
     { id: 'orfs', label: 'Find ORFs', group: 'Analyse', icon: Dna, keywords: 'open reading frame', disabled: noDna, run: () => setOrfModalOpen(true) },
+    { id: 'motifs', label: 'Find Motifs and Sites', group: 'Analyse', icon: Atom, keywords: 'prosite glycosylation phosphorylation liability transmembrane protein', disabled: noDoc || !isProtein, run: () => setMotifPanelOpen(true) },
     { id: 'enzymes', label: 'Restriction Enzymes', group: 'Analyse', icon: Scissors, keywords: 'digest cut sites', disabled: noDna, run: () => setEnzymeModalOpen(true) },
     { id: 'primers', label: 'Design Primers', group: 'Analyse', icon: FlaskConical, keywords: 'pcr tm oligo', disabled: noDna, run: openPrimerDesign },
     { id: 'blast', label: 'BLAST Search', group: 'Analyse', icon: Globe, keywords: 'ncbi homology', disabled: noDoc, run: () => setBlastModalOpen(true) },
@@ -1290,6 +1330,7 @@ export default function App() {
 
     // --- View ---
     { id: 'toggle-orfs', label: 'Toggle ORF Display', group: 'View', icon: Dna, disabled: noDna, run: () => toggleOrfs() },
+    { id: 'toggle-motifs', label: 'Toggle Motif Display', group: 'View', icon: Atom, disabled: noDoc || !isProtein, run: () => toggleMotifs() },
     { id: 'toggle-enzymes', label: 'Toggle Enzyme Display', group: 'View', icon: Scissors, disabled: noDna, run: () => toggleEnzymes() },
     { id: 'toggle-primers', label: 'Show Saved Primers', group: 'View', icon: FlaskConical, disabled: noDna, run: () => openSidebar('primers', 'list') },
     { id: 'toggle-auto-annotations', label: 'Toggle Auto-Annotation Suggestions', group: 'View', icon: Tag, disabled: noDoc, keywords: 'annotate suggest features', run: () => toggleAutoAnnotations() },
@@ -1300,7 +1341,7 @@ export default function App() {
     { id: 'about', label: 'About SeqNexus', group: 'View', icon: Info, keywords: 'help version', run: () => setInfoOpen(true) },
   ], [
     mod, redoKey, noDoc, noDna, isProtein, sequenceShown, openPdfExport, undoDisabled, redoDisabled, handleOpenFind, handleNewSequence, handleNewFolder, openGel, openCloning, runUndo, runRedo,
-    handleImportClipboard, toggleOrfs, toggleEnzymes, openSidebar, openPrimerDesign, toggleAutoAnnotations,
+    handleImportClipboard, toggleOrfs, toggleMotifs, toggleEnzymes, openSidebar, openPrimerDesign, toggleAutoAnnotations,
     viewMode,
   ])
 
@@ -1371,7 +1412,7 @@ export default function App() {
               </button>
               <button className="file-menu-item" role="menuitem" onClick={() => { setFetchModalOpen(true); setFileMenuOpen(false) }}>
                 <span className="file-menu-icon"><Globe size={14} /></span>
-                Import from NCBI…
+                Import by Accession…
               </button>
               <div className="file-menu-sep" />
               <button className="file-menu-item" role="menuitem" onClick={() => {
@@ -1463,9 +1504,18 @@ export default function App() {
           <button className="tb" onClick={() => setAnnotateModalOpen(true)} disabled={noDoc} {...tip({ label: 'Annotate features', desc: isProtein ? 'Detect tags, fusion partners, protease sites, linkers and signals' : 'Detect known features such as promoters, markers and origins', why: 'Open a sequence to use this' })}>
             <span className="tb-icon"><Tag size={14} /></span><span className="tb-text">Annotate</span>
           </button>
-          <button className="tb" onClick={() => setOrfModalOpen(true)} disabled={noDna} {...tip({ label: 'Find ORFs', desc: 'Scan all six frames for open reading frames', why: needsSequence })}>
-            <span className="tb-icon"><Dna size={14} /></span><span className="tb-text">ORFs</span>
-          </button>
+          {/* A protein has no reading frames; its finder in this slot is the
+              motif scan, which answers the same kind of question (where are
+              the things worth a feature) for residues. */}
+          {isProtein ? (
+            <button className="tb" onClick={() => setMotifPanelOpen(true)} {...tip({ label: 'Find motifs', desc: 'PROSITE sites, sequence liabilities and membrane spans' })}>
+              <span className="tb-icon"><Atom size={14} /></span><span className="tb-text">Motifs</span>
+            </button>
+          ) : (
+            <button className="tb" onClick={() => setOrfModalOpen(true)} disabled={noDna} {...tip({ label: 'Find ORFs', desc: 'Scan all six frames for open reading frames', why: needsSequence })}>
+              <span className="tb-icon"><Dna size={14} /></span><span className="tb-text">ORFs</span>
+            </button>
+          )}
           <button className="tb" onClick={() => setEnzymeModalOpen(true)} disabled={noDna} {...tip({ label: 'Restriction enzymes', desc: 'Find cut sites and choose enzymes to show', why: needsSequence })}>
             <span className="tb-icon"><Scissors size={14} /></span><span className="tb-text">Enzymes</span>
           </button>
@@ -2009,6 +2059,29 @@ export default function App() {
                 </button>
                 )}
                 {isProtein && <div className="panel-bar-sep" />}
+                {isProtein && (
+                <button
+                  className={`panel-bar-btn ${showMotifs ? 'active' : ''}`}
+                  onClick={() => toggleMotifs()}
+                  aria-pressed={showMotifs}
+                  title="Toggle motif and site display"
+                >
+                  <Atom size={13} /> Motifs
+                  {showMotifs && shownMotifs.length > 0 && (
+                    <span className="panel-bar-count">{shownMotifs.length}</span>
+                  )}
+                </button>
+                )}
+                {isProtein && showMotifs && (
+                  <ConvertActions
+                    total={convertibleMotifList.length}
+                    picked={pickedMotifCount}
+                    showHint={anyPicked === 0}
+                    addAllTitle="Add every motif hit as a feature"
+                    onAddPicked={handleAddPickedMotifs}
+                    onAddAll={handleAddAllMotifs}
+                  />
+                )}
                 <button
                   className={`panel-bar-btn ${showAutoAnnotations ? 'active' : ''}`}
                   onClick={() => toggleAutoAnnotations()}
@@ -2276,6 +2349,18 @@ export default function App() {
         }}
       />
 
+      {/* Closing the finder turns the overlay on, as the ORF finder does:
+          the hits were just looked at, and should stay in view. */}
+      <MotifPanel
+        open={motifPanelOpen}
+        onClose={() => {
+          setMotifPanelOpen(false)
+          if (!useEditorStore.getState().showMotifs) {
+            useEditorStore.getState().toggleMotifs()
+          }
+        }}
+      />
+
       <ConfirmDialog
         open={manyRecords !== null}
         title={`Open ${manyRecords?.count.toLocaleString() ?? ''} records?`}
@@ -2355,7 +2440,8 @@ export default function App() {
         open={fetchModalOpen}
         onClose={() => setFetchModalOpen(false)}
         onFetched={(doc) => {
-          openDocumentState({ ...doc, metadata: { ...doc.metadata, origin: 'ncbi' } })
+          // A UniProt entry arrives with its origin set; NCBI records get theirs here.
+          openDocumentState({ ...doc, metadata: { ...doc.metadata, origin: doc.metadata?.origin ?? 'ncbi' } })
           setFetchModalOpen(false)
         }}
       />

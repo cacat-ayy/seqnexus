@@ -21,7 +21,8 @@ import type { Selection, SearchState } from '../store'
 import { selectionSegments, selectionIsReverse } from '../store'
 import { getLayout, getRenderMode, letterCellWidth, RowLayoutMap, type ZoomLayout } from '../components/zoom-layout'
 import {
-  paintSequenceRows, stackAnnotations, measureSiteRows, ENZYME_LABEL_SPEC, type RowStack, type SequenceColors,
+  paintSequenceRows, stackAnnotations, measureSiteRows, ENZYME_LABEL_SPEC, GRAPH_TRACK_H,
+  type RowStack, type SequenceColors, type GraphTrack,
   type SelectionTranslation,
 } from '../components/sequence-paint'
 import type { GroupedCutSite } from '../enzymes/grouping'
@@ -71,6 +72,9 @@ export interface SequencePdfSource {
   primerItemById: ReadonlyMap<string, PrimerItem>
   autoPicks: ReadonlySet<string>
   orfPicks: ReadonlySet<string>
+  motifPicks: ReadonlySet<string>
+  /** A protein's graph track as the view draws it; null when none is chosen. */
+  graph: GraphTrack | null
   translationFrames: readonly ReadingFrame[]
   /** Translation rows the view reserves; 0 when the translation is off. */
   translationRows: number
@@ -320,6 +324,7 @@ export function planSequencePdf(src: SequencePdfSource, opts: SequencePdfOptions
     showComplement: src.showComplement,
     showAnnotations: src.showAnnotations,
     translationRows: src.translationRows,
+    graphHeight: src.graph ? GRAPH_TRACK_H : 0,
   }
   let layoutWidth: number
   let L: ZoomLayout
@@ -462,6 +467,8 @@ export function renderPdfPage(ctx: CanvasRenderingContext2D, plan: PdfPlan, page
     annEdgeDrag: null,
     autoPicks: src.autoPicks,
     orfPicks: src.orfPicks,
+    motifPicks: src.motifPicks,
+    graph: src.graph,
     primerItemById: src.primerItemById,
     translationFrames: src.translationFrames,
     translationCode: src.translationCode,

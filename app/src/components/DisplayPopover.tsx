@@ -22,6 +22,7 @@ import {
   type AminoAcidStyleId, type TranslationFrameId,
 } from '../codon/translation-display'
 import { PROTEIN_SCHEMES, buildResiduePalette, type ProteinSchemeId } from '../utils/residue-colors'
+import { PROTEIN_SCALES, SCALE_WINDOWS, proteinScale, type ProteinScaleId } from '../protein/scales'
 import { usePopoverDismiss } from '../hooks/usePopoverDismiss'
 import { useClampedPosition } from '../hooks/useClampedPosition'
 import './DisplayPopover.css'
@@ -173,6 +174,12 @@ export default function DisplayPopover({ open, onClose, triggerRef }: Props) {
   const protein = useEditorStore(s => s.doc.sequence.alphabet === 'protein')
   const proteinColorScheme = useEditorStore(s => s.proteinColorScheme)
   const setProteinColorScheme = useEditorStore(s => s.setProteinColorScheme)
+  const proteinScaleId = useEditorStore(s => s.proteinScale)
+  const setProteinScale = useEditorStore(s => s.setProteinScale)
+  const proteinScaleWindow = useEditorStore(s => s.proteinScaleWindow)
+  const setProteinScaleWindow = useEditorStore(s => s.setProteinScaleWindow)
+  const trackVariants = useEditorStore(s => s.trackVariants)
+  const setTrackVariants = useEditorStore(s => s.setTrackVariants)
   const colorScheme = useEditorStore(s => s.colorScheme)
   const setColorScheme = useEditorStore(s => s.setColorScheme)
   const colorTarget = useEditorStore(s => s.colorTarget)
@@ -299,6 +306,51 @@ export default function DisplayPopover({ open, onClose, triggerRef }: Props) {
             <input type="checkbox" checked={showAnnotationTracks} onChange={toggleAnnotationTracks} />
             <span>Annotation tracks</span>
           </label>
+          <label className="dp-check" title="Replaced and deleted residues are written down as variant features named as HGVS names them (p.K27M)">
+            <input type="checkbox" checked={trackVariants} onChange={e => setTrackVariants(e.target.checked)} />
+            <span>Record edits as variants</span>
+          </label>
+        </div>
+
+        <div className="dp-sep" />
+
+        {/* The graph track: a windowed scale under each row, and the same
+            curve along the minimap. The window follows the scale's own
+            default until one is chosen. */}
+        <div className="dp-section">
+          <div className="dp-section-label">Graph track</div>
+          <div className="dp-fields">
+            <label className="dp-field">
+              <span className="dp-field-label">Scale</span>
+              <select
+                className="select dp-select"
+                value={proteinScaleId}
+                onChange={e => setProteinScale(e.target.value as ProteinScaleId | 'none')}
+                title={proteinScaleId === 'none' ? 'No graph track' : proteinScale(proteinScaleId).description}
+              >
+                <option value="none">None</option>
+                {PROTEIN_SCALES.map(s => (
+                  <option key={s.id} value={s.id}>{s.label}</option>
+                ))}
+              </select>
+            </label>
+            {proteinScaleId !== 'none' && (
+              <label className="dp-field">
+                <span className="dp-field-label">Window</span>
+                <select
+                  className="select dp-select"
+                  value={proteinScaleWindow}
+                  onChange={e => setProteinScaleWindow(Number(e.target.value))}
+                  title="Residues averaged around each one; the scale's own default when not chosen"
+                >
+                  <option value={0}>Default ({proteinScale(proteinScaleId).window})</option>
+                  {SCALE_WINDOWS.map(w => (
+                    <option key={w} value={w}>{w} residues</option>
+                  ))}
+                </select>
+              </label>
+            )}
+          </div>
         </div>
       </div>
     )

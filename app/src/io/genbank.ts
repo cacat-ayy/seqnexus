@@ -261,7 +261,9 @@ function buildRecord(r: RecordInProgress): GenBankRecord {
     annotations.push({
       id: ids.next(),
       name: label,
-      type: f.type,
+      // A GenPept Bond is a disulfide unless its /bond_type says otherwise,
+      // which is the key the app draws as an arc and counts for A280.
+      type: f.type === 'Bond' && (f.qualifiers.bond_type?.[0] ?? 'disulfide') === 'disulfide' ? 'disulfide' : f.type,
       start: resolved.start,
       end: resolved.end,
       strand: resolved.strand,
@@ -382,7 +384,12 @@ export function writeGenBank(state: DocumentState): string {
   // FEATURES
   lines.push('FEATURES             Location/Qualifiers')
   for (const ann of [...state.annotations, ...primerFeatures(state)]) {
-    const loc = formatGenBankLocation(ann, bp, seq.topology === 'circular')
+    // A disulfide between two residues is a GenPept bond, not a join.
+    const bond = ann.type === 'disulfide' && ann.segments?.length === 2
+      && ann.segments.every(([s, e]) => e - s === 1)
+    const loc = bond
+      ? `bond(${ann.segments![0][0] + 1},${ann.segments![1][0] + 1})`
+      : formatGenBankLocation(ann, bp, seq.topology === 'circular')
     // The key fills columns 6-21; a longer one still needs a space before the location.
     const key = ann.type.length >= 16 ? `${ann.type} ` : padRight(ann.type, 16)
     lines.push(...wrapText(`     ${key}`, loc, ','))

@@ -42,6 +42,11 @@ export interface ZoomLayout {
   maxSiteLanes: number
   /** Space under the bars, before the sequence. */
   siteBandPad: number
+  /**
+   * Height of the graph track under a protein's feature lanes (a windowed
+   * scale such as hydropathy); 0 when none is shown. Every row carries it.
+   */
+  graphH: number
 }
 
 const ZOOM_BPR = [
@@ -71,6 +76,8 @@ export interface LayoutToggles {
    * The PDF export sets the line length and sizes the page to it.
    */
   basesPerRow?: number
+  /** Reserve this many pixels per row for a graph track; 0 or absent for none. */
+  graphHeight?: number
 }
 
 /** The width a base gets at a letters zoom level; it grows with the zoom. */
@@ -149,10 +156,14 @@ export function getLayout(
   // Letter rows get a little more air: rows without features now end right
   // under the complement, and the selection handle reaches below it.
   const rowPaddingBottom = mode === 'letters' ? 10 : 6
+  // The graph wants room for a curve; at line zoom the row is a few pixels
+  // and a curve would be most of it, so it is drawn only above that.
+  const graphH = mode !== 'line' ? Math.max(0, Math.round(toggles.graphHeight ?? 0)) : 0
+
   // A line with no cut sites: no names, no bars.
   const rowHeight = rulerHeight + seqLineHeight
     + (maxAnnotationRows > 0 ? annotationGap + maxAnnotationRows * (annotationRowH + annotationGap) : 0)
-    + maxTranslationRows * (12 + 1) + rowPaddingBottom
+    + maxTranslationRows * (12 + 1) + graphH + rowPaddingBottom
 
   return {
     mode, basesPerRow, bpWidth, groupGap, basesPerGroup, leftMargin,
@@ -161,6 +172,7 @@ export function getLayout(
     maxTranslationRows, translationRowH: 12, translationGap: 1,
     rowPaddingBottom, rowHeight,
     enzymeLabelTierH, maxEnzymeTiers, siteLaneH, maxSiteLanes, siteBandPad,
+    graphH,
   }
 }
 
@@ -192,7 +204,7 @@ export function rowHeightForLanes(
     : 0
   const clampedTranslations = Math.max(0, Math.min(translationRows, L.maxTranslationRows))
   return labelAreaHeight(L, tiers) + L.rulerHeight + siteBandHeight(L, siteLanes) + L.seqLineHeight + annArea
-    + clampedTranslations * (L.translationRowH + L.translationGap) + L.rowPaddingBottom
+    + clampedTranslations * (L.translationRowH + L.translationGap) + L.graphH + L.rowPaddingBottom
 }
 
 /**
