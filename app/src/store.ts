@@ -76,6 +76,7 @@ import type { CodonUsageTable } from './codon/usage-tables'
 import { defaultWorkspace, laneUsesSequence, MAX_LANES, type GelWorkspaceState } from './gel/workspace'
 import type { GelLane } from './gel/model'
 import { STORAGE_KEYS } from './storage/keys'
+import { Coalescer, recordStep, stepBack, stepForward, type HistoryRules, type WithHistory } from './models/history'
 
 const MAX_UNDO = 100
 
@@ -613,44 +614,30 @@ const oligoIds = makeIdGenerator('libo')
 const gelIds = makeIdGenerator('gel')
 const cloneIds = makeIdGenerator('clone')
 
-/** Edits to one gel with the same key within this window make one undo step. */
-const GEL_COALESCE_MS = 1000
-const MAX_GEL_UNDO = 100
-let gelCoalesce: { id: string; key: string; at: number } | null = null
-
-/** The same, for a cloning design: typing in a field is one step, not ten. */
-const CLONE_COALESCE_MS = 1000
-const MAX_CLONE_UNDO = 100
-let cloneCoalesce: { id: string; key: string; at: number } | null = null
-
-/** Same idea for alignment edits: typing a run of residues is one step. */
-const ALN_COALESCE_MS = 1000
-const MAX_ALN_UNDO = 200
 /**
- * Undo snapshots share every row an edit left alone, so most steps cost a
- * row or two. Column edits copy every row, though, so history is also capped
- * by the characters it holds on its own (about 128 MB of strings).
+ * How each kind of item keeps its history. Edits sharing a key within a
+ * second make one undo step, so typing in a field or dragging a slider is
+ * one step, not ten.
  */
-const ALN_UNDO_BUDGET = 64_000_000
-let alnCoalesce: { id: string; key: string; at: number } | null = null
-
-/** Characters held by `prev` that `next` does not share. */
-function alnStepCost(prev: AlnDoc, next: AlnDoc): number {
-  const kept = new Set(next.rows)
-  let n = 0
-  for (const r of prev.rows) if (!kept.has(r)) n += r.seq.length
-  return n
-}
-
-function trimAlnHistory(stack: AlnHistoryEntry[]): AlnHistoryEntry[] {
-  let total = 0
-  let from = stack.length
-  while (from > 0 && stack.length - from < MAX_ALN_UNDO) {
-    total += stack[from - 1].cost
-    if (total > ALN_UNDO_BUDGET && from < stack.length) break
-    from--
-  }
-  return from === 0 ? stack : stack.slice(from)
+const GEL_HISTORY: HistoryRules<GelWorkspaceState> = { maxSteps: 100, coalesceMs: 1000 }
+const CLONE_HISTORY: HistoryRules<CloningDesign> = { maxSteps: 100, coalesceMs: 1000 }
+const CONTIG_HISTORY: HistoryRules<ContigDoc> = { maxSteps: 60, coalesceMs: 0 }
+/**
+ * Alignment undo snapshots share every row an edit left alone, so most steps
+ * cost a row or two. Column edits copy every row, though, so history is also
+ * capped by the characters it holds on its own (about 128 MB of strings).
+ */
+const ALN_HISTORY: HistoryRules<AlnDoc> = {
+  maxSteps: 200,
+  coalesceMs: 1000,
+  budget: 64_000_000,
+  /** Characters held by `prev` that `next` does not share. */
+  cost(prev, next) {
+    const kept = new Set(next.rows)
+    let n = 0
+    for (const r of prev.rows) if (!kept.has(r)) n += r.seq.length
+    return n
+  },
 }
 
 const nextTabId = () => tabIds.next()
@@ -784,11 +771,6 @@ function pruneEmptyMeta(
 }
 
 /** One contig undo step: the document before the edit, and what the edit was. */
-export interface ContigHistoryEntry {
-  doc: ContigDoc
-  label: string
-}
-
 /** NGS reads of one sample: the description; the reads are in IndexedDB. See ngs/types.ts. */
 export type ReadSet = ReadSetRecord
 
@@ -805,7 +787,7 @@ export type NewAssembly = Partial<AssemblyRun> & {
 }
 
 /** A contig: reads assembled to a reference or to each other. Always part of an assembly. */
-export interface Contig {
+export interface Contig extends WithHistory<ContigDoc> {
   id: string
   /** The assembly that lists it. */
   assemblyId: string
@@ -815,9 +797,6 @@ export interface Contig {
   modifiedAt: number
   /** How it is shown; not part of its undo history. */
   view: ContigView
-  /** Earlier documents, newest last. Not persisted. */
-  undoStack: ContigHistoryEntry[]
-  redoStack: ContigHistoryEntry[]
 }
 
 /**
@@ -827,39 +806,25 @@ export interface Contig {
  * opened (cloning/run), so a saved design always shows what the engines say
  * now rather than what they said when it was saved.
  */
-export interface CloneDoc {
+export interface CloneDoc extends WithHistory<CloningDesign> {
   id: string
   name: string
   createdAt: number
   modifiedAt: number
   design: CloningDesign
-  /** Earlier designs, newest last. Not persisted. */
-  undoStack: CloningDesign[]
-  redoStack: CloningDesign[]
 }
 
 /** A virtual gel: what is on it, how it was run and imaged, and its history. */
-export interface GelDoc {
+export interface GelDoc extends WithHistory<GelWorkspaceState> {
   id: string
   name: string
   createdAt: number
   modifiedAt: number
   state: GelWorkspaceState
-  /** Earlier states, newest last. Not persisted. */
-  undoStack: GelWorkspaceState[]
-  redoStack: GelWorkspaceState[]
-}
-
-/** One alignment undo step: the document before the edit, and what the edit was. */
-export interface AlnHistoryEntry {
-  doc: AlnDoc
-  label: string
-  /** Characters this snapshot holds that the next one does not share. */
-  cost: number
 }
 
 /** A multiple or pairwise alignment the user owns and edits. */
-export interface SavedAlignment {
+export interface SavedAlignment extends WithHistory<AlnDoc> {
   id: string
   name: string
   doc: AlnDoc
@@ -867,9 +832,6 @@ export interface SavedAlignment {
   modifiedAt: number
   /** How it is shown; not part of its undo history. */
   view: AlnView
-  /** Earlier documents, newest last. Not persisted. */
-  undoStack: AlnHistoryEntry[]
-  redoStack: AlnHistoryEntry[]
 }
 
 interface EditorStore {
@@ -1397,8 +1359,8 @@ interface EditorStore {
    * quick succession (typing in a field) make one step.
    */
   updateClone: (id: string, fn: (d: CloningDesign) => CloningDesign, coalesceKey?: string) => void
-  undoClone: (id: string) => void
-  redoClone: (id: string) => void
+  undoClone: (id: string) => string | null
+  redoClone: (id: string) => string | null
   renameClone: (id: string, name: string) => void
   duplicateClone: (id: string) => string | null
   removeClone: (id: string) => void
@@ -1424,8 +1386,8 @@ interface EditorStore {
    * quick succession (a slider drag, typing a label) make one step.
    */
   updateGel: (id: string, fn: (s: GelWorkspaceState) => GelWorkspaceState, coalesceKey?: string) => void
-  undoGel: (id: string) => void
-  redoGel: (id: string) => void
+  undoGel: (id: string) => string | null
+  redoGel: (id: string) => string | null
   renameGel: (id: string, name: string) => void
   duplicateGel: (id: string) => string | null
   removeGel: (id: string) => void
@@ -1555,6 +1517,82 @@ function displaySnapshot(s: EditorStore): DisplaySettings {
 export const useEditorStore = create<EditorStore>((set, get) => {
   /** The toast a blocked edit raised, so unlocking can take it down. */
   let readOnlyToastId: string | null = null
+
+  /**
+   * Edit, undo and redo for one kind of item that keeps its document's
+   * history: `items` reads the list, `patch` writes it back, `docOf` and
+   * `withDoc` name the field the history is of. An edit that returns the
+   * same document records nothing; undo and redo return the step's label.
+   */
+  function historyActions<Item extends { id: string; modifiedAt: number } & WithHistory<D>, D>(opts: {
+    rules: HistoryRules<D>
+    items: (s: EditorStore) => Item[]
+    patch: (items: Item[]) => Partial<EditorStore>
+    docOf: (item: Item) => D
+    withDoc: (item: Item, doc: D) => Item
+  }) {
+    const { rules, items, patch, docOf, withDoc } = opts
+    const coalescer = new Coalescer(rules.coalesceMs)
+    const replace = (s: EditorStore, idx: number, item: Item) => {
+      const list = [...items(s)]
+      list[idx] = item
+      return patch(list)
+    }
+    return {
+      update(id: string, fn: (doc: D) => D, label?: string, coalesceKey?: string): void {
+        set(s => {
+          const idx = items(s).findIndex(x => x.id === id)
+          if (idx === -1) return {}
+          const item = items(s)[idx]
+          const next = fn(docOf(item))
+          if (next === docOf(item)) return {}
+          const now = Date.now()
+          const merge = coalescer.continues(id, coalesceKey, now)
+          const history = recordStep(item, docOf(item), next, label, merge, rules)
+          return replace(s, idx, { ...withDoc(item, next), ...history, modifiedAt: now })
+        })
+      },
+      undo(id: string): string | null {
+        coalescer.reset()
+        const item = items(get()).find(x => x.id === id)
+        const back = item && stepBack(item, docOf(item), rules)
+        if (!item || !back) return null
+        set(s => {
+          const idx = items(s).findIndex(x => x.id === id)
+          return idx === -1 ? {} : replace(s, idx, { ...withDoc(items(s)[idx], back.step.doc), ...back.history, modifiedAt: Date.now() })
+        })
+        return back.step.label ?? null
+      },
+      redo(id: string): string | null {
+        coalescer.reset()
+        const item = items(get()).find(x => x.id === id)
+        const forward = item && stepForward(item, docOf(item), rules)
+        if (!item || !forward) return null
+        set(s => {
+          const idx = items(s).findIndex(x => x.id === id)
+          return idx === -1 ? {} : replace(s, idx, { ...withDoc(items(s)[idx], forward.step.doc), ...forward.history, modifiedAt: Date.now() })
+        })
+        return forward.step.label ?? null
+      },
+    }
+  }
+
+  const alignmentHistory = historyActions<SavedAlignment, AlnDoc>({
+    rules: ALN_HISTORY, items: s => s.alignments, patch: alignments => ({ alignments }),
+    docOf: a => a.doc, withDoc: (a, doc) => ({ ...a, doc }),
+  })
+  const contigHistory = historyActions<Contig, ContigDoc>({
+    rules: CONTIG_HISTORY, items: s => s.contigs, patch: contigs => ({ contigs }),
+    docOf: c => c.doc, withDoc: (c, doc) => ({ ...c, doc }),
+  })
+  const cloneHistory = historyActions<CloneDoc, CloningDesign>({
+    rules: CLONE_HISTORY, items: s => s.clones, patch: clones => ({ clones }),
+    docOf: c => c.design, withDoc: (c, design) => ({ ...c, design }),
+  })
+  const gelHistory = historyActions<GelDoc, GelWorkspaceState>({
+    rules: GEL_HISTORY, items: s => s.gels, patch: gels => ({ gels }),
+    docOf: g => g.state, withDoc: (g, state) => ({ ...g, state }),
+  })
 
   /** Put `after` in place of assembly `id`; the function returned puts `before` back, if the assembly is still there. */
   function swapAssembly(id: string, before: Assembly, after: Assembly): () => void {
@@ -3532,65 +3570,9 @@ export const useEditorStore = create<EditorStore>((set, get) => {
       return id
     },
 
-    updateAlignment(id, fn, label, coalesceKey) {
-      set(s => {
-        const idx = s.alignments.findIndex(a => a.id === id)
-        if (idx === -1) return {}
-        const aln = s.alignments[idx]
-        const next = fn(aln.doc)
-        if (next === aln.doc) return {}
-        const now = Date.now()
-        const merge = !!coalesceKey && alnCoalesce !== null && alnCoalesce.id === id
-          && alnCoalesce.key === coalesceKey && now - alnCoalesce.at < ALN_COALESCE_MS
-          && aln.undoStack.length > 0
-        alnCoalesce = coalesceKey ? { id, key: coalesceKey, at: now } : null
-        let undoStack = aln.undoStack
-        if (merge) {
-          // The step keeps its starting point; only its cost grows.
-          const top = undoStack[undoStack.length - 1]
-          undoStack = [...undoStack.slice(0, -1), { ...top, cost: alnStepCost(top.doc, next) }]
-        } else {
-          undoStack = trimAlnHistory([...undoStack, { doc: aln.doc, label, cost: alnStepCost(aln.doc, next) }])
-        }
-        const alignments = [...s.alignments]
-        alignments[idx] = { ...aln, doc: next, modifiedAt: now, undoStack, redoStack: [] }
-        return { alignments }
-      })
-    },
-
-    undoAlignment(id) {
-      alnCoalesce = null
-      const aln = get().alignments.find(a => a.id === id)
-      const step = aln?.undoStack[aln.undoStack.length - 1]
-      if (!aln || !step) return null
-      set(s => ({
-        alignments: s.alignments.map(a => a.id !== id ? a : {
-          ...a,
-          doc: step.doc,
-          undoStack: a.undoStack.slice(0, -1),
-          redoStack: [...a.redoStack, { doc: a.doc, label: step.label, cost: alnStepCost(a.doc, step.doc) }],
-          modifiedAt: Date.now(),
-        }),
-      }))
-      return step.label
-    },
-
-    redoAlignment(id) {
-      alnCoalesce = null
-      const aln = get().alignments.find(a => a.id === id)
-      const step = aln?.redoStack[aln.redoStack.length - 1]
-      if (!aln || !step) return null
-      set(s => ({
-        alignments: s.alignments.map(a => a.id !== id ? a : {
-          ...a,
-          doc: step.doc,
-          redoStack: a.redoStack.slice(0, -1),
-          undoStack: [...a.undoStack, { doc: a.doc, label: step.label, cost: alnStepCost(a.doc, step.doc) }],
-          modifiedAt: Date.now(),
-        }),
-      }))
-      return step.label
-    },
+    updateAlignment: alignmentHistory.update,
+    undoAlignment: alignmentHistory.undo,
+    redoAlignment: alignmentHistory.redo,
 
     duplicateAlignment(id) {
       const s = get()
@@ -3751,64 +3733,9 @@ export const useEditorStore = create<EditorStore>((set, get) => {
       if (nothingElseOpen && back && s.tabs.some(t => t.id === back)) get().setActiveTab(back)
     },
 
-    updateClone(id, fn, coalesceKey) {
-      set(s => {
-        const idx = s.clones.findIndex(c => c.id === id)
-        if (idx === -1) return {}
-        const clone = s.clones[idx]
-        const next = fn(clone.design)
-        if (next === clone.design) return {}
-        const now = Date.now()
-        const merge = !!coalesceKey && cloneCoalesce !== null && cloneCoalesce.id === id
-          && cloneCoalesce.key === coalesceKey && now - cloneCoalesce.at < CLONE_COALESCE_MS
-        cloneCoalesce = coalesceKey ? { id, key: coalesceKey, at: now } : null
-        const clones = [...s.clones]
-        clones[idx] = {
-          ...clone,
-          design: next,
-          modifiedAt: now,
-          undoStack: merge ? clone.undoStack : [...clone.undoStack, clone.design].slice(-MAX_CLONE_UNDO),
-          redoStack: [],
-        }
-        return { clones }
-      })
-    },
-
-    undoClone(id) {
-      cloneCoalesce = null
-      set(s => {
-        const idx = s.clones.findIndex(c => c.id === id)
-        const clone = s.clones[idx]
-        if (!clone || clone.undoStack.length === 0) return {}
-        const clones = [...s.clones]
-        clones[idx] = {
-          ...clone,
-          design: clone.undoStack[clone.undoStack.length - 1],
-          undoStack: clone.undoStack.slice(0, -1),
-          redoStack: [...clone.redoStack, clone.design],
-          modifiedAt: Date.now(),
-        }
-        return { clones }
-      })
-    },
-
-    redoClone(id) {
-      cloneCoalesce = null
-      set(s => {
-        const idx = s.clones.findIndex(c => c.id === id)
-        const clone = s.clones[idx]
-        if (!clone || clone.redoStack.length === 0) return {}
-        const clones = [...s.clones]
-        clones[idx] = {
-          ...clone,
-          design: clone.redoStack[clone.redoStack.length - 1],
-          redoStack: clone.redoStack.slice(0, -1),
-          undoStack: [...clone.undoStack, clone.design],
-          modifiedAt: Date.now(),
-        }
-        return { clones }
-      })
-    },
+    updateClone: (id, fn, coalesceKey) => cloneHistory.update(id, fn, undefined, coalesceKey),
+    undoClone: cloneHistory.undo,
+    redoClone: cloneHistory.redo,
 
     renameClone(id, name) {
       set(s => ({ clones: s.clones.map(c => (c.id === id ? { ...c, name, modifiedAt: Date.now() } : c)) }))
@@ -3905,64 +3832,9 @@ export const useEditorStore = create<EditorStore>((set, get) => {
       if (nothingElseOpen && back && s.tabs.some(t => t.id === back)) get().setActiveTab(back)
     },
 
-    updateGel(id, fn, coalesceKey) {
-      set(s => {
-        const idx = s.gels.findIndex(g => g.id === id)
-        if (idx === -1) return {}
-        const gel = s.gels[idx]
-        const next = fn(gel.state)
-        if (next === gel.state) return {}
-        const now = Date.now()
-        const merge = !!coalesceKey && gelCoalesce !== null && gelCoalesce.id === id
-          && gelCoalesce.key === coalesceKey && now - gelCoalesce.at < GEL_COALESCE_MS
-        gelCoalesce = coalesceKey ? { id, key: coalesceKey, at: now } : null
-        const gels = [...s.gels]
-        gels[idx] = {
-          ...gel,
-          state: next,
-          modifiedAt: now,
-          undoStack: merge ? gel.undoStack : [...gel.undoStack, gel.state].slice(-MAX_GEL_UNDO),
-          redoStack: [],
-        }
-        return { gels }
-      })
-    },
-
-    undoGel(id) {
-      gelCoalesce = null
-      set(s => {
-        const idx = s.gels.findIndex(g => g.id === id)
-        const gel = s.gels[idx]
-        if (!gel || gel.undoStack.length === 0) return {}
-        const gels = [...s.gels]
-        gels[idx] = {
-          ...gel,
-          state: gel.undoStack[gel.undoStack.length - 1],
-          undoStack: gel.undoStack.slice(0, -1),
-          redoStack: [...gel.redoStack, gel.state],
-          modifiedAt: Date.now(),
-        }
-        return { gels }
-      })
-    },
-
-    redoGel(id) {
-      gelCoalesce = null
-      set(s => {
-        const idx = s.gels.findIndex(g => g.id === id)
-        const gel = s.gels[idx]
-        if (!gel || gel.redoStack.length === 0) return {}
-        const gels = [...s.gels]
-        gels[idx] = {
-          ...gel,
-          state: gel.redoStack[gel.redoStack.length - 1],
-          redoStack: gel.redoStack.slice(0, -1),
-          undoStack: [...gel.undoStack, gel.state],
-          modifiedAt: Date.now(),
-        }
-        return { gels }
-      })
-    },
+    updateGel: (id, fn, coalesceKey) => gelHistory.update(id, fn, undefined, coalesceKey),
+    undoGel: gelHistory.undo,
+    redoGel: gelHistory.redo,
 
     renameGel(id, name) {
       set(s => ({ gels: s.gels.map(g => (g.id === id ? { ...g, name, modifiedAt: Date.now() } : g)) }))
@@ -4307,46 +4179,9 @@ export const useEditorStore = create<EditorStore>((set, get) => {
       set(s => ({ assemblies: [...s.assemblies, ...assemblies] }))
     },
 
-    updateContig(id, fn, label) {
-      set(s => {
-        const idx = s.contigs.findIndex(c => c.id === id)
-        if (idx === -1) return {}
-        const c = s.contigs[idx]
-        const next = fn(c.doc)
-        if (next === c.doc) return {}
-        const contigs = [...s.contigs]
-        contigs[idx] = { ...c, doc: next, modifiedAt: Date.now(), undoStack: [...c.undoStack, { doc: c.doc, label }].slice(-60), redoStack: [] }
-        return { contigs }
-      })
-    },
-
-    undoContig(id) {
-      const c = get().contigs.find(x => x.id === id)
-      const step = c?.undoStack[c.undoStack.length - 1]
-      if (!c || !step) return null
-      set(s => ({
-        contigs: s.contigs.map(x => x.id !== id ? x : {
-          ...x, doc: step.doc, modifiedAt: Date.now(),
-          undoStack: x.undoStack.slice(0, -1),
-          redoStack: [...x.redoStack, { doc: x.doc, label: step.label }],
-        }),
-      }))
-      return step.label
-    },
-
-    redoContig(id) {
-      const c = get().contigs.find(x => x.id === id)
-      const step = c?.redoStack[c.redoStack.length - 1]
-      if (!c || !step) return null
-      set(s => ({
-        contigs: s.contigs.map(x => x.id !== id ? x : {
-          ...x, doc: step.doc, modifiedAt: Date.now(),
-          redoStack: x.redoStack.slice(0, -1),
-          undoStack: [...x.undoStack, { doc: x.doc, label: step.label }],
-        }),
-      }))
-      return step.label
-    },
+    updateContig: (id, fn, label) => contigHistory.update(id, fn, label),
+    undoContig: contigHistory.undo,
+    redoContig: contigHistory.redo,
 
     setContigView(id, patch) {
       set(s => ({
