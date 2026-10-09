@@ -37,7 +37,24 @@
   line-height: 1.5;
 }
 
-/* Topology toggle: uses shared .toggle-group / .toggle-btn from App.css */
+/* Molecule and topology toggles: shared .toggle-group / .toggle-btn from App.css */
+
+.nsm-row {
+  display: flex;
+  gap: var(--space-4);
+}
+
+.nsm-row .nsm-label {
+  flex: 1;
+}
+
+.nsm-error {
+  font-weight: 400;
+  font-size: var(--text-xs);
+  color: var(--danger);
+  text-transform: none;
+  letter-spacing: 0;
+}
 
 .nsm-base-count {
   font-weight: 400;

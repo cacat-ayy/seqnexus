@@ -1,6 +1,6 @@
 import { create } from 'zustand'
 import { notify } from './toast'
-import { Sequence } from './models/Sequence'
+import { Sequence, type Alphabet } from './models/Sequence'
 import type { AnnotationData } from './models/Annotation'
 import {
   DocumentState,
@@ -34,6 +34,7 @@ import {
 } from './search/find'
 import { geneticCode } from './codon/genetic-codes'
 import type { ColorSchemeId, ColorTarget } from './utils/base-colors'
+import type { ProteinSchemeId } from './utils/residue-colors'
 import { loadDisplaySettings, saveDisplaySettings, type DisplaySettings } from './utils/display-settings'
 import type { PlasmidStyleId } from './plasmid/styles'
 import type { Ab1Data } from './io/ab1'
@@ -51,7 +52,7 @@ import type { LibraryType } from './ngs/qcreport/expected'
 import type { ReadSetRecord } from './ngs/types'
 import type { AlnDoc } from './msa/model'
 import { DEFAULT_VIEW, type AlnView } from './msa/view'
-import { toUid, parseUid, type ItemMeta } from './explorer/types'
+import { toUid, parseUid, tabUid, type ItemMeta } from './explorer/types'
 import { PRESET_COLORS } from './utils/annotation-constants'
 import type { AnnotationMatch } from './workers/annotate-list'
 import { matchToAnnotationData } from './workers/annotate-list'
@@ -560,6 +561,9 @@ interface EditorStore {
   setAminoAcidStyle: (id: AminoAcidStyleId) => void
   threeLetterAminoAcids: boolean
   toggleThreeLetterAminoAcids: () => void
+  /** Residue colours of a protein document. */
+  proteinColorScheme: ProteinSchemeId
+  setProteinColorScheme: (id: ProteinSchemeId) => void
 
   // Hover state (cross-view, not per-tab)
   hoveredAnnotationId: string | null
@@ -686,7 +690,7 @@ interface EditorStore {
   toggleAutoAnnotations: () => void
 
   // Tab management
-  openDocument: (name: string, bases: string, topology?: 'linear' | 'circular', description?: string, origin?: DocumentOrigin) => string
+  openDocument: (name: string, bases: string, topology?: 'linear' | 'circular', description?: string, origin?: DocumentOrigin, alphabet?: Alphabet) => string
   openDocumentState: (state: DocumentState) => string
   closeTab: (tabId: string) => void
   /**
@@ -1076,7 +1080,7 @@ function makeTab(doc: DocumentState): DocumentTab {
 function searchTab(tab: DocumentTab, query: string, options: SearchOptions, codeId: number): SearchState {
   const bases = tab.doc.sequence.bases
   const circular = tab.doc.sequence.topology === 'circular'
-  const r = findMatches(query, options, bases, circular, geneticCode(codeId))
+  const r = findMatches(query, options, bases, circular, geneticCode(codeId), tab.doc.sequence.alphabet)
   return {
     query, options, matches: r.matches, currentMatch: -1,
     truncated: r.truncated, error: r.error, searchedBases: bases,
@@ -1139,6 +1143,7 @@ function displaySnapshot(s: EditorStore): DisplaySettings {
     translationCodeId: s.translationCodeId,
     aminoAcidStyle: s.aminoAcidStyle,
     threeLetterAminoAcids: s.threeLetterAminoAcids,
+    proteinColorScheme: s.proteinColorScheme,
   }
 }
 
@@ -1491,6 +1496,11 @@ export const useEditorStore = create<EditorStore>((set, get) => {
         translationCodeId: initial.translationCodeId,
         aminoAcidStyle: initial.aminoAcidStyle,
         threeLetterAminoAcids: initial.threeLetterAminoAcids,
+        proteinColorScheme: initial.proteinColorScheme,
+        setProteinColorScheme: (id: ProteinSchemeId) => {
+          set({ proteinColorScheme: id })
+          persist({ proteinColorScheme: id })
+        },
         setColorScheme: (id: ColorSchemeId) => {
           set({ colorScheme: id })
           persist({ colorScheme: id })
@@ -1932,7 +1942,7 @@ export const useEditorStore = create<EditorStore>((set, get) => {
     pruneItemMeta: () => {
       const s = get()
       const live = new Set<string>([
-        ...s.tabs.map(t => toUid('sequence', t.id)),
+        ...s.tabs.map(tabUid),
         ...s.sequencingReads.map(r => toUid('read', r.id)),
         ...s.alignments.map(a => toUid('alignment', a.id)),
         ...s.contigs.map(c => toUid('contig', c.id)),
@@ -1987,7 +1997,8 @@ export const useEditorStore = create<EditorStore>((set, get) => {
         if (!doomedFolders.has(f.id)) continue
         for (const uid of f.itemUids) {
           const parsed = parseUid(uid)
-          if (parsed) doomed[parsed.kind].add(parsed.id)
+          // A protein is a tab like any sequence; both go the same way.
+          if (parsed) doomed[parsed.kind === 'protein' ? 'sequence' : parsed.kind].add(parsed.id)
         }
       }
 
@@ -2063,7 +2074,8 @@ export const useEditorStore = create<EditorStore>((set, get) => {
       })
     },
     moveTabToFolder: (tabId, folderId) => {
-      get().moveItemToFolder(toUid('sequence', tabId), folderId)
+      const tab = get().tabs.find(t => t.id === tabId)
+      if (tab) get().moveItemToFolder(tabUid(tab), folderId)
     },
     setFolderParent: (id, parentId) => {
       set(state => {
@@ -2081,11 +2093,11 @@ export const useEditorStore = create<EditorStore>((set, get) => {
       }))
     },
 
-    openDocument(name, bases, topology = 'linear', description, origin) {
+    openDocument(name, bases, topology = 'linear', description, origin, alphabet = 'dna') {
       const doc: DocumentState = {
         name,
         description: description || undefined,
-        sequence: new Sequence(bases, topology),
+        sequence: new Sequence(bases, topology, alphabet),
         annotations: [],
         metadata: origin ? { origin } : undefined,
       }
@@ -2170,7 +2182,7 @@ export const useEditorStore = create<EditorStore>((set, get) => {
         orfPicks: new Set<string>(),
         primerDesign: active?.primerDesign ?? EMPTY_DESIGN,
         // Remove closed tab from any folder
-        folders: withoutItem(folders, toUid('sequence', tabId)),
+        folders: closing ? withoutItem(folders, tabUid(closing)) : folders,
         gels,
         // Keep enough to put it back. Deleting a sequence discards it
         // outright, and a mis-aimed click on a dense explorer list is easy.
@@ -2179,7 +2191,7 @@ export const useEditorStore = create<EditorStore>((set, get) => {
               kind: 'sequence',
               tab: closing,
               index: tabs.findIndex(t => t.id === tabId),
-              folderId: folderOf(folders, toUid('sequence', tabId)),
+              folderId: folderOf(folders, tabUid(closing)),
               ...(gelLanes.length > 0 ? { gelLanes } : {}),
             })
           : recentlyDeleted,
@@ -2200,7 +2212,7 @@ export const useEditorStore = create<EditorStore>((set, get) => {
           set({
             tabs: restored,
             recentlyDeleted: rest,
-            folders: withItem(state.folders, toUid('sequence', last.tab.id), last.folderId),
+            folders: withItem(state.folders, tabUid(last.tab), last.folderId),
             gels: withSequenceLanes(state.gels, last.gelLanes ?? []),
           })
           // Focus it, so an undo lands the user back where they were. This
@@ -2635,8 +2647,9 @@ export const useEditorStore = create<EditorStore>((set, get) => {
       if (props.displayOrigin !== undefined) meta.displayOrigin = props.displayOrigin
       doc.metadata = meta
 
-      // Reset displayOrigin when switching to linear
-      if (props.topology === 'linear' && meta.displayOrigin) {
+      // Reset a rotated origin when switching to linear. A negative value is
+      // a numbering shift, which is a linear sequence's own.
+      if (props.topology === 'linear' && meta.displayOrigin && meta.displayOrigin > 0) {
         meta.displayOrigin = 0
       }
 
@@ -2889,7 +2902,7 @@ export const useEditorStore = create<EditorStore>((set, get) => {
       const tab = getActiveTab()
       const m = tab?.search.matches[tab.search.currentMatch]
       if (!tab || tab.readOnly || !m) return
-      const { bases, error } = cleanReplacement(replacement, tab.search.options.mode)
+      const { bases, error } = cleanReplacement(replacement, tab.search.options.mode, tab.doc.sequence.alphabet)
       if (error) return
       // The hit reads as the query on its own strand, so the replacement
       // should too: on the reverse strand that is its reverse complement.
@@ -2914,7 +2927,7 @@ export const useEditorStore = create<EditorStore>((set, get) => {
       const none = { replaced: 0, skipped: 0 }
       const tab = getActiveTab()
       if (!tab || tab.readOnly || tab.search.matches.length === 0) return none
-      const { bases, error } = cleanReplacement(replacement, tab.search.options.mode)
+      const { bases, error } = cleanReplacement(replacement, tab.search.options.mode, tab.doc.sequence.alphabet)
       if (error) return none
       const L = tab.doc.sequence.length
       // Hits can overlap (the two strands, mismatches, a repeat). Replacing

@@ -12,7 +12,13 @@
 
 import { reverseComplement } from '../models/complement'
 import { translateWith, type GeneticCode } from '../codon/genetic-codes'
+import type { Alphabet } from '../models/alphabet'
 
+/**
+ * How the query is read. On a DNA document, as bases or as a peptide to find
+ * in the six frames. On a protein document the mode is not consulted: the
+ * residues are searched as text, on the one strand there is.
+ */
 export type SearchMode = 'nucleotide' | 'protein'
 
 export interface SearchOptions {
@@ -92,13 +98,17 @@ function invalidCharsMessage(query: string, mode: SearchMode): string | null {
 }
 
 /**
- * Check a replacement. It goes into the DNA in both modes, so it is bases.
- * A protein hit is codons, and most amino acid letters are also IUPAC codes
- * (MKA would pass as bases), so there only plain A, C, G and T are accepted:
- * typing a peptide by mistake is then an error, not degenerate DNA.
+ * Check a replacement. On DNA it goes into the DNA in both modes, so it is
+ * bases. A protein hit there is codons, and most amino acid letters are also
+ * IUPAC codes (MKA would pass as bases), so there only plain A, C, G and T
+ * are accepted: typing a peptide by mistake is then an error, not degenerate
+ * DNA. On a protein document the replacement is residues.
  */
-export function cleanReplacement(text: string, mode: SearchMode = 'nucleotide'): { bases: string; error: string | null } {
+export function cleanReplacement(
+  text: string, mode: SearchMode = 'nucleotide', alphabet: Alphabet = 'dna',
+): { bases: string; error: string | null } {
   const bases = text.replace(/[\s\d]+/g, '').toUpperCase()
+  if (alphabet === 'protein') return { bases, error: invalidCharsMessage(bases, 'protein') }
   if (mode === 'protein' && !/^[ACGTU]*$/.test(bases)) {
     return { bases, error: 'Replace a protein hit with bases (A, C, G, T): it is DNA codons' }
   }
@@ -294,19 +304,68 @@ export function findMatches(
   bases: string,
   circular: boolean,
   code: GeneticCode,
+  alphabet: Alphabet = 'dna',
 ): SearchResult {
   const query = cleanQuery(rawQuery, options)
   const L = bases.length
   if (!query || L === 0) return EMPTY
 
+  const residues = alphabet === 'protein'
   if (!options.isRegex) {
-    const err = invalidCharsMessage(query, options.mode)
+    const err = invalidCharsMessage(query, residues ? 'protein' : options.mode)
     if (err) return { ...EMPTY, error: err }
   }
 
+  if (residues) return findResidues(query, options, bases)
   return options.mode === 'protein'
     ? findProtein(query, options, bases, circular, code)
     : findNucleotide(query, options, bases, circular)
+}
+
+/** Residue ambiguity codes as the residues they stand for; a plain residue stands for itself. */
+const RESIDUE_SET: Record<string, string> = { X: '', B: 'DN', Z: 'EQ', J: 'IL' }
+
+/**
+ * Hits in a protein's residues, read as text on its one strand. Exact and
+ * regex searches go through the same scanner as bases; a mismatch search
+ * compares residue by residue, with the ambiguity codes as sets when asked
+ * (X any residue but a stop) and literal otherwise.
+ */
+function findResidues(query: string, options: SearchOptions, residues: string): SearchResult {
+  const L = residues.length
+  const k = options.isRegex ? 0 : Math.max(0, Math.min(MAX_MISMATCHES, options.mismatches | 0))
+  const out: SearchMatch[] = []
+  let cut = false
+  if (k > 0) {
+    const q = query.toUpperCase()
+    const m = q.length
+    const text = residues.toUpperCase()
+    const same = (c: string, j: number): boolean => {
+      const want = q[j]
+      if (c === want) return true
+      if (!options.ambiguity) return false
+      const set = RESIDUE_SET[want]
+      if (set === undefined) return false
+      return set === '' ? c !== '*' : set.includes(c)
+    }
+    const last = L - m + 1
+    for (let i = 0; i < last; i++) {
+      let mm = 0
+      for (let j = 0; j < m; j++) {
+        if (!same(text[i + j], j) && ++mm > k) break
+      }
+      if (mm <= k) {
+        if (out.length === MAX_MATCHES) { cut = true; break }
+        out.push({ start: i, end: i + m, strand: 1, mismatches: mm })
+      }
+    }
+  } else {
+    const re = compile(options.isRegex ? query : proteinPattern(query, options.ambiguity))
+    if (typeof re === 'string') return { ...EMPTY, error: re }
+    cut = scanRegex(re, residues, L, !options.isRegex, MAX_MATCHES,
+      (start, end) => out.push({ start, end, strand: 1, mismatches: 0 }))
+  }
+  return { matches: out, truncated: cut, error: null }
 }
 
 function findNucleotide(query: string, options: SearchOptions, bases: string, circular: boolean): SearchResult {

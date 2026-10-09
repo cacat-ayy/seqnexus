@@ -88,6 +88,21 @@ const TYPE_COLORS: Record<string, string> = {
   source:           '#ced4da',  // silver
   misc_difference:  '#ffa94d',  // light orange
   misc_recomb:      '#da77f2',  // light purple
+  // Protein features.
+  Region:           '#4dabf7',  // blue
+  Domain:           '#339af0',  // darker blue
+  Motif:            '#cc5de8',  // purple
+  Site:             '#f59f00',  // dark amber
+  Chain:            '#20c997',  // teal
+  Repeat:           '#fd7e14',  // dark orange
+  propeptide:       '#f06595',  // pink
+  transmembrane:    '#74b816',  // lime
+  active_site:      '#ff6b6b',  // red
+  binding_site:     '#fab005',  // amber
+  modified_residue: '#845ef7',  // violet
+  glycosylation:    '#3bc9db',  // light cyan
+  disulfide:        '#ffd43b',  // gold
+  variant:          '#ff922b',  // orange
 }
 
 /** Get the default color for an annotation type. */

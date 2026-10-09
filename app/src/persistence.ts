@@ -16,7 +16,7 @@ import { sanitizeContigView } from './assembly/view'
 import { linkAssemblies, sanitizeAssembly, type AssemblyRecord } from './assembly/container'
 import { sanitizeDoc, type AlnDoc } from './msa/model'
 import { sanitizeView } from './msa/view'
-import { toUid, parseUid, type ItemMeta } from './explorer/types'
+import { toUid, parseUid, tabUid, type ItemMeta } from './explorer/types'
 import type { LibraryOligo } from './primers/oligo'
 import { type DocumentSnapshot, type DocumentState, type UndoSnapshot, snapshot, restore } from './models/Document'
 import { PieceTable, type PieceTableSnapshot } from './models/PieceTable'
@@ -327,7 +327,7 @@ export function migrateFolders(folders: unknown): ExplorerFolder[] {
  */
 function liveItemMeta(state: ReturnType<typeof useEditorStore.getState>): Record<string, ItemMeta> | undefined {
   const live = new Set<string>([
-    ...state.tabs.map(t => toUid('sequence', t.id)),
+    ...state.tabs.map(tabUid),
     ...state.sequencingReads.map(r => toUid('read', r.id)),
     ...state.alignments.map(a => toUid('alignment', a.id)),
     ...state.contigs.map(c => toUid('contig', c.id)),
@@ -940,7 +940,7 @@ async function loadV2(data: SerializedSessionV2): Promise<RestoredSession | null
       // Reconstruct PieceTable from saved buffers so undo snapshots remain valid
       try {
         const pt = PieceTable.fromBuffers(undoData.original, undoData.add, undoData.currentTree)
-        const seq = Sequence.fromPieceTable(pt, st.doc.topology)
+        const seq = Sequence.fromPieceTable(pt, st.doc.topology, st.doc.alphabet ?? 'dna')
         doc = {
           name: st.doc.name,
           description: st.doc.description,
@@ -1291,7 +1291,7 @@ export function exportSessionToJson(theme: string, opts: SessionExportOptions): 
   // does not carry favourites for reads it does not contain.
   if (meta.itemMeta) {
     const kept = new Set<string>([
-      ...meta.tabs.map(t => toUid('sequence', t.id)),
+      ...meta.tabs.map(t => toUid(t.doc.alphabet === 'protein' ? 'protein' : 'sequence', t.id)),
       ...(meta.sequencingReads ?? []).map(r => toUid('read', r.id)),
       ...[...alignIds].map(id => toUid('alignment', id)),
       ...(meta.contigs ?? []).map(c => toUid('contig', c.id)),
@@ -1520,6 +1520,7 @@ export function remapSessionIds(session: RestoredSession): RestoredSession {
   // whichever existing items happened to hold the old ids.
   const idMapFor = {
     'sequence': tabIdMap,
+    'protein': tabIdMap,
     'read': readIdMap,
     'alignment': alignIdMap,
     'contig': contigIdMap,

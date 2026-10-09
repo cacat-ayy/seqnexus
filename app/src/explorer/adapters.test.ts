@@ -48,6 +48,20 @@ describe('sequence adapter', () => {
     expect(item.canDuplicate).toBe(true)
   })
 
+  it('lists a protein as its own kind, in residues and without a topology', () => {
+    const id = store().openDocument('GFP', 'MSKGEELFTGVVPILVELDGDVNGHKFSVSGEGEGDATYGKLTLKFICTTGKLP', 'linear', undefined, 'new', 'protein')
+    const tab = store().tabs.find(t => t.id === id)!
+    const item = sequenceToItem(tab, ctx({ open: { kind: 'protein', id } }))
+
+    expect(item.uid).toBe(`protein:${id}`)
+    expect(item.kind).toBe('protein')
+    expect(item.stats).toEqual(['54 aa', '0 features'])
+    expect(item.isCircular).toBe(false)
+    expect(item.isOpen).toBe(true)
+    // The same tab is not "open" as a sequence.
+    expect(sequenceToItem(tab, ctx({ open: { kind: 'sequence', id } })).isOpen).toBe(false)
+  })
+
   it('marks the open document, and only that one', () => {
     const a = store().openDocument('a', 'ATGC')
     const b = store().openDocument('b', 'GGCC')

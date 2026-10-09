@@ -1,3 +1,5 @@
+import type { Alphabet } from '../models/alphabet'
+
 /** GenBank feature types for annotation type dropdowns. */
 export const FEATURE_TYPES = [
   'CDS', 'gene', 'promoter', 'terminator', 'rep_origin',
@@ -9,6 +11,28 @@ export const FEATURE_TYPES = [
   'polyA_signal', 'LTR', 'repeat_region',
   'mobile_element', 'STS', 'variation',
 ]
+
+/**
+ * Feature types of a protein. The GenPept keys (Region, Site, Bond,
+ * mat_peptide, sig_peptide, transit_peptide) plus the UniProt feature
+ * categories people annotate proteins with, spelt as one word so a GenPept
+ * export keeps them as feature keys.
+ */
+export const PROTEIN_FEATURE_TYPES = [
+  'Region', 'Domain', 'Motif', 'Site', 'Chain', 'Repeat',
+  'sig_peptide', 'transit_peptide', 'mat_peptide', 'propeptide',
+  'transmembrane', 'active_site', 'binding_site', 'modified_residue',
+  'glycosylation', 'disulfide', 'variant', 'misc_feature',
+]
+
+export function featureTypesFor(alphabet: Alphabet): string[] {
+  return alphabet === 'protein' ? PROTEIN_FEATURE_TYPES : FEATURE_TYPES
+}
+
+/** The type a new feature starts as. */
+export function defaultFeatureType(alphabet: Alphabet): string {
+  return alphabet === 'protein' ? 'Region' : 'misc_feature'
+}
 
 /** Color palette for annotation color pickers.
  *  Includes all TYPE_COLORS defaults so every auto-assigned color is selectable. */

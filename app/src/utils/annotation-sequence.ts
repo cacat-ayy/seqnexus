@@ -97,6 +97,8 @@ export function annotationProtein(ann: Annotation, sequence: Sequence): string {
  * reading frame offset is applied.
  */
 export function canTranslateAnnotation(ann: Annotation, sequence: Sequence): boolean {
+  // A protein's features are already residues.
+  if (sequence.alphabet === 'protein') return false
   if (!isCodingAnnotation(ann)) return false
   return annotationCodingBases(ann, sequence).length >= 3
 }

@@ -33,7 +33,8 @@ export function useItemActions(): ItemActions {
   const open = useCallback((item: ExplorerItem) => {
     const s = useEditorStore.getState()
     switch (item.kind) {
-      case 'sequence': return s.setActiveTab(item.id)
+      case 'sequence':
+      case 'protein': return s.setActiveTab(item.id)
       case 'read': return s.setActiveSequencingRead(item.id)
       case 'readset': return s.setActiveReadSet(item.id)
       case 'alignment': return s.setActiveAlignment(item.id)
@@ -55,7 +56,8 @@ export function useItemActions(): ItemActions {
     if (!trimmed || trimmed === item.name) return
     const s = useEditorStore.getState()
     switch (item.kind) {
-      case 'sequence': return s.renameTab(item.id, trimmed)
+      case 'sequence':
+      case 'protein': return s.renameTab(item.id, trimmed)
       case 'read': return s.renameSequencingRead(item.id, trimmed)
       case 'readset': return s.renameReadSet(item.id, trimmed)
       case 'alignment': return s.renameAlignment(item.id, trimmed)
@@ -70,7 +72,8 @@ export function useItemActions(): ItemActions {
   const removeQuiet = useCallback((item: ExplorerItem) => {
     const s = useEditorStore.getState()
     switch (item.kind) {
-      case 'sequence': return s.closeTab(item.id)
+      case 'sequence':
+      case 'protein': return s.closeTab(item.id)
       case 'read': return s.removeSequencingRead(item.id)
       case 'readset': return s.removeReadSet(item.id)
       case 'alignment': return s.removeAlignment(item.id)

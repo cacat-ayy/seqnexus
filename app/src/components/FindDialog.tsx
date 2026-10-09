@@ -246,8 +246,11 @@ export default function FindDialog({ open, focusRequest, onClose }: FindModalPro
   // ---- The hit list ----
   const seqLen = doc.sequence.length
   const circular = doc.sequence.topology === 'circular'
-  const origin = (circular ? doc.metadata?.displayOrigin : 0) || 0
-  const protein = options.mode === 'protein'
+  const origin = doc.metadata?.displayOrigin || 0
+  // On a protein document the query is residues and there is one strand, so
+  // the DNA/Protein choice and the strand toggle have nothing to say.
+  const residues = doc.sequence.alphabet === 'protein'
+  const protein = options.mode === 'protein' && !residues
   const n = search.matches.length
   const cur = search.currentMatch
   const winStart = n <= LIST_WINDOW ? 0 : Math.max(0, Math.min(cur - 50, n - LIST_WINDOW))
@@ -258,7 +261,7 @@ export default function FindDialog({ open, focusRequest, onClose }: FindModalPro
     const code = geneticCode(translationCodeId)
     const basesIn = (s: number, e: number) => doc.sequence.basesIn(s, e)
     const dp = (p: number) => displayPosition(((p % seqLen) + seqLen) % seqLen, origin, seqLen).toLocaleString()
-    const isProtein = search.options.mode === 'protein'
+    const isProtein = search.options.mode === 'protein' && !residues
     return search.matches.slice(winStart, winStart + LIST_WINDOW).map((m, k) => {
       const ctx = matchContext(m, FLANK, seqLen, circular, basesIn)
       let before = ctx.before, hit = ctx.hit, after = ctx.after
@@ -280,7 +283,7 @@ export default function FindDialog({ open, focusRequest, onClose }: FindModalPro
         before, hit, after, marks,
       }
     })
-  }, [visible, search.matches, search.options, winStart, doc, seqLen, circular, origin, translationCodeId, cleanedQuery])
+  }, [visible, search.matches, search.options, winStart, doc, seqLen, circular, origin, translationCodeId, cleanedQuery, residues])
 
   // Keep the current row in sight as the hits are stepped through.
   useEffect(() => {
@@ -299,12 +302,13 @@ export default function FindDialog({ open, focusRequest, onClose }: FindModalPro
     : protein ? 'Translate and search all six frames, not only the three forward ones' : 'Also find the reverse complement'
   const ambiguityTitle = options.isRegex
     ? 'Not used with a regular expression: write the alternatives into it'
-    : protein ? 'X matches any amino acid, B is D or N, Z is E or Q, J is I or L' : 'IUPAC codes match the bases they stand for: N any base, R A or G, Y C or T…'
+    : protein || residues ? 'X matches any amino acid, B is D or N, Z is E or Q, J is I or L' : 'IUPAC codes match the bases they stand for: N any base, R A or G, Y C or T…'
   const mismatchTitle = options.isRegex
     ? 'Not available with a regular expression'
-    : protein ? 'Mismatches are counted in bases: switch to DNA' : 'Allow this many bases to differ from the query'
+    : protein ? 'Mismatches are counted in bases: switch to DNA'
+    : residues ? 'Allow this many residues to differ from the query' : 'Allow this many bases to differ from the query'
 
-  const replacement = cleanReplacement(replaceText, search.options.mode)
+  const replacement = cleanReplacement(replaceText, search.options.mode, doc.sequence.alphabet)
   const replaceBlocked = readOnly ? 'The sequence is read-only' : replacement.error
   const doReplaceAll = () => {
     const { replaced, skipped } = replaceAllMatches(replaceText)
@@ -337,7 +341,7 @@ export default function FindDialog({ open, focusRequest, onClose }: FindModalPro
             ref={inputRef}
             type="text"
             className="find-query-input"
-            placeholder={options.isRegex ? 'Regular expression' : protein ? 'Amino acids, e.g. MKT' : 'Bases, e.g. GAATTC'}
+            placeholder={options.isRegex ? 'Regular expression' : protein || residues ? 'Amino acids, e.g. MKT' : 'Bases, e.g. GAATTC'}
             aria-label="Find"
             aria-invalid={!!search.error}
             value={query}
@@ -361,19 +365,23 @@ export default function FindDialog({ open, focusRequest, onClose }: FindModalPro
 
       {/* Options: the same controls in both modes, only enabled or not */}
       <div className="find-options">
-        <div className="find-seg" role="group" aria-label="Search as">
-          <button className={!protein ? 'active' : ''} aria-pressed={!protein} onClick={() => updateOption('mode', 'nucleotide')}>DNA</button>
-          <button className={protein ? 'active' : ''} aria-pressed={protein} onClick={() => updateOption('mode', 'protein')}>Protein</button>
-        </div>
-        <button
-          className={`find-chip${options.revComplement && !nucleotideRegex ? ' on' : ''}`}
-          aria-pressed={options.revComplement && !nucleotideRegex}
-          disabled={nucleotideRegex}
-          onClick={() => updateOption('revComplement', !options.revComplement)}
-          title={strandsTitle}
-        >
-          <ArrowLeftRight size={12} /> Both strands
-        </button>
+        {!residues && (
+          <div className="find-seg" role="group" aria-label="Search as">
+            <button className={!protein ? 'active' : ''} aria-pressed={!protein} onClick={() => updateOption('mode', 'nucleotide')}>DNA</button>
+            <button className={protein ? 'active' : ''} aria-pressed={protein} onClick={() => updateOption('mode', 'protein')}>Protein</button>
+          </div>
+        )}
+        {!residues && (
+          <button
+            className={`find-chip${options.revComplement && !nucleotideRegex ? ' on' : ''}`}
+            aria-pressed={options.revComplement && !nucleotideRegex}
+            disabled={nucleotideRegex}
+            onClick={() => updateOption('revComplement', !options.revComplement)}
+            title={strandsTitle}
+          >
+            <ArrowLeftRight size={12} /> Both strands
+          </button>
+        )}
         <button
           className={`find-chip${options.ambiguity && !options.isRegex ? ' on' : ''}`}
           aria-pressed={options.ambiguity && !options.isRegex}
@@ -427,12 +435,14 @@ export default function FindDialog({ open, focusRequest, onClose }: FindModalPro
             >
               <div className="find-hit-meta">
                 <span className="find-hit-pos">{r.where}</span>
-                <span className="find-hit-strand" title={strandName(r.m)} aria-label={strandName(r.m)}>
-                  {strandGlyph(r.m)}
-                  {r.m.frame !== undefined && (
-                    <span className="find-hit-frame" title="Reading frame">{r.m.strand === -1 ? '-' : '+'}{r.m.frame + 1}</span>
-                  )}
-                </span>
+                {!residues && (
+                  <span className="find-hit-strand" title={strandName(r.m)} aria-label={strandName(r.m)}>
+                    {strandGlyph(r.m)}
+                    {r.m.frame !== undefined && (
+                      <span className="find-hit-frame" title="Reading frame">{r.m.strand === -1 ? '-' : '+'}{r.m.frame + 1}</span>
+                    )}
+                  </span>
+                )}
                 <span className={`find-hit-feature${r.feature ? '' : ' none'}`}>{r.feature ?? 'no feature'}</span>
                 {r.m.mismatches > 0 && (
                   <span className="find-hit-mm" title={`${r.m.mismatches} mismatch${r.m.mismatches === 1 ? '' : 'es'}`}>
@@ -470,7 +480,7 @@ export default function FindDialog({ open, focusRequest, onClose }: FindModalPro
             <input
               type="text"
               className={`find-replace-input${replacement.error ? ' invalid' : ''}`}
-              placeholder={protein ? 'Replace with DNA' : 'Replace with'}
+              placeholder={protein ? 'Replace with DNA' : residues ? 'Replace with residues' : 'Replace with'}
               aria-label="Replace with"
               aria-invalid={!!replacement.error}
               value={replaceText}
@@ -490,7 +500,7 @@ export default function FindDialog({ open, focusRequest, onClose }: FindModalPro
                 className="find-replace-btn"
                 onClick={() => replaceCurrentMatch(replaceText)}
                 disabled={!current || !!replaceBlocked}
-                title={replaceBlocked ?? 'Replace the current hit; a reverse-strand hit gets the reverse complement'}
+                title={replaceBlocked ?? (residues ? 'Replace the current hit' : 'Replace the current hit; a reverse-strand hit gets the reverse complement')}
               >
                 <Replace size={13} /> Replace
               </button>

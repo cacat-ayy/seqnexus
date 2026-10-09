@@ -11,6 +11,7 @@ import { useMemo } from 'react'
 import { useEditorStore } from '../store'
 import { Annotation, type AnnotationData } from '../models/Annotation'
 import type { DocumentState } from '../models/Document'
+import type { Alphabet } from '../models/alphabet'
 import { IntervalTree } from '../models/IntervalTree'
 import { orfColor } from '../workers/orf-finder'
 import { orfIdFor, orfName } from '../utils/orf-features'
@@ -117,10 +118,11 @@ export function useSequenceTracks(doc: DocumentState) {
  *
  * An empty frame list means the annotation modes, which draw one row per
  * distinct feature translation instead, and keep the two rows the view has
- * always reserved for them.
+ * always reserved for them. A protein has nothing to translate, so for one
+ * there are no frames and no rows whatever the preference says.
  */
-export function useTranslationSettings() {
-  const showTranslation = useEditorStore(s => s.showTranslation)
+export function useTranslationSettings(alphabet: Alphabet = 'dna') {
+  const showTranslation = useEditorStore(s => s.showTranslation) && alphabet !== 'protein'
   const translationFrame = useEditorStore(s => s.translationFrame)
   const translationCodeId = useEditorStore(s => s.translationCodeId)
   const translationFrames = useMemo(

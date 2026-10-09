@@ -21,6 +21,7 @@ import {
   AMINO_ACID_STYLES, TRANSLATION_FRAMES, aminoAcidFill,
   type AminoAcidStyleId, type TranslationFrameId,
 } from '../codon/translation-display'
+import { PROTEIN_SCHEMES, buildResiduePalette, type ProteinSchemeId } from '../utils/residue-colors'
 import { usePopoverDismiss } from '../hooks/usePopoverDismiss'
 import { useClampedPosition } from '../hooks/useClampedPosition'
 import './DisplayPopover.css'
@@ -66,6 +67,33 @@ function SchemeSwatch({ schemeId, target }: { schemeId: ColorSchemeId; target: C
 
 /** The residues previewed in the amino acid palette list. */
 const AA_PREVIEW = ['A', 'R', 'N', 'D', '*']
+
+/**
+ * A protein scheme previewed on five residues that tell the palettes apart:
+ * a hydrophobic, a basic, an acidic, a polar one and a stop.
+ */
+function ResidueSwatch({ schemeId, target }: { schemeId: ProteinSchemeId; target: ColorTarget }) {
+  const palette = buildResiduePalette(schemeId, 'currentColor')
+  const filled = target === 'background' && schemeId !== 'none'
+  return (
+    <span className={`dp-swatch ${filled ? 'filled' : ''}`} aria-hidden="true">
+      {['L', 'K', 'D', 'S', '*'].map(aa => {
+        const color = palette[aa]
+        const isPlain = color === 'currentColor'
+        return (
+          <span
+            key={aa}
+            style={filled && !isPlain
+              ? { background: color, color: contrastText(color) }
+              : { color }}
+          >
+            {aa}
+          </span>
+        )
+      })}
+    </span>
+  )
+}
 
 /**
  * The palette previewed the way the sequence view draws it: each residue on a
@@ -140,6 +168,11 @@ export default function DisplayPopover({ open, onClose, triggerRef }: Props) {
 
   usePopoverDismiss(open, onClose, ref, triggerRef)
 
+  // A protein document gets residue colours and the annotation toggle only:
+  // the complement, the translation and the plasmid map do not exist for it.
+  const protein = useEditorStore(s => s.doc.sequence.alphabet === 'protein')
+  const proteinColorScheme = useEditorStore(s => s.proteinColorScheme)
+  const setProteinColorScheme = useEditorStore(s => s.setProteinColorScheme)
   const colorScheme = useEditorStore(s => s.colorScheme)
   const setColorScheme = useEditorStore(s => s.setColorScheme)
   const colorTarget = useEditorStore(s => s.colorTarget)
@@ -209,6 +242,67 @@ export default function DisplayPopover({ open, onClose, triggerRef }: Props) {
   }, [aaMenuOpen])
 
   if (!open) return null
+
+  if (protein) {
+    return (
+      <div
+        className="dp-popover"
+        ref={setNode}
+        style={{ left: pos.left, top: pos.top }}
+        role="dialog"
+        aria-label="Display settings"
+      >
+        <div className="dp-section">
+          <div className="dp-target-row">
+            <span className="dp-section-label" id="dp-residue-label">Residue colours</span>
+            <div className="dp-target" role="radiogroup" aria-label="Apply colour to">
+              {COLOR_TARGETS.map(t => (
+                <button
+                  key={t.id}
+                  className={`dp-target-btn ${colorTarget === t.id ? 'active' : ''}`}
+                  role="radio"
+                  aria-checked={colorTarget === t.id}
+                  disabled={proteinColorScheme === 'none'}
+                  title={proteinColorScheme === 'none'
+                    ? 'Choose a colour scheme first'
+                    : `Colour the ${t.id === 'letters' ? 'letters' : 'cell behind each residue'}`}
+                  onClick={() => setColorTarget(t.id)}
+                >
+                  {t.label}
+                </button>
+              ))}
+            </div>
+          </div>
+          <div className="dp-scheme-list" role="radiogroup" aria-labelledby="dp-residue-label">
+            {PROTEIN_SCHEMES.map(scheme => (
+              <button
+                key={scheme.id}
+                className={`dp-scheme ${proteinColorScheme === scheme.id ? 'active' : ''}`}
+                role="radio"
+                aria-checked={proteinColorScheme === scheme.id}
+                title={scheme.description}
+                onClick={() => setProteinColorScheme(scheme.id)}
+              >
+                <ResidueSwatch schemeId={scheme.id} target={colorTarget} />
+                <span className="dp-scheme-label">{scheme.label}</span>
+                <Check size={13} className="dp-scheme-check" aria-hidden="true" />
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <div className="dp-sep" />
+
+        <div className="dp-section">
+          <div className="dp-section-label">Show</div>
+          <label className="dp-check">
+            <input type="checkbox" checked={showAnnotationTracks} onChange={toggleAnnotationTracks} />
+            <span>Annotation tracks</span>
+          </label>
+        </div>
+      </div>
+    )
+  }
 
   return (
     <div

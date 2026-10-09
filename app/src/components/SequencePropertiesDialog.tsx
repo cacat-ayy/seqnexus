@@ -22,6 +22,9 @@ export default function SequencePropertiesDialog({ open, onClose }: Props) {
   const [dcm, setDcm] = useState(false)
   const [ecoKI, setEcoKI] = useState(false)
   const [dispOriginStr, setDispOriginStr] = useState('1')
+  // Protein only: the number the first residue is shown as.
+  const [numberingStartStr, setNumberingStartStr] = useState('1')
+  const protein = doc.sequence.alphabet === 'protein'
 
   const nameRef = useRef<HTMLInputElement>(null)
   const backdropRef = useRef<HTMLDivElement>(null)
@@ -37,15 +40,30 @@ export default function SequencePropertiesDialog({ open, onClose }: Props) {
       setDam(doc.metadata?.damMethylated || false)
       setDcm(doc.metadata?.dcmMethylated || false)
       setEcoKI(doc.metadata?.ecoKIMethylated || false)
-      setDispOriginStr(String((doc.metadata?.displayOrigin || 0) + 1))
+      const origin = doc.metadata?.displayOrigin || 0
+      setDispOriginStr(String(Math.max(0, origin) + 1))
+      // A negative origin is a numbering shift: -24 shows residue 1 as 25.
+      setNumberingStartStr(String(1 - Math.min(0, origin)))
       requestAnimationFrame(() => nameRef.current?.select())
     }
   }, [open, doc])
 
   const handleSave = useCallback(() => {
-    const parsedOrigin = parseInt(dispOriginStr, 10)
     const seqLen = doc.sequence.length
-    const displayOrigin = topology === 'circular' && !isNaN(parsedOrigin) && parsedOrigin >= 1 && parsedOrigin <= seqLen
+    let displayOrigin = 0
+    if (protein) {
+      const start = parseInt(numberingStartStr, 10)
+      if (!isNaN(start) && start >= 1) displayOrigin = -(start - 1)
+      updateDocumentProperties({
+        name: name.trim() || 'Untitled',
+        description: description.trim() || undefined,
+        displayOrigin,
+      })
+      onClose()
+      return
+    }
+    const parsedOrigin = parseInt(dispOriginStr, 10)
+    displayOrigin = topology === 'circular' && !isNaN(parsedOrigin) && parsedOrigin >= 1 && parsedOrigin <= seqLen
       ? (parsedOrigin - 1) % seqLen
       : 0
     updateDocumentProperties({
@@ -59,7 +77,7 @@ export default function SequencePropertiesDialog({ open, onClose }: Props) {
       displayOrigin,
     })
     onClose()
-  }, [name, description, topology, strandedness, dam, dcm, ecoKI, dispOriginStr, doc.sequence.length, updateDocumentProperties, onClose])
+  }, [name, description, topology, strandedness, dam, dcm, ecoKI, dispOriginStr, numberingStartStr, protein, doc.sequence.length, updateDocumentProperties, onClose])
 
   const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
     if (e.key === 'Escape') onClose()
@@ -77,7 +95,7 @@ export default function SequencePropertiesDialog({ open, onClose }: Props) {
     <div className={closing ? 'modal-backdrop closing' : 'modal-backdrop'} onAnimationEnd={onAnimationEnd} ref={backdropRef} onClick={handleBackdropClick} onKeyDown={handleKeyDown} tabIndex={-1}>
       <div className="modal-dialog nsm-dialog" role="dialog" aria-modal="true" aria-labelledby="sequence-properties-modal-title">
         <div className="modal-header">
-          <h3 className="modal-title" id="sequence-properties-modal-title">Sequence Properties</h3>
+          <h3 className="modal-title" id="sequence-properties-modal-title">{protein ? 'Protein Properties' : 'Sequence Properties'}</h3>
           <button className="modal-close" onClick={onClose} aria-label="Close">
             <X size={16} />
           </button>
@@ -108,6 +126,23 @@ export default function SequencePropertiesDialog({ open, onClose }: Props) {
             />
           </label>
 
+          {/* A protein has no topology, strands or methylation: it gets its
+              numbering instead, so a mature chain or a fragment can keep
+              the numbering of the record it came from. */}
+          {protein && (
+            <label className="nsm-label">
+              Numbering start <span className="nsm-optional">(the first residue is shown as)</span>
+              <input
+                className="input nsm-input"
+                type="number"
+                min={1}
+                value={numberingStartStr}
+                onChange={e => setNumberingStartStr(e.target.value)}
+              />
+            </label>
+          )}
+
+          {!protein && (
           <label className="nsm-label">
             Topology
             <div className="toggle-group">
@@ -123,7 +158,9 @@ export default function SequencePropertiesDialog({ open, onClose }: Props) {
               >Circular</button>
             </div>
           </label>
+          )}
 
+          {!protein && (
           <label className="nsm-label">
             Strandedness
             <div className="toggle-group">
@@ -139,7 +176,9 @@ export default function SequencePropertiesDialog({ open, onClose }: Props) {
               >Single-stranded</button>
             </div>
           </label>
+          )}
 
+          {!protein && (
           <div className="nsm-label">
             Methylation
             <div className="spm-checkboxes">
@@ -157,8 +196,9 @@ export default function SequencePropertiesDialog({ open, onClose }: Props) {
               </label>
             </div>
           </div>
+          )}
 
-          {topology === 'circular' && (
+          {!protein && topology === 'circular' && (
             <label className="nsm-label">
               Display Origin <span className="nsm-optional">(position shown as 1)</span>
               <input

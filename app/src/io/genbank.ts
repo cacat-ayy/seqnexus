@@ -2,10 +2,12 @@
  * GenBank flat file parser and writer.
  *
  * Handles the subset of GenBank format needed for plasmid editing:
- * LOCUS, DEFINITION, FEATURES, and ORIGIN sections.
+ * LOCUS, DEFINITION, FEATURES, and ORIGIN sections. A GenPept record (a
+ * protein, "aa" on its LOCUS line) is read and written the same way; its
+ * ORIGIN holds residues and its features sit on them.
  */
 
-import { Sequence, Topology } from '../models/Sequence'
+import { Sequence, Topology, type Alphabet } from '../models/Sequence'
 import { Annotation, AnnotationData } from '../models/Annotation'
 import { DocumentState, type SequenceMetadata, type Strandedness } from '../models/Document'
 import { cleanOligo, newPrimerId, type PrimerData } from '../primers/oligo'
@@ -34,6 +36,8 @@ export interface GenBankRecord {
   description?: string
   topology: Topology
   strandedness: Strandedness
+  /** 'protein' for a GenPept record. */
+  alphabet: Alphabet
   bases: string
   annotations: AnnotationData[]
   primers: PrimerData[]
@@ -58,6 +62,7 @@ interface RecordInProgress {
   description: string
   topology: Topology
   strandedness: Strandedness
+  alphabet: Alphabet
   /** From the LOCUS line; used for locations when there is no ORIGIN. */
   locusLength: number
   features: RawFeature[]
@@ -75,7 +80,7 @@ interface RecordInProgress {
 
 function newRecord(): RecordInProgress {
   return {
-    name: 'Untitled', description: '', topology: 'linear', strandedness: 'double', locusLength: 0,
+    name: 'Untitled', description: '', topology: 'linear', strandedness: 'double', alphabet: 'dna', locusLength: 0,
     features: [], baseChunks: [], section: 'header', headerKey: '',
     feature: null, locationOpen: false, qualKey: '', qualPieces: [], empty: true,
   }
@@ -149,6 +154,8 @@ export class GenBankReader {
         if (lower.includes('ss-dna') || lower.includes('ss-rna')) r.strandedness = 'single'
         const len = /(\d+)\s+(bp|aa)\b/i.exec(line)
         if (len) r.locusLength = parseInt(len[1], 10)
+        // GenPept: the length is in residues, and a protein has no origin.
+        if (len && len[2].toLowerCase() === 'aa') { r.alphabet = 'protein'; r.topology = 'linear' }
       } else if (r.headerKey === 'DEFINITION') {
         r.empty = false
         r.description = value
@@ -280,6 +287,7 @@ function buildRecord(r: RecordInProgress): GenBankRecord {
     description: description || undefined,
     topology: r.topology,
     strandedness: r.strandedness,
+    alphabet: r.alphabet,
     bases,
     annotations: rest,
     primers,
@@ -287,19 +295,25 @@ function buildRecord(r: RecordInProgress): GenBankRecord {
   }
 }
 
-/** Use /label, /gene, /standard_name, or /product qualifier as annotation name. */
+/**
+ * Use /label, /gene, /standard_name, or /product qualifier as annotation
+ * name; a GenPept Region is named by /region_name, and a Site by its /note
+ * (its /site_type says only what kind of site it is).
+ */
 function featureName(f: RawFeature): string {
   const q = f.qualifiers
-  return q['label']?.[0] || q['gene']?.[0] || q['standard_name']?.[0] || q['product']?.[0] || f.type
+  return q['label']?.[0] || q['gene']?.[0] || q['standard_name']?.[0] || q['product']?.[0]
+    || q['region_name']?.[0] || q['note']?.[0] || f.type
 }
 
 /** A record as an open-able document. */
 export function toDocument(rec: GenBankRecord): DocumentState {
-  const metadata: SequenceMetadata = { strandedness: rec.strandedness }
+  // Strandedness is a DNA property; a protein carries no metadata from here.
+  const metadata: SequenceMetadata = rec.alphabet === 'protein' ? {} : { strandedness: rec.strandedness }
   return {
     name: rec.name,
     description: rec.description,
-    sequence: new Sequence(rec.bases, rec.topology),
+    sequence: new Sequence(rec.bases, rec.topology, rec.alphabet),
     annotations: rec.annotations.map(d => new Annotation(d)),
     ...(rec.primers.length > 0 ? { primers: rec.primers } : {}),
     metadata,
@@ -334,7 +348,7 @@ export function parseGenBank(text: string, warnings?: string[]): DocumentState {
 
 function emptyRecord(): GenBankRecord {
   return {
-    name: 'Untitled', topology: 'linear', strandedness: 'double',
+    name: 'Untitled', topology: 'linear', strandedness: 'double', alphabet: 'dna',
     bases: '', annotations: [], primers: [], warnings: [],
   }
 }
@@ -355,8 +369,11 @@ export function writeGenBank(state: DocumentState): string {
   const bpStr = bp.toString().padStart(7)
   const strandPrefix = state.metadata?.strandedness === 'single' ? 'ss-' : 'ds-'
   const locusName = state.name.trim().replace(/\s+/g, '_') || 'Untitled'
+  // A protein is a GenPept record: residues, no molecule type, always linear,
+  // with the topology in the column GenPept puts it ("142 aa            linear").
+  const molecule = seq.alphabet === 'protein' ? 'aa         ' : `bp    ${strandPrefix}DNA  `
   lines.push(
-    `LOCUS       ${padRight(locusName, 16)} ${bpStr} bp    ${strandPrefix}DNA     ${topo}   ${genbankDate(new Date())}`,
+    `LOCUS       ${padRight(locusName, 16)} ${bpStr} ${molecule}   ${topo}   ${genbankDate(new Date())}`,
   )
 
   // DEFINITION

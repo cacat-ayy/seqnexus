@@ -3,12 +3,14 @@ import { useState, useCallback, useRef, useEffect } from 'react'
 import { X } from 'lucide-react'
 import { useExitAnimation } from '../hooks/useExitAnimation'
 import { useFocusTrap } from '../hooks/useFocusTrap'
+import { guessAlphabet, invalidCharacters, type Alphabet } from '../models/alphabet'
 
 export interface NewSequenceResult {
   name: string
   description: string
   sequence: string
   topology: 'linear' | 'circular'
+  alphabet: Alphabet
 }
 
 interface Props {
@@ -28,16 +30,14 @@ function cleanSequence(raw: string): string {
   return kept.join('').toUpperCase()
 }
 
-/** Rough base count for the status line. */
-function countBases(raw: string): number {
-  return cleanSequence(raw).length
-}
-
 export default function NewSequenceDialog({ open, onClose, onSubmit }: Props) {
   const [name, setName] = useState('Untitled')
   const [description, setDescription] = useState('')
   const [sequence, setSequence] = useState('')
   const [topology, setTopology] = useState<'linear' | 'circular'>('linear')
+  // The molecule follows the pasted letters until the user picks one; a
+  // pasted peptide should not need a second click to be a protein.
+  const [chosenAlphabet, setChosenAlphabet] = useState<Alphabet | null>(null)
   const nameRef = useRef<HTMLInputElement>(null)
   const backdropRef = useRef<HTMLDivElement>(null)
   useFocusTrap(backdropRef, open)
@@ -49,20 +49,27 @@ export default function NewSequenceDialog({ open, onClose, onSubmit }: Props) {
       setDescription('')
       setSequence('')
       setTopology('linear')
+      setChosenAlphabet(null)
       // Small delay so the DOM is rendered
       requestAnimationFrame(() => nameRef.current?.select())
     }
   }, [open])
 
+  const cleaned = cleanSequence(sequence)
+  const alphabet: Alphabet = chosenAlphabet ?? (cleaned ? guessAlphabet(cleaned) : 'dna')
+  const protein = alphabet === 'protein'
+  const invalid = cleaned ? invalidCharacters(cleaned, alphabet) : []
+
   const handleSubmit = useCallback(() => {
-    const cleaned = cleanSequence(sequence)
+    if (invalid.length > 0) return
     onSubmit({
       name: name.trim() || 'Untitled',
       description: description.trim(),
       sequence: cleaned,
-      topology,
+      topology: protein ? 'linear' : topology,
+      alphabet,
     })
-  }, [name, description, sequence, topology, onSubmit])
+  }, [name, description, cleaned, topology, alphabet, protein, invalid.length, onSubmit])
 
   const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
     if (e.key === 'Escape') {
@@ -79,7 +86,7 @@ export default function NewSequenceDialog({ open, onClose, onSubmit }: Props) {
   const { visible, closing, onAnimationEnd } = useExitAnimation(open)
   if (!visible) return null
 
-  const baseCount = countBases(sequence)
+  const count = cleaned.length
 
   return (
     <div className={closing ? 'modal-backdrop closing' : 'modal-backdrop'} onAnimationEnd={onAnimationEnd} ref={backdropRef} onClick={handleBackdropClick} onKeyDown={handleKeyDown} tabIndex={-1}>
@@ -115,45 +122,84 @@ export default function NewSequenceDialog({ open, onClose, onSubmit }: Props) {
             />
           </label>
 
-          <label className="nsm-label">
-            Topology
-            <div className="toggle-group">
-              <button
-                className={`toggle-btn ${topology === 'linear' ? 'active' : ''}`}
-                onClick={() => setTopology('linear')}
-                type="button"
-              >
-                Linear
-              </button>
-              <button
-                className={`toggle-btn ${topology === 'circular' ? 'active' : ''}`}
-                onClick={() => setTopology('circular')}
-                type="button"
-              >
-                Circular
-              </button>
+          <div className="nsm-row">
+            <div className="nsm-label">
+              Molecule
+              <div className="toggle-group" role="radiogroup" aria-label="Molecule">
+                <button
+                  className={`toggle-btn ${!protein ? 'active' : ''}`}
+                  onClick={() => setChosenAlphabet('dna')}
+                  type="button"
+                  role="radio"
+                  aria-checked={!protein}
+                >
+                  DNA
+                </button>
+                <button
+                  className={`toggle-btn ${protein ? 'active' : ''}`}
+                  onClick={() => setChosenAlphabet('protein')}
+                  type="button"
+                  role="radio"
+                  aria-checked={protein}
+                >
+                  Protein
+                </button>
+              </div>
             </div>
-          </label>
+
+            {/* A protein has no topology, so the choice goes away rather
+                than sitting there disabled. */}
+            {!protein && (
+              <div className="nsm-label">
+                Topology
+                <div className="toggle-group" role="radiogroup" aria-label="Topology">
+                  <button
+                    className={`toggle-btn ${topology === 'linear' ? 'active' : ''}`}
+                    onClick={() => setTopology('linear')}
+                    type="button"
+                    role="radio"
+                    aria-checked={topology === 'linear'}
+                  >
+                    Linear
+                  </button>
+                  <button
+                    className={`toggle-btn ${topology === 'circular' ? 'active' : ''}`}
+                    onClick={() => setTopology('circular')}
+                    type="button"
+                    role="radio"
+                    aria-checked={topology === 'circular'}
+                  >
+                    Circular
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
 
           <label className="nsm-label">
             Sequence
-            {baseCount > 0 && (
-              <span className="nsm-base-count">{baseCount.toLocaleString()} bp</span>
+            {count > 0 && (
+              <span className="nsm-base-count">{count.toLocaleString()} {protein ? 'aa' : 'bp'}</span>
             )}
             <textarea
               className="input nsm-textarea"
               value={sequence}
               onChange={e => setSequence(e.target.value)}
-              placeholder="Paste or type a DNA sequence (FASTA accepted)…"
+              placeholder={protein ? 'Paste or type a protein sequence (FASTA accepted)…' : 'Paste or type a DNA or protein sequence (FASTA accepted)…'}
               spellCheck={false}
               rows={10}
             />
+            {invalid.length > 0 && (
+              <span className="nsm-error" role="alert">
+                Not {protein ? 'amino acid' : 'nucleotide'} codes: {invalid.slice(0, 8).join(' ')}
+              </span>
+            )}
           </label>
         </div>
 
         <div className="modal-footer">
           <button className="btn" onClick={onClose}>Cancel</button>
-          <button className="btn btn-primary" onClick={handleSubmit}>
+          <button className="btn btn-primary" onClick={handleSubmit} disabled={invalid.length > 0}>
             Create
           </button>
         </div>

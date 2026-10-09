@@ -73,11 +73,12 @@ export interface BuildNodesResult {
 
 const EMPTY_MESSAGE: Partial<Record<ItemKind, string>> = {
   'sequence': 'No sequences open',
+  'protein': 'No proteins open',
   'read': 'No sequencing reads imported',
 }
 
 const KIND_RANK: Record<ItemKind, number> = {
-  'sequence': 0, 'read': 1, 'readset': 2, 'alignment': 3, 'assembly': 4, 'contig': 5, 'gel': 6, 'clone': 7, 'oligo': 8,
+  'sequence': 0, 'protein': 1, 'read': 2, 'readset': 3, 'alignment': 4, 'assembly': 5, 'contig': 6, 'gel': 7, 'clone': 8, 'oligo': 9,
 }
 
 /** Compare two items by the active sort. Name is the tiebreak throughout. */

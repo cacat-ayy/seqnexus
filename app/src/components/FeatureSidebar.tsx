@@ -21,7 +21,7 @@ import { Plus, X, ChevronRight, ChevronDown, Eye, EyeOff, Search, PanelRightClos
 import './FeatureSidebar.css'
 import './ContextMenuPopup.css'
 
-import { FEATURE_TYPES, PRESET_COLORS } from '../utils/annotation-constants'
+import { defaultFeatureType, featureTypesFor, PRESET_COLORS } from '../utils/annotation-constants'
 import { STORAGE_KEYS } from '../storage/keys'
 
 const SIDEBAR_MIN = 200
@@ -287,6 +287,18 @@ function FeatureSidebar({ open, onClose }: FeatureSidebarProps) {
   const [newParts, setNewParts] = useState<[number, number][] | null>(null)
   const [newStrand, setNewStrand] = useState<Strand>(1)
   const [newColor, setNewColor] = useState(() => defaultColorForType('misc_feature'))
+  // The types on offer follow the document: a protein's features are regions
+  // and sites, not promoters. The form's type follows along when the open
+  // document changes alphabet, so a DNA type is never offered on a protein.
+  const alphabet = sequence.alphabet
+  const FEATURE_TYPES = featureTypesFor(alphabet)
+  useEffect(() => {
+    if (!FEATURE_TYPES.includes(newType)) {
+      const t = defaultFeatureType(alphabet)
+      setNewType(t)
+      setNewColor(defaultColorForType(t))
+    }
+  }, [alphabet, FEATURE_TYPES, newType])
   // Update color when type changes (only if user hasn't manually picked a color)
   const [colorManuallySet, setColorManuallySet] = useState(false)
   const handleNewTypeChange = useCallback((type: string) => {

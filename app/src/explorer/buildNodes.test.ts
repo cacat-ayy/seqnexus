@@ -18,7 +18,7 @@ function item(
   }
 }
 
-const empty = { sequence: [], read: [], readset: [], alignment: [], 'read-alignment': [], assembly: [], contig: [], gel: [], clone: [], oligo: [] }
+const empty = { sequence: [], protein: [], read: [], readset: [], alignment: [], 'read-alignment': [], assembly: [], contig: [], gel: [], clone: [], oligo: [] }
 
 /** A folder with the fields a test does not care about filled in. */
 function folder(over: Partial<ExplorerFolder> & { id: string }): ExplorerFolder {

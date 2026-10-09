@@ -14,12 +14,12 @@ import { memo } from 'react'
 import { ChevronRight, Undo2 } from 'lucide-react'
 import { useEditorStore, type DeletedItem } from '../../store'
 import { KIND_ICON, KIND_LABEL } from '../../explorer/kinds'
-import type { ItemKind } from '../../explorer/types'
+import { documentKind, type ItemKind } from '../../explorer/types'
 
 /** What a buffer entry is called and what kind it was. */
 function describe(entry: DeletedItem): { name: string; kind: ItemKind } {
   switch (entry.kind) {
-    case 'sequence': return { name: entry.tab.doc.name, kind: 'sequence' }
+    case 'sequence': return { name: entry.tab.doc.name, kind: documentKind(entry.tab.doc.sequence.alphabet) }
     case 'read': return { name: entry.read.data.name, kind: 'read' }
     case 'readset': return { name: entry.readSet.name, kind: 'readset' }
     case 'alignment': return { name: entry.alignment.name, kind: 'alignment' }

@@ -1,8 +1,10 @@
 /**
- * DNA/RNA sequence backed by a PieceTable for O(log n) edits.
+ * DNA/RNA or protein sequence backed by a PieceTable for O(log n) edits.
  *
  * All positions are 0-based, half-open intervals [start, end).
- * Topology can be 'linear' or 'circular'.
+ * Topology can be 'linear' or 'circular'; a protein is always linear.
+ * The alphabet says which letters the sequence is written in. Every edit
+ * carries it, and it never changes after construction.
  *
  * The public API returns new Sequence instances for edits to maintain
  * compatibility with the existing immutable-style usage in tests.
@@ -13,8 +15,10 @@
 import { PieceTable } from './PieceTable'
 
 import { COMPLEMENT } from './complement'
+import type { Alphabet } from './alphabet'
 
 export type Topology = 'linear' | 'circular'
+export type { Alphabet } from './alphabet'
 
 export { PieceTable } from './PieceTable'
 export type { PieceTableSnapshot } from './PieceTable'
@@ -22,19 +26,26 @@ export type { PieceTableSnapshot } from './PieceTable'
 export class Sequence {
   private _pt: PieceTable
   readonly topology: Topology
+  readonly alphabet: Alphabet
   private _basesCache: string | null = null
   private _basesCacheVersion = -1
 
-  constructor(bases: string, topology: Topology = 'linear') {
+  constructor(bases: string, topology: Topology = 'linear', alphabet: Alphabet = 'dna') {
     this._pt = new PieceTable(bases)
-    this.topology = topology
+    // A protein has no origin to wrap around.
+    this.topology = alphabet === 'protein' ? 'linear' : topology
+    this.alphabet = alphabet
   }
 
   /** Construct a Sequence wrapping an existing PieceTable (no copy). */
-  static fromPieceTable(pt: PieceTable, topology: Topology): Sequence {
-    const seq = new Sequence('', topology)
+  static fromPieceTable(pt: PieceTable, topology: Topology, alphabet: Alphabet = 'dna'): Sequence {
+    const seq = new Sequence('', topology, alphabet)
     seq._pt = pt
     return seq
+  }
+
+  get isProtein(): boolean {
+    return this.alphabet === 'protein'
   }
 
   /** Full bases string. Cached until the PieceTable is mutated. */
@@ -71,19 +82,19 @@ export class Sequence {
   insert(pos: number, fragment: string): Sequence {
     this._assertPos(pos, true)
     const newBases = this._pt.substring(0, pos) + fragment + this._pt.substring(pos, this.length)
-    return new Sequence(newBases, this.topology)
+    return new Sequence(newBases, this.topology, this.alphabet)
   }
 
   delete(start: number, end: number): Sequence {
     this._assertRange(start, end)
     const newBases = this._pt.substring(0, start) + this._pt.substring(end, this.length)
-    return new Sequence(newBases, this.topology)
+    return new Sequence(newBases, this.topology, this.alphabet)
   }
 
   replace(start: number, end: number, fragment: string): Sequence {
     this._assertRange(start, end)
     const newBases = this._pt.substring(0, start) + fragment + this._pt.substring(end, this.length)
-    return new Sequence(newBases, this.topology)
+    return new Sequence(newBases, this.topology, this.alphabet)
   }
 
   // --- In-place edit API (mutates the PieceTable directly) ---
@@ -131,7 +142,7 @@ export class Sequence {
     const comp = Array.from(bases)
       .map(b => COMPLEMENT[b] ?? b)
       .join('')
-    return new Sequence(comp, this.topology)
+    return new Sequence(comp, this.topology, this.alphabet)
   }
 
   reverseComplement(): Sequence {
@@ -140,7 +151,7 @@ export class Sequence {
       .map(b => COMPLEMENT[b] ?? b)
       .reverse()
       .join('')
-    return new Sequence(comp, this.topology)
+    return new Sequence(comp, this.topology, this.alphabet)
   }
 
   gcContent(): number {
@@ -154,7 +165,7 @@ export class Sequence {
   }
 
   withTopology(topology: Topology): Sequence {
-    return new Sequence(this.bases, topology)
+    return new Sequence(this.bases, topology, this.alphabet)
   }
 
   /** Complement a single base character. */

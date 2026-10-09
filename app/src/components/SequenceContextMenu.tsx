@@ -182,6 +182,10 @@ export default function SequenceContextMenu({
   const isUserAnn = !!ann && !ann.id.startsWith('_orf_') && !isAutoAnnotationId(ann.id)
   const group = target.enzymeGroup
   const circular = doc.sequence.topology === 'circular'
+  // A protein has no other strand, no translation, no primers and no
+  // cloning: those items are left out rather than offered and refused.
+  const protein = doc.sequence.alphabet === 'protein'
+  const unit = protein ? 'aa' : 'bp'
 
   /** Run an action, then close. */
   const act = (fn: () => void) => () => { fn(); onClose() }
@@ -199,7 +203,7 @@ export default function SequenceContextMenu({
     selectionSegments(r, doc.sequence.topology, doc.sequence.length).map(([s, e]) => doc.sequence.basesIn(s, e)).join(''),
   )).join('')
   const selectionLen = segs.reduce((n, [s, e]) => n + e - s, 0)
-  const canMakePrimer = !readOnly && !multi && selectionLen >= 10 && selectionLen <= 200
+  const canMakePrimer = !readOnly && !multi && !protein && selectionLen >= 10 && selectionLen <= 200
   const rangeNote = multi ? ` from ${ranges.length} ranges` : ''
 
   const pasteRevComp = () => {
@@ -289,12 +293,14 @@ export default function SequenceContextMenu({
         <Submenu icon={<Copy size={ICON} />} label="Copy Annotation">
           <MenuItem onSelect={act(() => {
             const b = annotationBases(ann, doc.sequence)
-            copyText(b, `Copied ${b.length} bp from "${ann.name}"`)
-          })}>Bases</MenuItem>
-          <MenuItem onSelect={act(() => {
-            const b = reverseComplementStr(annotationBases(ann, doc.sequence))
-            copyText(b, `Copied reverse complement of "${ann.name}"`)
-          })}>Reverse Complement</MenuItem>
+            copyText(b, `Copied ${b.length} ${unit} from "${ann.name}"`)
+          })}>{protein ? 'Residues' : 'Bases'}</MenuItem>
+          {!protein && (
+            <MenuItem onSelect={act(() => {
+              const b = reverseComplementStr(annotationBases(ann, doc.sequence))
+              copyText(b, `Copied reverse complement of "${ann.name}"`)
+            })}>Reverse Complement</MenuItem>
+          )}
           {translatable && (
             <MenuItem onSelect={act(() => {
               const p = annotationProtein(ann, doc.sequence)
@@ -389,19 +395,23 @@ export default function SequenceContextMenu({
     sections.push(
       <div key="selection" role="group" aria-label="Selection">
         <Submenu icon={<Copy size={ICON} />}
-          label={`Copy Selection (${selectionLen} bp${multi ? `, ${ranges.length} ranges` : ''})`}>
+          label={`Copy Selection (${selectionLen} ${unit}${multi ? `, ${ranges.length} ranges` : ''})`}>
           <MenuItem shortcut="Ctrl+C" onSelect={act(() => {
             const b = selectedBases()
-            copyText(b, `Copied ${b.length} bp${rangeNote}`)
-          })}>{multi ? 'Bases, Joined' : 'Bases'}</MenuItem>
-          <MenuItem onSelect={act(() => {
-            const t = reverseComplementStr(selectedBases())
-            copyText(t, `Copied reverse complement (${t.length} bp)`)
-          })}>Reverse Complement</MenuItem>
-          <MenuItem onSelect={act(() => {
-            const p = translateSequenceStr(selectedBases())
-            copyText(p, `Copied protein (${p.length} aa)`)
-          })}>Protein Translation</MenuItem>
+            copyText(b, `Copied ${b.length} ${unit}${rangeNote}`)
+          })}>{protein ? (multi ? 'Residues, Joined' : 'Residues') : (multi ? 'Bases, Joined' : 'Bases')}</MenuItem>
+          {!protein && (
+            <MenuItem onSelect={act(() => {
+              const t = reverseComplementStr(selectedBases())
+              copyText(t, `Copied reverse complement (${t.length} bp)`)
+            })}>Reverse Complement</MenuItem>
+          )}
+          {!protein && (
+            <MenuItem onSelect={act(() => {
+              const p = translateSequenceStr(selectedBases())
+              copyText(p, `Copied protein (${p.length} aa)`)
+            })}>Protein Translation</MenuItem>
+          )}
           <MenuItem onSelect={act(() => copyText(fasta(selectionName(), selectedBases()), 'Copied selection as FASTA'))}>
             {multi ? 'FASTA, Joined' : 'FASTA'}
           </MenuItem>
@@ -417,7 +427,7 @@ export default function SequenceContextMenu({
             <MenuItem icon={<MoveLeft size={ICON} />} onSelect={act(() => newPrimer(-1))}>Reverse</MenuItem>
           </Submenu>
         )}
-        {!multi && (
+        {!multi && !protein && (
           <Submenu icon={<Combine size={ICON} />} label="Clone This Selection">
             {CLONING_METHODS.map((method: CloningMethodId) => (
               <MenuItem
@@ -438,7 +448,7 @@ export default function SequenceContextMenu({
   if (!readOnly) {
     sections.push(
       <div key="edit" role="group" aria-label="Edit">
-        {!multi && (
+        {!multi && !protein && (
           <MenuItem icon={<ClipboardPaste size={ICON} />} onSelect={act(pasteRevComp)}>
             Paste Reverse Complement
           </MenuItem>

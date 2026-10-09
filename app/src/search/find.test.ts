@@ -170,5 +170,38 @@ describe('results helpers', () => {
     expect(cleanReplacement('MKA').error).toBeNull()
     expect(cleanReplacement('MKA', 'protein').error).toMatch(/bases/)
     expect(cleanReplacement('ATGAAA', 'protein').error).toBeNull()
+    // On a protein document the replacement is residues.
+    expect(cleanReplacement('mka', 'nucleotide', 'protein')).toEqual({ bases: 'MKA', error: null })
+    expect(cleanReplacement('MK#', 'nucleotide', 'protein').error).toBe('“#” is not an amino acid code')
+  })
+})
+
+describe('residue search on a protein document', () => {
+  const findIn = (q: string, residues: string, o: Partial<SearchOptions> = {}) =>
+    findMatches(q, opts(o), residues, false, STD, 'protein')
+
+  it('searches the residues as text, whatever the mode says', () => {
+    const r = findIn('KLV', 'MKLVKLVA', { mode: 'nucleotide' })
+    expect(spans(r.matches)).toEqual([[1, 4, 1], [4, 7, 1]])
+    expect(findIn('KLV', 'MKLVKLVA', { mode: 'protein' }).matches.length).toBe(2)
+  })
+
+  it('reads ambiguity codes as sets, and X as any residue but a stop', () => {
+    expect(spans(findIn('KXV', 'MKLVK*VA').matches)).toEqual([[1, 4, 1]])
+    expect(spans(findIn('BV', 'MDVNVA').matches)).toEqual([[1, 3, 1], [3, 5, 1]])
+    expect(findIn('BV', 'MDVNVA', { ambiguity: false }).matches.length).toBe(0)
+  })
+
+  it('allows mismatches between residues', () => {
+    const r = findIn('KLVA', 'MKLIAKLVA', { mismatches: 1 })
+    expect(r.matches.map(m => [m.start, m.mismatches])).toEqual([[1, 1], [5, 0]])
+  })
+
+  it('names characters that are not amino acids', () => {
+    expect(findIn('K#', 'MKLV').error).toMatch(/amino acid/)
+  })
+
+  it('takes a regular expression', () => {
+    expect(spans(findIn('N[^P][ST]', 'MNGSANPTNVT', { isRegex: true }).matches)).toEqual([[1, 4, 1], [8, 11, 1]])
   })
 })

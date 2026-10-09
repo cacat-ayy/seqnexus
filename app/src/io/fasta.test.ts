@@ -11,16 +11,16 @@ describe('readFasta (M8)', () => {
     expect(readFasta('ACGUACGU\n', 'rna').records).toEqual([{ name: 'rna', bases: 'ACGUACGU' }])
   })
 
-  it('sets protein records aside instead of opening them as DNA', () => {
+  it('sorts protein records apart from the DNA ones', () => {
     const r = readFasta('>dna\nACGT\n>prot\nMKVLAAGIVGLLLAAQPAMA\n', 'f')
     expect(r.records.map(x => x.name)).toEqual(['dna'])
-    expect(r.proteins).toEqual(['prot'])
+    expect(r.proteins).toEqual([{ name: 'prot', bases: 'MKVLAAGIVGLLLAAQPAMA' }])
   })
 
   it('treats everything in a .faa file as protein', () => {
     const r = readFasta('>p1\nMKVAHD\n', 'f', true)
     expect(r.records).toEqual([])
-    expect(r.proteins).toEqual(['p1'])
+    expect(r.proteins).toEqual([{ name: 'p1', bases: 'MKVAHD' }])
   })
 
   it('reports records that are neither', () => {

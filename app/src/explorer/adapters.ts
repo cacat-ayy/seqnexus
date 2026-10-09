@@ -14,9 +14,9 @@ import type {
 } from '../store'
 import type { DocumentOrigin } from '../models/Document'
 import type { ExplorerItem, ItemBadge, ItemKind } from './types'
-import { toUid } from './types'
+import { documentKind, toUid } from './types'
 import { formatPercent, formatCount, meanQuality } from './format'
-import { formatBp } from '../utils/format'
+import { formatBp, formatAa } from '../utils/format'
 import { readQc } from '../sanger/qc'
 import { METHOD_LABEL, partMatchesSource } from '../cloning/design'
 import { originLabel } from '../msa/model'
@@ -107,8 +107,11 @@ function isOpen(ctx: AdapterContext, kind: ItemKind, id: string): boolean {
   return ctx.open.kind === kind && ctx.open.id === id
 }
 
+/** A document tab: a DNA sequence, or a protein, which is its own kind here. */
 export function sequenceToItem(tab: DocumentTab, ctx: AdapterContext): ExplorerItem {
   const circular = tab.doc.sequence.topology === 'circular'
+  const protein = tab.doc.sequence.alphabet === 'protein'
+  const kind = documentKind(tab.doc.sequence.alphabet)
   const features = tab.doc.annotations.length
 
   const badges: ItemBadge[] = []
@@ -117,24 +120,23 @@ export function sequenceToItem(tab: DocumentTab, ctx: AdapterContext): ExplorerI
   if (tab.readOnly) badges.push(READ_ONLY_BADGE)
 
   return {
-    uid: toUid('sequence', tab.id),
-    kind: 'sequence',
+    uid: toUid(kind, tab.id),
+    kind,
     id: tab.id,
     name: tab.doc.name,
     createdAt: tab.createdAt,
     modifiedAt: tab.modifiedAt,
     size: tab.doc.sequence.length,
-    isOpen: isOpen(ctx, 'sequence', tab.id),
+    isOpen: isOpen(ctx, kind, tab.id),
     isIncluded: false,
     isDirty: tab.undoStack.length > 0,
     isReadOnly: tab.readOnly,
     isCircular: circular,
     canDuplicate: true,
-    stats: [
-      formatBp(tab.doc.sequence.length),
-      circular ? 'circular' : 'linear',
-      formatCount(features, 'feature'),
-    ],
+    // A protein is always linear, so saying so would be noise.
+    stats: protein
+      ? [formatAa(tab.doc.sequence.length), formatCount(features, 'feature')]
+      : [formatBp(tab.doc.sequence.length), circular ? 'circular' : 'linear', formatCount(features, 'feature')],
     badges,
     derivedFrom: [],
   }

@@ -11,12 +11,31 @@
  */
 
 import type { LucideIcon } from 'lucide-react'
+import type { Alphabet } from '../models/alphabet'
 
-export type ItemKind = 'sequence' | 'read' | 'readset' | 'alignment' | 'assembly' | 'contig' | 'gel' | 'clone' | 'oligo'
+export type ItemKind = 'sequence' | 'protein' | 'read' | 'readset' | 'alignment' | 'assembly' | 'contig' | 'gel' | 'clone' | 'oligo'
 
 export const ITEM_KINDS: readonly ItemKind[] = [
-  'sequence', 'read', 'readset', 'alignment', 'assembly', 'contig', 'gel', 'clone', 'oligo',
+  'sequence', 'protein', 'read', 'readset', 'alignment', 'assembly', 'contig', 'gel', 'clone', 'oligo',
 ] as const
+
+/**
+ * A DNA sequence and a protein are the same kind of thing to the store (a
+ * document tab) and different kinds to the explorer (their own icon, group
+ * and filter). These two keep the mapping in one place.
+ */
+export function documentKind(alphabet: Alphabet): ItemKind {
+  return alphabet === 'protein' ? 'protein' : 'sequence'
+}
+
+export function isDocumentKind(kind: ItemKind): boolean {
+  return kind === 'sequence' || kind === 'protein'
+}
+
+/** The explorer uid of a document tab, by its alphabet. */
+export function tabUid(tab: { id: string; doc: { sequence: { alphabet: Alphabet } } }): string {
+  return toUid(documentKind(tab.doc.sequence.alphabet), tab.id)
+}
 
 /**
  * A row's stable identity across kinds.

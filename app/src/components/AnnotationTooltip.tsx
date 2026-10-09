@@ -10,6 +10,7 @@
 import { TriangleAlert, Info } from 'lucide-react'
 import type { Annotation } from '../models/Annotation'
 import type { Sequence } from '../models/Sequence'
+import { unitOf } from '../models/alphabet'
 import HoverCard from './HoverCard'
 import {
   annotationBases,
@@ -49,7 +50,7 @@ export function AnnotationTooltipContent({ ann, sequence }: { ann: Annotation; s
           <tr><td>Interval</td><td>{ann.start + 1}..{ann.end}</td></tr>
           <tr>
             <td>Length</td>
-            <td>{len} bp{translatable && len % 3 === 0 && <span className="hc-muted"> · {len / 3} codons</span>}</td>
+            <td>{len} {unitOf(sequence.alphabet)}{translatable && len % 3 === 0 && <span className="hc-muted"> · {len / 3} codons</span>}</td>
           </tr>
           <tr><td>Strand</td><td>{ann.strand === 1 ? 'Forward (+)' : ann.strand === -1 ? 'Reverse (−)' : 'None'}</td></tr>
         </tbody>

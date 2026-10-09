@@ -6,11 +6,13 @@
  * now; topology is a pip on top of it and a word in the metadata line.
  */
 
-import { Dna, Activity, AlignLeft, Layers, MoveRight, GalleryVertical, Combine, Rows3, FileStack, type LucideIcon } from 'lucide-react'
+import { Dna, Atom, Activity, AlignLeft, Layers, MoveRight, GalleryVertical, Combine, Rows3, FileStack, type LucideIcon } from 'lucide-react'
 import type { ItemKind } from './types'
 
 export const KIND_ICON: Record<ItemKind, LucideIcon> = {
   'sequence': Dna,
+  // The helix is DNA's; a protein gets the molecule.
+  'protein': Atom,
   'read': Activity,
   // NGS reads: many short records, stacked.
   'readset': FileStack,
@@ -27,6 +29,7 @@ export const KIND_ICON: Record<ItemKind, LucideIcon> = {
 
 export const KIND_LABEL: Record<ItemKind, string> = {
   'sequence': 'Sequence',
+  'protein': 'Protein',
   'read': 'Sequencing read',
   'readset': 'Read set',
   'alignment': 'Alignment',
@@ -40,6 +43,7 @@ export const KIND_LABEL: Record<ItemKind, string> = {
 /** Group headings, in the order the tree lists them. */
 export const KIND_GROUP_LABEL: Record<ItemKind, string> = {
   'sequence': 'Sequences',
+  'protein': 'Proteins',
   'read': 'Sequencing',
   'readset': 'Read sets',
   'alignment': 'Alignments',
@@ -51,7 +55,7 @@ export const KIND_GROUP_LABEL: Record<ItemKind, string> = {
 }
 
 export const KIND_ORDER: readonly ItemKind[] = [
-  'sequence', 'read', 'readset', 'alignment', 'assembly', 'contig', 'gel', 'clone', 'oligo',
+  'sequence', 'protein', 'read', 'readset', 'alignment', 'assembly', 'contig', 'gel', 'clone', 'oligo',
 ] as const
 
 /**

@@ -11,7 +11,7 @@ import {
 } from 'lucide-react'
 import ContextMenuPopup from '../ContextMenuPopup'
 import { usePopoverDismiss } from '../../hooks/usePopoverDismiss'
-import type { ExplorerItem } from '../../explorer/types'
+import { isDocumentKind, type ExplorerItem } from '../../explorer/types'
 
 export type ExplorerMenuTarget =
   | { type: 'item'; item: ExplorerItem; x: number; y: number }
@@ -116,7 +116,7 @@ export default function ExplorerContextMenu({
                 <Copy size={13} /> Duplicate
               </button>
             )}
-            {has.properties && target.item.kind === 'sequence' && (
+            {has.properties && isDocumentKind(target.item.kind) && (
               <button className="ctx-menu-item" onClick={onProperties}>
                 <Dna size={13} /> Properties
               </button>

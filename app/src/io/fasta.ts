@@ -1,9 +1,11 @@
 /**
  * FASTA and plain-text sequence files.
  *
- * Only nucleotide sequences can be opened. A record with letters that only
- * occur in proteins (E, F, I, L, P, Q, …) is set aside and reported rather
- * than loaded as DNA, and plain RNA (U) is accepted.
+ * Each record is sorted into nucleotide or protein by its letters. A record
+ * with letters that only occur in proteins (E, F, I, L, P, Q, …) is a
+ * protein; one written only in nucleotide codes is DNA (plain RNA, with U,
+ * included), unless the file says otherwise (.faa). Anything else is
+ * reported rather than loaded.
  */
 
 export interface FastaRecord {
@@ -12,9 +14,10 @@ export interface FastaRecord {
 }
 
 export interface FastaRead {
+  /** Nucleotide records. */
   records: FastaRecord[]
-  /** Records that look like proteins: not opened. */
-  proteins: string[]
+  /** Records that are proteins, opened as such. */
+  proteins: FastaRecord[]
   /** Records with characters that are neither nucleotide nor amino-acid codes. */
   unreadable: string[]
 }
@@ -51,7 +54,7 @@ export function readFasta(text: string, defaultName: string, proteinFile = false
   const out: FastaRead = { records: [], proteins: [], unreadable: [] }
   for (const rec of raw) {
     if (!proteinFile && NUCLEOTIDE.test(rec.bases)) out.records.push(rec)
-    else if (AMINO.test(rec.bases) && (proteinFile || PROTEIN_ONLY.test(rec.bases))) out.proteins.push(rec.name)
+    else if (AMINO.test(rec.bases) && (proteinFile || PROTEIN_ONLY.test(rec.bases))) out.proteins.push(rec)
     else out.unreadable.push(rec.name)
   }
   return out

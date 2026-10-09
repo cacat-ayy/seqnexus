@@ -66,6 +66,9 @@ of each build.
 ## Features
 
 - **Multi-document tabs** with session persistence (localStorage + IndexedDB)
+- **Proteins** as documents of their own: FASTA and GenPept in and out, the
+  same viewer with residue colour schemes, features, find and numbering from
+  any residue; see [Proteins](#proteins)
 - **Three zoom modes** (21 levels): line → dots → letters
 - **Linear and circular views** with split mode (resizable divider)
 - **GenBank import/export** with streaming parser for large files (>1MB)
@@ -2176,7 +2179,8 @@ in reversed, since then there is no base 1 to keep.
 | Format | Read | Write | Notes |
 |--------|------|-------|-------|
 | GenBank (.gb, .gbk) | Yes | Yes | Streaming parser for large files (>1 MB). Handles multi-record files. |
-| FASTA (.fasta, .fa) | Yes | Yes | Multi-sequence support. |
+| GenPept (.gp, .gpt) | Yes | Yes | Protein records in GenBank's layout ("aa" on the LOCUS line). See [Proteins](#proteins). |
+| FASTA (.fasta, .fa, .faa) | Yes | Yes | Multi-sequence support. Each record is sorted into DNA or protein by its letters; a .faa file is all protein. |
 | SnapGene (.dna) | Yes | Yes | Binary TLV format. Handles sequence, features, primers, topology, methylation. |
 | Geneious (.geneious) | Yes | - | ZIP-compressed XML. Extracts sequence, topology, and features. |
 | AB1 (.ab1) | Yes | - | Sanger chromatogram traces with quality scores. |
@@ -2192,6 +2196,118 @@ in reversed, since then there is no base 1 to keep.
 SnapGene and Geneious parsers are reverse-engineered from the binary/XML
 formats. SnapGene uses a TLV (type-length-value) packet structure; Geneious
 uses ZIP-compressed Java XMLSerializable format.
+
+---
+
+## Proteins
+
+A protein is the same document as a DNA sequence: the same piece table, the
+same annotations and interval tree, the same undo history, explorer row,
+folders, tags and session storage. The only difference in the model is the
+alphabet the Sequence carries (`dna` or `protein`), which every edit and
+snapshot keeps. A protein is always linear; a snapshot without an alphabet
+is DNA.
+
+### Alphabet
+
+A protein may hold the twenty standard amino acids, selenocysteine (U) and
+pyrrolysine (O), the ambiguity codes B (D or N), Z (E or Q), J (I or L) and
+X (any residue), and the stop (`*`). Typing and pasting check against this
+set the way DNA is checked against the IUPAC codes, and refuse anything else
+with the offending characters named.
+
+A pasted or imported record is sorted into DNA or protein by its letters: a
+letter that only a protein can hold (E, F, I, J, L, O, P, Q, X, Z or a stop)
+settles it; otherwise at least nine letters in ten have to be A, C, G, T, U
+or N for the record to be DNA. The rule errs towards protein for short
+stretches written only in IUPAC letters (ACDGHKMNRSTVWY are all codes), which
+is the safer mistake: a peptide opened as DNA would be reverse-complemented
+and translated, a short DNA fragment opened as a protein is only coloured
+oddly. The New Sequence dialog follows the same guess until the molecule is
+chosen by hand.
+
+### What a protein does not have
+
+Everything that needs bases is left out of a protein's view rather than
+offered and refused: the complement strand, the translation rows, restriction
+enzymes, ORFs, primers, the plasmid map and split view, GC content, Tm and
+codon usage, methylation, cloning, codon optimization and (for now) BLAST.
+The panel bar shows only Features and Display; the toolbar buttons for those
+tools are disabled with a note saying why. The feature type list offers
+protein feature keys (Region, Domain, Site, Chain, sig_peptide, transmembrane,
+disulfide and so on, the GenPept keys and the UniProt categories spelt as one
+word so they survive export) instead of promoters and terminators.
+
+In the explorer a protein is its own kind, with its own icon, group and
+filter, so a workspace of plasmids and the proteins they encode reads at a
+glance. A protein row says its length in residues (`245 aa`) and omits the
+topology word.
+
+### Import and export
+
+- **FASTA.** Each record is sorted by the rule above. A `.faa` file is read
+  as protein throughout.
+- **GenPept.** A GenBank-format record whose LOCUS line counts `aa` is a
+  protein. Features sit on residues; a Region is named by its
+  `/region_name`, a Site by its `/note`. The writer produces the same layout
+  (`LOCUS name 142 aa linear date`, no molecule type, residues in lowercase
+  blocks of ten), so a protein exported as "GenBank" is a GenPept file that
+  NCBI's own tools read.
+- **Plain text and the clipboard** go through the FASTA reader.
+- **Export:** GenPept, FASTA, GFF3 and the feature CSV, and the PDF of the
+  sequence view. SnapGene's `.dna` is a DNA format and is not offered for a
+  protein; in a bulk export it falls back to GenPept.
+
+### Residue colours
+
+A protein document has its own colour preference, separate from the base
+colour scheme, since a nucleotide palette says nothing about residues. The
+schemes are the ones the translation strip under a DNA sequence already
+offers, plus the two alignment conventions that colour a residue on its own
+rather than by its column:
+
+| Scheme | What it shows | Source |
+|--------|---------------|--------|
+| Hydrophobicity | Kyte-Doolittle hydropathy, blue (polar) to orange (hydrophobic) | Kyte and Doolittle (1982) |
+| Polarity (default) | Acidic, basic, polar and non-polar groups, as textbooks colour them | |
+| RasMol | The RasMol amino acid palette | |
+| Clustal | Clustal X residue colours | Thompson et al. (1997) |
+| MacClade | MacClade residue colours | |
+| Taylor | One hue per residue, neighbours in the wheel are chemically similar | Taylor (1997) |
+| Zappo | Physicochemical groups, as Jalview draws them | Waterhouse et al. (2009) |
+
+As for bases, a scheme tints the letters or fills the cell behind each
+residue, with the glyph drawn in whatever contrasts. The composition in the
+statistics popover uses the same colours. Three-letter spelling is not drawn
+on a protein's canvas: a residue is one cell wide there, where a codon in
+the translation strip is three.
+
+### Find
+
+On a protein the query is searched as residues, on the one strand there is,
+so the DNA/Protein and both-strands controls are not shown. The ambiguity
+codes read as sets (X any residue but a stop, B D or N, Z E or Q, J I or L),
+mismatches are allowed and counted in residues, and a regular expression
+works as it does on DNA. A replacement is residues, checked against the same
+alphabet.
+
+### Numbering
+
+A protein can be numbered from any residue, so a mature chain can count from
+1 after its signal peptide, or a fragment can keep the numbering of the
+record it came from. The start is set in the properties dialog and applies
+to the ruler, the selection readout, feature positions and the find list.
+It is stored as a negative display origin: the field that rotates a circular
+sequence's numbering shifts a linear one's instead (`-24` shows the first
+residue as 25). One field, two meanings told apart by sign, so every place
+that already formats a position through `displayPosition` handles both.
+
+### Limits
+
+Physical properties (mass, pI, extinction coefficient, hydropathy), the
+DNA-to-protein link, auto-annotation of tags and protease sites, UniProt
+import and the domain map are later phases of the protein work and are not in
+this version.
 
 ---
 
@@ -2589,6 +2705,21 @@ print colours on white, whatever the app's theme.
 ---
 
 ## References
+
+- Kyte J, Doolittle RF (1982) "A simple method for displaying the hydropathic
+  character of a protein." *J Mol Biol* 157:105-132.
+
+- Taylor WR (1997) "Residual colours: a proposal for aminochromography."
+  *Protein Engineering* 10:743-746.
+
+- Thompson JD, Gibson TJ, Plewniak F, Jeanmougin F, Higgins DG (1997) "The
+  CLUSTAL_X windows interface: flexible strategies for multiple sequence
+  alignment aided by quality analysis tools." *Nucleic Acids Res*
+  25:4876-4882.
+
+- Waterhouse AM, Procter JB, Martin DMA, Clamp M, Barton GJ (2009) "Jalview
+  Version 2: a multiple sequence alignment editor and analysis workbench."
+  *Bioinformatics* 25:1189-1191. (The Zappo residue colours.)
 
 - SantaLucia J Jr. (1998) "A unified view of polymer, dumbbell, and
   oligonucleotide DNA nearest-neighbor thermodynamics."

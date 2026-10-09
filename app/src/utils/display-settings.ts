@@ -27,6 +27,7 @@ import {
   TRANSLATION_FRAMES, type AminoAcidStyleId, type TranslationFrameId,
 } from '../codon/translation-display'
 import { DEFAULT_GENETIC_CODE_ID, GENETIC_CODES } from '../codon/genetic-codes'
+import { DEFAULT_PROTEIN_SCHEME, PROTEIN_SCHEMES, type ProteinSchemeId } from './residue-colors'
 import { STORAGE_KEYS } from '../storage/keys'
 
 const STORAGE_KEY = STORAGE_KEYS.displaySettings
@@ -55,6 +56,8 @@ export interface DisplaySettings {
   aminoAcidStyle: AminoAcidStyleId
   /** Spell residues Ala rather than A. */
   threeLetterAminoAcids: boolean
+  /** How a protein document's residues are coloured. Its own choice: a base scheme says nothing about residues. */
+  proteinColorScheme: ProteinSchemeId
 }
 
 export const DEFAULT_DISPLAY_SETTINGS: DisplaySettings = {
@@ -76,6 +79,7 @@ export const DEFAULT_DISPLAY_SETTINGS: DisplaySettings = {
   translationCodeId: DEFAULT_GENETIC_CODE_ID,
   aminoAcidStyle: DEFAULT_AMINO_ACID_STYLE,
   threeLetterAminoAcids: false,
+  proteinColorScheme: DEFAULT_PROTEIN_SCHEME,
 }
 
 const VALID_SCHEMES = new Set(COLOR_SCHEMES.map(s => s.id))
@@ -84,6 +88,7 @@ const VALID_PLASMID_STYLES = new Set(PLASMID_STYLES.map(s => s.id))
 const VALID_FRAMES = new Set(TRANSLATION_FRAMES.map(f => f.id))
 const VALID_AA_STYLES = new Set(AMINO_ACID_STYLES.map(s => s.id))
 const VALID_CODES = new Set(GENETIC_CODES.map(c => c.id))
+const VALID_PROTEIN_SCHEMES = new Set(PROTEIN_SCHEMES.map(s => s.id))
 
 /**
  * Read preferences synchronously, before first paint.
@@ -134,6 +139,9 @@ export function loadDisplaySettings(): DisplaySettings {
       threeLetterAminoAcids: typeof parsed.threeLetterAminoAcids === 'boolean'
         ? parsed.threeLetterAminoAcids
         : DEFAULT_DISPLAY_SETTINGS.threeLetterAminoAcids,
+      proteinColorScheme: VALID_PROTEIN_SCHEMES.has(parsed.proteinColorScheme as ProteinSchemeId)
+        ? parsed.proteinColorScheme as ProteinSchemeId
+        : DEFAULT_DISPLAY_SETTINGS.proteinColorScheme,
     }
   } catch {
     return { ...DEFAULT_DISPLAY_SETTINGS }

@@ -84,6 +84,12 @@
   flex-shrink: 0;
 }
 
+/* The three-letter name beside a residue's one-letter code. */
+.stats-muted {
+  color: var(--text-muted);
+  font-size: var(--text-xs);
+}
+
 /* Codon usage table */
 
 .stats-codon-table {

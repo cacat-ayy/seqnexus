@@ -74,13 +74,15 @@ export default function SequenceMinimap({
     }])
   }, [searchMatches])
 
-  const gcIndex = useMemo(() => buildGcIndex(sequence.bases), [sequence.bases])
+  // No GC profile for a protein: there are no bases to count.
+  const protein = sequence.alphabet === 'protein'
+  const gcIndex = useMemo(() => (protein ? null : buildGcIndex(sequence.bases)), [protein, sequence.bases])
   const tracks = useMemo(() => {
     const out: MinimapTrack[] = []
     if (cutMarks) out.push(cutSiteTrack(cutMarks, formatPosition))
     out.push(featureTrack({ features: annTree.all(), formatRange }))
     if (searchTrack) out.push(searchTrack)
-    out.push(gcTrack(gcIndex))
+    if (gcIndex) out.push(gcTrack(gcIndex))
     return out
   }, [cutMarks, annTree, formatPosition, formatRange, gcIndex, searchTrack])
 

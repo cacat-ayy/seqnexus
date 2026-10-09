@@ -11,7 +11,7 @@
  */
 
 import { Sequence, Topology } from './Sequence'
-import type { PieceTableSnapshot } from './Sequence'
+import type { Alphabet, PieceTableSnapshot } from './Sequence'
 import { Annotation, AnnotationData, adjustAnnotation } from './Annotation'
 import type { PrimerData } from '../primers/oligo'
 
@@ -41,7 +41,13 @@ export interface SequenceMetadata {
   damMethylated?: boolean
   dcmMethylated?: boolean
   ecoKIMethylated?: boolean
-  /** 0-based internal position that should display as "position 1". Circular only. */
+  /**
+   * How the sequence is numbered. On a circular sequence, the 0-based
+   * internal position shown as position 1. On a linear sequence a negative
+   * value shifts the numbering instead of rotating it: -24 shows the first
+   * residue as 25, which is how a mature chain or a fragment of a longer
+   * record keeps the numbering of the record it came from.
+   */
   displayOrigin?: number
   origin?: DocumentOrigin
 }
@@ -65,6 +71,8 @@ export interface DocumentSnapshot {
   description?: string
   bases: string
   topology: Topology
+  /** Only written for a protein; a snapshot without it is DNA. */
+  alphabet?: Alphabet
   annotations: AnnotationData[]
   primers?: PrimerData[]
   metadata?: SequenceMetadata
@@ -82,6 +90,7 @@ export function snapshot(state: DocumentState): DocumentSnapshot {
     description: state.description,
     bases: state.sequence.bases,
     topology: state.sequence.topology,
+    ...(state.sequence.alphabet === 'protein' ? { alphabet: 'protein' as const } : {}),
     annotations: state.annotations.map(a => a.toData()),
     ...primersField(state.primers),
     metadata: state.metadata,
@@ -93,7 +102,7 @@ export function restore(snap: DocumentSnapshot): DocumentState {
   return {
     name: snap.name,
     description: snap.description,
-    sequence: new Sequence(snap.bases, snap.topology),
+    sequence: new Sequence(snap.bases, snap.topology, snap.alphabet ?? 'dna'),
     annotations: snap.annotations.map(d => new Annotation(d)),
     ...primersField(snap.primers),
     metadata: snap.metadata,
@@ -161,7 +170,7 @@ export function restoreUndo(snap: UndoSnapshot, currentSequence: Sequence): Docu
     description: snap.description,
     sequence: topology === currentSequence.topology
       ? currentSequence
-      : Sequence.fromPieceTable(pt, topology),
+      : Sequence.fromPieceTable(pt, topology, currentSequence.alphabet),
     annotations: snap.annotations.every(a => a instanceof Annotation)
       ? snap.annotations as Annotation[]
       : snap.annotations.map(d => d instanceof Annotation ? d : new Annotation(d)),
@@ -428,7 +437,8 @@ export function updateAnnotations(
 
 /**
  * Convert an internal 0-based position to a 1-based display position,
- * accounting for a custom display origin on circular sequences.
+ * accounting for a custom display origin on circular sequences, or a
+ * numbering shift (a negative origin, see SequenceMetadata) on linear ones.
  */
 export function displayPosition(
   internalPos: number,
@@ -436,6 +446,7 @@ export function displayPosition(
   seqLen: number,
 ): number {
   if (seqLen === 0 || displayOrigin === 0) return internalPos + 1
+  if (displayOrigin < 0) return internalPos + 1 - displayOrigin
   return ((internalPos - displayOrigin + seqLen) % seqLen) + 1
 }
 
@@ -448,6 +459,7 @@ export function internalPosition(
   seqLen: number,
 ): number {
   if (seqLen === 0 || displayOrigin === 0) return displayPos - 1
+  if (displayOrigin < 0) return displayPos - 1 + displayOrigin
   return (displayPos - 1 + displayOrigin) % seqLen
 }
 

@@ -37,6 +37,14 @@ describe('basesFromPaste', () => {
     expect(bases('MKVLAAGIVG')).toMatch(/^refused:/) // a protein
   })
 
+  it('takes residues into a protein document, and refuses what is not one', () => {
+    const r = basesFromPaste('>p\nmkvl aagi\n', 'protein')
+    expect(r.ok && r.bases).toBe('MKVLAAGI')
+    const bad = basesFromPaste('MK8VL#', 'protein')
+    expect(bad.ok).toBe(false)
+    expect(!bad.ok && bad.reason).toMatch(/amino acid codes: #/)
+  })
+
   it('gives nothing for an empty clipboard', () => {
     expect(basesFromPaste('  \n ')).toEqual({ ok: true, bases: '' })
   })

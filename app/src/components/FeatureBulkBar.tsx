@@ -11,7 +11,7 @@ import { Trash2, Eye, EyeOff, Copy, Download, X } from 'lucide-react'
 import type { Annotation } from '../models/Annotation'
 import type { DocumentState } from '../models/Document'
 import { useEditorStore } from '../store'
-import { FEATURE_TYPES } from '../utils/annotation-constants'
+import { featureTypesFor } from '../utils/annotation-constants'
 import { annotationBases } from '../utils/annotation-sequence'
 import { downloadText } from '../utils/download'
 import { copyText } from '../utils/clipboard'
@@ -43,6 +43,7 @@ export default function FeatureBulkBar({
   const hiddenSet = new Set(hiddenIds)
   const allHidden = count > 0 && selected.every(a => hiddenSet.has(a.id))
 
+  const FEATURE_TYPES = featureTypesFor(doc.sequence.alphabet)
   const handleType = useCallback((type: string) => {
     if (type) updateAnnotations(ids, { type })
   }, [ids, updateAnnotations])

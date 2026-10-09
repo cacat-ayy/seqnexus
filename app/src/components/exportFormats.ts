@@ -49,9 +49,14 @@ const ALIGNMENT_FORMATS: FormatOption[] = [
   { id: 'msf', label: 'GCG MSF', ext: '.msf', description: 'For GCG, Jalview and older tools', icon: FileText },
 ]
 
-export function formatsForKind(kind: ExportItemKind): FormatOption[] {
+/**
+ * The formats a kind can be written in. A protein document is a sequence
+ * for export purposes, written as GenPept and FASTA; SnapGene's .dna is a
+ * DNA format, so it is left out for one.
+ */
+export function formatsForKind(kind: ExportItemKind, protein = false): FormatOption[] {
   switch (kind) {
-    case 'sequence': return SEQUENCE_FORMATS
+    case 'sequence': return protein ? SEQUENCE_FORMATS.filter(f => f.id !== 'dna') : SEQUENCE_FORMATS
     case 'read': return READ_FORMATS
     case 'alignment':
     case 'read-alignment':

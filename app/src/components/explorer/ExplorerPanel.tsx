@@ -35,7 +35,7 @@ import { useItemActions } from '../../explorer/useItemActions'
 import { buildNodes, collapsedGroupHolding } from '../../explorer/buildNodes'
 import { gelsUsingSequences } from '../../gel/workspace'
 import { exportSelection, groupSelection } from '../../explorer/selection'
-import { ITEM_KINDS, parseUid, type ExplorerItem, type Density, type ItemKind } from '../../explorer/types'
+import { ITEM_KINDS, isDocumentKind, parseUid, type ExplorerItem, type Density, type ItemKind } from '../../explorer/types'
 import { DENSITIES } from '../../explorer/types'
 import {
   buildFilter, filterCount, toggleIn, NO_FILTERS, type ExplorerFilters,
@@ -173,7 +173,7 @@ function ExplorerPanel({
       const meta = itemMeta[item.uid]
       if (meta?.note) parts.push(meta.note)
       if (meta?.tags?.length) parts.push(meta.tags.join(' '))
-      if (item.kind === 'sequence') {
+      if (isDocumentKind(item.kind)) {
         const tab = useEditorStore.getState().tabs.find(t => t.id === item.id)
         if (tab?.doc.description) parts.push(tab.doc.description)
         // Feature names are the expensive part, so they wait for a query

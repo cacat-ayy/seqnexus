@@ -23,12 +23,12 @@ import { ALIGNMENT_ONLY_EXTENSIONS, detectFormat, fastaLooksAligned, readAlignme
 import { notify } from '../toast'
 
 /** Every file extension the drop zone and the Open dialog accept. */
-export const SUPPORTED_EXTENSIONS = /\.(gb|gbk|genbank|dna|geneious|fasta|fa|fas|fna|faa|fastq|fq|seq|txt|ab1|abi|abif|scf|json|aln|clustal|clw|phy|phylip|ph|nex|nexus|nxs|meg|mega|sto|stk|stockholm|pir|nbrf|ali|msf|afa|a2m|mfa)$/i
-/** What a plain-text file has to look like to be read as bases. */
-const DNA_CHARS = /^[ATGCUNRYSWKMBDHVatgcunryswkmbdhv\s\n\r>;-]+$/
+export const SUPPORTED_EXTENSIONS = /\.(gb|gbk|genbank|gp|gpt|genpept|dna|geneious|fasta|fa|fas|fna|faa|fastq|fq|seq|txt|ab1|abi|abif|scf|json|aln|clustal|clw|phy|phylip|ph|nex|nexus|nxs|meg|mega|sto|stk|stockholm|pir|nbrf|ali|msf|afa|a2m|mfa)$/i
+/** What a plain-text file has to look like to be read as bases or residues. */
+const SEQUENCE_CHARS = /^[A-Za-z*\s\n\r>;.\-\d]+$/
 
 export const SUPPORTED_FORMATS_HINT =
-  'Supported: GenBank (.gb), SnapGene (.dna), Geneious (.geneious), FASTA (.fasta, .fa), '
+  'Supported: GenBank (.gb), GenPept (.gp), SnapGene (.dna), Geneious (.geneious), FASTA (.fasta, .fa, .faa), '
   + 'FASTQ (.fastq, .fq), AB1 (.ab1), SCF (.scf), plain text (.txt), read alignments (.bam, .sam), and alignments in '
   + 'Clustal (.aln), PHYLIP (.phy), NEXUS (.nex), MEGA (.meg), Stockholm (.sto), PIR (.pir) and MSF (.msf).'
 
@@ -55,14 +55,8 @@ function looksLikeAlignmentFile(text: string, fileName: string): boolean {
 export const errorDetail = (err: unknown): string | undefined =>
   err instanceof Error ? err.message : err ? String(err) : undefined
 
-/** Tell the user about the FASTA records that were not opened: proteins, and records with characters that are not sequence codes. */
-export function reportFastaSkips(source: string, { proteins, unreadable }: FastaRead): void {
-  if (proteins.length > 0) {
-    notify.warning(
-      `${proteins.length === 1 ? 'A protein sequence' : `${proteins.length} protein sequences`} in "${source}" ${proteins.length === 1 ? 'was' : 'were'} not opened`,
-      { detail: `Protein sequences aren't supported yet: ${proteins.slice(0, 5).join(', ')}${proteins.length > 5 ? ', …' : ''}` },
-    )
-  }
+/** Tell the user about the FASTA records that were not opened: those with characters that are not sequence codes. */
+export function reportFastaSkips(source: string, { unreadable }: FastaRead): void {
   if (unreadable.length > 0) {
     notify.warning(`${unreadable.length} record${unreadable.length === 1 ? '' : 's'} in "${source}" could not be read`, {
       detail: `They contain characters that are not sequence codes: ${unreadable.slice(0, 5).join(', ')}${unreadable.length > 5 ? ', …' : ''}`,
@@ -159,8 +153,8 @@ export function useFileImport(h: FileImportHandlers) {
       return
     }
 
-    if (file.name.match(/\.(gb|gbk|genbank)$/i)) {
-      // GenBank - streaming parser for large files (supports multi-record)
+    if (file.name.match(/\.(gb|gbk|genbank|gp|gpt|genpept)$/i)) {
+      // GenBank or GenPept - streaming parser for large files (supports multi-record)
       setParseProgress({ bytesRead: 0, totalBytes: file.size })
       parseGenbankFile(file, (p) => setParseProgress(p))
         .then(({ docs, warnings }) => {
@@ -253,21 +247,24 @@ export function useFileImport(h: FileImportHandlers) {
         }
 
         // Validate content looks like sequence data (skip for FASTA)
-        if (text.length > 0 && !DNA_CHARS.test(text) && !text.trimStart().startsWith('>')) {
-          notify.error(`"${file.name}" does not look like sequence data`, { detail: 'Expected DNA or RNA bases, FASTA, or GenBank.' })
+        if (text.length > 0 && !SEQUENCE_CHARS.test(text) && !text.trimStart().startsWith('>')) {
+          notify.error(`"${file.name}" does not look like sequence data`, { detail: 'Expected DNA, RNA or protein letters, FASTA, or GenBank.' })
           return
         }
 
         const read = readFasta(text, defaultName, /\.faa$/i.test(file.name))
         reportFastaSkips(file.name, read)
         const { records, proteins, unreadable } = read
-        if (records.length === 0) {
-          if (proteins.length === 0 && unreadable.length === 0) notify.error(`No sequence data found in "${file.name}"`)
+        if (records.length === 0 && proteins.length === 0) {
+          if (unreadable.length === 0) notify.error(`No sequence data found in "${file.name}"`)
           return
         }
 
         openDocsInFolder(
-          records.map(rec => ({ name: rec.name, sequence: new Sequence(rec.bases, 'linear'), annotations: [] })),
+          [
+            ...records.map(rec => ({ name: rec.name, sequence: new Sequence(rec.bases, 'linear'), annotations: [] })),
+            ...proteins.map(rec => ({ name: rec.name, sequence: new Sequence(rec.bases, 'linear', 'protein'), annotations: [] })),
+          ],
           file.name,
           defaultName,
         )

@@ -12,6 +12,7 @@ import { useMemo } from 'react'
 import { useEditorStore } from '../store'
 import { groupCutSites } from '../enzymes/grouping'
 import { buildBasePalette } from '../utils/base-colors'
+import { buildResiduePalette } from '../utils/residue-colors'
 import { useSequenceTracks, useTranslationSettings } from '../components/useSequenceTracks'
 import { useBasesPerRow } from '../components/sequence-view-controls'
 import { usePlasmidSceneData } from '../plasmid/usePlasmidSceneData'
@@ -26,7 +27,10 @@ export function useSequencePdfSource(): SequencePdfSource {
   const doc = useEditorStore(s => s.doc)
   const colorScheme = useEditorStore(s => s.colorScheme)
   const colorTarget = useEditorStore(s => s.colorTarget)
-  const showComplement = useEditorStore(s => s.showComplement)
+  // A protein has no complement, no translation and its own colour scheme.
+  const protein = doc.sequence.alphabet === 'protein'
+  const showComplement = useEditorStore(s => s.showComplement) && !protein
+  const proteinColorScheme = useEditorStore(s => s.proteinColorScheme)
   const showAnnotations = useEditorStore(s => s.showAnnotationTracks)
   const aminoAcidStyle = useEditorStore(s => s.aminoAcidStyle)
   const threeLetter = useEditorStore(s => s.threeLetterAminoAcids)
@@ -40,7 +44,7 @@ export function useSequencePdfSource(): SequencePdfSource {
   const screenBasesPerRow = useBasesPerRow()
 
   const { annTree, primerItemById, visibleAnnotations } = useSequenceTracks(doc)
-  const { translationFrames, translationRows, translateSelection, translationCode } = useTranslationSettings()
+  const { translationFrames, translationRows, translateSelection, translationCode } = useTranslationSettings(doc.sequence.alphabet)
   const {
     style: mapStyle, rings, proposalIds, pickedIds, sceneEnzymes, scenePrimers,
     methylation, gcSeries, gcOverall, legend,
@@ -55,7 +59,10 @@ export function useSequencePdfSource(): SequencePdfSource {
 
   // Read once per dialog: the print palette does not follow the theme.
   const colors = useMemo(() => printSequenceColors(), [])
-  const basePalette = useMemo(() => buildBasePalette(colorScheme, colors.text), [colorScheme, colors.text])
+  const basePalette = useMemo(
+    () => (protein ? buildResiduePalette(proteinColorScheme, colors.text) : buildBasePalette(colorScheme, colors.text)),
+    [protein, proteinColorScheme, colorScheme, colors.text],
+  )
   const mapColors = useMemo(() => printPlasmidColors(mapStyle), [mapStyle])
 
   const circular = doc.sequence.topology === 'circular'
@@ -91,7 +98,7 @@ export function useSequencePdfSource(): SequencePdfSource {
     scenePrimers, methylation, gcSeries, gcOverall, legend,
   ])
 
-  const paintBackground = colorTarget === 'background' && colorScheme !== 'none'
+  const paintBackground = colorTarget === 'background' && (protein ? proteinColorScheme : colorScheme) !== 'none'
   return useMemo(() => ({
     doc,
     annTree,

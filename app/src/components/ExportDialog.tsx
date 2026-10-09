@@ -38,14 +38,16 @@ interface Props {
   count?: number
   /** Names of individual items (for separate export preview). */
   itemNames?: string[]
+  /** The sequence being exported is a protein: no SnapGene format. */
+  protein?: boolean
   onExport: (format: ExportFormat, filename: string, mode: ExportMode) => void
   onClose: () => void
 }
 
-export default function ExportDialog({ open, defaultName, annotationCount, itemKind, kindCounts, count = 1, itemNames, onExport, onClose }: Props) {
+export default function ExportDialog({ open, defaultName, annotationCount, itemKind, kindCounts, count = 1, itemNames, protein = false, onExport, onClose }: Props) {
   const isMixed = itemKind === 'mixed'
   const singleKind: ExportItemKind = isMixed ? 'sequence' : itemKind
-  const formats = isMixed ? [] : formatsForKind(singleKind)
+  const formats = isMixed ? [] : formatsForKind(singleKind, protein)
 
   const [format, setFormat] = useState<ExportFormat>(defaultFormatForKind(singleKind))
   const [filename, setFilename] = useState('')

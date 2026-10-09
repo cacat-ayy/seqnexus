@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, useCallback, useMemo, lazy, Suspense, useSyncExternalStore } from 'react'
-import { formatBp } from './utils/format'
+import { formatAa, formatBp } from './utils/format'
 import { gcPercent } from './primers/thermodynamics'
 import './App.css'
 import './components/StatusBar.css'
@@ -108,7 +108,7 @@ import { useFileImport, SUPPORTED_EXTENSIONS, errorDetail, reportFastaSkips, rep
  * second.
  */
 /** Everything the Open dialog offers: sequences, reads and alignments. */
-const OPEN_ACCEPT = ['.gb', '.gbk', '.genbank', '.fasta', '.fa', '.fna', '.faa', '.fastq', '.fq', '.gz', '.seq', '.txt', '.dna', '.geneious', '.ab1', '.abi', '.abif', '.scf', '.bam', '.sam', ...ALN_EXTENSIONS].join(',')
+const OPEN_ACCEPT = ['.gb', '.gbk', '.genbank', '.gp', '.gpt', '.genpept', '.fasta', '.fa', '.fna', '.faa', '.fastq', '.fq', '.gz', '.seq', '.txt', '.dna', '.geneious', '.ab1', '.abi', '.abif', '.scf', '.bam', '.sam', ...ALN_EXTENSIONS].join(',')
 
 /** Export dialog format ids to alignment writers. */
 const ALN_EXPORT_FORMAT: Partial<Record<string, AlnFormatId>> = {
@@ -167,9 +167,10 @@ function topLabel(stack: readonly { label?: string }[] | undefined): string | nu
  */
 function SequenceZoomLabel({ zoomLevel }: { zoomLevel: number }) {
   const bpr = useBasesPerRow()
+  const protein = useEditorStore(s => s.doc.sequence.alphabet === 'protein')
   return (
-    <span className="tb zoom-label" title={`Bases per row (zoom level ${zoomLevel} of 20)`}>
-      {bpr > 0 ? `${formatBasesPerRow(bpr)}/row` : `${Math.round(zoomLevel / 20 * 100)}%`}
+    <span className="tb zoom-label" title={`${protein ? 'Residues' : 'Bases'} per row (zoom level ${zoomLevel} of 20)`}>
+      {bpr > 0 ? `${protein ? `${bpr} aa` : formatBasesPerRow(bpr)}/row` : `${Math.round(zoomLevel / 20 * 100)}%`}
     </span>
   )
 }
@@ -192,6 +193,9 @@ export default function App() {
   const zoomLevel = useEditorStore(s => s.zoomLevel)
   const setZoom = useEditorStore(s => s.setZoom)
   const seqLength = useEditorStore(s => s.doc.sequence.length)
+  // The open document is a protein: no map, no strands, no enzymes, ORFs or
+  // primers. The tools that need DNA say so instead of running on residues.
+  const isProtein = useEditorStore(s => s.doc.sequence.alphabet === 'protein')
   const undo = useEditorStore(s => s.undo)
   const redo = useEditorStore(s => s.redo)
   const readOnly = useEditorStore(s => s.readOnly)
@@ -506,7 +510,7 @@ export default function App() {
   const enzymeScanGen = useRef(0)
   const enzymeScanTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   useEffect(() => {
-    if (enzymeNames.length === 0 || seqLength === 0) return
+    if (enzymeNames.length === 0 || seqLength === 0 || isProtein) return
     if (enzymeScanTimer.current) clearTimeout(enzymeScanTimer.current)
     enzymeScanTimer.current = setTimeout(() => {
       const gen = ++enzymeScanGen.current
@@ -530,7 +534,7 @@ export default function App() {
       })
     }, 300)
     return () => { if (enzymeScanTimer.current) clearTimeout(enzymeScanTimer.current) }
-  }, [doc.sequence, enzymeNames, seqLength, setEnzymeCutSites])
+  }, [doc.sequence, enzymeNames, seqLength, isProtein, setEnzymeCutSites])
 
   // Ctrl+G to activate goto position input
   useEffect(() => {
@@ -769,7 +773,7 @@ export default function App() {
   }, [])
 
   const handleNewSequenceSubmit = useCallback((result: NewSequenceResult) => {
-    openDocument(result.name, result.sequence, result.topology, result.description, 'new')
+    openDocument(result.name, result.sequence, result.topology, result.description, 'new', result.alphabet)
     setNewSeqModalOpen(false)
   }, [openDocument])
 
@@ -806,13 +810,13 @@ export default function App() {
         // Multi-record FASTA or plain text
         const read = readFasta(text, 'Pasted')
         reportFastaSkips('clipboard', read)
-        const records = read.records
         const tabIds: string[] = []
-        for (const rec of records) tabIds.push(openDocument(rec.name, rec.bases, 'linear', undefined, 'paste'))
-        if (records.length > 1) {
+        for (const rec of read.records) tabIds.push(openDocument(rec.name, rec.bases, 'linear', undefined, 'paste'))
+        for (const rec of read.proteins) tabIds.push(openDocument(rec.name, rec.bases, 'linear', undefined, 'paste', 'protein'))
+        if (tabIds.length > 1) {
           const folderId = useEditorStore.getState().createFolder('Pasted sequences')
           for (const id of tabIds) useEditorStore.getState().moveTabToFolder(id, folderId)
-          notify.success(`Pasted ${records.length} sequences from clipboard`)
+          notify.success(`Pasted ${tabIds.length} sequences from clipboard`)
         }
       }
     } catch {
@@ -987,7 +991,7 @@ export default function App() {
           if (kind === 'sequence') {
             const tab = state.tabs.find(t => t.id === id)
             if (!tab) continue
-            if (defFmt === 'dna') {
+            if (defFmt === 'dna' && tab.doc.sequence.alphabet !== 'protein') {
               const buf = writeSnapGene(tab.doc)
               downloadBlob(new Blob([buf], { type: 'application/octet-stream' }), `${tab.doc.name}.dna`)
             } else {
@@ -1058,8 +1062,11 @@ export default function App() {
           if (kind === 'sequence') {
             const tab = state.tabs.find(t => t.id === id)
             if (!tab) continue
-            if (format === 'dna') {
+            // SnapGene's .dna holds DNA; a protein in a bulk export goes out as GenPept instead.
+            if (format === 'dna' && tab.doc.sequence.alphabet !== 'protein') {
               downloadBlob(new Blob([writeSnapGene(tab.doc)], { type: 'application/octet-stream' }), `${tab.doc.name}.dna`)
+            } else if (format === 'dna') {
+              downloadBlob(new Blob([exportSequenceText(tab.doc, 'gb')], { type: 'text/plain' }), `${tab.doc.name}.gp`)
             } else {
               const text = exportSequenceText(tab.doc, format)
               const mime = format === 'csv' ? 'text/csv' : 'text/plain'
@@ -1215,8 +1222,10 @@ export default function App() {
       : `Nothing to ${verb}`
 
   // Why most of the analysis tools are greyed out: they act on a sequence,
-  // and an alignment, read or gel on screen is not one.
-  const needsSequence = 'Open a sequence to use this'
+  // and an alignment, read or gel on screen is not one. A protein is open
+  // but has no bases for them either.
+  const needsSequence = isProtein ? 'Not available for a protein' : 'Open a sequence to use this'
+  const noDna = noDoc || isProtein
 
   const commands = useMemo<Command[]>(() => [
     // --- File ---
@@ -1238,17 +1247,17 @@ export default function App() {
     { id: 'goto', label: 'Go to Position', group: 'Edit', shortcut: `${mod}G`, disabled: noDoc, run: () => { setGotoValue(''); setGotoActive(true); requestAnimationFrame(() => gotoInputRef.current?.focus()) } },
 
     // --- Analyse ---
-    { id: 'annotate', label: 'Annotate Features', group: 'Analyse', icon: Tag, disabled: noDoc, run: () => setAnnotateModalOpen(true) },
-    { id: 'orfs', label: 'Find ORFs', group: 'Analyse', icon: Dna, keywords: 'open reading frame', disabled: noDoc, run: () => setOrfModalOpen(true) },
-    { id: 'enzymes', label: 'Restriction Enzymes', group: 'Analyse', icon: Scissors, keywords: 'digest cut sites', disabled: noDoc, run: () => setEnzymeModalOpen(true) },
-    { id: 'primers', label: 'Design Primers', group: 'Analyse', icon: FlaskConical, keywords: 'pcr tm oligo', disabled: noDoc, run: openPrimerDesign },
-    { id: 'blast', label: 'BLAST Search', group: 'Analyse', icon: Globe, keywords: 'ncbi homology', disabled: noDoc, run: () => setBlastModalOpen(true) },
+    { id: 'annotate', label: 'Annotate Features', group: 'Analyse', icon: Tag, disabled: noDna, run: () => setAnnotateModalOpen(true) },
+    { id: 'orfs', label: 'Find ORFs', group: 'Analyse', icon: Dna, keywords: 'open reading frame', disabled: noDna, run: () => setOrfModalOpen(true) },
+    { id: 'enzymes', label: 'Restriction Enzymes', group: 'Analyse', icon: Scissors, keywords: 'digest cut sites', disabled: noDna, run: () => setEnzymeModalOpen(true) },
+    { id: 'primers', label: 'Design Primers', group: 'Analyse', icon: FlaskConical, keywords: 'pcr tm oligo', disabled: noDna, run: openPrimerDesign },
+    { id: 'blast', label: 'BLAST Search', group: 'Analyse', icon: Globe, keywords: 'ncbi homology', disabled: noDna, run: () => setBlastModalOpen(true) },
     { id: 'align', label: 'Align Sequences', group: 'Analyse', icon: AlignLeft, keywords: 'msa pairwise clustal', run: () => setAlignModalOpen(true) },
     { id: 'analyse-reads', label: 'Analyse NGS Reads…', group: 'Analyse', icon: Route, keywords: 'pipeline map variants trim fastq samples consensus', run: () => openAnalyse() },
     { id: 'assemble-reads', label: 'Assemble NGS Reads de novo…', group: 'Analyse', icon: Shapes, keywords: 'de novo assembly contig plasmid amplicon nanopore long reads whole plasmid sequencing', run: () => openAnalyse([], true) },
     { id: 'gel', label: 'Virtual Gel', group: 'Analyse', icon: GalleryVertical, keywords: 'electrophoresis digest agarose', run: openGel },
     { id: 'new-gel', label: 'New Gel', group: 'Analyse', icon: GalleryVertical, keywords: 'electrophoresis digest agarose', run: () => useEditorStore.getState().createGel() },
-    { id: 'codon-optimize', label: 'Codon Optimization', group: 'Analyse', icon: Wand2, keywords: 'codon usage rare harmonize express host', disabled: noDoc, run: () => setCodonModalOpen(true) },
+    { id: 'codon-optimize', label: 'Codon Optimization', group: 'Analyse', icon: Wand2, keywords: 'codon usage rare harmonize express host', disabled: noDna, run: () => setCodonModalOpen(true) },
     { id: 'properties', label: 'Sequence Properties', group: 'Analyse', icon: BarChart3, disabled: noDoc, run: () => setPropertiesModalOpen(true) },
 
     // --- Cloning ---
@@ -1264,17 +1273,17 @@ export default function App() {
     })),
 
     // --- View ---
-    { id: 'toggle-orfs', label: 'Toggle ORF Display', group: 'View', icon: Dna, disabled: noDoc, run: () => toggleOrfs() },
-    { id: 'toggle-enzymes', label: 'Toggle Enzyme Display', group: 'View', icon: Scissors, disabled: noDoc, run: () => toggleEnzymes() },
-    { id: 'toggle-primers', label: 'Show Saved Primers', group: 'View', icon: FlaskConical, disabled: noDoc, run: () => openSidebar('primers', 'list') },
-    { id: 'toggle-auto-annotations', label: 'Toggle Auto-Annotation Suggestions', group: 'View', icon: Tag, disabled: noDoc, keywords: 'annotate suggest features', run: () => toggleAutoAnnotations() },
+    { id: 'toggle-orfs', label: 'Toggle ORF Display', group: 'View', icon: Dna, disabled: noDna, run: () => toggleOrfs() },
+    { id: 'toggle-enzymes', label: 'Toggle Enzyme Display', group: 'View', icon: Scissors, disabled: noDna, run: () => toggleEnzymes() },
+    { id: 'toggle-primers', label: 'Show Saved Primers', group: 'View', icon: FlaskConical, disabled: noDna, run: () => openSidebar('primers', 'list') },
+    { id: 'toggle-auto-annotations', label: 'Toggle Auto-Annotation Suggestions', group: 'View', icon: Tag, disabled: noDna, keywords: 'annotate suggest features', run: () => toggleAutoAnnotations() },
     { id: 'zoom-fit', label: 'Fit Whole Sequence', group: 'View', icon: Scan, keywords: 'zoom overview entire', disabled: noDoc || viewMode === 'circular', run: () => { fitSequenceView() } },
     { id: 'toggle-features', label: 'Toggle Feature Sidebar', group: 'View', icon: List, disabled: noDoc, run: () => setFeaturesPanelOpen(v => !v) },
     { id: 'toggle-sidebar', label: 'Toggle File Explorer', group: 'View', icon: PanelLeftOpen, run: () => setSidebarOpen(v => !v) },
     { id: 'theme', label: 'Change Theme', group: 'View', icon: SunMoon, keywords: 'dark light appearance', run: () => setThemeOpen(true) },
     { id: 'about', label: 'About SeqNexus', group: 'View', icon: Info, keywords: 'help version', run: () => setInfoOpen(true) },
   ], [
-    mod, redoKey, noDoc, sequenceShown, openPdfExport, undoDisabled, redoDisabled, handleOpenFind, handleNewSequence, handleNewFolder, openGel, openCloning, runUndo, runRedo,
+    mod, redoKey, noDoc, noDna, sequenceShown, openPdfExport, undoDisabled, redoDisabled, handleOpenFind, handleNewSequence, handleNewFolder, openGel, openCloning, runUndo, runRedo,
     handleImportClipboard, toggleOrfs, toggleEnzymes, openSidebar, openPrimerDesign, toggleAutoAnnotations,
     viewMode,
   ])
@@ -1435,16 +1444,16 @@ export default function App() {
         </div>
 
         <div className="toolbar-group">
-          <button className="tb" onClick={() => setAnnotateModalOpen(true)} disabled={!activeTabId} {...tip({ label: 'Annotate features', desc: 'Detect known features such as promoters, markers and origins', why: needsSequence })}>
+          <button className="tb" onClick={() => setAnnotateModalOpen(true)} disabled={noDna} {...tip({ label: 'Annotate features', desc: 'Detect known features such as promoters, markers and origins', why: needsSequence })}>
             <span className="tb-icon"><Tag size={14} /></span><span className="tb-text">Annotate</span>
           </button>
-          <button className="tb" onClick={() => setOrfModalOpen(true)} disabled={!activeTabId} {...tip({ label: 'Find ORFs', desc: 'Scan all six frames for open reading frames', why: needsSequence })}>
+          <button className="tb" onClick={() => setOrfModalOpen(true)} disabled={noDna} {...tip({ label: 'Find ORFs', desc: 'Scan all six frames for open reading frames', why: needsSequence })}>
             <span className="tb-icon"><Dna size={14} /></span><span className="tb-text">ORFs</span>
           </button>
-          <button className="tb" onClick={() => setEnzymeModalOpen(true)} disabled={!activeTabId} {...tip({ label: 'Restriction enzymes', desc: 'Find cut sites and choose enzymes to show', why: needsSequence })}>
+          <button className="tb" onClick={() => setEnzymeModalOpen(true)} disabled={noDna} {...tip({ label: 'Restriction enzymes', desc: 'Find cut sites and choose enzymes to show', why: needsSequence })}>
             <span className="tb-icon"><Scissors size={14} /></span><span className="tb-text">Enzymes</span>
           </button>
-          <button className="tb" onClick={openPrimerDesign} disabled={!activeTabId} {...tip({ label: 'Primers', desc: 'Design primers and manage the primer library', why: needsSequence })}>
+          <button className="tb" onClick={openPrimerDesign} disabled={noDna} {...tip({ label: 'Primers', desc: 'Design primers and manage the primer library', why: needsSequence })}>
             <span className="tb-icon"><FlaskConical size={14} /></span><span className="tb-text">Primers</span>
           </button>
           <div className="tb-split" ref={cloningBtnRef}>
@@ -1476,7 +1485,7 @@ export default function App() {
               </div>
             )}
           </div>
-          <button className="tb" onClick={() => setBlastModalOpen(true)} disabled={!activeTabId} {...tip({
+          <button className="tb" onClick={() => setBlastModalOpen(true)} disabled={noDna} {...tip({
             label: 'BLAST',
             desc: 'Search NCBI for similar sequences',
             status: blastPhase === 'polling' ? 'Search running…' : blastPhase === 'results' ? 'Results ready' : undefined,
@@ -1492,7 +1501,7 @@ export default function App() {
           <button className={`tb ${gelOpen ? 'active' : ''}`} onClick={() => (gelOpen ? setActiveGel(null) : openGel())} aria-pressed={gelOpen} {...tip({ label: 'Gel', desc: gelOpen ? 'Close the gel and return to the sequence' : 'Simulate agarose gel electrophoresis' })}>
             <span className="tb-icon"><GalleryVertical size={14} /></span><span className="tb-text">Gel</span>
           </button>
-          <button className="tb" onClick={() => setCodonModalOpen(true)} disabled={!activeTabId} {...tip({ label: 'Optimize codons', desc: 'Recode a coding sequence for an expression host', why: needsSequence })}>
+          <button className="tb" onClick={() => setCodonModalOpen(true)} disabled={noDna} {...tip({ label: 'Optimize codons', desc: 'Recode a coding sequence for an expression host', why: needsSequence })}>
             <span className="tb-icon"><Wand2 size={14} /></span><span className="tb-text">Optimize</span>
           </button>
         </div>
@@ -1819,26 +1828,33 @@ export default function App() {
             </div>
           ) : (
             <>
-              {/* View mode tabs */}
+              {/* View mode tabs. A protein has no map, so it gets a label
+                  where the choice would be and is always drawn linear. */}
               <div className="view-tabs" ref={viewTabsRef}>
-                <button
-                  className={`view-tab ${viewMode === 'linear' ? 'active' : ''}`}
-                  onClick={() => setViewMode('linear')}
-                >
-                  Linear
-                </button>
-                <button
-                  className={`view-tab ${viewMode === 'circular' ? 'active' : ''}`}
-                  onClick={() => setViewMode('circular')}
-                >
-                  Circular
-                </button>
-                <button
-                  className={`view-tab ${viewMode === 'split' ? 'active' : ''}`}
-                  onClick={() => setViewMode('split')}
-                >
-                  Split
-                </button>
+                {isProtein ? (
+                  <span className="view-tab active view-tab-static">Protein</span>
+                ) : (
+                  <>
+                    <button
+                      className={`view-tab ${viewMode === 'linear' ? 'active' : ''}`}
+                      onClick={() => setViewMode('linear')}
+                    >
+                      Linear
+                    </button>
+                    <button
+                      className={`view-tab ${viewMode === 'circular' ? 'active' : ''}`}
+                      onClick={() => setViewMode('circular')}
+                    >
+                      Circular
+                    </button>
+                    <button
+                      className={`view-tab ${viewMode === 'split' ? 'active' : ''}`}
+                      onClick={() => setViewMode('split')}
+                    >
+                      Split
+                    </button>
+                  </>
+                )}
                 <span className="view-info">
                   {/* Beside the name, where you look to see which sequence is
                       open; the status-bar button is easy to miss. Shown only
@@ -1905,7 +1921,10 @@ export default function App() {
                   <List size={13} /> Features
                   <span className="panel-bar-count">{doc.annotations.length}</span>
                 </button>
-                <div className="panel-bar-sep" />
+                {/* The DNA-only toggles are left out for a protein rather
+                    than shown greyed: this bar belongs to the document. */}
+                {!isProtein && <div className="panel-bar-sep" />}
+                {!isProtein && (
                 <button
                   className={`panel-bar-btn ${showOrfs ? 'active' : ''}`}
                   onClick={() => toggleOrfs()}
@@ -1917,11 +1936,12 @@ export default function App() {
                     <span className="panel-bar-count">{orfResults.length}</span>
                   )}
                 </button>
+                )}
                 {/* Conversion lives beside the toggle that produced the
                     candidates: picking happens on the canvas, and sending the
                     user to a modal to commit what they just picked there would
                     break the loop. */}
-                {showOrfs && (
+                {!isProtein && showOrfs && (
                   <ConvertActions
                     total={convertibleOrfCount}
                     picked={pickedOrfCount}
@@ -1931,6 +1951,7 @@ export default function App() {
                     onAddAll={handleAddAllOrfs}
                   />
                 )}
+                {!isProtein && (
                 <button
                   className={`panel-bar-btn ${showEnzymes ? 'active' : ''}`}
                   onClick={() => toggleEnzymes()}
@@ -1942,6 +1963,8 @@ export default function App() {
                     <span className="panel-bar-count">{enzymeCutSites.length}</span>
                   )}
                 </button>
+                )}
+                {!isProtein && (
                 <button
                   className={`panel-bar-btn ${featuresPanelOpen && sidebarTab === 'primers' ? 'active' : ''}`}
                   onClick={() => toggleSidebarTab('primers')}
@@ -1951,6 +1974,8 @@ export default function App() {
                   <FlaskConical size={13} /> Primers
                   {primerCount > 0 && <span className="panel-bar-count">{primerCount}</span>}
                 </button>
+                )}
+                {!isProtein && (
                 <button
                   className={`panel-bar-btn ${showAutoAnnotations ? 'active' : ''}`}
                   onClick={() => toggleAutoAnnotations()}
@@ -1962,8 +1987,9 @@ export default function App() {
                     <span className="panel-bar-count">{autoProposals.length}</span>
                   )}
                 </button>
+                )}
 
-                {showAutoAnnotations && (
+                {!isProtein && showAutoAnnotations && (
                   <ConvertActions
                     total={autoProposals.length}
                     picked={pickedProposalCount}
@@ -2006,13 +2032,13 @@ export default function App() {
                     {/* Worker results arrive asynchronously, so a screen
                         reader gets no cue that a search finished empty. */}
                     <div className="panel-hints" aria-live="polite">
-                      {showOrfs && orfResults.length === 0 && (
+                      {!isProtein && showOrfs && orfResults.length === 0 && (
                         <EmptyState icon={Dna} message="No ORFs found" actionLabel="adjust parameters" onAction={handleOpenOrfPanel} />
                       )}
-                      {showEnzymes && enzymeCutSites.length === 0 && (
+                      {!isProtein && showEnzymes && enzymeCutSites.length === 0 && (
                         <EmptyState icon={Scissors} message="No enzyme sites found" actionLabel="select enzymes" onAction={handleOpenEnzymePanel} />
                       )}
-                      {showAutoAnnotations && !autoAnnotateScanning && autoProposals.length === 0 && (
+                      {!isProtein && showAutoAnnotations && !autoAnnotateScanning && autoProposals.length === 0 && (
                         <EmptyState icon={Tag} message="No features to suggest" actionLabel="adjust similarity" onAction={handleOpenAnnotatePanel} />
                       )}
                     </div>
@@ -2034,9 +2060,9 @@ export default function App() {
                         </div>
                       </div>
                     )}
-                    {viewMode === 'linear' && <SequenceView onFindRequest={handleOpenFind} onFindClose={handleCloseFind} onAnnotateRequest={handleAnnotateRequest} onEditFeature={handleOpenFeaturesPanel} />}
-                    {viewMode === 'circular' && <PlasmidMap onFindRequest={handleOpenFind} onAnnotateRequest={handleAnnotateRequest} onEditFeature={handleOpenFeaturesPanel} onExportPrompt={handleFilenamePrompt} />}
-                    {viewMode === 'split' && (
+                    {(viewMode === 'linear' || isProtein) && <SequenceView onFindRequest={handleOpenFind} onFindClose={handleCloseFind} onAnnotateRequest={handleAnnotateRequest} onEditFeature={handleOpenFeaturesPanel} />}
+                    {viewMode === 'circular' && !isProtein && <PlasmidMap onFindRequest={handleOpenFind} onAnnotateRequest={handleAnnotateRequest} onEditFeature={handleOpenFeaturesPanel} onExportPrompt={handleFilenamePrompt} />}
+                    {viewMode === 'split' && !isProtein && (
                       <div
                         ref={splitContainerRef}
                         className="split-container"
@@ -2064,14 +2090,24 @@ export default function App() {
                 <button
                   className="status-props-btn"
                   onClick={() => setPropertiesModalOpen(true)}
-                  title="Edit sequence properties"
+                  title={isProtein ? 'Edit protein properties' : 'Edit sequence properties'}
                 >
-                  {doc.sequence.topology}
-                  {doc.metadata?.strandedness === 'single' ? ' | ss' : ' | ds'}
-                  {' | '}{formatBp(seqLength)}
-                  {doc.metadata?.damMethylated && ' | Dam'}
-                  {doc.metadata?.dcmMethylated && ' | Dcm'}
-                  {doc.metadata?.ecoKIMethylated && ' | EcoKI'}
+                  {isProtein ? (
+                    <>
+                      protein
+                      {' | '}{formatAa(seqLength)}
+                      {(doc.metadata?.displayOrigin ?? 0) < 0 && ` | from ${1 - (doc.metadata?.displayOrigin ?? 0)}`}
+                    </>
+                  ) : (
+                    <>
+                      {doc.sequence.topology}
+                      {doc.metadata?.strandedness === 'single' ? ' | ss' : ' | ds'}
+                      {' | '}{formatBp(seqLength)}
+                      {doc.metadata?.damMethylated && ' | Dam'}
+                      {doc.metadata?.dcmMethylated && ' | Dcm'}
+                      {doc.metadata?.ecoKIMethylated && ' | EcoKI'}
+                    </>
+                  )}
                 </button>
                 {undoFlash && (
                   <span key={Date.now()} className="status-undo-flash">
@@ -2100,7 +2136,10 @@ export default function App() {
                   </button>
                   <span className="status-sep" />
                   {(() => {
-                    const dispOrigin = (doc.sequence.topology === 'circular' ? doc.metadata?.displayOrigin : 0) || 0
+                    // A rotated origin only counts on a circular sequence; a
+                    // numbering shift (negative) on a linear one.
+                    const rawOrigin = doc.metadata?.displayOrigin || 0
+                    const dispOrigin = doc.sequence.topology === 'circular' ? Math.max(0, rawOrigin) : Math.min(0, rawOrigin)
                     const dp = (pos: number) => displayPosition(pos, dispOrigin, seqLength)
                     return gotoActive ? (
                       <input
@@ -2143,6 +2182,7 @@ export default function App() {
                               const ranges = selectedRanges(selection, extraSelections, topo)
                               let selBases = ''
                               for (const [s, e] of joinedSegments(ranges, topo, seqLength)) selBases += doc.sequence.basesIn(s, e)
+                              if (isProtein) return `${ranges.length} ranges (${formatAa(selBases.length)})`
                               const gc = Math.round(gcPercent(selBases))
                               return `${ranges.length} ranges (${formatBp(selBases.length)}, ${gc}% GC)`
                             })()
@@ -2151,10 +2191,12 @@ export default function App() {
                               const segs = selectionSegments(selection, doc.sequence.topology, seqLength)
                               let selBases = ''
                               for (const [s, e] of segs) selBases += doc.sequence.basesIn(s, e)
-                              const gc = Math.round(gcPercent(selBases))
                               const range = isOriginSpanningSelection(selection, doc.sequence.topology)
                                 ? `${dp(selection.anchor)}..${dp(selection.caret - 1)}`
                                 : `${dp(Math.min(selection.anchor, selection.caret))}..${dp(Math.max(selection.anchor, selection.caret) - 1)}`
+                              // Residues have no GC and no Tm.
+                              if (isProtein) return `${range} (${formatAa(selBases.length)})`
+                              const gc = Math.round(gcPercent(selBases))
                               // Oligo-length selections get a Tm: the sequence view
                               // no longer paints one over the bases.
                               const tm = selectionTm(selBases)
@@ -2381,6 +2423,7 @@ export default function App() {
             defaultName={defaultName}
             annotationCount={singleKind === 'sequence' ? doc.annotations.length : 0}
             itemKind={hasBulk ? singleKind : getActiveItemKind(s)}
+            protein={!hasBulk && isProtein}
             kindCounts={isMixed ? kindCounts : undefined}
             count={hasBulk ? totalCount : 1}
             itemNames={hasBulk ? itemNames : undefined}

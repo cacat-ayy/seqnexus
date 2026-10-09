@@ -1234,6 +1234,8 @@
 
 .view-tab:hover { color: var(--text); }
 .view-tab.active { color: var(--accent); border-bottom-color: var(--accent); }
+/* A protein has one view, so its tab is a label, not a choice. */
+.view-tab-static { cursor: default; }
 
 .view-info {
   margin-left: auto;

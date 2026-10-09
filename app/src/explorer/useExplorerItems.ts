@@ -9,6 +9,8 @@
 import { useMemo } from 'react'
 import { useEditorStore, type Assembly, type Contig } from '../store'
 import type { ExplorerItem, ItemKind } from './types'
+import { documentKind } from './types'
+import type { Alphabet } from '../models/alphabet'
 import {
   sequenceToItem, readToItem, readSetToItem, alignmentToItem, assemblyToItem, contigToItem, oligoToItem, gelToItem, cloneToItem,
   type AdapterContext, type OpenTarget,
@@ -41,6 +43,7 @@ function resolveOpen(s: {
   activeSequencingReadIds: string[]
   alignments: { id: string }[]; activeAlignmentId: string | null
   activeTabId: string | null
+  tabs: { id: string; doc: { sequence: { alphabet: Alphabet } } }[]
 }): OpenTarget {
   if (s.activeGelId && s.gels.some(g => g.id === s.activeGelId)) {
     return { kind: 'gel', id: s.activeGelId }
@@ -63,7 +66,8 @@ function resolveOpen(s: {
   if (s.activeAlignmentId && s.alignments.some(a => a.id === s.activeAlignmentId)) {
     return { kind: 'alignment', id: s.activeAlignmentId }
   }
-  return { kind: 'sequence', id: s.activeTabId }
+  const active = s.tabs.find(t => t.id === s.activeTabId)
+  return { kind: active ? documentKind(active.doc.sequence.alphabet) : 'sequence', id: s.activeTabId }
 }
 
 export function useExplorerItems(): ExplorerItems {
@@ -123,7 +127,7 @@ export function useExplorerItems(): ExplorerItems {
       readSets, activeReadSetId,
       activeSequencingReadIds,
       alignments, activeAlignmentId,
-      activeTabId,
+      activeTabId, tabs,
     })
 
     const contigById = new Map(contigs.map(c => [c.id, c]))
@@ -139,7 +143,8 @@ export function useExplorerItems(): ExplorerItems {
     }
 
     const byKind: Record<ItemKind, ExplorerItem[]> = {
-      'sequence': tabs.map(t => sequenceToItem(t, ctx)),
+      'sequence': tabs.filter(t => t.doc.sequence.alphabet !== 'protein').map(t => sequenceToItem(t, ctx)),
+      'protein': tabs.filter(t => t.doc.sequence.alphabet === 'protein').map(t => sequenceToItem(t, ctx)),
       'read': sequencingReads.map(r => readToItem(r, ctx)),
       'readset': readSets.map(r => readSetToItem(r, ctx)),
       'alignment': alignments.map(a => alignmentToItem(a, ctx)),
@@ -152,7 +157,7 @@ export function useExplorerItems(): ExplorerItems {
     }
 
     const items = [
-      ...byKind['sequence'], ...byKind['read'], ...byKind['readset'], ...byKind['alignment'],
+      ...byKind['sequence'], ...byKind['protein'], ...byKind['read'], ...byKind['readset'], ...byKind['alignment'],
       ...byKind['assembly'], ...byKind['contig'], ...byKind['gel'], ...byKind['clone'], ...byKind['oligo'],
     ]
 

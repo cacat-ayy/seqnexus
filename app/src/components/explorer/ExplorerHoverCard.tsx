@@ -10,7 +10,7 @@
 import { useEditorStore } from '../../store'
 import { useClampedPosition } from '../../hooks/useClampedPosition'
 import { KIND_LABEL } from '../../explorer/kinds'
-import type { ExplorerItem } from '../../explorer/types'
+import { isDocumentKind, type ExplorerItem } from '../../explorer/types'
 import { LinearThumbnail, PlasmidThumbnail, QualitySparkline } from './ExplorerPreview'
 import OligoSequence from '../primers/OligoSequence'
 import { findBindingSites, type BindingSite } from '../../primers/binding'
@@ -32,6 +32,7 @@ function previewBases(item: ExplorerItem): string | null {
   const s = useEditorStore.getState()
   switch (item.kind) {
     case 'sequence':
+    case 'protein':
       return s.tabs.find(t => t.id === item.id)?.doc.sequence.bases.slice(0, 60) ?? null
     case 'read':
       return s.sequencingReads.find(r => r.id === item.id)?.data.bases.slice(0, 60) ?? null
@@ -58,7 +59,7 @@ export default function ExplorerHoverCard({ item, x, y, note, tags, tagColors }:
   const { ref, pos } = useClampedPosition(x, y)
   const store = useEditorStore.getState()
 
-  const tab = item.kind === 'sequence' ? store.tabs.find(t => t.id === item.id) : undefined
+  const tab = isDocumentKind(item.kind) ? store.tabs.find(t => t.id === item.id) : undefined
   const read = item.kind === 'read' ? store.sequencingReads.find(r => r.id === item.id) : undefined
   const oligo = item.kind === 'oligo' ? store.oligos.find(o => o.id === item.id) : undefined
   const bases = oligo ? null : previewBases(item)

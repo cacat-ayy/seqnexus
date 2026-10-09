@@ -24,6 +24,7 @@ describe('display settings persistence', () => {
       translationCodeId: 1,
       aminoAcidStyle: 'none',
       threeLetterAminoAcids: false,
+      proteinColorScheme: 'polarity',
     })
   })
 

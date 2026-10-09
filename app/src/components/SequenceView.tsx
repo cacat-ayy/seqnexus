@@ -84,6 +84,8 @@ function getCanvasColors(container: HTMLElement): CanvasColors {
 }
 
 import { buildBasePalette } from '../utils/base-colors'
+import { buildResiduePalette } from '../utils/residue-colors'
+import { isValidSequence, unitOf } from '../models/alphabet'
 import { keyFromAutoId } from '../utils/auto-annotations'
 import { keyFromOrfId } from '../utils/orf-features'
 import { isWidgetKeyTarget } from '../utils/key-target'
@@ -526,9 +528,13 @@ function SequenceView({ onFindRequest, onFindClose, onAnnotateRequest, onEditFea
 
   // State subscriptions - trigger re-renders for JSX and feed refs for canvas callbacks
   const doc = useEditorStore(s => s.doc)
+  // A protein has one strand, nothing to translate, no cut sites and its own
+  // colour scheme: the preferences that say otherwise do not apply to it.
+  const isProtein = doc.sequence.alphabet === 'protein'
   const colorScheme = useEditorStore(s => s.colorScheme)
+  const proteinColorScheme = useEditorStore(s => s.proteinColorScheme)
   const colorTarget = useEditorStore(s => s.colorTarget)
-  const showComplement = useEditorStore(s => s.showComplement)
+  const showComplement = useEditorStore(s => s.showComplement) && !isProtein
   const showAnnotationTracks = useEditorStore(s => s.showAnnotationTracks)
   const aminoAcidStyle = useEditorStore(s => s.aminoAcidStyle)
   const threeLetterAminoAcids = useEditorStore(s => s.threeLetterAminoAcids)
@@ -537,7 +543,7 @@ function SequenceView({ onFindRequest, onFindClose, onAnnotateRequest, onEditFea
   const search = useEditorStore(s => s.search)
   const zoomLevel = useEditorStore(s => s.zoomLevel)
   const hoveredAnnotationId = useEditorStore(s => s.hoveredAnnotationId)
-  const showEnzymes = useEditorStore(s => s.showEnzymes)
+  const showEnzymes = useEditorStore(s => s.showEnzymes) && !isProtein
   const allEnzymeCutSites = useEditorStore(s => s.enzymeCutSites)
   const autoAnnotationPicks = useEditorStore(s => s.autoAnnotationPicks)
   const orfPicks = useEditorStore(s => s.orfPicks)
@@ -612,7 +618,7 @@ function SequenceView({ onFindRequest, onFindClose, onAnnotateRequest, onEditFea
   /** How many sites the primer behind an item has, for the tooltip. */
   const siteCountOf = (item: PrimerItem) =>
     (item.preview ? designPreview.sites : primerSites).get(item.primer.id)?.length ?? 1
-  const { translationFrames, translationRows, translateSelection, translationCode } = useTranslationSettings()
+  const { translationFrames, translationRows, translateSelection, translationCode } = useTranslationSettings(doc.sequence.alphabet)
 
   // --- Refs mirroring frequently-changing state ---
   // Allows draw() and event handlers to stay referentially stable
@@ -628,6 +634,7 @@ function SequenceView({ onFindRequest, onFindClose, onAnnotateRequest, onEditFea
   const hoveredEnzymeGroupRef = useRef(hoveredEnzymeGroup)
   const showEnzymesRef = useRef(showEnzymes)
   const colorSchemeRef = useRef(colorScheme)
+  const proteinColorSchemeRef = useRef(proteinColorScheme)
   const colorTargetRef = useRef(colorTarget)
   const showComplementRef = useRef(showComplement)
   const showAnnotationTracksRef = useRef(showAnnotationTracks)
@@ -655,6 +662,7 @@ function SequenceView({ onFindRequest, onFindClose, onAnnotateRequest, onEditFea
   hoveredEnzymeGroupRef.current = hoveredEnzymeGroup
   showEnzymesRef.current = showEnzymes
   colorSchemeRef.current = colorScheme
+  proteinColorSchemeRef.current = proteinColorScheme
   colorTargetRef.current = colorTarget
   showComplementRef.current = showComplement
   showAnnotationTracksRef.current = showAnnotationTracks
@@ -838,10 +846,13 @@ function SequenceView({ onFindRequest, onFindClose, onAnnotateRequest, onEditFea
     // Resolved once per draw rather than per base: a full screen of letters is
     // thousands of lookups, and the palette depends only on the scheme and the
     // theme foreground, neither of which changes mid-frame.
-    const basePalette = buildBasePalette(colorSchemeRef.current, COLORS.text)
+    const protein = docRef.current.sequence.alphabet === 'protein'
+    const basePalette = protein
+      ? buildResiduePalette(proteinColorSchemeRef.current, COLORS.text)
+      : buildBasePalette(colorSchemeRef.current, COLORS.text)
     // "None" has no colour to place anywhere, so background mode is moot.
     const paintBackground =
-      colorTargetRef.current === 'background' && colorSchemeRef.current !== 'none'
+      colorTargetRef.current === 'background' && (protein ? proteinColorSchemeRef.current : colorSchemeRef.current) !== 'none'
 
     ctx.fillStyle = COLORS.bg
     ctx.fillRect(0, 0, width, canvasH)
@@ -1088,10 +1099,10 @@ function SequenceView({ onFindRequest, onFindClose, onAnnotateRequest, onEditFea
     const seqLen = d.sequence.length
     const origin = (d.sequence.topology === 'circular' ? d.metadata?.displayOrigin : 0) || 0
     const dp = (p: number) => displayPosition(p, origin, seqLen).toLocaleString()
-    const tm = len <= SELECTION_TM_MAX ? selectionTm(d.sequence.basesIn(start, end)) : null
+    const tm = d.sequence.alphabet === 'dna' && len <= SELECTION_TM_MAX ? selectionTm(d.sequence.basesIn(start, end)) : null
     pill.textContent = [
       `${dp(start)}..${dp(end - 1)}`,
-      `${len.toLocaleString()} bp`,
+      `${len.toLocaleString()} ${unitOf(d.sequence.alphabet)}`,
       ...(tm !== null ? [`Tm ${tm.toFixed(1)} °C`] : []),
     ].join('  ·  ')
     pill.style.display = 'block'
@@ -1566,11 +1577,12 @@ function SequenceView({ onFindRequest, onFindClose, onAnnotateRequest, onEditFea
       }
     }
     const rangeNote = multi ? ` from ${allSelectionsOf(store).length} ranges` : ''
+    const unit = unitOf(docRef.current.sequence.alphabet)
     if (ctrlOrMeta && e.key === 'c') {
       if (segs.length > 0) {
         e.preventDefault()
         const bases = getSelectedBases()
-        copyText(bases, `Copied ${bases.length} bp${rangeNote}`)
+        copyText(bases, `Copied ${bases.length} ${unit}${rangeNote}`)
       }
       return
     }
@@ -1579,7 +1591,7 @@ function SequenceView({ onFindRequest, onFindClose, onAnnotateRequest, onEditFea
         e.preventDefault()
         const bases = getSelectedBases()
         // Read-only still copies, but says so rather than claiming a cut.
-        copyText(bases, `${ro ? 'Copied' : 'Cut'} ${bases.length} bp${rangeNote}`)
+        copyText(bases, `${ro ? 'Copied' : 'Cut'} ${bases.length} ${unit}${rangeNote}`)
         if (ro) roBlock()
         else deleteSelection()
       } else if (ro) {
@@ -1616,8 +1628,7 @@ function SequenceView({ onFindRequest, onFindClose, onAnnotateRequest, onEditFea
     }
     if (e.key.length === 1 && !ctrlOrMeta) {
       if (ro) { roBlock(); return }
-      const validBases = /^[ATGCUatgcuRYSWKMBVDHNryswkmbvdhn]$/
-      if (validBases.test(e.key)) {
+      if (isValidSequence(e.key, docRef.current.sequence.alphabet)) {
         e.preventDefault()
         if (multi) { refuseMultiEdit(); return }
         replaceSelection(e.key.toUpperCase())
@@ -1632,10 +1643,11 @@ function SequenceView({ onFindRequest, onFindClose, onAnnotateRequest, onEditFea
     if (store.readOnly) return
     if (extraSelectionsOf(store).length > 0) { e.preventDefault(); refuseMultiEdit(); return }
 
-    const pasted = basesFromPaste(e.clipboardData?.getData('text') ?? '')
+    const alphabet = docRef.current.sequence.alphabet
+    const pasted = basesFromPaste(e.clipboardData?.getData('text') ?? '', alphabet)
     e.preventDefault()
     if (!pasted.ok) {
-      notify.warning("Clipboard doesn't look like a DNA sequence", { detail: pasted.reason, key: 'paste-bases' })
+      notify.warning(`Clipboard doesn't look like a ${alphabet === 'protein' ? 'protein' : 'DNA'} sequence`, { detail: pasted.reason, key: 'paste-bases' })
       return
     }
     const filtered = pasted.bases
@@ -1880,7 +1892,7 @@ function SequenceView({ onFindRequest, onFindClose, onAnnotateRequest, onEditFea
   // Redraw when any render-affecting state changes
   useEffect(() => {
     draw()
-  }, [doc, selection, extraSelections, search, annTree, zoomLevel, hoveredAnnotationId, enzymeCutSites, hoveredEnzymeGroup, showEnzymes, autoAnnotationPicks, orfPicks, translationFrames, translationRows, translateSelection, translationCode, aminoAcidStyle, threeLetterAminoAcids, draw])
+  }, [doc, selection, extraSelections, search, annTree, zoomLevel, hoveredAnnotationId, enzymeCutSites, hoveredEnzymeGroup, showEnzymes, autoAnnotationPicks, orfPicks, translationFrames, translationRows, translateSelection, translationCode, aminoAcidStyle, threeLetterAminoAcids, proteinColorScheme, draw])
 
   const showMinimap = doc.sequence.length >= MINIMAP_SEQ_THRESHOLD
 
@@ -1980,7 +1992,7 @@ function SequenceView({ onFindRequest, onFindClose, onAnnotateRequest, onEditFea
       <ConfirmDialog
         open={largeDeleteConfirm !== null}
         title="Delete Selection"
-        message={`Delete ${largeDeleteConfirm?.count.toLocaleString()} bp? You can undo with Ctrl+Z.`}
+        message={`Delete ${largeDeleteConfirm?.count.toLocaleString()} ${unitOf(doc.sequence.alphabet)}? You can undo with Ctrl+Z.`}
         buttons={[
           { label: 'Cancel', value: 'cancel' },
           { label: 'Delete', value: 'delete', variant: 'danger' },
