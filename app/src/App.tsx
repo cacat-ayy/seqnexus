@@ -53,7 +53,8 @@ import { useBackupReminder } from './hooks/useBackupReminder'
 import { useBackupStore } from './backup/backup'
 import { usePopoverDismiss } from './hooks/usePopoverDismiss'
 import { useToolbarDensity } from './hooks/useToolbarDensity'
-import { ToolbarTooltip, tip } from './components/ToolbarTooltip'
+import { ToolbarTooltip } from './components/ToolbarTooltip'
+import { tip } from './components/toolbarTip'
 import { useAutoAnnotateScan } from './hooks/useAutoAnnotateScan'
 import { proposalsFrom, matchKey } from './utils/auto-annotations'
 import { convertibleOrfs, orfKey } from './utils/orf-features'
@@ -77,7 +78,8 @@ import {
 const BlastModal = lazy(() => import('./components/BlastModal'))
 const CommandPalette = lazy(() => import('./components/CommandPalette'))
 import type { Command } from './commands'
-import ExportModal, { type ExportFormat, type ExportItemKind, type ExportMode, defaultFormatForKind, formatsForKind } from './components/ExportModal'
+import ExportModal, { type ExportMode } from './components/ExportModal'
+import { type ExportFormat, type ExportItemKind, defaultFormatForKind, formatsForKind } from './components/exportFormats'
 import SessionExportModal from './components/SessionExportModal'
 import SessionImportModal from './components/SessionImportModal'
 import { exportSessionToJson, importSessionFromJson, remapSessionIds, type SessionExportOptions } from './persistence'
@@ -138,6 +140,11 @@ const THEMES: ThemeInfo[] = [
  * user needs to know which file failed first, and the list of eight formats
  * second.
  */
+/** Every file extension the drop zone and the Open dialog accept. */
+const SUPPORTED_EXTENSIONS = /\.(gb|gbk|genbank|dna|geneious|fasta|fa|fas|fna|faa|fastq|fq|seq|txt|ab1|abi|abif|scf|json|aln|clustal|clw|phy|phylip|ph|nex|nexus|nxs|meg|mega|sto|stk|stockholm|pir|nbrf|ali|msf|afa|a2m|mfa)$/i
+/** What a plain-text file has to look like to be read as bases. */
+const DNA_CHARS = /^[ATGCUNRYSWKMBDHVatgcunryswkmbdhv\s\n\r>;-]+$/
+
 const SUPPORTED_FORMATS_HINT =
   'Supported: GenBank (.gb), SnapGene (.dna), Geneious (.geneious), FASTA (.fasta, .fa), '
   + 'FASTQ (.fastq, .fq), AB1 (.ab1), SCF (.scf), plain text (.txt), read alignments (.bam, .sam), and alignments in '
@@ -324,7 +331,7 @@ export default function App() {
     if (prefersReduced) { setTheme(next); return }
 
     // View Transition API (Chrome 111+, Safari 18+)
-    const doc = document as any
+    const doc = document as Document & { startViewTransition?: (update: () => void) => unknown }
     if (typeof doc.startViewTransition === 'function') {
       doc.startViewTransition(() => setTheme(next))
       return
@@ -600,7 +607,7 @@ export default function App() {
       })
     }, 300)
     return () => { if (enzymeScanTimer.current) clearTimeout(enzymeScanTimer.current) }
-  }, [doc.sequence, enzymeNames, seqLength, setEnzymeCutSites]) // eslint-disable-line react-hooks/exhaustive-deps -- getEnzyme/findEnzymeSitesAsync are module-level imports
+  }, [doc.sequence, enzymeNames, seqLength, setEnzymeCutSites])
 
   // Ctrl+G to activate goto position input
   useEffect(() => {
@@ -815,8 +822,6 @@ export default function App() {
   }, [sessionLoadWarnings])
 
   // --- File handling ---
-  const SUPPORTED_EXTENSIONS = /\.(gb|gbk|genbank|dna|geneious|fasta|fa|fas|fna|faa|fastq|fq|seq|txt|ab1|abi|abif|scf|json|aln|clustal|clw|phy|phylip|ph|nex|nexus|nxs|meg|mega|sto|stk|stockholm|pir|nbrf|ali|msf|afa|a2m|mfa)$/i
-
   /** Open an alignment file as an alignment item. */
   const openAlignmentFile = useCallback((text: string, fileName: string) => {
     try {
@@ -827,7 +832,6 @@ export default function App() {
       notify.error(`Could not read "${fileName}"`, { detail: errorDetail(err) })
     }
   }, [addAlignment])
-  const DNA_CHARS = /^[ATGCUNRYSWKMBDHVatgcunryswkmbdhv\s\n\r>;-]+$/
 
   /**
    * A file with more records than this asks before opening: each record is a
@@ -868,7 +872,6 @@ export default function App() {
         const json = reader.result as string
         // Quick check if it's a session file (has the format marker)
         if (json.includes('"seqnexus-session"')) {
-          handleSessionImportFile(new DataTransfer().files) // clear any pending
           try {
             const session = importSessionFromJson(json)
             setSessionImportData({ filename: file.name, json })

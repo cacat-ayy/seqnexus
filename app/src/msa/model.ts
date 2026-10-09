@@ -128,12 +128,6 @@ export function ungapped(seq: string): string {
   return seq.indexOf(GAP) === -1 ? seq : seq.split(GAP).join('')
 }
 
-export function residueCount(seq: string): number {
-  let n = 0
-  for (let i = 0; i < seq.length; i++) if (seq.charCodeAt(i) !== GAP_CODE) n++
-  return n
-}
-
 // ---------------------------------------------------------------------------
 // Shape
 // ---------------------------------------------------------------------------

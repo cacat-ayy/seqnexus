@@ -321,7 +321,7 @@ export default function BlastModal({ open, onClose, onPhaseChange }: Props) {
       setError(err instanceof Error ? err.message : 'BLAST submission failed')
       setPhaseAndNotify('input')
     }
-  }, [querySequence, queryLen, program, database, evalue, maxHits])
+  }, [querySequence, queryLen, program, database, evalue, maxHits, doc.name, setPhaseAndNotify])
 
   const handleCancelSearch = useCallback(() => {
     if (pollRef.current) clearInterval(pollRef.current)
@@ -333,7 +333,7 @@ export default function BlastModal({ open, onClose, onPhaseChange }: Props) {
     setStatusText('')
     setElapsed(0)
     setError(null)
-  }, [])
+  }, [setPhaseAndNotify])
 
   const handleNewSearch = useCallback(() => {
     if (pollRef.current) clearInterval(pollRef.current)
@@ -352,7 +352,7 @@ export default function BlastModal({ open, onClose, onPhaseChange }: Props) {
     setFilter('')
     setSortKey('evalue')
     setSortDir('asc')
-  }, [])
+  }, [setPhaseAndNotify])
 
   const handleSelectHistory = useCallback((idx: number) => {
     const entry = history[idx]

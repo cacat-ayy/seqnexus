@@ -17,7 +17,7 @@ import {
   type CloningDesign,
   type DesignPart,
 } from './design'
-import { productKey, runDesign, selectedProduct, type RunResult } from './run'
+import { runDesign, selectedProduct, type RunResult } from './run'
 
 export interface DesignBin {
   id: string
@@ -213,9 +213,4 @@ export function estimateWork(bins: readonly DesignBin[]): number {
     0,
   )
   return count * Math.max(1, Math.round((bases / Math.max(parts, 1)) / 1000))
-}
-
-/** The key a chosen product is remembered by, so a row survives a re-run. */
-export function rowKey(row: BulkRow): string {
-  return row.product ? productKey(row.product) : row.choice.join('-')
 }

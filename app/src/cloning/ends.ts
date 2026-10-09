@@ -39,8 +39,6 @@ export interface End {
   enzyme?: string
 }
 
-export const BLUNT: End = { span: '', kind: 'blunt', phosphate: true }
-
 /** A blunt end, phosphorylated unless told otherwise. */
 export function bluntEnd(phosphate = true): End {
   return { span: '', kind: 'blunt', phosphate }

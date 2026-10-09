@@ -32,11 +32,8 @@ export class Sequence {
 
   /** Construct a Sequence wrapping an existing PieceTable (no copy). */
   static fromPieceTable(pt: PieceTable, topology: Topology): Sequence {
-    const seq = Object.create(Sequence.prototype) as Sequence
-    ;(seq as any)._pt = pt
-    ;(seq as any).topology = topology
-    ;(seq as any)._basesCache = null
-    ;(seq as any)._basesCacheVersion = -1
+    const seq = new Sequence('', topology)
+    seq._pt = pt
     return seq
   }
 

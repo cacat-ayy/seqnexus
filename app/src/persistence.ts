@@ -43,7 +43,6 @@ import {
   getAllStoredUndoIds,
   getStoredReadSetIds,
   deleteReadChunks,
-  clearAll as idbClearAll,
 } from './storage/idb'
 import { sanitizeReadSet } from './ngs/record'
 import { mappingStorageList } from './ngs/builder'
@@ -379,7 +378,7 @@ function buildSessionData(theme: string): {
       })
     }
 
-    const { bases: _, ...docWithoutBases } = snap
+    const { bases, ...docWithoutBases } = snap
     v2Tabs.push({
       id: tab.id, doc: docWithoutBases, viewMode: tab.viewMode, zoomLevel: tab.zoomLevel,
       createdAt: tab.createdAt || undefined,
@@ -1194,20 +1193,6 @@ export function scheduleSave(theme: string): void {
     saveSession(theme)
     _timer = null
   }, SAVE_DEBOUNCE_MS)
-}
-
-/** Clear all persisted session data (both localStorage and IndexedDB). */
-export async function clearSavedSession(): Promise<void> {
-  // A save still writing would put back what is about to be cleared.
-  await (queued?.done ?? saving)
-  unrestored = noneUnrestored()
-  written = emptyWritten()
-  localStorage.removeItem(STORAGE_KEY)
-  try {
-    if (await checkIdb()) await idbClearAll()
-  } catch {
-    // best-effort
-  }
 }
 
 // ---- Session export / import ----

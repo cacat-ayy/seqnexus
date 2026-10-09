@@ -4,7 +4,7 @@
  * undo step. Edits change the contig's copies of the reads, never the reads.
  */
 
-import type { ContigDoc, ContigRow } from './types'
+import type { ContigDoc } from './types'
 
 /** Set the base (or '-') of a row at a column. Outside the row's span nothing happens. */
 export function setCell(doc: ContigDoc, rowId: string, col: number, ch: string): ContigDoc {
@@ -100,21 +100,3 @@ export function removeRows(doc: ContigDoc, ids: readonly string[]): ContigDoc {
   return rows.length === doc.rows.length ? doc : stripGapColumns({ ...doc, rows })
 }
 
-/** Put every row's edits back to the bases as assembled. */
-export function revertRow(doc: ContigDoc, rowId: string): ContigDoc {
-  const rows = doc.rows.map(r => (r.id !== rowId || r.seq === r.orig ? r : revertCells(r, 0, r.seq.length)))
-  return rows.some((r, i) => r !== doc.rows[i]) ? { ...doc, rows } : doc
-}
-
-function revertCells(r: ContigRow, k0: number, k1: number): ContigRow {
-  let seq = r.seq
-  for (let k = k0; k < k1; k++) if (seq[k] !== r.orig[k]) seq = seq.slice(0, k) + r.orig[k] + seq.slice(k + 1)
-  return { ...r, seq }
-}
-
-/** Cell edits in the contig: positions where a row differs from how it was assembled. */
-export function editedCells(doc: ContigDoc): number {
-  let k = 0
-  for (const r of doc.rows) for (let i = 0; i < r.seq.length; i++) if (r.seq[i] !== r.orig[i]) k++
-  return k
-}

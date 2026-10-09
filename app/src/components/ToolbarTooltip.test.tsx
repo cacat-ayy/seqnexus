@@ -1,7 +1,8 @@
 import { render, screen, fireEvent, act } from '@testing-library/react'
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { useRef } from 'react'
-import { ToolbarTooltip, tip } from './ToolbarTooltip'
+import { ToolbarTooltip } from './ToolbarTooltip'
+import { tip } from './toolbarTip'
 
 function Bar({ disabled = false }: { disabled?: boolean }) {
   const ref = useRef<HTMLDivElement>(null)

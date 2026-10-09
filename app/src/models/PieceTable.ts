@@ -354,11 +354,9 @@ export class PieceTable {
 
   /** Reconstruct a PieceTable from saved buffers and tree snapshot. */
   static fromBuffers(original: string, add: string, snap: PieceTableSnapshot): PieceTable {
-    const pt = Object.create(PieceTable.prototype) as PieceTable
-    Object.defineProperty(pt, '_original', { value: original, writable: false })
-    ;(pt as any)._add = add
-    ;(pt as any)._root = snap.root ? cloneTree(snap.root) : null
-    ;(pt as any)._version = 0
+    const pt = new PieceTable(original)
+    pt._add = add
+    pt._root = snap.root ? cloneTree(snap.root) : null
     return pt
   }
 

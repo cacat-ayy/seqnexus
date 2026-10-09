@@ -216,13 +216,3 @@ export function dephosphorylate(f: Fragment): Fragment {
     right: f.right ? { ...f.right, phosphate: false } : f.right,
   }
 }
-
-/** Put phosphates on both 5' termini, as a kinase would. */
-export function phosphorylate(f: Fragment): Fragment {
-  if (f.topology === 'circular') return f
-  return {
-    ...f,
-    left: f.left ? { ...f.left, phosphate: true } : f.left,
-    right: f.right ? { ...f.right, phosphate: true } : f.right,
-  }
-}

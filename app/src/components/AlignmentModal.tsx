@@ -150,7 +150,7 @@ export default function AlignmentModal({ open, onClose, onResult, onReadAlignRes
     if (entries.length === 0 || entries.length === prevEntryCount.current) return
     prevEntryCount.current = entries.length
     const allBases = entries.map(e => e.bases).join('')
-    const isDna = /^[ACGTURYSWKMBDHVNacguryswkmbdhvn\s\-]*$/.test(allBases)
+    const isDna = /^[ACGTURYSWKMBDHVNacguryswkmbdhvn\s-]*$/.test(allBases)
     setSeqType(isDna ? 'dna' : 'protein')
   }, [entries])
 

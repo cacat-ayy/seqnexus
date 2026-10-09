@@ -100,7 +100,7 @@ export default function ORFPanel({ open, onClose }: Props) {
       const next = prev.filter(c => c !== codon)
       return next.length > 0 ? next : prev // keep at least one
     })
-  }, [])
+  }, [setStartCodons])
 
   /**
    * A badge selects its ORF's bases; Ctrl/Cmd-click picks it for conversion

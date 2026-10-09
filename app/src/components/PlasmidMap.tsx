@@ -29,7 +29,7 @@ import { isPrimerItemId } from '../primers/display'
 import { buildPlasmidScene, type PlasmidScene } from '../plasmid/scene'
 import { renderSceneToCanvas, type Viewport } from '../plasmid/renderCanvas'
 import { plasmidToPng, plasmidToSvgBlob } from '../plasmid/exportImage'
-import { resolvePlasmidColors } from '../plasmid/styles'
+import { resolvePlasmidColors, type PlasmidColors } from '../plasmid/styles'
 import { angleToPos, normalizeAngle, arcSelection } from '../plasmid/geometry'
 import { hitTestScene } from '../plasmid/hit'
 import { usePlasmidSceneData } from '../plasmid/usePlasmidSceneData'
@@ -148,9 +148,13 @@ function PlasmidMap(_props: PlasmidMapProps) {
     return () => mo.disconnect()
   }, [])
 
+  const [colors, setColors] = useState<PlasmidColors | null>(null)
+  useEffect(() => {
+    setColors(resolvePlasmidColors(style, containerRef.current))
+  }, [style, themeVersion])
+
   const scene = useMemo<PlasmidScene | null>(() => {
-    if (canvasSize <= 0) return null
-    const colors = resolvePlasmidColors(style, containerRef.current)
+    if (canvasSize <= 0 || !colors) return null
     return buildPlasmidScene({
       size: canvasSize,
       seqLen: doc.sequence.length,
@@ -181,9 +185,8 @@ function PlasmidMap(_props: PlasmidMapProps) {
     })
   }, [
     canvasSize, doc.sequence.length, doc.sequence.topology, doc.name, doc.metadata,
-    style, rings, hoveredAnnotationId, proposalIds, pickedIds, sceneEnzymes,
+    style, colors, rings, hoveredAnnotationId, proposalIds, pickedIds, sceneEnzymes,
     hoveredEnzymeKey, scenePrimers, selection, extraSelections, search, methylation, gcSeries, gcOverall, legend,
-    themeVersion,
   ])
 
   const sceneRef = useRef<PlasmidScene | null>(null)

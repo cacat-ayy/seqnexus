@@ -108,19 +108,6 @@ export async function getAllStoredIds(): Promise<string[]> {
   return keys.map(k => String(k))
 }
 
-/** Clear all stored sequences, traces, alignments, and undo history. */
-export async function clearAll(): Promise<void> {
-  const db = await getDB()
-  await db.clear(STORE_NAME)
-  await db.clear(TRACE_STORE)
-  if (db.objectStoreNames.contains(ALIGN_STORE)) {
-    await db.clear(ALIGN_STORE)
-  }
-  if (db.objectStoreNames.contains(UNDO_STORE)) {
-    await db.clear(UNDO_STORE)
-  }
-}
-
 // ---- Feature source databases (auto-annotation references) ----
 //
 // Imported libraries run to megabytes of sequence, which rules out

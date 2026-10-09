@@ -111,11 +111,6 @@ export interface AssemblyRecord extends AssemblyRun {
   verify?: PlateVerifySettings
 }
 
-/** The first sample of an NGS mapping, or undefined for a Sanger assembly. */
-export function firstSample(a: Pick<AssemblyRecord, 'samples'>): NgsMapping | undefined {
-  return a.samples?.[0]
-}
-
 /** The fields of a contig that linking looks at. */
 export interface LinkableContig {
   id: string

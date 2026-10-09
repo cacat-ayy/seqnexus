@@ -20,8 +20,3 @@ export function baseBits(ch: string): number {
 export function codeForBits(bits: number): string {
   return CODE[bits & 15] || 'N'
 }
-
-/** Is `ch` a definite nucleotide (no ambiguity)? */
-export function isPlainBase(ch: string): boolean {
-  return ch === 'A' || ch === 'C' || ch === 'G' || ch === 'T' || ch === 'U'
-}

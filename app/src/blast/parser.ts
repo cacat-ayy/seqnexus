@@ -28,11 +28,48 @@
 
 import type { BlastResult, BlastHit, BlastHsp } from './types'
 
-/* eslint-disable @typescript-eslint/no-explicit-any */
+/** The parts of NCBI's JSON2_S response that are read. Every field is optional: the parser tolerates a missing one. */
+interface RawHsp {
+  bit_score?: number
+  evalue?: number
+  identity?: number
+  positive?: number
+  gaps?: number
+  align_len?: number
+  query_from?: number
+  query_to?: number
+  hit_from?: number
+  hit_to?: number
+  query_frame?: number
+  hit_frame?: number
+  qseq?: string
+  hseq?: string
+  midline?: string
+}
 
-export function parseBlastJson(raw: any): BlastResult {
+interface RawHit {
+  description?: { id?: string; accession?: string; title?: string; sciname?: string }[]
+  len?: number
+  hsps?: RawHsp[]
+}
+
+interface RawReport {
+  program?: string
+  search_target?: { db?: string }
+  error?: { message?: string }
+  results?: {
+    message?: string
+    search?: { query_len?: number; hits?: RawHit[]; message?: string }
+  }
+}
+
+interface RawResponse {
+  BlastOutput2?: { report?: RawReport }[]
+}
+
+export function parseBlastJson(raw: unknown): BlastResult {
   // Navigate to the search results
-  const output = raw?.BlastOutput2
+  const output = (raw as RawResponse | null | undefined)?.BlastOutput2
   if (!output || !Array.isArray(output) || output.length === 0) {
     throw new Error('Invalid BLAST response: missing BlastOutput2')
   }
@@ -56,20 +93,20 @@ export function parseBlastJson(raw: any): BlastResult {
   }
 
   const queryLen = search.query_len || 0
-  const rawHits: any[] = search.hits || []
+  const rawHits: RawHit[] = search.hits || []
 
-  const hits: BlastHit[] = rawHits.map((h: any) => {
+  const hits: BlastHit[] = rawHits.map((h) => {
     const desc = h.description?.[0] || {}
     const accession = desc.accession || desc.id || ''
     const description = desc.title || ''
     const sciName = desc.sciname || ''
     const length = h.len || 0
 
-    const hsps: BlastHsp[] = (h.hsps || []).map((hsp: any) => ({
+    const hsps: BlastHsp[] = (h.hsps || []).map((hsp) => ({
       bitScore: hsp.bit_score || 0,
       evalue: hsp.evalue ?? 0,
-      identity: hsp.align_len > 0 ? (hsp.identity || 0) / hsp.align_len : 0,
-      positives: hsp.align_len > 0 ? (hsp.positive || 0) / hsp.align_len : 0,
+      identity: hsp.align_len ? (hsp.identity || 0) / hsp.align_len : 0,
+      positives: hsp.align_len ? (hsp.positive || 0) / hsp.align_len : 0,
       gaps: hsp.gaps || 0,
       alignLen: hsp.align_len || 0,
       queryFrom: hsp.query_from || 0,

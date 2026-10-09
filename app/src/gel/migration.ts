@@ -31,9 +31,6 @@ import type { DnaForm, GelConditions, GelFormat } from './model'
 export const AGAROSE_MIN = 0.5
 export const AGAROSE_MAX = 3
 
-/** Common agarose concentrations, for pickers. Any value in range works. */
-export const AGAROSE_PRESETS = [0.5, 0.7, 0.8, 1, 1.2, 1.5, 2, 2.5, 3] as const
-
 export const GEL_FORMATS: Record<GelFormat, { label: string; runLengthMm: number }> = {
   mini: { label: 'Mini (7 cm)', runLengthMm: 60 },
   midi: { label: 'Midi (15 cm)', runLengthMm: 130 },

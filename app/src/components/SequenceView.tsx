@@ -560,7 +560,7 @@ function SequenceView({ onFindRequest, onFindClose, onAnnotateRequest, onEditFea
   const allEnzymeCutSites = useEditorStore(s => s.enzymeCutSites)
   const autoAnnotationPicks = useEditorStore(s => s.autoAnnotationPicks)
   const orfPicks = useEditorStore(s => s.orfPicks)
-  const enzymeCutSites = showEnzymes ? allEnzymeCutSites : []
+  const enzymeCutSites = useMemo(() => (showEnzymes ? allEnzymeCutSites : []), [showEnzymes, allEnzymeCutSites])
 
   // Used by the delete confirmation
   const removeAnnotation = useEditorStore(s => s.removeAnnotation)

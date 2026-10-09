@@ -34,8 +34,6 @@ export const DENOVO_METHOD_LABEL: Record<DeNovoMethod, string> = {
   'short-dbg': 'Short reads, de Bruijn graph',
 }
 
-export const isLongMethod = (m: DeNovoMethod) => m !== 'short-dbg'
-
 export interface DeNovoSettings {
   method: DeNovoMethod
   /** Fewest reads a product needs: in its length peak, and lined up with its contig end to end. Genomes: fewest reads behind a contig. */

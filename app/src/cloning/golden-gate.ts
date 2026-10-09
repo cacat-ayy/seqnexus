@@ -13,7 +13,7 @@ import type { DocumentState } from '../models/Document'
 import type { CloningFragment, CloningProduct } from './types'
 import { digestFragments, areOverhangsCompatible, type Overhang } from './digest'
 import { productName, productDescription } from './naming'
-import { fidelityWarnings, isPalindromic, pairRisk } from './fidelity'
+import { fidelityWarnings, isPalindromic } from './fidelity'
 
 export interface GoldenGateInput {
   sources: { doc: DocumentState }[]
@@ -52,18 +52,6 @@ function checkOverhangFidelity(overhangs: string[]): string[] {
   return fidelityWarnings(overhangs)
 }
 
-/** How safe one overhang is among the others, for ranking a single end. */
-export function scoreOverhangFidelity(overhang: string, allOverhangs: string[]): 'high' | 'medium' | 'low' {
-  if (isPalindromic(overhang)) return 'low'
-  let worst = 0
-  for (const other of allOverhangs) {
-    if (other.toUpperCase() === overhang.toUpperCase()) continue
-    worst = Math.max(worst, pairRisk(overhang, other))
-  }
-  if (worst > 0.1) return 'low'
-  if (worst > 0.02) return 'medium'
-  return 'high'
-}
 
 /**
  * Simulate Golden Gate Assembly.

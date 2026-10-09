@@ -613,9 +613,6 @@ export function sortRows(layout: ReadLayout, pos: number, by: SortBy, ref: RefBa
 // Pileup of the loaded stretch
 // ---------------------------------------------------------------------------
 
-/** Alleles counted per position, in this order. */
-export const PILEUP_ALLELES = ['A', 'C', 'G', 'T', 'del', 'ins'] as const
-
 /**
  * Every loaded read counted at each position of [from, to): depth (aligned
  * bases, as the stored coverage counts them), depth on the forward strand,

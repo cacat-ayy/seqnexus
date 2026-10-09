@@ -9,7 +9,7 @@
 
 import type { TraceData } from '../io/trace'
 import type { BaseEdit } from '../store'
-import { complementBase, reverseComplement } from '../models/complement'
+import { reverseComplement } from '../models/complement'
 import { baseBits } from '../msa/iupac'
 import { buildLayout, inTrim, KIND_DELETE, KIND_INSERT, type ReadLayout } from './layout'
 
@@ -180,11 +180,6 @@ export function toFastq(name: string, r: EditedRead): string {
 export function toFasta(name: string, bases: string): string {
   const lines = bases.match(/.{1,70}/g) ?? ['']
   return `>${name}\n${lines.join('\n')}\n`
-}
-
-/** A display base: the forward base, complemented in a reversed view. */
-export function displayBase(base: string, reversed: boolean): string {
-  return reversed ? complementBase(base) : base
 }
 
 // ---------------------------------------------------------------------------

@@ -122,10 +122,6 @@ export function gibsonAssemble(input: GibsonInput): GibsonResult {
   return run(input, input.kit ?? 'gibson')
 }
 
-/** NEBuilder HiFi: longer overlaps, and a mismatch or two is survivable. */
-export function hifiAssemble(input: GibsonInput): GibsonResult {
-  return run(input, 'hifi')
-}
 
 /**
  * The longest shared stretch between the end of `seqA` and the start of
