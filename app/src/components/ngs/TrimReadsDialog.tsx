@@ -15,7 +15,7 @@ import { useFocusTrap } from '../../hooks/useFocusTrap'
 import { DEFAULT_LONG_TRIM, DEFAULT_TRIM, isLongRead, type TrimSettings } from '../../ngs/types'
 import { startTrim, CancelledError, wasmBase, type JobHandle } from '../../workers/readset'
 import { FASTP_NEEDS_WEB, openedAsFile } from '../../ngs/jobs'
-import type { TrimResult } from '../../ngs/trimmer'
+import type { TrimOutcome } from '../../ngs/jobs'
 import { deleteReadChunks } from '../../storage/idb'
 
 interface Props {
@@ -31,7 +31,7 @@ export default function TrimReadsDialog({ readSet: rs, onClose }: Props) {
   const blocked = !long && openedAsFile()
   const [s, setS] = useState<TrimSettings>(long ? DEFAULT_LONG_TRIM : DEFAULT_TRIM)
   const [progress, setProgress] = useState<number | null>(null)
-  const handle = useRef<JobHandle<TrimResult> | null>(null)
+  const handle = useRef<JobHandle<TrimOutcome> | null>(null)
   const ref = useRef<HTMLDivElement>(null)
   useFocusTrap(ref, true)
   useEffect(() => () => handle.current?.cancel(), [])
@@ -52,7 +52,7 @@ export default function TrimReadsDialog({ readSet: rs, onClose }: Props) {
         name: `${rs.name} ${long ? 'filtered' : 'trimmed'}`,
         createdAt: now, modifiedAt: now,
         technology: rs.technology, paired: rs.paired, files: [],
-        stats: res.stats, chunks: res.chunks, storedBytes: res.storedBytes,
+        stats: res.stats, qc: res.qc, chunks: res.chunks, storedBytes: res.storedBytes,
         origin: {
           fromId: rs.id, fromName: rs.name, method: long ? 'filter' : 'fastp', settings: s,
           readsBefore: res.readsBefore, readsAfter: res.stats.reads,

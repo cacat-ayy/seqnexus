@@ -141,7 +141,7 @@ function trimHistogram(counts: Uint32Array, width: number): Histogram {
  * otherwise 60 bins, evenly spaced for short reads and on a log scale for
  * long ones (whose lengths span orders of magnitude).
  */
-function lengthHistogram(counts: Map<number, number>, min: number, max: number, long: boolean): Histogram {
+export function lengthHistogram(counts: Map<number, number>, min: number, max: number, long: boolean): Histogram {
   if (counts.size === 0) return { edges: [], counts: [] }
   if (max - min < 60 && !long) {
     const edges: number[] = []

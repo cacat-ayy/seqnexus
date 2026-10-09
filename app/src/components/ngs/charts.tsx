@@ -8,29 +8,14 @@
  * so no value is only reachable by pointing at it.
  */
 
-import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
+import { useMemo, useRef, useState, type ReactNode } from 'react'
 import { Table2, ChartColumn } from 'lucide-react'
+import { useWidth } from './useWidth'
 import type { Histogram, PositionQuality } from '../../ngs/types'
 import { niceTicks } from '../../utils/ticks'
 
 const nf = new Intl.NumberFormat()
 const compact = new Intl.NumberFormat('en', { notation: 'compact', maximumFractionDigits: 1 })
-
-/** The width of an element, kept up to date. */
-function useWidth<T extends HTMLElement>(): [React.RefObject<T>, number] {
-  const ref = useRef<T>(null)
-  const [w, setW] = useState(0)
-  useEffect(() => {
-    const el = ref.current
-    if (!el) return
-    setW(el.clientWidth)
-    if (typeof ResizeObserver === 'undefined') return
-    const ro = new ResizeObserver(() => setW(el.clientWidth))
-    ro.observe(el)
-    return () => ro.disconnect()
-  }, [])
-  return [ref, w]
-}
 
 /** A bar with its top corners rounded and its base square. */
 function barPath(x: number, y: number, w: number, h: number): string {

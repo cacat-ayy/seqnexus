@@ -1,0 +1,194 @@
+/* The read set quality report: FastQC's layout (a Summary list of the
+   modules on the left, the modules in order on the right) in the app's
+   cards and tokens. Classes are prefixed qr-. */
+
+.qr-body { padding-top: 0; }
+.qr {
+  display: grid;
+  grid-template-columns: 230px minmax(0, 1fr);
+  gap: var(--space-4);
+  align-items: start;
+}
+
+/* ---- Summary list ---- */
+.qr-rail {
+  position: sticky;
+  top: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-0-5);
+  padding: var(--space-4) 0;
+}
+.qr-rail-title {
+  padding: 0 var(--space-2) var(--space-1-5);
+  font-size: var(--text-2xs);
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+.qr-rail-item {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-1-5) var(--space-2);
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  font: inherit;
+  font-size: var(--text-sm);
+  text-align: left;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: background var(--dur-fast) var(--ease-out);
+}
+.qr-rail-item svg { flex-shrink: 0; }
+.qr-rail-item:hover { background: var(--bg-hover); color: var(--text); }
+.qr-rail-item.active { background: var(--accent-bg); color: var(--text); font-weight: 600; }
+.qr-rail-item.skipped { color: var(--text-muted); }
+
+.qr-status.pass { color: var(--success); }
+.qr-status.warn { color: var(--warning); }
+.qr-status.fail { color: var(--danger); }
+.qr-status.skip { color: var(--text-faint); }
+
+/* ---- Modules ---- */
+.qr-main { display: flex; flex-direction: column; gap: var(--space-3); min-width: 0; padding: var(--space-4) 0; }
+.qr-head { display: flex; align-items: center; flex-wrap: wrap; gap: var(--space-2) var(--space-4); }
+.qr-head > div:first-child { margin-right: auto; }
+.qr-head-title { font-size: var(--text-lg); font-weight: 600; color: var(--text); }
+.qr-head-sub { font-size: var(--text-xs); color: var(--text-muted); }
+.qr-counts { display: flex; flex-wrap: wrap; gap: var(--space-3); font-size: var(--text-xs); color: var(--text-secondary); }
+.qr-count { display: inline-flex; align-items: center; gap: var(--space-1); }
+
+.qr-module {
+  scroll-margin-top: var(--space-3);
+  padding: var(--space-3);
+  border: 1px solid var(--border);
+  border-left-width: 3px;
+  border-radius: var(--radius-input);
+  background: var(--bg);
+}
+.qr-module.pass { border-left-color: var(--success); }
+.qr-module.warn { border-left-color: var(--warning); }
+.qr-module.fail { border-left-color: var(--danger); }
+.qr-module.skip { border-left-color: var(--border); }
+.qr-module-head { display: flex; align-items: center; gap: var(--space-2); }
+.qr-module-head > svg { flex-shrink: 0; }
+.qr-module-title { margin: 0; font-size: var(--text-md); font-weight: 600; color: var(--text); }
+.qr-status-text {
+  padding: 0 var(--space-1-5);
+  border-radius: var(--radius-pill);
+  font-size: var(--text-2xs);
+  font-weight: 600;
+  white-space: nowrap;
+}
+.qr-status-text.pass { background: var(--success-bg); color: var(--success); }
+.qr-status-text.warn { background: var(--warning-bg); color: var(--warning); }
+.qr-status-text.fail { background: var(--danger-bg); color: var(--danger); }
+.qr-status-text.skip { background: var(--bg-alt); color: var(--text-muted); }
+
+.qr-help {
+  margin-top: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-sm);
+  background: var(--bg-alt);
+  font-size: var(--text-sm);
+  line-height: 1.5;
+  color: var(--text-secondary);
+}
+.qr-help p { margin: 0; }
+.qr-help p + p { margin-top: var(--space-1); }
+.qr-help strong { color: var(--text); font-weight: 600; }
+.qr-note { margin: var(--space-2) 0 0; font-size: var(--text-xs); color: var(--text-muted); }
+.qr-lead { margin: var(--space-2) 0 0; font-size: var(--text-sm); color: var(--text-secondary); }
+.qr-lead strong { color: var(--text); }
+.qr-plot { position: relative; margin-top: var(--space-2); }
+.qr-table { max-height: 260px; overflow: auto; border: 1px solid var(--border-light); border-radius: var(--radius-sm); }
+.qr-table.tall { max-height: 420px; margin-top: var(--space-2); }
+.qr-basic { margin-top: var(--space-2); max-width: 640px; }
+.qr-seq { font-family: var(--font-mono); font-size: var(--text-2xs); word-break: break-all; }
+.qr-empty { max-width: 640px; }
+
+/* ---- Chart marks ---- */
+.qr-legend { margin: 0 0 var(--space-1); }
+.qr-axis-title { fill: var(--text-muted); font-size: var(--text-2xs); }
+.qr-muted { color: var(--text-muted); }
+.qr-line { fill: none; stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; }
+.qr-line.dashed { stroke-dasharray: 5 4; }
+.qr-dot { stroke: var(--bg); stroke-width: 2; }
+.qr-swatch { display: inline-block; width: 14px; height: 3px; border-radius: var(--radius-pill); }
+.qr-tip-row { display: flex; align-items: center; gap: var(--space-1-5); }
+
+/* Series colours: each class sets the line, the hover dot and the legend swatch. */
+.qr-line.s1 { stroke: var(--series-1); } .qr-dot.s1 { fill: var(--series-1); } .qr-swatch.s1 { background: var(--series-1); color: var(--series-1); }
+.qr-line.s2 { stroke: var(--series-2); } .qr-dot.s2 { fill: var(--series-2); } .qr-swatch.s2 { background: var(--series-2); color: var(--series-2); }
+.qr-line.s3 { stroke: var(--series-3); } .qr-dot.s3 { fill: var(--series-3); } .qr-swatch.s3 { background: var(--series-3); color: var(--series-3); }
+.qr-line.s4 { stroke: var(--series-4); } .qr-dot.s4 { fill: var(--series-4); } .qr-swatch.s4 { background: var(--series-4); color: var(--series-4); }
+.qr-line.s5 { stroke: var(--series-5); } .qr-dot.s5 { fill: var(--series-5); } .qr-swatch.s5 { background: var(--series-5); color: var(--series-5); }
+.qr-line.s6 { stroke: var(--series-6); } .qr-dot.s6 { fill: var(--series-6); } .qr-swatch.s6 { background: var(--series-6); color: var(--series-6); }
+.qr-line.accent { stroke: var(--accent); } .qr-dot.accent { fill: var(--accent); } .qr-swatch.accent { background: var(--accent); }
+.qr-line.base-a { stroke: var(--base-a); } .qr-dot.base-a { fill: var(--base-a); } .qr-swatch.base-a { background: var(--base-a); }
+.qr-line.base-c { stroke: var(--base-c); } .qr-dot.base-c { fill: var(--base-c); } .qr-swatch.base-c { background: var(--base-c); }
+.qr-line.base-g { stroke: var(--base-g); } .qr-dot.base-g { fill: var(--base-g); } .qr-swatch.base-g { background: var(--base-g); }
+.qr-line.base-t { stroke: var(--base-t); } .qr-dot.base-t { fill: var(--base-t); } .qr-swatch.base-t { background: var(--base-t); }
+/* A dashed swatch draws its dashes in the series colour (set as `color` above) over nothing. */
+.qr-swatch.dashed { background: linear-gradient(90deg, currentColor 60%, transparent 60%) 0 0 / 6px 3px; }
+
+/* Per base quality: boxes, whiskers and the median. */
+.qr-box-fill { fill: color-mix(in srgb, var(--accent) 35%, transparent); stroke: var(--accent); stroke-width: 1; }
+.qr-whisker { stroke: var(--accent); stroke-width: 1; }
+.qr-median { stroke: var(--accent-dark); stroke-width: 2; }
+.qr-box.hot .qr-box-fill { fill: color-mix(in srgb, var(--accent) 60%, transparent); }
+.qr-band.box { fill: color-mix(in srgb, var(--accent) 35%, transparent); }
+.qr-band.whisker { fill: color-mix(in srgb, var(--accent) 15%, transparent); }
+.qr-line.median { stroke: var(--accent-dark); }
+.qr-swatch.box { height: 8px; border-radius: var(--radius-xs); background: color-mix(in srgb, var(--accent) 35%, transparent); box-shadow: inset 0 0 0 1px var(--accent); }
+.qr-swatch.whisker { width: 2px; height: 10px; background: var(--accent); }
+.qr-swatch.median { background: var(--accent-dark); }
+
+/* Per tile heatmap. */
+.qr-heat-grid { display: grid; }
+.qr-heat-tiles { position: relative; }
+.ngs-axis-text {
+  position: absolute;
+  right: var(--space-1-5);
+  transform: translateY(-50%);
+  font-size: var(--text-2xs);
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+}
+.qr-heat-canvas { display: block; cursor: crosshair; border-radius: var(--radius-xs); }
+.qr-heat-axis { display: block; overflow: visible; }
+.qr-swatch.heat-warm { height: 8px; background: var(--diverge-warm); }
+.qr-swatch.heat-mid { height: 8px; background: var(--diverge-mid); box-shadow: inset 0 0 0 1px var(--border); }
+.qr-swatch.heat-cool { height: 8px; background: var(--diverge-cool); }
+
+@media (max-width: 760px) {
+  .qr { grid-template-columns: minmax(0, 1fr); }
+  .qr-rail { position: static; flex-direction: row; flex-wrap: wrap; padding-bottom: 0; }
+  .qr-rail-title { width: 100%; }
+}
+
+/* The read set page switch: the report's worst result beside its name. */
+.aw-seg button.qr-switch { display: inline-flex; align-items: center; gap: var(--space-1); }
+
+/* Library type, and FastQC marks that the library explains: kept, but muted. */
+.qr-library { display: inline-flex; align-items: center; gap: var(--space-1-5); font-size: var(--text-xs); color: var(--text-muted); }
+.qr-status.expected { opacity: 0.5; }
+.qr-module.expected { border-left-color: var(--border-hover); }
+.qr-status-text.expected { background: var(--bg-alt); color: var(--text-secondary); }
+.qr-expected {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-1-5);
+  margin: var(--space-2) 0 0;
+  font-size: var(--text-xs);
+  color: var(--text-secondary);
+}
+.qr-expected svg { flex-shrink: 0; margin-top: var(--space-0-5); color: var(--text-muted); }
+.qr-row-actions { white-space: nowrap; }
+.qr-row-actions .aw-icon-btn { display: inline-flex; vertical-align: middle; }
+/* The Summary page's line pointing to the report. */
+.ngs-verdict-link { display: inline-flex; align-items: center; gap: var(--space-1); margin-top: var(--space-1); font-size: var(--text-xs); }

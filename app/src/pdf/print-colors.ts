@@ -38,3 +38,11 @@ export function printSequenceColors(): SequenceColors {
 export function printPlasmidColors(style: PlasmidStyle): PlasmidColors {
   return { ...withLightTheme(el => resolvePlasmidColors(style, el)), bg: PAPER }
 }
+
+/** Design tokens as the light theme sets them, for figures drawn outside the app (exported reports). */
+export function printTokens<K extends string>(names: readonly K[]): Record<K, string> {
+  return withLightTheme(el => {
+    const cs = getComputedStyle(el)
+    return Object.fromEntries(names.map(n => [n, cs.getPropertyValue(`--${n}`).trim()])) as Record<K, string>
+  })
+}

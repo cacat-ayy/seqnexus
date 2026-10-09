@@ -685,6 +685,154 @@ instruments deliver, not a standard:
 
 Fewer than 1,000 reads, or no qualities in the file, also earn a Check.
 
+### Quality report
+
+The read set page has a second page, the **Quality report**, which gives
+FastQC's modules under FastQC's names, in FastQC's order and with its
+default pass, warn and fail thresholds, laid out as FastQC's report is (a
+Summary list of the modules with their marks, then each module with its
+plot). Anyone who reads FastQC reports can read it without learning a new
+one. It is computed by SeqNexus, not by FastQC: FastQC is a Java program,
+which cannot run in a page, least of all one opened from disk. Each module
+was reimplemented from FastQC's documented behaviour and its source (FastQC
+is GPL 3 or later, compatible with SeqNexus's AGPL), so that its numbers and
+marks agree with FastQC's; where SeqNexus departs from it, this section says
+so.
+
+Like FastQC, which reports each file on its own, the report is made per
+mate, with an R1/R2 switch. It is gathered beside the other figures while the
+reads are imported or trimmed, in one pass, and stored beside the reads (it
+is kept when the reads are discarded). On a short-read benchmark of 400,000
+reads of 150 bases the report adds about 0.9 s to an import of about 7 s.
+
+| Module | What is computed | Warn | Fail |
+|---|---|---|---|
+| Basic Statistics | reads, bases, length range, GC among A/C/G/T calls, encoding | never | never |
+| Per base sequence quality | quartiles, 10th and 90th percentiles and mean of the scores at each position | lower quartile < 10 or median < 25 anywhere | < 5 or < 20 |
+| Per tile sequence quality | mean quality of each tile at each position, less the mean of the tile means there | any tile more than 5 units off | more than 10 |
+| Per sequence quality scores | reads by mean score, as a whole number (integer division, as FastQC does) | most common mean ≤ 27 | ≤ 20 |
+| Per base sequence content | share of A, C, G and T among the calls at each position (N left out) | A and T, or G and C, differ by > 10 points anywhere | > 20 |
+| Per sequence GC content | reads by GC percentage, with a fitted normal distribution | deviation > 15% of reads | > 30% |
+| Per base N content | share of N calls at each position | > 5% anywhere | > 20% |
+| Sequence Length Distribution | reads by length | reads not all one length | any read empty |
+| Sequence Duplication Levels | share of reads at each duplication level, and the share left after deduplication | < 70% left | < 50% left |
+| Overrepresented sequences | sequences over 0.1% of the reads, with their likely source | any listed | any over 1% |
+| Adapter Content | cumulative share of reads containing each adapter's first 12 bases, by position | > 5% anywhere | > 10% |
+
+FastQC's K-mer Content module is left out, as FastQC itself has left it out
+by default since version 0.11.6.
+
+How the modules follow FastQC:
+
+- **Quality** is read as Phred+33, as FastQC reads it unless told otherwise.
+  When the lowest score in the file is Q31 or more, Basic Statistics notes
+  that the file may be old Phred+64 (Illumina pipeline 1.3 to 1.7).
+- **Tiles** are read from the read name: field 5 of a name with 7 or more
+  colon-separated fields (Casava 1.8 and later), field 3 of one with 5 or 6
+  (older names). A name that breaks the pattern, or more than 2,500 tiles,
+  turns the module off, as in FastQC. Like FastQC, the module looks at every
+  read of the first 10,000 and one in ten after that. The heatmap colours the
+  deviation on a diverging scale (warm below the average, cool above), full
+  colour at 10 units, FastQC's fail limit.
+- **GC per read** uses FastQC's model: a read with `g` G or C calls out of
+  `n` bases is spread over the whole percentages its count could round to,
+  each weighted by how many counts claim that percentage, so short reads do
+  not leave comb-like gaps; reads are cut to whole hundreds of bases above
+  100 and whole thousands above 1,000 first. The theoretical curve is a
+  normal distribution centred on the mode (averaged over the neighbouring
+  bins within 10% of the modal count, unless that run reaches 0 or 100%)
+  with the spread of the reads around it; the deviation is the summed
+  difference between the two, as a percentage of the reads.
+- **Duplication** compares reads by their first 50 bases (whole reads when
+  shorter), as FastQC 0.11 and later do: identity over a whole long read is
+  broken by sequencing errors. Only the first 100,000 distinct sequences are
+  tracked; after that, reads are only counted against them. The count of
+  sequences at each duplication level is then corrected for the ones missed:
+  divided by the chance that a sequence seen that many times in the whole
+  file would have turned up among the reads read before tracking stopped
+  (FastQC's correction). The levels are binned as FastQC bins them (1 to 9,
+  then over 10, 50, 100, 500, 1k, 5k and 10k).
+- **Overrepresented sequences** come from the same tracked sequences. Each is
+  matched against FastQC's contaminant list (Illumina, Nextera, SOLiD and
+  other kit oligos): a match is a stretch of more than 20 bases with at most
+  one mismatch on either strand, or, for a sequence of 8 to 19 bases, an
+  exact substring; the longest match wins, and is written as FastQC writes it
+  ("TruSeq Adapter, Index 1 (100% over 49bp)"). Only contaminants sharing a
+  10-base seed with the sequence are searched in full (any such match
+  contains one), which keeps amplicon libraries with hundreds of
+  overrepresented sequences quick.
+- **Adapters** are FastQC's six probes (Illumina Universal, Illumina Small
+  RNA 3' and 5', Nextera, polyA, polyG). Each read counts once per probe, at
+  the probe's first exact match, and the count is cumulative from there to
+  the end of the read, so the curve shows the share of reads that have run
+  into the adapter by each position. The probes are found with a rolling
+  2-bit code of the last 12 bases rather than six string searches per read,
+  which halved the time the whole report takes.
+
+Where SeqNexus departs from FastQC:
+
+- **Positions are not grouped.** FastQC groups positions into ranges past
+  base 9 so its fixed-size images stay legible; the report draws every
+  position (up to 1,000) and shows the value at the pointer.
+- **Adapter counts include every read.** FastQC extends its position counts
+  as it meets longer reads, so a position only counts the reads after the
+  first read long enough to reach it; the report counts each read's first
+  match position and accumulates at the end.
+- **Long reads** (Nanopore, PacBio) get only the modules about whole reads:
+  basic statistics, read quality, GC, length. Position along a read of
+  thousands of bases says little, no two long reads start alike by chance,
+  and the probes are for Illumina libraries; the others are shown as not run,
+  with the reason. FastQC's thresholds, set for Illumina, still apply to the
+  modules that run, so long reads warn on length and often fail read quality.
+- **Read quality has two figures.** The module uses FastQC's whole-number
+  mean of the scores so that its mark matches FastQC's; the Summary page's
+  read quality is the mean from error probabilities (above), which is the
+  more accurate measure and reads lower.
+
+**Expected flags.** FastQC's thresholds assume a random library of short
+reads, whole-genome DNA on Illumina, and many libraries break that by
+design. The report has a **Library** setting (whole genome, amplicons,
+RNA-seq, small RNA, bisulfite, other). The marks stay FastQC's, so the
+report still reads as FastQC's would, but a warning or failure that the
+library type or the technology explains is shown faded, with the reason
+under the module's title, and is left out of the mark beside the page's name
+and the one-line summary on the Summary page:
+
+| | Expected warnings and failures |
+|---|---|
+| Amplicons | per base content (every read starts at a primer), GC (a few sequences, each its own GC), duplication, overrepresented sequences |
+| RNA-seq | per base content (random hexamer priming biases the first dozen bases), GC, duplication and overrepresented sequences (highly expressed transcripts) |
+| Small RNA | per base content, GC, length (reads differ once the adapter is cut), duplication, overrepresented sequences, adapters (the RNAs are shorter than the reads) |
+| Bisulfite | per base content (unmethylated C read as T), GC |
+| Long reads | length (always varies), read quality (FastQC's Q27 and Q20 are Illumina limits; the Summary page's verdict uses limits for the technology), GC |
+| Trimmed or filtered read sets | length |
+
+A whole-genome library (or none set) explains nothing: every flag counts.
+
+**Export.** The report exports as:
+
+- a self-contained **HTML** page laid out as FastQC's report (Summary list,
+  then the modules with their plots, both mates for a pair), with the
+  charts as inline SVG;
+- a **PDF** of the same on A4 pages, the charts as vectors (drawn with the
+  app's own PDF writer from the same SVG);
+- **FastQC data files** (`fastqc_data.txt`, one per mate) in FastQC 0.12's
+  format: the module names, marks and tables FastQC writes, so that MultiQC
+  can put SeqNexus results beside FastQC results from other samples. The
+  first line names SeqNexus, not FastQC: MultiQC only takes a version from a
+  `##FastQC` (or `##Falco`) line and reads the modules whatever the first line
+  says, so the file loads without claiming to be FastQC's. Modules not run
+  are left out, as FastQC leaves out the modules it does not run. A test
+  reads the file back with a port of MultiQC's FastQC parser.
+
+The exported page and PDF are fixed output in the light theme's colours on
+white, whatever theme the app is in.
+
+Colours: base content uses the base colour tokens; the other multi-line
+charts use a categorical palette (`--series-1` to `--series-6`, checked for
+colour-blind separation of neighbouring series in light and dark themes),
+and every chart has a table view.
+
 ### Trimming and filtering
 
 Trimming makes a new read set and keeps the original.
@@ -2500,6 +2648,8 @@ print colours on white, whatever the app's theme.
 - Andrews S. (2010) "FastQC: a quality control tool for high throughput
   sequence data." Babraham Bioinformatics.
   https://www.bioinformatics.babraham.ac.uk/projects/fastqc/
+  Source code, default limits, adapter and contaminant lists (GPL 3 or
+  later): https://github.com/s-andrews/FastQC
 
 - Li H. (2018) "Minimap2: pairwise alignment for nucleotide sequences."
   *Bioinformatics* 34:3094-3100.

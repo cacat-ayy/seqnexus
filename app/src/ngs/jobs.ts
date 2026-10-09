@@ -9,8 +9,10 @@
  * so short-read trimming needs SeqNexus opened from a web address.
  */
 
-import { importReads, type ReadLayout } from './importer'
-import { trimReads, type FastpRunner } from './trimmer'
+import { importReads, type ImportResult, type ReadLayout } from './importer'
+import { trimReads, type FastpRunner, type TrimResult } from './trimmer'
+import { encodeQcReport, qcStorageId } from './qcreport/storage'
+import { summarize, type QcReport, type QcSummary } from './qcreport/types'
 import { exportFastq, type ExportLayout } from './exporter'
 import { mapReads, type MapPreset, type MapReference } from './mapper'
 import { exportMapping } from './sam'
@@ -79,6 +81,16 @@ export type ReadSetJob =
       /** Per reference in the file's header: the sequence to use, or null. */
       refs: (MapReference | null)[]
     }
+
+/** What an import or trim job hands back: the report itself is stored, the record keeps its summary. */
+export type ImportOutcome = Omit<ImportResult, 'qc'> & { qc: QcSummary }
+export type TrimOutcome = Omit<TrimResult, 'qc'> & { qc: QcSummary }
+
+/** Store a read set's quality report and give back its summary for the record. */
+async function storeQc(readSetId: string, report: QcReport): Promise<QcSummary> {
+  await putReadChunk(qcStorageId(readSetId), 0, encodeQcReport(report))
+  return summarize(report)
+}
 
 export class CancelledError extends Error {
   constructor() { super('Cancelled') }
@@ -153,17 +165,18 @@ export async function runReadSetJob(
   const check = () => { if (stopped()) throw new CancelledError() }
   const progress = (d: number, t: number) => { check(); onProgress(d, t) }
   if (job.type === 'import') {
-    return importReads({
+    const res = await importReads({
       sources: job.files,
       layout: job.layout,
       technology: job.technology,
       put: (i, d) => { check(); return putReadChunk(job.id, i, d) },
       onProgress: progress,
     })
+    return { ...res, qc: await storeQc(job.id, res.qc) } satisfies ImportOutcome
   }
   if (job.type === 'trim') {
     const fastp = isLongRead(job.technology) ? undefined : await fastpRunner(job.wasmBase)
-    return trimReads({
+    const res = await trimReads({
       chunks: job.chunks,
       getChunk: i => { check(); return getReadChunk(job.fromId, i) },
       paired: job.paired,
@@ -173,6 +186,7 @@ export async function runReadSetJob(
       fastp,
       onProgress: progress,
     })
+    return { ...res, qc: await storeQc(job.toId, res.qc) } satisfies TrimOutcome
   }
   if (job.type === 'map') {
     const minimap2 = await minimap2Runner(job.wasmBase)

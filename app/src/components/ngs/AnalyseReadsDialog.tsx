@@ -128,7 +128,7 @@ export default function AnalyseReadsDialog({ readSetIds, denovo: startDenovo = f
             const record: ReadSet = {
               id: toId, name: `${rs.name} ${long ? 'filtered' : 'trimmed'}`, createdAt: now, modifiedAt: now,
               technology: rs.technology, paired: rs.paired, files: [],
-              stats: res.stats, chunks: res.chunks, storedBytes: res.storedBytes,
+              stats: res.stats, qc: res.qc, chunks: res.chunks, storedBytes: res.storedBytes,
               origin: {
                 fromId: rs.id, fromName: rs.name, method: long ? 'filter' : 'fastp', settings,
                 readsBefore: res.readsBefore, readsAfter: res.stats.reads, basesBefore: res.basesBefore, basesAfter: res.stats.bases,
@@ -234,7 +234,7 @@ export default function AnalyseReadsDialog({ readSetIds, denovo: startDenovo = f
             const record: ReadSet = {
               id: toId, name: `${rs.name} ${long ? 'filtered' : 'trimmed'}`, createdAt: now, modifiedAt: now,
               technology: rs.technology, paired: rs.paired, files: [],
-              stats: res.stats, chunks: res.chunks, storedBytes: res.storedBytes,
+              stats: res.stats, qc: res.qc, chunks: res.chunks, storedBytes: res.storedBytes,
               origin: {
                 fromId: rs.id, fromName: rs.name, method: long ? 'filter' : 'fastp', settings,
                 readsBefore: res.readsBefore, readsAfter: res.stats.reads, basesBefore: res.basesBefore, basesAfter: res.stats.bases,

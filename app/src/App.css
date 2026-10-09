@@ -154,6 +154,24 @@
   --aa-aromatic: #06b6d4;
   --aa-proline: #eab308;
 
+  /* Chart series: a categorical palette for charts with several lines
+     (the read set quality report's adapters). Used in this order, never
+     cycled. Validated for colour-blind separation of neighbouring slots with
+     the dataviz palette checks; the light steps fall below 3:1 on a light
+     surface for slots 3 to 5, so every chart using them has a table view.
+     Dark themes use the same hues stepped for a dark surface. */
+  --series-1: #2a78d6;
+  --series-2: #eb6834;
+  --series-3: #1baf7a;
+  --series-4: #eda100;
+  --series-5: #e87ba4;
+  --series-6: #008300;
+  /* A diverging scale: above average (cool), the neutral middle, below
+     average (warm). For heatmaps such as quality per tile. */
+  --diverge-cool: #2a78d6;
+  --diverge-mid: #f0efec;
+  --diverge-warm: #e34948;
+
   /* Success. The palette had --danger and --warning but no positive
      counterpart, so components hardcoded #22c55e / #10b981 independently. */
   --success: #16a34a;
@@ -256,6 +274,8 @@
   --props-bg: #162032; --input-bg: #162032; --input-border: #334155;
   --status-bg: #1e293b; --find-bg: #1e293b;
   --base-a: #4ade80; --base-c: #60a5fa; --base-g: #fbbf24; --base-t: #f87171; --base-other: #64748b;
+  --series-1: #3987e5; --series-2: #d95926; --series-3: #199e70; --series-4: #c98500; --series-5: #d55181; --series-6: #008300;
+  --diverge-cool: #3987e5; --diverge-mid: #383835; --diverge-warm: #e66767;
   --success: #4ade80; --success-bg: rgba(74,222,128,.12);
 }
 
@@ -281,6 +301,8 @@
   --props-bg: #0a0f1e; --input-bg: #0a0f1e; --input-border: #1e293b;
   --status-bg: #0c1222; --find-bg: #0c1222;
   --base-a: #4ade80; --base-c: #60a5fa; --base-g: #fbbf24; --base-t: #f87171; --base-other: #64748b;
+  --series-1: #3987e5; --series-2: #d95926; --series-3: #199e70; --series-4: #c98500; --series-5: #d55181; --series-6: #008300;
+  --diverge-cool: #3987e5; --diverge-mid: #383835; --diverge-warm: #e66767;
   --success: #4ade80; --success-bg: rgba(74,222,128,.12);
 }
 
@@ -389,6 +411,8 @@
   --props-bg: #21222c; --input-bg: #21222c; --input-border: #44475a;
   --status-bg: #282a36; --find-bg: #21222c;
   --base-a: #4ade80; --base-c: #60a5fa; --base-g: #fbbf24; --base-t: #f87171; --base-other: #64748b;
+  --series-1: #3987e5; --series-2: #d95926; --series-3: #199e70; --series-4: #c98500; --series-5: #d55181; --series-6: #008300;
+  --diverge-cool: #3987e5; --diverge-mid: #383835; --diverge-warm: #e66767;
   --success: #4ade80; --success-bg: rgba(74,222,128,.12);
 }
 
@@ -413,6 +437,8 @@
   --props-bg: #272c36; --input-bg: #272c36; --input-border: #3b4252;
   --status-bg: #2e3440; --find-bg: #272c36;
   --base-a: #4ade80; --base-c: #60a5fa; --base-g: #fbbf24; --base-t: #f87171; --base-other: #64748b;
+  --series-1: #3987e5; --series-2: #d95926; --series-3: #199e70; --series-4: #c98500; --series-5: #d55181; --series-6: #008300;
+  --diverge-cool: #3987e5; --diverge-mid: #383835; --diverge-warm: #e66767;
   --success: #4ade80; --success-bg: rgba(74,222,128,.12);
 }
 
@@ -437,6 +463,8 @@
   --props-bg: #181825; --input-bg: #181825; --input-border: #313244;
   --status-bg: #1e1e2e; --find-bg: #181825;
   --base-a: #4ade80; --base-c: #60a5fa; --base-g: #fbbf24; --base-t: #f87171; --base-other: #64748b;
+  --series-1: #3987e5; --series-2: #d95926; --series-3: #199e70; --series-4: #c98500; --series-5: #d55181; --series-6: #008300;
+  --diverge-cool: #3987e5; --diverge-mid: #383835; --diverge-warm: #e66767;
   --success: #4ade80; --success-bg: rgba(74,222,128,.12);
 }
 

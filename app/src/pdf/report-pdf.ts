@@ -18,12 +18,19 @@ import { niceTicks } from '../utils/ticks'
 import { A4, PdfDocument } from './document'
 import type { PdfCanvas } from './canvas'
 import { pdfMeasure } from './fonts'
+import { drawSvg, svgHeightAt } from './svg-pdf'
 
 export interface ReportTile { label: string; value: string; detail?: string }
 export interface ReportColumn { label: string; numeric?: boolean }
 
 export type ReportBlock =
-  | { kind: 'heading'; text: string }
+  | {
+    kind: 'heading'; text: string
+    /** A status after the heading, in its colour (a quality report module's mark). */
+    status?: { text: string; tone: 'good' | 'warning' | 'danger' | 'muted' }
+  }
+  /** A figure as SVG (the subset pdf/svg-pdf.ts paints), drawn the width of the page. */
+  | { kind: 'figure'; svg: string }
   | { kind: 'tiles'; tiles: ReportTile[] }
   | { kind: 'table'; columns: ReportColumn[]; rows: string[][] }
   | {
@@ -119,11 +126,15 @@ class Writer {
   }
 }
 
-function heading(w: Writer, text: string) {
-  // A heading keeps a few lines of what follows with it.
-  w.need(18 + 60)
+function heading(w: Writer, text: string, status?: Extract<ReportBlock, { kind: 'heading' }>['status'], keep = 60) {
+  // A heading keeps a few lines of what follows with it (or the whole figure that follows).
+  w.need(18 + keep)
   if (w.y > MARGIN) w.y += 8
   w.text(text, w.left, w.y + 10, 11, { bold: true })
+  if (status) {
+    const color = status.tone === 'good' ? T.good : status.tone === 'warning' ? T.warning : status.tone === 'danger' ? T.danger : T.muted
+    w.text(status.text, w.left + measure(text, 11, true) + 8, w.y + 10, 9, { bold: true, color })
+  }
   w.y += 18
 }
 
@@ -242,6 +253,29 @@ function facts(w: Writer, items: { term: string; text: string }[]) {
   w.y += 4
 }
 
+/**
+ * How much of what follows a heading should start on its page: a figure
+ * after it (past any short notes) whole, otherwise a few lines.
+ */
+function keepWith(blocks: ReportBlock[], at: number, width: number): number {
+  let notes = 0
+  for (let k = at + 1; k < blocks.length && k <= at + 3; k++) {
+    const b = blocks[k]
+    if (b.kind === 'note') { notes += 24; continue }
+    if (b.kind === 'figure') return notes + svgHeightAt(b.svg, width) + 8
+    break
+  }
+  return 60
+}
+
+/** A figure the width of the page, kept whole on one page. */
+function figure(w: Writer, svg: string) {
+  const h = svgHeightAt(svg, w.width)
+  w.need(h + 6)
+  drawSvg(w.ctx, svg, w.left, w.y, w.width)
+  w.y += h + 8
+}
+
 function note(w: Writer, text: string) {
   const size = 8.5
   const line = 11.5
@@ -266,14 +300,15 @@ export function writeReportPdf(report: Report): Uint8Array {
   w.rule(w.y + 2, T.muted)
   w.y += 14
 
-  for (const b of report.blocks) {
-    if (b.kind === 'heading') heading(w, b.text)
+  report.blocks.forEach((b, i) => {
+    if (b.kind === 'heading') heading(w, b.text, b.status, keepWith(report.blocks, i, w.width))
+    else if (b.kind === 'figure') figure(w, b.svg)
     else if (b.kind === 'tiles') tiles(w, b.tiles)
     else if (b.kind === 'table') table(w, b.columns, b.rows)
     else if (b.kind === 'histogram') histogram(w, b)
     else if (b.kind === 'facts') facts(w, b.items)
     else note(w, b.text)
-  }
+  })
 
   const count = w.pages.length
   w.pages.forEach((page, i) => {

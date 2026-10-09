@@ -23,6 +23,9 @@ import ConfirmDialog from '../ConfirmDialog'
 import { startExport, startSpectrum } from '../../workers/readset'
 import KmerSpectrumCard from './KmerSpectrumCard'
 import { HistogramChart, PositionQualityChart } from './charts'
+import QualityReport, { StatusIcon } from './qc/QualityReport'
+import type { ModuleId, ModuleStatus } from '../../ngs/qcreport/types'
+import { expectedNote, worstUnexpected } from '../../ngs/qcreport/expected'
 
 const TrimReadsDialog = lazy(() => import('./TrimReadsDialog'))
 const MapReadsDialog = lazy(() => import('./MapReadsDialog'))
@@ -36,6 +39,31 @@ interface Props {
 const nf = new Intl.NumberFormat()
 const pct = (x: number, digits = 1) => `${(x * 100).toFixed(digits)}%`
 const PREVIEW = 20
+
+/** The page last shown, kept when another read set is opened. */
+let lastPage: 'summary' | 'report' = 'summary'
+
+/** The worst module result over both mates that the library or technology does not explain, for the switch. */
+function worstStatus(rs: ReadSet): ModuleStatus | null {
+  if (!rs.qc) return null
+  return worstUnexpected(rs.qc.status, { library: rs.library, long: isLongRead(rs.technology), trimmed: !!rs.origin })
+}
+
+/** The quality report in one line: how many modules warn or fail (over both mates) beyond what is expected. */
+function reportLine(rs: ReadSet): string {
+  const ctx = { library: rs.library, long: isLongRead(rs.technology), trimmed: !!rs.origin }
+  let warn = 0
+  let fail = 0
+  for (const m of rs.qc?.status ?? []) {
+    for (const [id, st] of Object.entries(m) as [ModuleId, ModuleStatus][]) {
+      if (expectedNote(id, st, ctx)) continue
+      if (st === 'warn') warn++
+      else if (st === 'fail') fail++
+    }
+  }
+  const parts = [fail && `${fail} failed`, warn && `${warn} ${warn === 1 ? 'warning' : 'warnings'}`].filter(Boolean)
+  return `Quality report: ${parts.length ? parts.join(', ') : 'every module passed'}${rs.qc && rs.qc.status.length === 2 ? ' (R1 and R2)' : ''}`
+}
 
 interface PreviewRow { id: string; length: number; meanQ: number | null; seq: string }
 
@@ -56,6 +84,9 @@ export default function ReadSetWorkspace({ readSet: rs, onClose }: Props) {
   const discarded = !!rs.discardedAt
   const mappings = useEditorStore(st => st.assemblies).filter(a => a.samples?.some(x => x.readSetId === rs.id))
   const menuRef = useRef<HTMLDivElement>(null)
+  const [page, setPageState] = useState(lastPage)
+  const setPage = (p: 'summary' | 'report') => { lastPage = p; setPageState(p) }
+  const worst = worstStatus(rs)
 
   // The first reads, from the first chunk.
   useEffect(() => {
@@ -148,6 +179,14 @@ export default function ReadSetWorkspace({ readSet: rs, onClose }: Props) {
         <span className="aw-chip">{TECHNOLOGY_LABEL[rs.technology]}</span>
         <span className="aw-chip">{rs.paired ? 'Paired' : 'Single reads'}</span>
         <span className="aw-muted">{rs.paired ? `${compactCount(s.reads / 2)} pairs` : `${compactCount(s.reads)} reads`} · {formatBaseCount(s.bases)} · {readShape(rs)}</span>
+        <div className="aw-seg mv-switch" role="radiogroup" aria-label="Page">
+          <button role="radio" aria-checked={page === 'summary'} className={page === 'summary' ? 'active' : ''} onClick={() => setPage('summary')}
+            title="The QC verdict, headline figures, charts, first reads and storage">Summary</button>
+          <button role="radio" aria-checked={page === 'report'} className={`qr-switch${page === 'report' ? ' active' : ''}`} onClick={() => setPage('report')}
+            title="FastQC's modules with their pass, warn and fail marks">
+            {worst && <StatusIcon status={worst} size={12} />} Quality report
+          </button>
+        </div>
         <span className="aw-spacer" />
         <button className="aw-btn" onClick={() => setTrimOpen(true)} disabled={discarded}
           title={long ? 'Filter reads by length and read quality, into a new read set' : 'Trim adapters and low-quality ends with fastp, into a new read set'}>
@@ -186,6 +225,7 @@ export default function ReadSetWorkspace({ readSet: rs, onClose }: Props) {
         <button className="aw-icon-btn" onClick={onClose} title="Close the read set" aria-label="Close the read set"><X size={15} /></button>
       </div>
 
+      {page === 'report' ? <QualityReport readSet={rs} /> : (
       <div className="ngs-body">
         <div className={`ngs-verdict ${qc.verdict}`}>
           <VerdictIcon size={15} aria-hidden />
@@ -194,6 +234,9 @@ export default function ReadSetWorkspace({ readSet: rs, onClose }: Props) {
             {qc.issues.length > 0
               ? <ul className="ngs-issues">{qc.issues.map(i => <li key={i}>{i}</li>)}</ul>
               : <div className="ngs-verdict-sub">{long ? `Median read quality Q${s.medianReadQuality.toFixed(1)}` : `${pct(s.q30, 0)} of bases at Q30 or above`}, few N calls.</div>}
+            <button className="ngs-link ngs-verdict-link" onClick={() => setPage('report')}>
+              {worst ? <><StatusIcon status={worst} size={12} /> {reportLine(rs)}</> : 'Quality report: FastQC\'s modules'}
+            </button>
           </div>
         </div>
 
@@ -313,6 +356,7 @@ export default function ReadSetWorkspace({ readSet: rs, onClose }: Props) {
           )}
         </div>
       </div>
+      )}
 
       <ConfirmDialog
         open={discardOpen}

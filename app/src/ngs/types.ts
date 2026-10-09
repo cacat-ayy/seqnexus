@@ -9,6 +9,8 @@
  */
 
 import type { KmerSpectrum } from './denovo/spectrum'
+import type { QcSummary } from './qcreport/types'
+import type { LibraryType } from './qcreport/expected'
 
 export type Technology = 'illumina' | 'nanopore' | 'pacbio' | 'other'
 
@@ -124,4 +126,8 @@ export interface ReadSetRecord {
   discardedAt?: number
   /** Its k-mer spectrum and genome length estimate, once counted (denovo/spectrum.ts). */
   kmers?: KmerSpectrum
+  /** The status of each quality report module, per mate; the report itself is stored beside the reads (qcreport/storage.ts). */
+  qc?: QcSummary
+  /** What kind of library the reads are, so the quality report can tell expected FastQC flags from problems (qcreport/expected.ts). */
+  library?: LibraryType
 }

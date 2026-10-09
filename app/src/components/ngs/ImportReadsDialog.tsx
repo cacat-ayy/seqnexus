@@ -19,7 +19,7 @@ import { formatBytes } from '../../ngs/format'
 import { TECHNOLOGY_LABEL, type Technology } from '../../ngs/types'
 import type { ReadLayout } from '../../ngs/importer'
 import { startImport, CancelledError, type JobHandle } from '../../workers/readset'
-import type { ImportResult } from '../../ngs/importer'
+import type { ImportOutcome } from '../../ngs/jobs'
 import { deleteReadChunks, estimateStorage } from '../../storage/idb'
 
 interface Props {
@@ -58,7 +58,7 @@ export default function ImportReadsDialog({ files, onClose }: Props) {
   })))
   const [running, setRunning] = useState(false)
   const [free, setFree] = useState<number | null>(null)
-  const handle = useRef<JobHandle<ImportResult> | null>(null)
+  const handle = useRef<JobHandle<ImportOutcome> | null>(null)
   const stop = useRef(false)
   const ref = useRef<HTMLDivElement>(null)
   useFocusTrap(ref, true)
@@ -109,7 +109,7 @@ export default function ImportReadsDialog({ files, onClose }: Props) {
           id, name: s.name.trim() || s.files[0].name, createdAt: now, modifiedAt: now,
           technology: s.technology, paired: s.layout !== 'single',
           files: s.files.map(f => ({ name: f.name, bytes: f.size })),
-          stats: res.stats, chunks: res.chunks, storedBytes: res.storedBytes,
+          stats: res.stats, qc: res.qc, chunks: res.chunks, storedBytes: res.storedBytes,
         }
         made.push(record)
         update(i, { status: 'done', progress: 1 })

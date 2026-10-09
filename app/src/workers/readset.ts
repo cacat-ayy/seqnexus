@@ -7,8 +7,7 @@
 
 import type { ReadSetMessage } from './readset.worker'
 import { CancelledError, runReadSetJob, type ReadSetJob } from '../ngs/jobs'
-import type { ImportResult } from '../ngs/importer'
-import type { TrimResult } from '../ngs/trimmer'
+import type { ImportOutcome, TrimOutcome } from '../ngs/jobs'
 import type { MappingReport } from '../ngs/builder'
 import type { DeNovoResult } from '../ngs/denovo/run'
 import type { KmerSpectrum } from '../ngs/denovo/spectrum'
@@ -75,11 +74,11 @@ function run<T>(job: ReadSetJob, onProgress?: (done: number, total: number) => v
 }
 
 export function startImport(job: Extract<ReadSetJob, { type: 'import' }>, onProgress?: (done: number, total: number) => void) {
-  return run<ImportResult>(job, onProgress)
+  return run<ImportOutcome>(job, onProgress)
 }
 
 export function startTrim(job: Extract<ReadSetJob, { type: 'trim' }>, onProgress?: (done: number, total: number) => void) {
-  return run<TrimResult>(job, onProgress)
+  return run<TrimOutcome>(job, onProgress)
 }
 
 export function startExport(job: Extract<ReadSetJob, { type: 'export' }>, onProgress?: (done: number, total: number) => void) {

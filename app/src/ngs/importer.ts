@@ -13,6 +13,8 @@ import { Gunzip } from 'fflate'
 import { ReadStreamParser, readId, type RawRead } from './fastq-stream'
 import { encodeChunk, type ReadInput } from './codec'
 import { StatsAccumulator } from './stats'
+import { QcAccumulator } from './qcreport/accumulator'
+import type { QcReport } from './qcreport/types'
 import { areMates } from './detect'
 import { isLongRead, type ReadSetStats, type Technology } from './types'
 
@@ -33,6 +35,8 @@ export type PutChunk = (index: number, data: Uint8Array) => Promise<void>
 
 export interface ImportResult {
   stats: ReadSetStats
+  /** The quality report, which the job stores beside the reads (qcreport/storage.ts). */
+  qc: QcReport
   chunks: number
   storedBytes: number
 }
@@ -167,16 +171,22 @@ export async function importReads(opts: {
   const total = opts.sources.reduce((n, s) => n + s.size, 0)
   let read = 0
   const paired = opts.layout !== 'single'
-  const stats = new StatsAccumulator(isLongRead(opts.technology), paired ? 2 : 1)
+  const long = isLongRead(opts.technology)
+  const stats = new StatsAccumulator(long, paired ? 2 : 1)
+  const qc = new QcAccumulator(long, paired ? 2 : 1)
   const writer = new ChunkWriter(opts.put, opts.chunkReads)
   let k = 0
   for await (const batch of layoutReads(opts.sources, opts.layout, n => { read += n; opts.onProgress?.(read, total) })) {
     for (const r of batch) {
-      stats.add(r.seq, r.qual, paired ? k & 1 : 0)
+      const id = readId(r.header)
+      const mate = paired ? k & 1 : 0
+      stats.add(r.seq, r.qual, mate)
+      qc.add(id, r.seq, r.qual, mate)
       k++
-      await writer.add({ id: readId(r.header), seq: r.seq, qual: r.qual })
+      await writer.add({ id, seq: r.seq, qual: r.qual })
     }
   }
   await writer.flush()
-  return { stats: stats.finish(), chunks: writer.chunks, storedBytes: writer.storedBytes }
+  const s = stats.finish()
+  return { stats: s, qc: qc.finish(s), chunks: writer.chunks, storedBytes: writer.storedBytes }
 }

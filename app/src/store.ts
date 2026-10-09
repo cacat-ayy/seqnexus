@@ -46,6 +46,8 @@ import { runFromDocs, type AssemblyRecord, type AssemblyRun, type NgsMapping } f
 import type { PlateVerifySettings } from './assembly/plate'
 import type { DeNovoReport } from './ngs/denovo/types'
 import type { KmerSpectrum } from './ngs/denovo/spectrum'
+import type { QcSummary } from './ngs/qcreport/types'
+import type { LibraryType } from './ngs/qcreport/expected'
 import type { ReadSetRecord } from './ngs/types'
 import type { AlnDoc } from './msa/model'
 import { DEFAULT_VIEW, type AlnView } from './msa/view'
@@ -1312,6 +1314,10 @@ interface EditorStore {
   renameReadSet: (id: string, name: string) => void
   /** Keep a read set's k-mer spectrum once counted. */
   setReadSetSpectrum: (id: string, kmers: KmerSpectrum) => void
+  /** Record that a read set's quality report was made (and stored beside its reads). */
+  setReadSetQc: (id: string, qc: QcSummary) => void
+  /** Set what kind of library a read set is (for the quality report's expected flags). */
+  setReadSetLibrary: (id: string, library: LibraryType | undefined) => void
   /** Delete a read set into the Recently deleted buffer. */
   removeReadSet: (id: string) => void
   /**
@@ -4032,6 +4038,14 @@ export const useEditorStore = create<EditorStore>((set, get) => {
 
     setReadSetSpectrum(id, kmers) {
       set(s => ({ readSets: s.readSets.map(r => (r.id === id ? { ...r, kmers } : r)) }))
+    },
+
+    setReadSetQc(id, qc) {
+      set(s => ({ readSets: s.readSets.map(r => (r.id === id ? { ...r, qc } : r)) }))
+    },
+
+    setReadSetLibrary(id, library) {
+      set(s => ({ readSets: s.readSets.map(r => (r.id === id ? { ...r, library, modifiedAt: Date.now() } : r)) }))
     },
 
     removeReadSet(id) {

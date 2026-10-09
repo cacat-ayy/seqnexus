@@ -47,6 +47,7 @@ import {
 } from './storage/idb'
 import { sanitizeReadSet } from './ngs/record'
 import { mappingStorageList } from './ngs/builder'
+import { qcStorageId } from './ngs/qcreport/storage'
 import type { ReadSetRecord } from './ngs/types'
 import { notify } from './toast'
 
@@ -1103,7 +1104,8 @@ async function loadV2(data: SerializedSessionV2): Promise<RestoredSession | null
     if (keeps) {
       // NGS mappings store their alignments and coverage beside the reads.
       const mappings = (data.assemblies ?? []).flatMap(a => storedSampleIds(a).flatMap(id => mappingStorageList(id)))
-      const listed = new Set([...readSets.map(r => r.id), ...mappings, ...keeps])
+      // A read set's quality report is stored under its own id (qcreport/storage.ts).
+      const listed = new Set([...readSets.flatMap(r => [r.id, qcStorageId(r.id)]), ...mappings, ...keeps])
       const stray = (await getStoredReadSetIds()).filter(id => !listed.has(id))
       if (stray.length > 0) await deleteReadChunks(stray)
     }

@@ -18,6 +18,7 @@ import { decodeChunk } from './codec'
 import { ChunkWriter, type ImportResult, type PutChunk } from './importer'
 import { ReadStreamParser, readId, type RawRead } from './fastq-stream'
 import { StatsAccumulator } from './stats'
+import { QcAccumulator } from './qcreport/accumulator'
 import { isLongRead, type Technology, type TrimSettings } from './types'
 
 export type FastpRunner = (
@@ -67,6 +68,7 @@ export async function trimReads(opts: {
 }): Promise<TrimResult> {
   const { settings: s, paired } = opts
   const stats = new StatsAccumulator(isLongRead(opts.technology), paired ? 2 : 1)
+  const qc = new QcAccumulator(isLongRead(opts.technology), paired ? 2 : 1)
   const writer = new ChunkWriter(opts.put)
   let readsBefore = 0
   let basesBefore = 0
@@ -105,8 +107,10 @@ export async function trimReads(opts: {
     if (paired && a.length !== b.length) throw new Error('fastp returned mates out of step')
     for (let i = 0; i < a.length; i++) {
       for (const [r, mate] of paired ? [[a[i], 0], [b[i], 1]] as const : [[a[i], 0]] as const) {
+        const id = readId(r.header)
         stats.add(r.seq, r.qual, mate)
-        await writer.add({ id: readId(r.header), seq: r.seq, qual: r.qual })
+        qc.add(id, r.seq, r.qual, mate)
+        await writer.add({ id, seq: r.seq, qual: r.qual })
       }
     }
   }
@@ -138,6 +142,7 @@ export async function trimReads(opts: {
         const seq = chunk.seq(i + m)
         const qual = chunk.hasQuality ? chunk.qualText(i + m) : ''
         stats.add(seq, qual, m)
+        qc.add(chunk.ids[i + m], seq, qual, m)
         await writer.add({ id: chunk.ids[i + m], seq, qual })
       }
     }
@@ -145,8 +150,10 @@ export async function trimReads(opts: {
   }
   if (useFastp) await runBatch()
   await writer.flush()
+  const finished = stats.finish()
   return {
-    stats: stats.finish(),
+    stats: finished,
+    qc: qc.finish(finished),
     chunks: writer.chunks,
     storedBytes: writer.storedBytes,
     readsBefore,

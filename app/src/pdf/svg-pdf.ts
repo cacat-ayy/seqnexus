@@ -378,8 +378,18 @@ function paint(c: Ctx, el: Element, parent: Props): void {
   if (scoped) c.ctx.restore()
 }
 
-/** The figure's SVG as a one-page PDF at the figure's size. */
-export function svgToPdf(svg: string, info: { title?: string; subject?: string } = {}): Uint8Array {
+interface ParsedSvg {
+  root: Element
+  vb: number[]
+  /** The view box (or the size when there is none). */
+  width: number
+  height: number
+  /** The size it is drawn at, in CSS pixels. */
+  outW: number
+  outH: number
+}
+
+function parseSvg(svg: string): ParsedSvg {
   const dom = new DOMParser().parseFromString(svg, 'image/svg+xml')
   const root = dom.documentElement
   if (!root || root.localName !== 'svg' || dom.getElementsByTagName('parsererror').length) throw new Error('The figure is not valid SVG')
@@ -387,18 +397,41 @@ export function svgToPdf(svg: string, info: { title?: string; subject?: string }
   const width = vb.length === 4 ? vb[2] : num(root.getAttribute('width'), 0)
   const height = vb.length === 4 ? vb[3] : num(root.getAttribute('height'), 0)
   if (!(width > 0 && height > 0)) throw new Error('The figure has no size')
-  const outW = num(root.getAttribute('width'), width)
-  const outH = num(root.getAttribute('height'), height)
-  const s = PT_PER_PX * Math.min(1, MAX_PAGE / (outW * PT_PER_PX), MAX_PAGE / (outH * PT_PER_PX))
+  return { root, vb, width, height, outW: num(root.getAttribute('width'), width), outH: num(root.getAttribute('height'), height) }
+}
 
-  const doc = new PdfDocument(info)
-  const ctx = doc.addPage(outW * s, outH * s)
-  const sheet = [...root.getElementsByTagName('style')].map(x => x.textContent ?? '').join('\n')
+/** Paint a parsed figure, its view box filling `outW` by `outH` points from the canvas's current origin. */
+function paintParsed(ctx: PdfCanvas, p: ParsedSvg, outW: number, outH: number): void {
+  const sheet = [...p.root.getElementsByTagName('style')].map(x => x.textContent ?? '').join('\n')
   const ids = new Map<string, Element>()
-  for (const el of root.querySelectorAll('[id]')) ids.set(el.getAttribute('id')!, el)
-  ctx.scale((outW * s) / width, (outH * s) / height)
-  if (vb.length === 4 && (vb[0] || vb[1])) ctx.translate(-vb[0], -vb[1])
-  const c: Ctx = { ctx, rules: parseStyleSheet(sheet), ids, width, height }
-  paint(c, root, { ...INITIAL, opacity: '1' })
+  for (const el of p.root.querySelectorAll('[id]')) ids.set(el.getAttribute('id')!, el)
+  ctx.scale(outW / p.width, outH / p.height)
+  if (p.vb.length === 4 && (p.vb[0] || p.vb[1])) ctx.translate(-p.vb[0], -p.vb[1])
+  const c: Ctx = { ctx, rules: parseStyleSheet(sheet), ids, width: p.width, height: p.height }
+  paint(c, p.root, { ...INITIAL, opacity: '1' })
+}
+
+/** The figure's SVG as a one-page PDF at the figure's size. */
+export function svgToPdf(svg: string, info: { title?: string; subject?: string } = {}): Uint8Array {
+  const p = parseSvg(svg)
+  const s = PT_PER_PX * Math.min(1, MAX_PAGE / (p.outW * PT_PER_PX), MAX_PAGE / (p.outH * PT_PER_PX))
+  const doc = new PdfDocument(info)
+  const ctx = doc.addPage(p.outW * s, p.outH * s)
+  paintParsed(ctx, p, p.outW * s, p.outH * s)
   return doc.toBytes()
+}
+
+/** The height, in points, an SVG figure takes when drawn `width` points wide. */
+export function svgHeightAt(svg: string, width: number): number {
+  const p = parseSvg(svg)
+  return (p.outH / p.outW) * width
+}
+
+/** Draw an SVG figure on a page (a report's figure), `width` points wide with its top left at (x, y). */
+export function drawSvg(ctx: PdfCanvas, svg: string, x: number, y: number, width: number): void {
+  const p = parseSvg(svg)
+  ctx.save()
+  ctx.translate(x, y)
+  paintParsed(ctx, p, width, (p.outH / p.outW) * width)
+  ctx.restore()
 }
