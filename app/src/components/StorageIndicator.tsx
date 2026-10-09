@@ -19,13 +19,7 @@ import { notify, useToastStore } from '../toast'
 import {
   useBackupStore, backupOverdue, daysAgo, REMINDER_CHOICES, type ReminderDays,
 } from '../backup/backup'
-
-function formatBytes(bytes: number): string {
-  if (bytes >= 1_073_741_824) return `${(bytes / 1_073_741_824).toFixed(1)} GB`
-  if (bytes >= 1_048_576) return `${(bytes / 1_048_576).toFixed(1)} MB`
-  if (bytes >= 1024) return `${(bytes / 1024).toFixed(0)} KB`
-  return `${bytes} B`
-}
+import { formatBytes } from '../utils/format'
 
 function barColor(pct: number): string {
   if (pct > 80) return '#e53e3e'

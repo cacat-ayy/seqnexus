@@ -7,7 +7,7 @@
  */
 
 import { nnParams } from '../thermodynamics'
-import { reverseComplement } from '../scoring'
+import { reverseComplement } from '../../models/complement'
 import type { PenaltyTerm } from '../scoring'
 import type { PairEvaluation } from './types'
 

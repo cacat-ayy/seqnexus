@@ -5,7 +5,8 @@ import { analyseSpectrum, readSetSpectrum } from './spectrum'
 import { applyThreshold, buildUnitigs, cleanGraph, n50, unitigLinks } from './dbg'
 import { dedupeLinks, toGfa } from './graph'
 import { assembleShortReads, kChoices, solidThreshold } from './short'
-import { circleDistance, randomSequence, revcomp, rng, sameCircle, simulateReads, type SimRead } from './simulate'
+import { circleDistance, randomSequence, rng, sameCircle, simulateReads, type SimRead } from './simulate'
+import { reverseComplement as revcomp } from '../../models/complement'
 import { DEFAULT_SHORT_SETTINGS } from './types'
 
 const ILLUMINA = { sub: 0.003, ins: 0.0001, del: 0.0001 }

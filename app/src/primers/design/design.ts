@@ -10,7 +10,8 @@
  * Pure; runs in a Web Worker (see workers/primer-design.worker.ts).
  */
 
-import { reverseComplement, scorePrimer, type PenaltyTerm } from '../scoring'
+import { scorePrimer, type PenaltyTerm } from '../scoring'
+import { reverseComplement } from '../../models/complement'
 import { evaluatePair } from './pairing'
 import type { Candidate, DesignPair, DesignRequest, DesignResult, ProbeConstraints, Region } from './types'
 

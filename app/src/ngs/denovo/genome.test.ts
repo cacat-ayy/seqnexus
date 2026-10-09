@@ -12,7 +12,8 @@ import {
 } from './olc'
 import { compareToExpected } from './compare'
 import { kmerSet } from './kmers'
-import { randomSequence, revcomp, rng, simulateReads, withErrors, NANOPORE_ERRORS, type SimRead } from './simulate'
+import { randomSequence, rng, simulateReads, withErrors, NANOPORE_ERRORS, type SimRead } from './simulate'
+import { reverseComplement as revcomp } from '../../models/complement'
 import { DEFAULT_DENOVO_SETTINGS } from './types'
 import { longMethod } from './run'
 

@@ -11,6 +11,7 @@
 import { bandLabelBp, type GelBand, type GelLayout } from '../bands'
 import { GEL_FORMATS } from '../migration'
 import { toneMap, bandPeakDensity } from './raster'
+import { formatBp } from '../../utils/format'
 
 export interface Rect { x: number; y: number; w: number; h: number }
 
@@ -98,11 +99,6 @@ const MIN_LANE_W = 22
 const MAX_LANE_W = 60
 /** Gap between lanes as a share of lane width: real combs leave narrow teeth. */
 const LANE_GAP_RATIO = 0.3
-
-export function formatBp(bp: number): string {
-  if (bp >= 1000) return `${(bp / 1000).toFixed(bp >= 10000 ? 0 : 1)} kb`
-  return `${bp} bp`
-}
 
 export interface SceneInput {
   width: number

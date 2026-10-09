@@ -15,6 +15,7 @@ import type { DocumentState, SequenceMetadata } from '../models/Document'
 import { cleanOligo, newPrimerId, primerOligoFromFeature, type PrimerData } from '../primers/oligo'
 import { findBindingSites } from '../primers/binding'
 import { resolveForward } from './location'
+import { idSource } from './ids'
 
 // Packet type constants
 const PACKET_DNA       = 0x00
@@ -23,16 +24,8 @@ const PACKET_NOTES     = 0x06
 const PACKET_COOKIE    = 0x09
 const PACKET_FEATURES  = 0x0A
 
-let _idPrefix = Math.random().toString(36).slice(2, 6)
-let _nextId = 0
-function nextId(): string {
-  return `sg_${_idPrefix}_${++_nextId}`
-}
+const ids = idSource('sg')
 
-function resetIds(): void {
-  _idPrefix = Math.random().toString(36).slice(2, 6)
-  _nextId = 0
-}
 
 /**
  * Strip HTML tags from a string and decode entities.
@@ -47,15 +40,14 @@ function stripHtml(s: string): string {
 
 /** Reset ID counter (for testing). */
 export function _resetIdCounter(): void {
-  _idPrefix = 'test'
-  _nextId = 0
+  ids.resetForTests()
 }
 
 /**
  * Parse a SnapGene .dna file from an ArrayBuffer.
  */
 export function parseSnapGene(buffer: ArrayBuffer): DocumentState {
-  resetIds()
+  ids.reset()
   const view = new DataView(buffer)
   const bytes = new Uint8Array(buffer)
   let offset = 0
@@ -226,7 +218,7 @@ function parseFeatureXml(xml: string, rawFeatures: RawFeature[]): void {
     const label = qualifiers['label']?.[0] || qualifiers['gene']?.[0] || qualifiers['product']?.[0]
 
     rawFeatures.push({
-      data: { id: nextId(), name: label || featName, type, strand, color, qualifiers },
+      data: { id: ids.next(), name: label || featName, type, strand, color, qualifiers },
       pieces,
     })
   }

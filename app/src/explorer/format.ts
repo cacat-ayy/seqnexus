@@ -6,13 +6,6 @@
  * sentence. Same spirit as `formatBytes` in StorageIndicator.
  */
 
-/** 812 -> "812 bp", 4231 -> "4.2 kb", 1_400_000 -> "1.4 Mb". */
-export function formatBases(n: number): string {
-  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)} Mb`
-  if (n >= 1_000) return `${(n / 1_000).toFixed(1)} kb`
-  return `${n} bp`
-}
-
 /** 0.9734 -> "97%". Fractions, as the alignment engine reports them. */
 export function formatPercent(fraction: number): string {
   return `${Math.round(fraction * 100)}%`

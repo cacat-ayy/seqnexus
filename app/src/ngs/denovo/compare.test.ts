@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import { compareToExpected, liftFeatures, revcomp } from './compare'
+import { compareToExpected, liftFeatures } from './compare'
+import { reverseComplement as revcomp } from '../../models/complement'
 import { verifyContig } from './verifyContig'
 import { lineUpContigs, lineUpTargets } from './lineup'
 import { DEFAULT_VERIFY } from '../../assembly/verify'

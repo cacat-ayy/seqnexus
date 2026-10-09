@@ -38,6 +38,8 @@
  *    circle.
  */
 
+import { reverseComplement } from '../../models/complement'
+
 export interface Overlap {
   /** Query and target read, by index. */
   q: number
@@ -562,19 +564,12 @@ export function cleanStringGraph(g: StringGraph): CleanReport {
   return r
 }
 
-const COMP: Record<string, string> = { A: 'T', C: 'G', G: 'C', T: 'A', N: 'N' }
-export function revcomp(s: string): string {
-  let out = ''
-  for (let i = s.length - 1; i >= 0; i--) out += COMP[s[i]] ?? 'N'
-  return out
-}
-
 /** A unitig's bases from its reads' kept stretches (`read(r)`, forward strand). */
 export function unitigSequence(u: Unitig, read: (r: number) => string): string {
   const parts: string[] = []
   u.path.forEach((v, i) => {
     const s = read(v >> 1)
-    const oriented = v & 1 ? revcomp(s) : s
+    const oriented = v & 1 ? reverseComplement(s) : s
     parts.push(oriented.slice(0, Math.max(0, Math.min(oriented.length, u.lengths[i]))))
   })
   return parts.join('')

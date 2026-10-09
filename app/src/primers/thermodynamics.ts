@@ -155,7 +155,7 @@ export function gcFraction(seq: string): number {
   for (let i = 0; i < s.length; i++) {
     if (s[i] === 'G' || s[i] === 'C') gc++
   }
-  return gc / s.length
+  return s.length === 0 ? 0 : gc / s.length
 }
 
 /**

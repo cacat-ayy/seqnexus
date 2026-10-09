@@ -66,7 +66,7 @@ function setCanvasFonts(mono: string, sans: string) {
   if (mono === MONO_FAMILY && sans === SANS_FAMILY) return
   MONO_FAMILY = mono
   SANS_FAMILY = sans
-  _measureCache.clear()
+  clearMeasureCache()
 }
 const sansFont = (spec: string) => `${spec} ${SANS_FAMILY}`
 const enzymeLabelFont = () => sansFont(ENZYME_LABEL_SPEC)
@@ -97,6 +97,7 @@ import {
   paintSequenceRows, type SiteChip,
   readSequenceColors, ENZYME_LABEL_SPEC, type SequenceColors, type RowStacks,
 } from './sequence-paint'
+import { clearMeasureCache, measureText } from '../utils/measure-text'
 
 // Module-level layout ref - set during draw(), used by hit-test helpers
 function baseX(i: number, rowStart: number, L: ZoomLayout): number {
@@ -259,28 +260,8 @@ function hitTestAnnotationEdge(
 
 // Grouped enzyme sites (isoschizomer merging) live in ../enzymes/grouping.
 
-/**
- * Text width in a font, measured once. Labels are drawn every frame and
- * hit-tested on every mouse move, but the set of distinct names is small.
- */
-let _measureCtx: CanvasRenderingContext2D | null = null
-const _measureCache = new Map<string, number>()
-function measureText(font: string, text: string): number {
-  const key = `${font}\u0000${text}`
-  const hit = _measureCache.get(key)
-  if (hit !== undefined) return hit
-  if (!_measureCtx) {
-    const c = document.createElement('canvas')
-    _measureCtx = c.getContext('2d')!
-  }
-  _measureCtx.font = font
-  const w = _measureCtx.measureText(text).width
-  if (_measureCache.size > 5000) _measureCache.clear()
-  _measureCache.set(key, w)
-  return w
-}
 function measureLabelWidth(text: string): number {
-  return measureText(enzymeLabelFont(), text)
+  return measureText(text, enzymeLabelFont())
 }
 
 
@@ -910,7 +891,7 @@ function SequenceView({ onFindRequest, onFindClose, onAnnotateRequest, onEditFea
       basePalette,
       paintBackground,
       fonts: { mono: MONO_FAMILY, sans: SANS_FAMILY },
-      measure: measureText,
+      measure: (font, text) => measureText(text, font),
       selection,
       extraSelections,
       selectionHandles: true,

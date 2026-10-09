@@ -27,6 +27,7 @@ import { withoutSegments } from './fragment'
 import type { Assembly, AssemblyPart, Junction, Overlap } from './product'
 import { assemblyName, canonical, rankAssemblies } from './product'
 import { KITS, targetOverlap, type Kit, type KitId } from './kits'
+import { gcFraction } from '../primers/thermodynamics'
 
 export interface HomologyPart {
   /** Stable id, used to name junctions. */
@@ -141,12 +142,6 @@ function countMismatches(a: string, b: string): number {
     if (x !== y || !'ACGT'.includes(x)) n++
   }
   return n
-}
-
-function gcFraction(seq: string): number {
-  let gc = 0
-  for (const base of seq.toUpperCase()) if (base === 'G' || base === 'C') gc++
-  return seq.length === 0 ? 0 : gc / seq.length
 }
 
 function describeOverlap(sequence: string, mismatches: number): Overlap {

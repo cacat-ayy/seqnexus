@@ -18,17 +18,9 @@ import { renderSceneToCanvas } from '../../plasmid/renderCanvas'
 import { getPlasmidStyle, resolvePlasmidColors } from '../../plasmid/styles'
 import { stackAnnotations } from '../../plasmid/geometry'
 import { LOW_QUALITY_THRESHOLD } from '../../explorer/kinds'
+import { measureText } from '../../utils/measure-text'
 
 const SIZE = 132
-
-/** Shared text measurer, matching PlasmidMap's. */
-let measureCtx: CanvasRenderingContext2D | null = null
-function measureText(text: string, font: string): number {
-  if (!measureCtx) measureCtx = document.createElement('canvas').getContext('2d')
-  if (!measureCtx) return text.length * 6
-  measureCtx.font = font
-  return measureCtx.measureText(text).width
-}
 
 export const PlasmidThumbnail = memo(function PlasmidThumbnail({ doc }: { doc: DocumentState }) {
   const ref = useRef<HTMLCanvasElement>(null)

@@ -16,7 +16,7 @@ import {
 import type { GelConditions } from '../../gel/model'
 import type { SequenceSource } from '../../gel/simulate'
 import { runLengthMm } from '../../gel/migration'
-import { formatBp } from '../../gel/render/scene'
+import { formatBp } from '../../utils/format'
 import type { SourceOption } from './LaneInspector'
 
 interface Props {

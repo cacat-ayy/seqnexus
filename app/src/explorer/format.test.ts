@@ -1,22 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { formatBases, formatPercent, formatCount, meanQuality } from './format'
-
-describe('formatBases', () => {
-  it('uses bp below a thousand', () => {
-    expect(formatBases(0)).toBe('0 bp')
-    expect(formatBases(812)).toBe('812 bp')
-    expect(formatBases(999)).toBe('999 bp')
-  })
-
-  it('switches to kb at a thousand', () => {
-    expect(formatBases(1000)).toBe('1.0 kb')
-    expect(formatBases(4231)).toBe('4.2 kb')
-  })
-
-  it('switches to Mb at a million', () => {
-    expect(formatBases(1_400_000)).toBe('1.4 Mb')
-  })
-})
+import { formatPercent, formatCount, meanQuality } from './format'
 
 describe('formatPercent', () => {
   it('renders a fraction as a whole percent', () => {

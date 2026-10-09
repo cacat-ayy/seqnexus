@@ -11,7 +11,7 @@
 
 import { DUPLICATION_LABELS, MODULES, type MateReport, type ModuleId, type ModuleStatus, type QcReport } from '../../../ngs/qcreport/types'
 import { expectedNote, LIBRARY_LABEL, type ExpectedContext } from '../../../ngs/qcreport/expected'
-import { formatBaseCount } from '../../../ngs/format'
+import { formatBp } from '../../../utils/format'
 import { writeReportPdf, type ReportBlock } from '../../../pdf/report-pdf'
 import { figurePalette, lineFigure, qualityFigure, tileFigure, type FigurePalette } from './figures'
 
@@ -80,7 +80,7 @@ function basicRows(m: MateReport, fileName: string): [string, string][] {
     ['File type', 'Conventional base calls'],
     ['Encoding', m.lowestQuality === null ? 'No qualities' : 'Sanger / Illumina 1.9 (Phred+33)'],
     ['Total Sequences', nf.format(m.reads)],
-    ['Total Bases', formatBaseCount(m.bases)],
+    ['Total Bases', formatBp(m.bases)],
     ['Sequences flagged as poor quality', '0'],
     ['Sequence length', m.minLength === m.maxLength ? String(m.maxLength) : `${m.minLength}-${m.maxLength}`],
     ['%GC', String(Math.round(m.gc))],

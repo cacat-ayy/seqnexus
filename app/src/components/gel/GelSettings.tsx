@@ -6,7 +6,7 @@ import { AGAROSE_MAX, AGAROSE_MIN, GEL_FORMATS, resolutionRange } from '../../ge
 import type { GelBuffer, GelConditions, GelFormat } from '../../gel/model'
 import { GEL_LOOKS, GEL_LOOK_ORDER, type GelLookId } from '../../gel/render/looks'
 import type { GelEffects } from '../../gel/render/raster'
-import { formatBp } from '../../gel/render/scene'
+import { formatBp } from '../../utils/format'
 import type { GelDisplay, LaneLabelMode } from '../../gel/workspace'
 
 interface Props {

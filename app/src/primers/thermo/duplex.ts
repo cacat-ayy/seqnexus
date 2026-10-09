@@ -16,6 +16,7 @@
  */
 
 import { DNA_DE, DNA_IMM, DNA_NN, DNA_TMM, type Params, type Table } from './tables'
+import { gcFraction } from '../thermodynamics'
 
 const R = 1.987 // cal/(mol·K)
 
@@ -171,12 +172,6 @@ export function saltCorrection(seq: string, c: Conditions): number | null {
   const lmg = Math.log(mg)
   return (a + b * lmg + fGC * (cc + d * lmg)
     + (1 / (2 * (seq.length - 1))) * (e + f * lmg + g * lmg ** 2)) * 1e-5
-}
-
-function gcFraction(s: string): number {
-  let gc = 0
-  for (const ch of s) if (ch === 'G' || ch === 'C') gc++
-  return s.length ? gc / s.length : 0
 }
 
 const PAIR: Record<string, string> = { A: 'T', T: 'A', G: 'C', C: 'G' }

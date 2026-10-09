@@ -14,7 +14,7 @@ import { getEnzyme, type RestrictionEnzyme } from '../enzymes/db'
 import { digestFragments } from '../cloning/digest'
 import { notify } from '../toast'
 import type { FragmentOrigin } from './model'
-import { formatBp } from './render/scene'
+import { formatBp } from '../utils/format'
 
 /** The live document behind a tab: the store's copy when it is the open one. */
 function docOf(tabId: string): DocumentState | null {

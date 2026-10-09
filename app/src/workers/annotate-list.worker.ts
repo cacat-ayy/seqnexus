@@ -33,20 +33,7 @@ export interface AnnotationMatch {
   color?: string
 }
 
-const COMPLEMENT: Record<string, string> = {
-  A: 'T', T: 'A', G: 'C', C: 'G',
-  a: 't', t: 'a', g: 'c', c: 'g',
-  N: 'N', n: 'n',
-}
-
-function reverseComplement(seq: string): string {
-  const len = seq.length
-  const result = new Array<string>(len)
-  for (let i = 0; i < len; i++) {
-    result[len - 1 - i] = COMPLEMENT[seq[i]] ?? 'N'
-  }
-  return result.join('')
-}
+import { reverseComplement } from '../models/complement'
 
 /**
  * Compute percent identity between two equal-length sequences.

@@ -27,6 +27,7 @@ import { gcPercent } from '../../primers/thermodynamics'
 import { downloadBlob } from '../../utils/download'
 import { notify } from '../../toast'
 import type { MapSite } from '../../cloning/sites'
+import { measureText } from '../../utils/measure-text'
 
 export interface MapRegion {
   start: number
@@ -53,15 +54,6 @@ interface Props {
   siteHint?: (site: MapSite) => string | null
   /** Offer PNG and SVG export under this file name. */
   exportName?: string
-}
-
-/** One offscreen context for measuring text, as PlasmidMap keeps. */
-let measureCtx: CanvasRenderingContext2D | null = null
-function measureText(text: string, font: string): number {
-  if (!measureCtx) measureCtx = document.createElement('canvas').getContext('2d')
-  if (!measureCtx) return text.length * 6
-  measureCtx.font = font
-  return measureCtx.measureText(text).width
 }
 
 const MIN_ZOOM = 1

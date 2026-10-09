@@ -15,7 +15,8 @@ import type {
 import type { DocumentOrigin } from '../models/Document'
 import type { ExplorerItem, ItemBadge, ItemKind } from './types'
 import { toUid } from './types'
-import { formatBases, formatPercent, formatCount, meanQuality } from './format'
+import { formatPercent, formatCount, meanQuality } from './format'
+import { formatBp } from '../utils/format'
 import { readQc } from '../sanger/qc'
 import { METHOD_LABEL, partMatchesSource } from '../cloning/design'
 import { originLabel } from '../msa/model'
@@ -130,7 +131,7 @@ export function sequenceToItem(tab: DocumentTab, ctx: AdapterContext): ExplorerI
     isCircular: circular,
     canDuplicate: true,
     stats: [
-      formatBases(tab.doc.sequence.length),
+      formatBp(tab.doc.sequence.length),
       circular ? 'circular' : 'linear',
       formatCount(features, 'feature'),
     ],
@@ -155,7 +156,7 @@ export function readToItem(read: SequencingRead, ctx: AdapterContext): ExplorerI
   // A file without qualities has a track of zeros; that is no quality, not Q0.
   const q = read.data.metadata.qualityMissing ? null : meanQuality(read.data.qualityScores.slice(start, end))
 
-  const stats = [isTrimmed ? `${formatBases(trimmed)} of ${formatBases(total)}` : formatBases(total)]
+  const stats = [isTrimmed ? `${formatBp(trimmed)} of ${formatBp(total)}` : formatBp(total)]
   if (q !== null) stats.push(`Q${Math.round(q)}`)
 
   // The verdict is about the trace itself, so it does not move with the trim.
@@ -265,7 +266,7 @@ export function contigToItem(contig: Contig, ctx: AdapterContext): ExplorerItem 
     isReadOnly: false,
     isCircular: false,
     canDuplicate: false,
-    stats: [formatCount(doc.rows.length, 'read'), formatBases(doc.width)],
+    stats: [formatCount(doc.rows.length, 'read'), formatBp(doc.width)],
     badges: [],
     derivedFrom: [],
     parentUid: toUid('assembly', contig.assemblyId),
@@ -291,7 +292,7 @@ export function assemblyToItem(assembly: Assembly, contigs: readonly Contig[], c
       isOpen: isOpen(ctx, 'assembly', assembly.id), isIncluded: false, isDirty: false, isReadOnly: false,
       isCircular: false, canDuplicate: false,
       stats: assembly.denovo
-        ? [formatCount(assembly.denovo.contigs.length, 'contig'), 'de novo', formatBases(assembly.denovo.contigs.reduce((n, c) => n + c.length, 0)), ngs.readSetName]
+        ? [formatCount(assembly.denovo.contigs.length, 'contig'), 'de novo', formatBp(assembly.denovo.contigs.reduce((n, c) => n + c.length, 0)), ngs.readSetName]
         : [`${reads ? Math.round((mapped / reads) * 100) : 0}% mapped`, `vs ${r.references.map(x => x.name).join(', ')}`, samples.length > 1 ? formatCount(samples.length, 'sample') : ngs.readSetName],
       badges: [],
       derivedFrom: [...samples.flatMap(x => (x.readSetId ? [toUid('readset', x.readSetId)] : [])), ...r.references.flatMap(x => (x.tabId ? [toUid('sequence', x.tabId)] : []))],
@@ -303,7 +304,7 @@ export function assemblyToItem(assembly: Assembly, contigs: readonly Contig[], c
   const ref = assembly.inputs.reference
   const refCount = assembly.inputs.references?.length ?? 0
   stats.push(assembly.method !== 'reference' ? 'de novo' : refCount > 1 ? `vs ${refCount} references` : ref ? `vs ${ref.name}` : 'mapped')
-  if (single) stats.push(formatBases(width))
+  if (single) stats.push(formatBp(width))
   const badges: ItemBadge[] = []
   const left = assembly.unplaced.length
   if (left > 0) {

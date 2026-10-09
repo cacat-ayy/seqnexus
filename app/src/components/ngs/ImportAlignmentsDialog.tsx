@@ -20,7 +20,7 @@ import { notify } from '../../toast'
 import { useFocusTrap } from '../../hooks/useFocusTrap'
 import { readAlignmentHeader, type AlignmentFileHeader } from '../../ngs/alignmentImport'
 import type { MappingReport } from '../../ngs/builder'
-import { formatBytes } from '../../ngs/format'
+import { formatBytes } from '../../utils/format'
 import { startImportAlignments, CancelledError, type JobHandle } from '../../workers/readset'
 import { deleteMappingStorage } from '../../storage/idb'
 

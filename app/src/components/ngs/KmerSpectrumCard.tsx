@@ -7,7 +7,7 @@
 
 import { Hash } from 'lucide-react'
 import { spectrumBins, type KmerSpectrum } from '../../ngs/denovo/spectrum'
-import { formatBaseCount } from '../../ngs/format'
+import { formatBp } from '../../utils/format'
 import { HistogramChart } from './charts'
 
 const nf = new Intl.NumberFormat()
@@ -43,7 +43,7 @@ export default function KmerSpectrumCard({ spectrum: s, onCount, counting = null
           <div className="ngs-tiles">
             <div className="ngs-tile">
               <div className="ngs-tile-label">Genome length</div>
-              <div className="ngs-tile-value">{s.genomeSize !== null ? formatBaseCount(s.genomeSize) : 'Unclear'}</div>
+              <div className="ngs-tile-value">{s.genomeSize !== null ? formatBp(s.genomeSize) : 'Unclear'}</div>
               <div className="ngs-tile-detail">{s.genomeSize !== null ? 'estimated from the k-mers' : 'no peak past the errors: too little coverage, or not one genome'}</div>
             </div>
             {s.peak !== null && (

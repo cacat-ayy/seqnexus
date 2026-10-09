@@ -13,29 +13,21 @@ import { unzipSync } from 'fflate'
 import { Sequence, type Topology } from '../models/Sequence'
 import { Annotation, type AnnotationData, type Strand } from '../models/Annotation'
 import type { DocumentState } from '../models/Document'
+import { idSource } from './ids'
 
-let _idPrefix = Math.random().toString(36).slice(2, 6)
-let _nextId = 0
-function nextId(): string {
-  return `gen_${_idPrefix}_${++_nextId}`
-}
+const ids = idSource('gen')
 
-function resetIds(): void {
-  _idPrefix = Math.random().toString(36).slice(2, 6)
-  _nextId = 0
-}
 
 /** Reset ID counter with deterministic prefix (for testing). */
 export function _resetIdCounter(): void {
-  _idPrefix = 'test'
-  _nextId = 0
+  ids.resetForTests()
 }
 
 /**
  * Parse a Geneious .geneious file from an ArrayBuffer.
  */
 export function parseGeneious(buffer: ArrayBuffer): DocumentState {
-  resetIds()
+  ids.reset()
   const bytes = new Uint8Array(buffer)
   let xmlString: string
 
@@ -214,7 +206,7 @@ function extractAnnotations(root: Element, annotations: AnnotationData[]): void 
     }
 
     annotations.push({
-      id: nextId(),
+      id: ids.next(),
       name: annName,
       type: annType,
       start,

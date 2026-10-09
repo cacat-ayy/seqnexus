@@ -21,6 +21,7 @@ import type { Assembly } from '../../cloning/product'
 import type { DesignPart } from '../../cloning/design'
 import { isIntended } from '../../cloning/outcome'
 import { partColor } from './colors'
+import { formatBp } from '../../utils/format'
 
 export interface StripPiece {
   part: DesignPart
@@ -35,10 +36,6 @@ interface Props {
   product: Assembly | null
   selected: string
   onSelect: (tab: string) => void
-}
-
-function formatBp(n: number): string {
-  return n >= 1000 ? `${(n / 1000).toFixed(n >= 10000 ? 0 : 1)} kb` : `${n} bp`
 }
 
 type Fit = 'pairs' | 'self' | 'none'

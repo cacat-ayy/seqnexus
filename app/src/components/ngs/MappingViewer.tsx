@@ -67,6 +67,7 @@ import {
 } from './mappingPaint'
 import { readAlnTheme, useThemeVersion } from '../alignment/theme'
 import { drawCaption } from '../minimap/theme'
+import { reverseComplement } from '../../models/complement'
 
 const nf = new Intl.NumberFormat()
 
@@ -130,13 +131,6 @@ interface Props {
   name: string
   refIndex: number
   onRefIndex: (i: number) => void
-}
-
-function revcomp(s: string): string {
-  const m: Record<string, string> = { A: 'T', C: 'G', G: 'C', T: 'A', N: 'N' }
-  let out = ''
-  for (let i = s.length - 1; i >= 0; i--) out += m[s[i]] ?? 'N'
-  return out
 }
 
 export default function MappingViewer({ ngs, assemblyId, name, refIndex, onRefIndex }: Props) {
@@ -430,7 +424,7 @@ export default function MappingViewer({ ngs, assemblyId, name, refIndex, onRefIn
     const sam = sequenceOf(refBases, a)
     if (sam === '*') { copyText(`>${a.name}\n`, 'Copied the read name; its bases were not stored'); return }
     const rev = (a.flag & 0x10) !== 0
-    const seq = rev ? revcomp(sam) : sam
+    const seq = rev ? reverseComplement(sam) : sam
     const qual = rev ? [...a.qual].reverse().join('') : a.qual
     copyText(fastq && qual ? `@${a.name}\n${seq}\n+\n${qual}\n` : `>${a.name}\n${seq}\n`, fastq ? 'Copied the read as FASTQ' : 'Copied the read as FASTA')
   }

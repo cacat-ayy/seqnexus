@@ -29,7 +29,7 @@ import {
 import { editedRead, toFasta, toFastq } from './sanger/edits'
 import { displayPosition, internalPosition, type DocumentState } from './models/Document'
 import { Sequence } from './models/Sequence'
-import { readFasta } from './io/fasta'
+import { readFasta, type FastaRead } from './io/fasta'
 import ConfirmDialog from './components/ConfirmDialog'
 import { parseGenBankMulti, writeGenBank } from './io/genbank'
 import { parseGenbankFile } from './workers/genbank-parser'
@@ -180,6 +180,21 @@ const errorDetail = (err: unknown): string | undefined =>
 function reportImportWarnings(warnings: string[] | undefined): void {
   if (!warnings || warnings.length === 0) return
   notify.warning('Some items in the session file could not be imported', { detail: warnings.join('\n') })
+}
+
+/** Tell the user about the FASTA records that were not opened: proteins, and records with characters that are not sequence codes. */
+function reportFastaSkips(source: string, { proteins, unreadable }: FastaRead): void {
+  if (proteins.length > 0) {
+    notify.warning(
+      `${proteins.length === 1 ? 'A protein sequence' : `${proteins.length} protein sequences`} in "${source}" ${proteins.length === 1 ? 'was' : 'were'} not opened`,
+      { detail: `Protein sequences aren't supported yet: ${proteins.slice(0, 5).join(', ')}${proteins.length > 5 ? ', …' : ''}` },
+    )
+  }
+  if (unreadable.length > 0) {
+    notify.warning(`${unreadable.length} record${unreadable.length === 1 ? '' : 's'} in "${source}" could not be read`, {
+      detail: `They contain characters that are not sequence codes: ${unreadable.slice(0, 5).join(', ')}${unreadable.length > 5 ? ', …' : ''}`,
+    })
+  }
 }
 
 /** One standing notice for features a GenBank import couldn't take in as written. */
@@ -987,18 +1002,9 @@ export default function App() {
           return
         }
 
-        const { records, proteins, unreadable } = readFasta(text, defaultName, /\.faa$/i.test(file.name))
-        if (proteins.length > 0) {
-          notify.warning(
-            `${proteins.length === 1 ? 'A protein sequence' : `${proteins.length} protein sequences`} in "${file.name}" ${proteins.length === 1 ? 'was' : 'were'} not opened`,
-            { detail: `Protein sequences aren't supported yet: ${proteins.slice(0, 5).join(', ')}${proteins.length > 5 ? ', …' : ''}` },
-          )
-        }
-        if (unreadable.length > 0) {
-          notify.warning(`${unreadable.length} record${unreadable.length === 1 ? '' : 's'} in "${file.name}" could not be read`, {
-            detail: `They contain characters that are not sequence codes: ${unreadable.slice(0, 5).join(', ')}${unreadable.length > 5 ? ', …' : ''}`,
-          })
-        }
+        const read = readFasta(text, defaultName, /\.faa$/i.test(file.name))
+        reportFastaSkips(file.name, read)
+        const { records, proteins, unreadable } = read
         if (records.length === 0) {
           if (proteins.length === 0 && unreadable.length === 0) notify.error(`No sequence data found in "${file.name}"`)
           return
@@ -1095,19 +1101,9 @@ export default function App() {
         }
       } else {
         // Multi-record FASTA or plain text
-        const records: { name: string; bases: string }[] = []
-        let currentName = 'Pasted'
-        let currentBases = ''
-        for (const line of text.split(/\r?\n/)) {
-          if (line.startsWith('>')) {
-            if (currentBases) records.push({ name: currentName, bases: currentBases.toUpperCase() })
-            currentName = line.slice(1).trim().split(/\s+/)[0] || 'Pasted'
-            currentBases = ''
-          } else {
-            currentBases += line.replace(/\s/g, '')
-          }
-        }
-        if (currentBases) records.push({ name: currentName, bases: currentBases.toUpperCase() })
+        const read = readFasta(text, 'Pasted')
+        reportFastaSkips('clipboard', read)
+        const records = read.records
         const tabIds: string[] = []
         for (const rec of records) tabIds.push(openDocument(rec.name, rec.bases, 'linear', undefined, 'paste'))
         if (records.length > 1) {

@@ -22,6 +22,7 @@ import {
   type PartOrientation,
 } from '../../cloning/design'
 import { partColor } from './colors'
+import { formatBp } from '../../utils/format'
 
 interface Props {
   design: CloningDesign
@@ -38,10 +39,6 @@ interface Props {
   onRemove: (id: string) => void
   onRefresh: (id: string) => void
   onReveal: (part: DesignPart) => void
-}
-
-function formatBp(n: number): string {
-  return n >= 1000 ? `${(n / 1000).toFixed(n >= 10000 ? 0 : 1)} kb` : `${n} bp`
 }
 
 const ORIENTATION_NOTE: Record<PartOrientation, string | null> = {

@@ -17,7 +17,7 @@ import { notify } from '../../../toast'
 import { getReadChunk } from '../../../storage/idb'
 import { decodeQcReport, qcStorageId } from '../../../ngs/qcreport/storage'
 import { DUPLICATION_LABELS, MODULES, type MateReport, type ModuleId, type ModuleStatus, type QcReport } from '../../../ngs/qcreport/types'
-import { formatBaseCount } from '../../../ngs/format'
+import { formatBp } from '../../../utils/format'
 import { isLongRead } from '../../../ngs/types'
 import { expectedNote, LIBRARY_LABEL, LIBRARY_TYPES, type ExpectedContext, type LibraryType } from '../../../ngs/qcreport/expected'
 import { useWidth } from '../useWidth'
@@ -318,7 +318,7 @@ function ModuleBody({ id, m, asTable, fileName }: { id: ModuleId; m: MateReport;
             <tr className="ngs-static"><td>File type</td><td>Conventional base calls</td></tr>
             <tr className="ngs-static"><td>Encoding</td><td>{m.lowestQuality === null ? 'No qualities' : 'Sanger / Illumina 1.9 (Phred+33)'}</td></tr>
             <tr className="ngs-static"><td>Total Sequences</td><td>{nf.format(m.reads)}</td></tr>
-            <tr className="ngs-static"><td>Total Bases</td><td>{formatBaseCount(m.bases)}</td></tr>
+            <tr className="ngs-static"><td>Total Bases</td><td>{formatBp(m.bases)}</td></tr>
             <tr className="ngs-static"><td>Sequences flagged as poor quality</td><td>0</td></tr>
             <tr className="ngs-static"><td>Sequence length</td><td>{m.minLength === m.maxLength ? m.maxLength : `${m.minLength}-${m.maxLength}`}</td></tr>
             <tr className="ngs-static"><td>%GC</td><td>{Math.round(m.gc)}</td></tr>

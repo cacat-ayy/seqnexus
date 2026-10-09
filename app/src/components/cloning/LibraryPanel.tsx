@@ -25,6 +25,7 @@ import { parsePartList, productTableCsv, productsFasta } from '../../cloning/bul
 import { partLength, type CloningDesign, type DesignPart } from '../../cloning/design'
 import { startBulk } from '../../workers/cloning'
 import { partColor } from './colors'
+import { formatBp } from '../../utils/format'
 
 interface Props {
   design: CloningDesign
@@ -37,10 +38,6 @@ interface Props {
 }
 
 const LIMIT = 500
-
-function formatBp(n: number): string {
-  return n >= 1000 ? `${(n / 1000).toFixed(n >= 10000 ? 0 : 1)} kb` : `${n} bp`
-}
 
 export default function LibraryPanel({ design, bins, onBinsChange, onOpenRow, onSaveRows }: Props) {
   const [result, setResult] = useState<BulkResult | null>(null)

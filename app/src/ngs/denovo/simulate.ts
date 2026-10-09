@@ -6,6 +6,8 @@
  * reads have them. Deterministic for a given seed.
  */
 
+import { reverseComplement } from '../../models/complement'
+
 export function rng(seed: number): () => number {
   let s = seed >>> 0 || 1
   return () => {
@@ -25,12 +27,6 @@ export function randomSequence(n: number, rand: () => number): string {
   return s
 }
 
-const COMP: Record<string, string> = { A: 'T', C: 'G', G: 'C', T: 'A', N: 'N' }
-export const revcomp = (s: string) => {
-  let out = ''
-  for (let i = s.length - 1; i >= 0; i--) out += COMP[s[i]] ?? 'N'
-  return out
-}
 
 export interface ErrorRates {
   sub: number
@@ -92,7 +88,7 @@ export function simulateReads(template: string, o: {
       const start = lossL + (len >= room ? 0 : Math.floor(rand() * (room - len)))
       frag = template.slice(start, Math.min(L - lossR, start + len))
     }
-    if (rand() < 0.5) frag = revcomp(frag)
+    if (rand() < 0.5) frag = reverseComplement(frag)
     const seq = withErrors(frag, o.errors ?? NANOPORE_ERRORS, rand)
     const q = 12 + Math.floor(rand() * 12)
     out.push({ id: `${o.prefix ?? 'read'}${i}`, seq, qual: String.fromCharCode(33 + q).repeat(seq.length) })
@@ -128,10 +124,10 @@ export function simulatePairs(template: string, o: {
     const ins = Math.max(o.readLength, Math.round(o.insert + z * o.sd))
     const start = Math.floor(rand() * (o.circular ? L : Math.max(1, L - ins)))
     let frag = twice.slice(start, start + ins)
-    if (rand() < 0.5) frag = revcomp(frag)
+    if (rand() < 0.5) frag = reverseComplement(frag)
     const e = o.errors ?? { sub: 0.003, ins: 0.0001, del: 0.0001 }
     const m1 = withErrors(frag.slice(0, o.readLength), e, rand).slice(0, o.readLength)
-    const m2 = withErrors(revcomp(frag).slice(0, o.readLength), e, rand).slice(0, o.readLength)
+    const m2 = withErrors(reverseComplement(frag).slice(0, o.readLength), e, rand).slice(0, o.readLength)
     out.push({ id: `${o.prefix ?? 'pair'}${i}/1`, seq: m1, qual: qual.slice(0, m1.length) })
     out.push({ id: `${o.prefix ?? 'pair'}${i}/2`, seq: m2, qual: qual.slice(0, m2.length) })
   }
@@ -142,7 +138,7 @@ export function simulatePairs(template: string, o: {
 export function sameCircle(a: string, b: string): boolean {
   if (a.length !== b.length) return false
   const bb = b + b
-  return bb.includes(a) || bb.includes(revcomp(a))
+  return bb.includes(a) || bb.includes(reverseComplement(a))
 }
 
 /** Edit distance between two strings (small ones, for tests). */
@@ -162,7 +158,7 @@ export function editDistance(a: string, b: string): number {
 export function circleDistance(a: string, b: string): number {
   if (sameCircle(a, b)) return 0
   let best = Infinity
-  for (const t of [b, revcomp(b)]) {
+  for (const t of [b, reverseComplement(b)]) {
     // Line `a` up with `t` at its first 20-mer, then compare.
     const probe = a.slice(0, 20)
     const at = (t + t).indexOf(probe)

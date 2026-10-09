@@ -17,6 +17,7 @@ import type { Assembly } from '../../cloning/product'
 import type { CloningDesign } from '../../cloning/design'
 import { productKey } from '../../cloning/run'
 import { isIntended, productLabel, type DesignFix } from '../../cloning/outcome'
+import { formatBp } from '../../utils/format'
 
 interface Props {
   design: CloningDesign
@@ -29,10 +30,6 @@ interface Props {
   onSelect: (key: string) => void
   onOpen: (product: Assembly) => void
   onFix: (fix: DesignFix) => void
-}
-
-function formatBp(n: number): string {
-  return n >= 1000 ? `${(n / 1000).toFixed(n >= 10000 ? 0 : 1)} kb` : `${n} bp`
 }
 
 /** What marks a product out, beyond what its label already says. */

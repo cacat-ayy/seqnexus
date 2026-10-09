@@ -5,7 +5,7 @@
 
 import { bandLabelBp, type GelBand, type GelLayout, type PlacedSpecies } from './bands'
 import type { FragmentOrigin, GelLane } from './model'
-import { formatBp } from './render/scene'
+import { formatBp } from '../utils/format'
 import { getLadder } from './ladders'
 
 export const FORM_LABEL: Record<PlacedSpecies['form'], string> = {

@@ -11,23 +11,13 @@ import { DocumentState, type SequenceMetadata, type Strandedness } from '../mode
 import { cleanOligo, newPrimerId, type PrimerData } from '../primers/oligo'
 import { findBindingSites } from '../primers/binding'
 import { parseGenBankLocation, resolveLocation, formatGenBankLocation } from './location'
+import { idSource } from './ids'
 
-let _idPrefix = Math.random().toString(36).slice(2, 6)
-let _nextId = 0
-function nextId(): string {
-  return `ann_${_idPrefix}_${++_nextId}`
-}
-
-/** Reset ID counter and randomize prefix. Used between parse calls to avoid collisions. */
-function resetIds(): void {
-  _idPrefix = Math.random().toString(36).slice(2, 6)
-  _nextId = 0
-}
+const ids = idSource('ann')
 
 /** Reset ID counter with deterministic prefix (for testing). */
 export function _resetIdCounter(): void {
-  _idPrefix = 'test'
-  _nextId = 0
+  ids.resetForTests()
 }
 
 // ---------------------------------------------------------------------------
@@ -239,7 +229,7 @@ export class GenBankReader {
 }
 
 function buildRecord(r: RecordInProgress): GenBankRecord {
-  resetIds()
+  ids.reset()
   const bases = r.baseChunks.join('').toUpperCase()
   const seqLen = bases.length || r.locusLength
   const circular = r.topology === 'circular'
@@ -262,7 +252,7 @@ function buildRecord(r: RecordInProgress): GenBankRecord {
       warnings.push(`${label}: part of it lies on another record; only the part on this sequence was kept`)
     }
     annotations.push({
-      id: nextId(),
+      id: ids.next(),
       name: label,
       type: f.type,
       start: resolved.start,

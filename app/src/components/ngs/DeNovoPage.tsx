@@ -26,7 +26,7 @@ import { remapContigs } from './remapContigs'
 import { DENOVO_METHOD_LABEL, type DeNovoReport } from '../../ngs/denovo/types'
 import { PEAK_TOLERANCE } from '../../ngs/denovo/clusters'
 import { matchPolished, parseFasta } from '../../ngs/denovo/polished'
-import { formatBaseCount } from '../../ngs/format'
+import { formatBp } from '../../utils/format'
 import { NEEDS_WEB, openedAsFile } from '../../ngs/jobs'
 import { HistogramChart } from './charts'
 import KmerSpectrumCard from './KmerSpectrumCard'
@@ -160,7 +160,7 @@ export default function DeNovoPage({ assembly, onShowReads }: { assembly: Assemb
       <div className="ngs-tiles">
         <Tile label={d.contigs.length === 1 ? 'Contig' : 'Contigs'} value={nf.format(d.contigs.length)}
           detail={circular === d.contigs.length ? (circular === 1 ? 'circular' : 'all circular') : circular ? `${circular} circular` : 'linear'} />
-        <Tile label="Length" value={formatBaseCount(total)} detail={d.contigs.length > 1 ? 'all contigs together' : undefined} />
+        <Tile label="Length" value={formatBp(total)} detail={d.contigs.length > 1 ? 'all contigs together' : undefined} />
         {short && d.short && <Tile label="k" value={String(d.short.k)} detail={`best of ${d.short.tried.length} tried`} />}
         {genome && <Tile label="Reads laid out" value={`${(genome.basesUsed / Math.max(1, total)).toFixed(0)}×`} detail={`${nf.format(genome.readsUsed)} longest reads`} />}
         {sample && <Tile label="Reads mapped back" value={pct(sample.report.reads ? sample.report.mapped / sample.report.reads : 0)} detail={`${nf.format(sample.report.mapped)} of ${nf.format(sample.report.reads)}`} />}
@@ -297,8 +297,8 @@ export default function DeNovoPage({ assembly, onShowReads }: { assembly: Assemb
                     <td className="num">{t.k}{t.k === d.short!.k ? ' (kept)' : ''}</td>
                     <td className="num">{t.threshold}×</td>
                     <td className="num">{nf.format(t.contigs)}</td>
-                    <td className="num">{formatBaseCount(t.n50)}</td>
-                    <td className="num">{formatBaseCount(t.total)}</td>
+                    <td className="num">{formatBp(t.n50)}</td>
+                    <td className="num">{formatBp(t.total)}</td>
                   </tr>
                 ))}
               </tbody>
@@ -340,7 +340,7 @@ export default function DeNovoPage({ assembly, onShowReads }: { assembly: Assemb
             <>
               <dt>Reads used</dt>
               <dd className="aw-muted">
-                {nf.format(d.short.readsUsed)} reads ({formatBaseCount(d.short.basesUsed)}), sampled down to about 100× of the genome length
+                {nf.format(d.short.readsUsed)} reads ({formatBp(d.short.basesUsed)}), sampled down to about 100× of the genome length
                 the k-mers give (at most 300 Mb){d.short.pairs ? '.' : '; pairs used as single reads.'}
               </dd>
               <dt>Graph</dt>
@@ -366,8 +366,8 @@ export default function DeNovoPage({ assembly, onShowReads }: { assembly: Assemb
             <>
               <dt>Reads used</dt>
               <dd className="aw-muted">
-                The {nf.format(genome.readsUsed)} longest reads ({formatBaseCount(genome.basesUsed)},
-                {' '}{d.settings.genomeSize ? `about 40× of the ${formatBaseCount(d.settings.genomeSize)} genome given` : 'up to 200 Mb, no genome length being given'}),
+                The {nf.format(genome.readsUsed)} longest reads ({formatBp(genome.basesUsed)},
+                {' '}{d.settings.genomeSize ? `about 40× of the ${formatBp(d.settings.genomeSize)} genome given` : 'up to 200 Mb, no genome length being given'}),
                 {' '}leaving out the tenth of lowest quality.
               </dd>
               <dt>Overlaps</dt>

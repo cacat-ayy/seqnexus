@@ -33,23 +33,7 @@ import { resolvePlasmidColors, type PlasmidColors } from '../plasmid/styles'
 import { angleToPos, normalizeAngle, arcSelection } from '../plasmid/geometry'
 import { hitTestScene } from '../plasmid/hit'
 import { usePlasmidSceneData } from '../plasmid/usePlasmidSceneData'
-
-/**
- * One offscreen context for all text measurement.
- *
- * The layout pass needs to measure strings before anything is drawn, and the
- * SVG export has no canvas of its own. Sharing this one means both outputs
- * position every label identically.
- */
-let _measureCtx: CanvasRenderingContext2D | null = null
-function measureText(text: string, font: string): number {
-  if (!_measureCtx) {
-    _measureCtx = document.createElement('canvas').getContext('2d')
-  }
-  if (!_measureCtx) return text.length * 6
-  _measureCtx.font = font
-  return _measureCtx.measureText(text).width
-}
+import { measureText } from '../utils/measure-text'
 
 const MIN_ZOOM = 1
 const MAX_ZOOM = 6

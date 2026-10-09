@@ -9,7 +9,8 @@ import { lengthPeaks, pickSeed } from './clusters'
 import { containment, kmerSet } from './kmers'
 import { addRecord, columnMajority, extension, newPileup, polish, polishLinear } from './polish'
 import { assembleLongReads, NO_PRODUCT } from './long'
-import { circleDistance, randomSequence, revcomp, rng, sameCircle, simulateReads, type SimRead } from './simulate'
+import { circleDistance, randomSequence, rng, sameCircle, simulateReads, type SimRead } from './simulate'
+import { reverseComplement as revcomp } from '../../models/complement'
 import { DEFAULT_DENOVO_SETTINGS } from './types'
 
 const dir = resolve(process.cwd(), '..', 'wasm', 'minimap2', '2.22')

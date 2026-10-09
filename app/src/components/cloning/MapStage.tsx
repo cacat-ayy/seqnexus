@@ -28,6 +28,7 @@ import CloneMap, { type MapRegion } from './CloneMap'
 import EndsStrip, { type StripPiece } from './EndsStrip'
 import ProductsPanel from './ProductsPanel'
 import { partColor } from './colors'
+import { formatBp } from '../../utils/format'
 
 interface Props {
   design: CloningDesign
@@ -43,10 +44,6 @@ interface Props {
 }
 
 const EMPTY_SET: ReadonlySet<string> = new Set()
-
-function formatBp(n: number): string {
-  return `${n.toLocaleString()} bp`
-}
 
 /** The enzymes a design cuts with, for marking the junctions on the product. */
 function usedEnzymes(design: CloningDesign): string[] {

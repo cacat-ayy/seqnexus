@@ -15,7 +15,8 @@ import { openAnalyse } from './analyseRequest'
 import { useEditorStore, type ReadSet } from '../../store'
 import { notify } from '../../toast'
 import { readSetQc, QC_LABEL } from '../../ngs/qc'
-import { compactCount, formatBaseCount, formatBytes, readShape } from '../../ngs/format'
+import { compactCount, readShape } from '../../ngs/format'
+import { formatBp, formatBytes } from '../../utils/format'
 import { isLongRead, TECHNOLOGY_LABEL } from '../../ngs/types'
 import { decodeChunk } from '../../ngs/codec'
 import { deleteReadChunks, getReadChunk } from '../../storage/idb'
@@ -178,7 +179,7 @@ export default function ReadSetWorkspace({ readSet: rs, onClose }: Props) {
         />
         <span className="aw-chip">{TECHNOLOGY_LABEL[rs.technology]}</span>
         <span className="aw-chip">{rs.paired ? 'Paired' : 'Single reads'}</span>
-        <span className="aw-muted">{rs.paired ? `${compactCount(s.reads / 2)} pairs` : `${compactCount(s.reads)} reads`} · {formatBaseCount(s.bases)} · {readShape(rs)}</span>
+        <span className="aw-muted">{rs.paired ? `${compactCount(s.reads / 2)} pairs` : `${compactCount(s.reads)} reads`} · {formatBp(s.bases)} · {readShape(rs)}</span>
         <div className="aw-seg mv-switch" role="radiogroup" aria-label="Page">
           <button role="radio" aria-checked={page === 'summary'} className={page === 'summary' ? 'active' : ''} onClick={() => setPage('summary')}
             title="The QC verdict, headline figures, charts, first reads and storage">Summary</button>
@@ -242,9 +243,9 @@ export default function ReadSetWorkspace({ readSet: rs, onClose }: Props) {
 
         <div className="ngs-tiles">
           <Tile label={rs.paired ? 'Pairs' : 'Reads'} value={nf.format(rs.paired ? s.reads / 2 : s.reads)} />
-          <Tile label="Bases" value={formatBaseCount(s.bases)} />
+          <Tile label="Bases" value={formatBp(s.bases)} />
           {long
-            ? <Tile label="Read N50" value={formatBaseCount(s.n50)} detail={`mean ${formatBaseCount(Math.round(s.meanLength))}, longest ${formatBaseCount(s.maxLength)}`} />
+            ? <Tile label="Read N50" value={formatBp(s.n50)} detail={`mean ${formatBp(Math.round(s.meanLength))}, longest ${formatBp(s.maxLength)}`} />
             : <Tile label="Read length" value={s.minLength === s.maxLength ? `${s.maxLength} bp` : `${s.minLength} to ${s.maxLength} bp`} detail={`mean ${s.meanLength.toFixed(1)}`} />}
           {s.qualityMissing
             ? <Tile label="Quality" value="None" detail="no qualities in the file" />
@@ -267,7 +268,7 @@ export default function ReadSetWorkspace({ readSet: rs, onClose }: Props) {
                   rs.origin.settings.windowQuality > 0 ? `ends trimmed below Q${rs.origin.settings.windowQuality} (4-base window)` : 'ends not quality-trimmed',
                   `reads under ${rs.origin.settings.minLength} bp dropped`,
                 ].join(', ')}.`
-                : `Filtered: reads under ${formatBaseCount(rs.origin.settings.minLength)}${rs.origin.settings.minReadQuality > 0 ? ` or below Q${rs.origin.settings.minReadQuality} mean quality` : ''} dropped.`}
+                : `Filtered: reads under ${formatBp(rs.origin.settings.minLength)}${rs.origin.settings.minReadQuality > 0 ? ` or below Q${rs.origin.settings.minReadQuality} mean quality` : ''} dropped.`}
               {' '}{nf.format(rs.origin.readsAfter)} of {nf.format(rs.origin.readsBefore)} reads kept ({pct(rs.origin.readsBefore ? rs.origin.readsAfter / rs.origin.readsBefore : 0)}),
               {' '}{nf.format(rs.origin.basesAfter)} of {nf.format(rs.origin.basesBefore)} bases.
               {rs.origin.adapterTrimmedReads !== undefined && ` Adapter found and cut in ${nf.format(rs.origin.adapterTrimmedReads)} reads.`}

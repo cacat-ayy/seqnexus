@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import { evaluatePair, crossDimerScore } from './pairing'
-import { reverseComplement } from '../scoring'
+import { reverseComplement } from '../../models/complement'
 
 const ctx = { minProductSize: 100, maxProductSize: 500 }
 const oligo = (sequence: string, tm = 60) => ({ sequence, tm, penalty: 1 })

@@ -7,7 +7,7 @@
 import type { NgsMapping } from '../../assembly/container'
 import type { MappingReport } from '../../ngs/builder'
 import { PRESET_LABEL } from '../../ngs/mapper'
-import { formatBytes } from '../../ngs/format'
+import { formatBytes } from '../../utils/format'
 import { MIN_BASE_QUALITY, MIN_INDEL_FRACTION, MIN_SNV_FRACTION } from '../../ngs/pileup'
 import { writeReportPdf, type ReportBlock, type ReportTile } from '../../pdf/report-pdf'
 

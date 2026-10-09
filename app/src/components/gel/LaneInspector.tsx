@@ -15,7 +15,7 @@ import type { LaneLayout, PlacedSpecies } from '../../gel/bands'
 import type { SequenceSource } from '../../gel/simulate'
 import { FORM_PRESETS, formPresetId, autoLaneLabel } from '../../gel/workspace'
 import { formatNg, fragmentEnds, fragmentPosition, FORM_LABEL } from '../../gel/report'
-import { formatBp } from '../../gel/render/scene'
+import { formatBp } from '../../utils/format'
 import EnzymeField from '../EnzymeField'
 import { parseSizes } from '../../gel/parse'
 

@@ -20,7 +20,7 @@ import { getReadChunk } from '../../storage/idb'
 import { mappingStorageIds } from '../../ngs/builder'
 import { components, decodeGraph, toGfa, type StoredGraph } from '../../ngs/denovo/graph'
 import { layoutGraph } from '../../ngs/denovo/layout'
-import { formatBaseCount } from '../../ngs/format'
+import { formatBp } from '../../utils/format'
 
 const nf = new Intl.NumberFormat()
 
@@ -278,7 +278,7 @@ export default function GraphPage({ assembly, onShowReads }: { assembly: Assembl
             const rect = wrapRef.current?.getBoundingClientRect()
             return (
               <div className="gp-hover" style={{ left: hover.x - (rect?.left ?? 0) + 14, top: hover.y - (rect?.top ?? 0) + 14 }}>
-                <strong>{s.name}</strong> {formatBaseCount(s.length)}{s.circular ? ', circular' : ''}
+                <strong>{s.name}</strong> {formatBp(s.length)}{s.circular ? ', circular' : ''}
                 <div className="aw-muted">{s.coverage.toFixed(1)}{g.coverageUnit === 'k-mer' ? ' k-mer coverage' : '× depth'}, {(s.coverage / usual).toFixed(2)}× the usual</div>
               </div>
             )

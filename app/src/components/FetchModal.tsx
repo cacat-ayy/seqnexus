@@ -15,6 +15,7 @@ import { notify } from '../toast'
 import type { DocumentState } from '../models/Document'
 import { useExitAnimation } from '../hooks/useExitAnimation'
 import { useFocusTrap } from '../hooks/useFocusTrap'
+import { formatBp } from '../utils/format'
 
 interface Props {
   open: boolean
@@ -24,12 +25,6 @@ interface Props {
 
 /** Records longer than this are confirmed before downloading. */
 const LARGE_RECORD_BP = 10_000_000
-
-function formatBp(bp: number): string {
-  if (bp >= 1_000_000) return `${(bp / 1_000_000).toFixed(1)} Mb`
-  if (bp >= 1000) return `${(bp / 1000).toFixed(1)} kb`
-  return `${bp} bp`
-}
 
 export default function FetchModal({ open, onClose, onFetched }: Props) {
   const [query, setQuery] = useState('')

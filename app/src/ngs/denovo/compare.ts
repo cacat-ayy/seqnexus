@@ -28,6 +28,7 @@
 
 import { alignBanded, type AlignEnds } from '../../assembly/align'
 import type { AnnotationData } from '../../models/Annotation'
+import { reverseComplement } from '../../models/complement'
 
 export const ANCHOR_K = 15
 /** The band, past the anchors' diagonals, on either side. */
@@ -36,12 +37,6 @@ const BAND_MARGIN = 60
 export const MAX_CELLS = 60_000_000
 
 const CODE: Record<string, number> = { A: 0, C: 1, G: 2, T: 3 }
-const COMP: Record<string, string> = { A: 'T', C: 'G', G: 'C', T: 'A' }
-export const revcomp = (s: string) => {
-  let o = ''
-  for (let i = s.length - 1; i >= 0; i--) o += COMP[s[i]] ?? 'N'
-  return o
-}
 const rotate = (s: string, by: number) => (by ? s.slice(by) + s.slice(0, by) : s)
 const mod = (x: number, m: number) => ((x % m) + m) % m
 
@@ -121,7 +116,7 @@ function anchorsOf(contig: string, expected: string, circular: boolean) {
     return { d, n, v }
   }
   const fwd = best(votes(contig, index, L, circular))
-  const rev = best(votes(revcomp(contig), index, L, circular))
+  const rev = best(votes(reverseComplement(contig), index, L, circular))
   const reversed = rev.n > fwd.n
   return { index, top: reversed ? rev : fwd, reversed }
 }
@@ -151,7 +146,7 @@ export function compareToExpected(o: { contig: string; contigCircular: boolean; 
   if (top.n < minAnchors(C, L)) {
     throw new Error('The contig does not look like the expected sequence: too few 15-mers in common to line them up.')
   }
-  let contig = reversed ? revcomp(contig0) : contig0
+  let contig = reversed ? reverseComplement(contig0) : contig0
 
   // 2. Turn the contig (circular) or the expected sequence (linear contig on a circle).
   let shift = 0

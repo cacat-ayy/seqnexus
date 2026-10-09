@@ -16,6 +16,7 @@
  */
 
 import { calcTm, gcPercent, deltaG37 } from './thermodynamics'
+import { COMPLEMENT, reverseComplement } from '../models/complement'
 
 // ---------------------------------------------------------------------------
 // Types
@@ -335,20 +336,6 @@ export function scorePrimer(
 // Helpers
 // ---------------------------------------------------------------------------
 
-const COMP: Record<string, string> = {
-  A: 'T', T: 'A', G: 'C', C: 'G', N: 'N',
-}
-
-function reverseComplement(seq: string): string {
-  const result: string[] = []
-  for (let i = seq.length - 1; i >= 0; i--) {
-    result.push(COMP[seq[i]] ?? 'N')
-  }
-  return result.join('')
-}
-
 function isComplement(a: string, b: string): boolean {
-  return COMP[a] === b
+  return COMPLEMENT[a] === b
 }
-
-export { reverseComplement }

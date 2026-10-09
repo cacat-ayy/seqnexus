@@ -6,9 +6,9 @@ import {
   endSelfComplementarity,
   hairpinScore,
   scorePrimer,
-  reverseComplement,
   DEFAULT_CONSTRAINTS,
 } from './scoring'
+import { reverseComplement } from '../models/complement'
 
 describe('maxHomopolymerRun', () => {
   it('detects single-base runs', () => {
