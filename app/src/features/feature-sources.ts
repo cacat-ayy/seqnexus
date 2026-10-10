@@ -100,6 +100,7 @@ export function getScanReferences(sources: readonly FeatureSource[]): ScanRefere
       type: feature.type,
       sequence: feature.sequence,
       color: feature.color || undefined,
+      group: feature.group,
     })
     originBySource.set(key, sourceId)
   }

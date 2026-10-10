@@ -13,6 +13,12 @@ export interface ReferenceAnnotation {
   type: string
   sequence: string  // nucleotide sequence of the annotation
   color?: string
+  /**
+   * The element this reference is a version of, when a library holds several
+   * (the lacZ alpha of pUC19 and of pBluescript). Overlapping hits of one
+   * group and type are one feature, like overlapping hits of one reference.
+   */
+  group?: string
 }
 
 export interface AnnotateListRequest {
@@ -136,7 +142,6 @@ function searchReference(
   kmerIndex: Map<string, number[]>,
   k: number,
   minSimilarity: number,
-  bestMatchOnly: boolean,
   protein = false,
 ): AnnotationMatch[] {
   const refUpper = ref.sequence.toUpperCase()
@@ -186,33 +191,35 @@ function searchReference(
     }
   }
 
-  if (bestMatchOnly && matches.length > 1) {
-    // Group by overlapping regions and keep only the best per region
-    matches.sort((a, b) => a.start - b.start)
-    const best: AnnotationMatch[] = []
-    let current = matches[0]
-    for (let i = 1; i < matches.length; i++) {
-      const m = matches[i]
-      // Check overlap (75% of shorter annotation length)
-      const overlapStart = Math.max(current.start, m.start)
-      const overlapEnd = Math.min(current.end, m.end)
-      const overlapLen = Math.max(0, overlapEnd - overlapStart)
-      const minLen = Math.min(current.end - current.start, m.end - m.start)
-      if (overlapLen >= minLen * 0.75) {
-        // Overlapping - keep the better one
-        if (m.similarity > current.similarity) {
-          current = m
-        }
-      } else {
-        best.push(current)
+  return matches
+}
+
+/**
+ * One match per stretch: of matches that overlap by 75% of the shorter one,
+ * the most similar, and of equally similar ones the longest, so a short
+ * version of an element found inside a longer version gives way to it.
+ */
+function keepBest(matches: AnnotationMatch[]): AnnotationMatch[] {
+  if (matches.length < 2) return matches
+  matches.sort((a, b) => a.start - b.start)
+  const best: AnnotationMatch[] = []
+  let current = matches[0]
+  for (let i = 1; i < matches.length; i++) {
+    const m = matches[i]
+    const overlapLen = Math.max(0, Math.min(current.end, m.end) - Math.max(current.start, m.start))
+    const minLen = Math.min(current.end - current.start, m.end - m.start)
+    if (overlapLen >= minLen * 0.75) {
+      if (m.similarity > current.similarity
+        || (m.similarity === current.similarity && m.end - m.start > current.end - current.start)) {
         current = m
       }
+    } else {
+      best.push(current)
+      current = m
     }
-    best.push(current)
-    return best
   }
-
-  return matches
+  best.push(current)
+  return best
 }
 
 /** Every reference found in the document, sorted by position. */
@@ -228,10 +235,18 @@ export function scanForReferences(req: AnnotateListRequest): AnnotationMatch[] {
   // Build k-mer index of the document once
   const kmerIndex = buildKmerIndex(docUpper, k)
 
-  const allMatches: AnnotationMatch[] = []
+  // Matches by group and type; a reference without a group is its own.
+  const byGroup = new Map<string, AnnotationMatch[]>()
   for (const ref of references) {
-    allMatches.push(...searchReference(docUpper, ref, kmerIndex, k, minSimilarity, bestMatchOnly, protein))
+    const found = searchReference(docUpper, ref, kmerIndex, k, minSimilarity, protein)
+    if (found.length === 0) continue
+    const key = `${ref.group ?? ref.name}\u0000${ref.type}`
+    const list = byGroup.get(key)
+    if (list) list.push(...found)
+    else byGroup.set(key, found)
   }
+  const allMatches: AnnotationMatch[] = []
+  for (const list of byGroup.values()) allMatches.push(...(bestMatchOnly ? keepBest(list) : list))
   allMatches.sort((a, b) => a.start - b.start)
   return allMatches
 }

@@ -1,8 +1,11 @@
 /**
  * Database of common molecular biology features with DNA sequences.
  *
- * Sourced from Geneious Plasmid Features library (841 entries).
- * AA-only features dropped; duplicates deduplicated by longest sequence.
+ * RNA parts are written in DNA letters so they are found in the plasmid
+ * that encodes them; protein-only parts are in the protein library
+ * (protein-features.ts). Where several sequences share a name, each distinct
+ * version is kept under a qualified name with the shared name as its group,
+ * and versions the main entry already finds are dropped.
  * Used for auto-annotation: scan a loaded sequence to find matches.
  *
  * Sequences are stored 2-bit packed (ACGT -> 00,01,10,11) and base64
@@ -17,6 +20,8 @@ export interface CommonFeature {
   color: string
   category: string
   sequence: string
+  /** The entry this one is a version of, for the scan to treat them as one. */
+  group?: string
 }
 
 export const FEATURE_CATEGORIES = [
@@ -70,6 +75,7 @@ export function getCommonFeatures(): CommonFeature[] {
     color: p.c,
     category: p.g,
     sequence: unpackSequence(p),
+    group: p.v,
   }))
   return _cache
 }

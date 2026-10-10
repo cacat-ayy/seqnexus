@@ -428,6 +428,84 @@ translation with the same messages, a Copy button and Open as Protein.
 
 ---
 
+## Feature Library and Auto-annotation
+
+Auto-annotation proposes features by finding known elements in the
+document: the built-in library of common plasmid parts, plus any database
+the user imports (an imported entry with the same name and type replaces
+the built-in one).
+
+### The built-in library
+
+The library holds about 730 common plasmid parts, each with its GenBank
+source. They are stored 2-bit packed and decoded the first time a scan
+needs them. Protein-only parts (tags and fusion partners) are in the
+protein library (see Proteins, Auto-annotation).
+
+- **RNA entries** (the Spinach, Broccoli, Corn and Mango aptamers) are
+  stored in DNA letters. A plasmid encodes them with T, and the scan
+  compares letters literally, so an entry written with U would never be
+  found.
+- **Feature types.** A protein-coding entry is a CDS:
+  every entry that is a whole open reading frame (a start, no internal
+  stop, a stop at the end) is typed CDS, along with coding fragments and
+  domains (KRAB, KASH, an activation domain). The exceptions are elements
+  that read through in one frame by chance: tandem response elements
+  (3X NFAT, 5X ATF6, 8X TCF/LEF, 12X ZFHD1), packaging signals, introns and
+  the SV40 enhancer. The type decides how the feature is drawn, whether the
+  feature panel's CDS checks apply, and whether the entry is translated
+  into the protein library.
+- **Versions of one element.** A part name often stands for more than one
+  sequence. Some are different genes: kanR is both
+  Tn903 aph(3')-Ia and the Gram-positive aph(3')-IIIa, blastR is both bsr
+  and BSD, and tetR is both tet(A) and the tet(C) of pBR322 and its
+  descendants. Others are versions of different lengths: the lacZ alpha of
+  pUC19, pBluescript, LITMUS and a dozen other vectors, or a minimal CMV
+  promoter beside the full one. Keeping only the longest of each name
+  would mean the scan never finds the others, because a reference is
+  matched over its whole length. A pUC19 lacZ alpha (324 bp) cannot match
+  a 576 bp reference. So each distinct version is kept under a qualified
+  name (`tetR (pBR322)`, `lacZα (pUC19)`, `rb glob PA (short)`), with the
+  shared name as its group. A version is dropped only when the main entry
+  already finds it (EGFP and EYFP that differ by a few bases, a URA3
+  promoter nine bases shorter). One more was dropped for a different
+  reason: a degenerate thyroid response element, written with N and R
+  codes that the literal comparison cannot match.
+
+### The scan
+
+The document is indexed by k-mers (k = 6, 8 or 10 by document length,
+longer for longer documents, trading sensitivity for speed). For each
+reference, on both strands, every shared k-mer votes for the document
+position where the reference would start. A start with at least half the
+votes a match at the threshold would give is compared base by base over the
+reference's whole length. The comparison is ungapped percent identity. It
+stops as soon as the mismatches exceed what the threshold allows. The
+default threshold is 85%.
+
+Overlapping hits of one reference (overlap of at least 75% of the shorter)
+become one proposal: the most similar, and of equally similar ones the
+longest. Versions of one element are treated as one reference for this,
+by group and type. So a pUC19 plasmid gets one lacZ alpha, the version
+that fits it best, rather than one per vector the library knows. A short
+version inside a longer one gives way to the longer one when both match
+equally well. Distinct elements that overlap (a promoter inside a gene,
+a tag inside a fusion) are all proposed.
+
+### Limits
+
+- **Ungapped.** An insertion or deletion shifts the rest of the reference out
+  of register, so a copy with an indel near its middle falls below the
+  threshold. Keeping the versions of an element is the remedy for the
+  common cases. Gapped alignment of every reference would cost a dynamic
+  program per candidate.
+- **Whole references.** A truncated copy is found only if its missing part
+  is small enough for the remaining mismatches to stay within the threshold.
+- **Literal letters.** An ambiguity code in a reference matches only the same
+  code in the document.
+
+---
+
 ## Find
 
 Ctrl+F in the sequence view opens a floating Find panel. A selection of up
@@ -3054,9 +3132,18 @@ A protein is scanned against a protein library instead of the DNA
 databases: a curated list of epitope and purification tags (His6, FLAG,
 HA, Myc, V5, Strep, Avi, ALFA, HiBiT, Spy and Snoop tags and others),
 protease sites (TEV, thrombin, HRV 3C, enterokinase, Factor Xa), linkers,
-localization signals (NLS, NES, KDEL, HDEL, SKL) and 2A peptides, plus the
-coding entries of the DNA library translated with the standard code, so
-the same GFP or kanR is found on a plasmid and on its protein. The scan is
+localization signals (NLS, NES, KDEL, HDEL, SKL) and 2A peptides; a
+second list of protein parts with the fusion partners (GST, MBP, SUMO,
+thioredoxin, SNAP, CLIP, HaloTag, Fc, DHFR, KSI, the TAP tag, cellulose-
+and chitin-binding domains), more epitope tags (AU1, AU5, Ty1, KT3, OLLAS, NE, E2, HSV, Protein C and
+others), the TVMV site, near-infrared and blue reporters, and activation
+domains; and the coding entries of the DNA library translated with the
+standard code, so the same GFP or kanR is found on a plasmid and on its
+protein. Versions of one entry (the three TAP tags, the two E2 tags) form
+a group, as in the DNA library. Parts shorter than six residues are left
+out of that list (the four-residue C-tag, polyArg, polyAsp, the PKA
+site): a natural protein contains them by chance, so a hit would mean
+nothing. The scan is
 the DNA matcher on residues, with a 3-mer seed and one strand. Peptides
 shorter than ten residues are matched exactly, since a six-residue tag with
 one mismatch is not that tag; longer entries take the similarity threshold.

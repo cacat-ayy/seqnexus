@@ -49,6 +49,18 @@ describe('scanForReferences', () => {
     expect(best.map(m => m.start)).toEqual([0, 8, 16])
   })
 
+  it('keeps one match per stretch across the versions of one group, preferring the longer', () => {
+    const long = 'ATGCGATCGATTAGCCGTACGGTACCTTAG'
+    const short = long.slice(5, 25)
+    const doc = 'CCCCC' + long + 'CCCCC'
+    const versions = [ref(long, 'el'), { ...ref(short, 'el (short)'), group: 'el' }]
+    expect(scan(doc, versions, 100, true).map(m => m.refName)).toEqual(['el'])
+    // Without the group they are two elements, and both are proposed.
+    expect(scan(doc, [ref(long, 'el'), ref(short, 'other')], 100, true).map(m => m.refName)).toEqual(['el', 'other'])
+    // Alone, the short version is still found.
+    expect(scan('CCCCC' + short + 'CCCCC', versions, 100, true).map(m => m.refName)).toEqual(['el (short)'])
+  })
+
   it('carries the reference name, type and colour into the match', () => {
     const [m] = scan('GGGGATGCGATCGAGGGG', [{ name: 'ori', type: 'rep_origin', sequence: 'ATGCGATCGA', color: '#123456' }], 100)
     expect(m).toMatchObject({ refName: 'ori', refType: 'rep_origin', color: '#123456' })

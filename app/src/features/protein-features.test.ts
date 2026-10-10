@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import { getProteinFeatures, EXACT_BELOW } from './protein-features'
+import { PROTEIN_LIBRARY_DATA } from './protein-library-data'
 import { scanForReferences } from './annotate-scan'
 
 describe('protein feature library', () => {
@@ -24,5 +25,31 @@ describe('protein feature library', () => {
     expect(found).toContainEqual(['Thrombin site', 13, 19])
     expect(found).toContainEqual(['TEV site', 34, 41])
     expect(hits.every(h => h.strand === 1)).toBe(true)
+  })
+
+  it('holds the protein parts list: fusion partners, and tags the curated list leaves out', () => {
+    const refs = getProteinFeatures()
+    for (const name of ['GST', 'MBP', 'SUMO', 'SNAP-tag', 'HaloTag', 'Trx', 'AU1 tag', 'Ty1 tag']) {
+      expect(refs.find(r => r.name === name)).toMatchObject({ category: expect.any(String), color: expect.any(String) })
+    }
+    expect(refs.find(r => r.name === 'TVMV site')).toMatchObject({ type: 'Site', category: 'Protease site' })
+    // Covered already by the curated HRV 3C site, so not listed twice.
+    expect(refs.some(r => r.name === 'PreScission')).toBe(false)
+  })
+
+  it('leaves out parts too short to mean anything when found', () => {
+    expect(PROTEIN_LIBRARY_DATA.filter(([, sequence]) => sequence.length < 6)).toEqual([])
+  })
+
+  it('finds a GST fusion at the threshold and proposes one TAP tag, not each version', () => {
+    const refs = getProteinFeatures()
+    const gst = refs.find(r => r.name === 'GST')!.sequence
+    const tap = refs.find(r => r.name === 'TAP')!.sequence
+    const protein = 'M' + gst + 'GSGSGS' + tap
+    const long = refs.filter(r => r.sequence.length >= EXACT_BELOW)
+    const hits = scanForReferences({ documentBases: protein, references: long, minSimilarity: 90, bestMatchOnly: true, protein: true })
+    const names = hits.map(h => h.refName)
+    expect(names).toContain('GST')
+    expect(names.filter(n => n.startsWith('TAP'))).toEqual(['TAP'])
   })
 })

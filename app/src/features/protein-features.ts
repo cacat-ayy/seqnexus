@@ -1,17 +1,20 @@
 /**
  * The reference library a protein is scanned against.
  *
- * Two parts. The coding entries of the built-in DNA library (resistance
- * markers, reporters, fusion partners) translated, so the same GFP that is
- * found on a plasmid is found on its protein. And a curated list of the
- * short peptides a construct carries that no DNA library names as such:
- * epitope and purification tags, protease sites, linkers, localization
- * signals and 2A peptides. Short peptides are matched exactly (a 6-residue
+ Three parts. A curated list of the short peptides a construct carries that
+ * no DNA library names as such: epitope and purification tags, protease
+ * sites, linkers, localization signals and 2A peptides. A second list of
+ * protein parts (GST, MBP, SUMO, SNAP, HaloTag and the like, and more
+ * tags). And the coding
+ * entries of the built-in DNA library (resistance markers, reporters, fusion
+ * partners) translated, so the same GFP that is found on a plasmid is found
+ * on its protein. Short peptides are matched exactly (a 6-residue
  * tag with one mismatch is not that tag); the long entries take the
  * similarity threshold like DNA features.
  */
 
 import { getCommonFeatures } from './common-features'
+import { PROTEIN_LIBRARY_DATA } from './protein-library-data'
 import { translateWith, geneticCode } from '../codon/genetic-codes'
 import type { ReferenceAnnotation } from './annotate-scan'
 
@@ -41,6 +44,14 @@ const PROTEASE = '#ff922b'
 const LINKER = '#adb5bd'
 const SIGNAL = '#845ef7'
 const P2A = '#f06595'
+// Reporters and the rest take the DNA library's colours for those categories.
+const CATEGORY_COLOR: Record<string, string> = {
+  'Tag / Fusion': TAG,
+  'Protease site': PROTEASE,
+  'Localization signal': SIGNAL,
+  'Reporter': '#00ff00',
+  'Other': '#808080',
+}
 
 type Curated = [name: string, sequence: string, category: string, color: string, type?: string]
 
@@ -96,12 +107,19 @@ const CURATED: Curated[] = [
 
 let _cache: ProteinReference[] | null = null
 
-/** The protein library: curated peptides first, then the translated coding entries. */
+/** The protein library: curated peptides, then the protein parts list, then the translated coding entries. */
 export function getProteinFeatures(): ProteinReference[] {
   if (_cache) return _cache
   const out: ProteinReference[] = CURATED.map(([name, sequence, category, color, type]) => ({
     name, sequence, category, color, type: type ?? 'Region',
   }))
+  for (const [name, sequence, category, group] of PROTEIN_LIBRARY_DATA) {
+    out.push({
+      name, sequence, category, group,
+      color: CATEGORY_COLOR[category],
+      type: category === 'Protease site' ? 'Site' : 'Region',
+    })
+  }
   const seen = new Set(out.map(r => r.sequence))
   const code = geneticCode(1)
   for (const f of getCommonFeatures()) {
