@@ -27,6 +27,7 @@ import {
 } from '../components/sequence-paint'
 import type { GroupedCutSite } from '../enzymes/grouping'
 import type { PrimerItem } from '../primers/display'
+import type { GuideItem } from '../crispr/display'
 import type { GeneticCode } from '../codon/genetic-codes'
 import type { AminoAcidStyleId, ReadingFrame } from '../codon/translation-display'
 import type { PlasmidScene } from '../plasmid/scene'
@@ -70,6 +71,9 @@ export interface SequencePdfSource {
   features: readonly Annotation[]
   groupedSites: GroupedCutSite[]
   primerItemById: ReadonlyMap<string, PrimerItem>
+  /** Guide sites the view is drawing, if the overlay is on. */
+  guideItemById: ReadonlyMap<string, GuideItem>
+  guidePicks: ReadonlySet<string>
   autoPicks: ReadonlySet<string>
   orfPicks: ReadonlySet<string>
   motifPicks: ReadonlySet<string>
@@ -470,6 +474,8 @@ export function renderPdfPage(ctx: CanvasRenderingContext2D, plan: PdfPlan, page
     motifPicks: src.motifPicks,
     graph: src.graph,
     primerItemById: src.primerItemById,
+    guideItemById: src.guideItemById,
+    guidePicks: src.guidePicks,
     translationFrames: src.translationFrames,
     translationCode: src.translationCode,
     aminoAcidStyle: src.aminoAcidStyle,

@@ -31,7 +31,7 @@ const GelWorkspace = lazy(() => import('./components/gel/GelWorkspace'))
 const CloneWorkspace = lazy(() => import('./components/cloning/CloneWorkspace'))
 import {
   useEditorStore, isOriginSpanningSelection, selectionSegments, extraSelectionsOf, selectedRanges, joinedSegments,
-  gelSourceTabId, type SequencingRead,
+  gelSourceTabId, type SequencingRead, type SidebarTab,
 } from './store'
 import { editedRead, toFasta, toFastq } from './sanger/edits'
 import { displayPosition, internalPosition } from './models/Document'
@@ -57,6 +57,7 @@ import { ToolbarTooltip } from './components/ToolbarTooltip'
 import { tip } from './components/toolbarTip'
 import { useAutoAnnotateScan } from './hooks/useAutoAnnotateScan'
 import { useMotifScan } from './hooks/useMotifScan'
+import { useGuideScan } from './hooks/useGuideScan'
 import { motifKey, convertibleMotifs } from './utils/motif-features'
 import { proposalsFrom, matchKey } from './utils/auto-annotations'
 import { convertibleOrfs, orfKey } from './utils/orf-features'
@@ -76,6 +77,7 @@ import {
   SunMoon, Info, List, Lock, LockOpen, Tag, Globe, GalleryVertical, AlignLeft, ArrowLeft, Wand2, Route, Shapes,
   Combine,
   SlidersHorizontal, Atom,
+  Crosshair,
 } from 'lucide-react'
 const BlastDialog = lazy(() => import('./components/BlastDialog'))
 const CommandPalette = lazy(() => import('./components/CommandPalette'))
@@ -258,6 +260,7 @@ export default function App() {
   const orfResults = useEditorStore(s => s.orfResults)
   const showMotifs = useEditorStore(s => s.showMotifs)
   const toggleMotifs = useEditorStore(s => s.toggleMotifs)
+  const toggleGuides = useEditorStore(s => s.toggleGuides)
   const motifResults = useEditorStore(s => s.motifResults)
   const motifCategoriesOff = useEditorStore(s => s.motifCategoriesOff)
   const motifPicks = useEditorStore(s => s.motifPicks)
@@ -524,6 +527,8 @@ export default function App() {
 
   // Bottom panels
   const [featuresPanelOpen, setFeaturesPanelOpen] = useState(false)
+  // The guide scan runs for the overlay and for the Guides tab alike.
+  useGuideScan(featuresPanelOpen && sidebarTab === 'guides')
   const editAnnotationId = useEditorStore(s => s.editAnnotationId)
 
   // Open Features panel when editAnnotationId is set (e.g. from context menu)
@@ -562,7 +567,7 @@ export default function App() {
   }, [lastOpenedTabId])
 
   /** Panel-bar buttons: show that tab, or close the sidebar if it is showing. */
-  const toggleSidebarTab = useCallback((tab: 'features' | 'primers') => {
+  const toggleSidebarTab = useCallback((tab: SidebarTab) => {
     if (featuresPanelOpen && useEditorStore.getState().sidebarTab === tab) setFeaturesPanelOpen(false)
     else openSidebar(tab)
   }, [featuresPanelOpen, openSidebar])
@@ -1342,6 +1347,7 @@ export default function App() {
     { id: 'structure', label: 'Show 3D Structure', group: 'View', icon: Atom, keywords: 'pdb alphafold 3d structure fold model mmcif', disabled: noDoc || !isProtein, run: () => setViewMode('structure') },
     { id: 'digest', label: 'Proteolytic Digest', group: 'Analyse', icon: Scissors, keywords: 'trypsin protease peptide mass spectrometry coverage', disabled: noDoc || !isProtein, run: () => setDigestOpen(true) },
     { id: 'primers', label: 'Design Primers', group: 'Analyse', icon: FlaskConical, keywords: 'pcr tm oligo', disabled: noDna, run: openPrimerDesign },
+    { id: 'guides', label: 'Design CRISPR Guides', group: 'Analyse', icon: Crosshair, keywords: 'crispr cas9 cas12a guide rna sgrna pam protospacer knockout gene editing', disabled: noDna, run: () => openSidebar('guides') },
     { id: 'blast', label: 'BLAST Search', group: 'Analyse', icon: Globe, keywords: 'ncbi homology', disabled: noDoc, run: () => setBlastModalOpen(true) },
     { id: 'align', label: 'Align Sequences', group: 'Analyse', icon: AlignLeft, keywords: 'msa pairwise clustal', run: () => setAlignModalOpen(true) },
     { id: 'analyse-reads', label: 'Analyse NGS Reads…', group: 'Analyse', icon: Route, keywords: 'pipeline map variants trim fastq samples consensus', run: () => openAnalyse() },
@@ -1366,6 +1372,7 @@ export default function App() {
     // --- View ---
     { id: 'toggle-orfs', label: 'Toggle ORF Display', group: 'View', icon: Dna, disabled: noDna, run: () => toggleOrfs() },
     { id: 'toggle-motifs', label: 'Toggle Motif Display', group: 'View', icon: Atom, disabled: noDoc || !isProtein, run: () => toggleMotifs() },
+    { id: 'toggle-guides', label: 'Toggle Guide Display', group: 'View', icon: Crosshair, keywords: 'crispr guide rna sgrna pam', disabled: noDna, run: () => toggleGuides() },
     { id: 'toggle-enzymes', label: 'Toggle Enzyme Display', group: 'View', icon: Scissors, disabled: noDna, run: () => toggleEnzymes() },
     { id: 'toggle-primers', label: 'Show Saved Primers', group: 'View', icon: FlaskConical, disabled: noDna, run: () => openSidebar('primers', 'list') },
     { id: 'toggle-auto-annotations', label: 'Toggle Auto-Annotation Suggestions', group: 'View', icon: Tag, disabled: noDoc, keywords: 'annotate suggest features', run: () => toggleAutoAnnotations() },
@@ -1376,7 +1383,7 @@ export default function App() {
     { id: 'about', label: 'About SeqNexus', group: 'View', icon: Info, keywords: 'help version', run: () => setInfoOpen(true) },
   ], [
     mod, redoKey, noDoc, noDna, isProtein, sequenceShown, openPdfExport, undoDisabled, redoDisabled, handleOpenFind, handleNewSequence, handleNewFolder, openGel, openCloning, runUndo, runRedo,
-    handleImportClipboard, toggleOrfs, toggleMotifs, toggleEnzymes, setViewMode, openSidebar, openPrimerDesign, toggleAutoAnnotations,
+    handleImportClipboard, toggleOrfs, toggleMotifs, toggleGuides, toggleEnzymes, setViewMode, openSidebar, openPrimerDesign, toggleAutoAnnotations,
     viewMode,
   ])
 
@@ -2177,6 +2184,16 @@ export default function App() {
                 >
                   <FlaskConical size={13} /> Primers
                   {primerCount > 0 && <span className="panel-bar-count">{primerCount}</span>}
+                </button>
+                )}
+                {!isProtein && (
+                <button
+                  className={`panel-bar-btn ${featuresPanelOpen && sidebarTab === 'guides' ? 'active' : ''}`}
+                  onClick={() => toggleSidebarTab('guides')}
+                  aria-pressed={featuresPanelOpen && sidebarTab === 'guides'}
+                  title="Toggle the guide design sidebar"
+                >
+                  <Crosshair size={13} /> Guides
                 </button>
                 )}
                 {isProtein && <div className="panel-bar-sep" />}

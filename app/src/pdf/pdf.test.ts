@@ -137,6 +137,8 @@ describe('sequence PDF', () => {
     features: [gfp],
     groupedSites: groupCutSites(sites, false, false),
     primerItemById: new Map(),
+    guideItemById: new Map(),
+    guidePicks: new Set<string>(),
     autoPicks: new Set(),
     orfPicks: new Set(),
     motifPicks: new Set(),

@@ -14,6 +14,7 @@ import { defaultColorForType } from '../models/Annotation'
 import AnnotationTooltip from './AnnotationTooltip'
 import FeatureBulkBar from './FeatureBulkBar'
 import PrimerList from './primers/PrimerList'
+import GuidePanel from './crispr/GuidePanel'
 import PrimerWorkbench from './primers/PrimerWorkbench'
 import ConfirmDialog from './ConfirmDialog'
 import { useListMultiSelect } from '../hooks/useListMultiSelect'
@@ -248,6 +249,8 @@ function FeatureSidebar({ open, onClose }: FeatureSidebarProps) {
   const setPrimerView = useEditorStore(s => s.setPrimerView)
   const [addingPrimer, setAddingPrimer] = useState(false)
   const primerCount = useEditorStore(s => s.doc.primers?.length ?? 0)
+  const isProteinDoc = useEditorStore(s => s.doc.sequence.alphabet === 'protein')
+  const guideCount = useEditorStore(s => s.guideResults.length)
   const activeTabId = useEditorStore(s => s.activeTabId)
 
   // When editAnnotationId is set from outside, expand that annotation
@@ -494,9 +497,20 @@ function FeatureSidebar({ open, onClose }: FeatureSidebarProps) {
               <span className="fs-title">Primers</span>
               <span className="fs-count">{primerCount}</span>
             </button>
+            {!isProteinDoc && (
+              <button
+                className={`fs-tab ${tab === 'guides' ? 'active' : ''}`}
+                role="tab"
+                aria-selected={tab === 'guides'}
+                onClick={() => switchTab('guides')}
+              >
+                <span className="fs-title">Guides</span>
+                {guideCount > 0 && <span className="fs-count">{guideCount}</span>}
+              </button>
+            )}
           </div>
           <div className="fs-header-actions">
-            {tab === 'primers' ? (
+            {tab === 'guides' ? null : tab === 'primers' ? (
               primerView === 'list' && (
                 <button
                   className="fs-icon-btn"
@@ -540,7 +554,9 @@ function FeatureSidebar({ open, onClose }: FeatureSidebarProps) {
           </div>
         </div>
 
-        {tab === 'primers' ? (
+        {tab === 'guides' ? (
+          <GuidePanel />
+        ) : tab === 'primers' ? (
           <>
             <div className="fs-segmented" role="tablist" aria-label="Primers view">
               <button

@@ -29,6 +29,9 @@ import { annotationCode, codonStartOffset } from '../utils/annotation-sequence'
 import { keyFromOrfId } from '../utils/orf-features'
 import { isPrimerItemId, type PrimerItem } from '../primers/display'
 import { drawPrimerItem } from './primer-draw'
+import { isGuideId } from '../utils/guide-features'
+import { drawGuideItem } from './guide-draw'
+import type { GuideItem } from '../crispr/display'
 import { COMPLEMENT, reverseComplement as reverseComplementStr } from '../models/complement'
 import { translateCodon } from '../utils/codon'
 
@@ -50,6 +53,9 @@ export interface SequenceColors {
   enzyme: string
   enzymeBg: string
   enzymeBgHover: string
+  guide: string
+  guidePam: string
+  guideCut: string
   search: string
   searchCurrent: string
   searchEdge: string
@@ -81,6 +87,9 @@ export function readSequenceColors(el: HTMLElement): SequenceColors {
     enzyme: v('--canvas-enzyme', '#e53e3e'),
     enzymeBg: v('--canvas-enzyme-bg', 'rgba(229,62,62,.08)'),
     enzymeBgHover: v('--canvas-enzyme-bg-hover', 'rgba(229,62,62,.22)'),
+    guide: v('--canvas-guide', '#7c3aed'),
+    guidePam: v('--canvas-guide-pam', '#c4b5fd'),
+    guideCut: v('--canvas-guide-cut', '#6d28d9'),
     search: v('--canvas-search', 'rgba(250,204,21,.32)'),
     searchCurrent: v('--canvas-search-current', 'rgba(249,115,22,.42)'),
     searchEdge: v('--canvas-search-edge', '#ea580c'),
@@ -455,6 +464,10 @@ export interface SequencePaintScene {
   /** A protein's graph track: one value per residue, drawn in the row's graphH. Null draws none. */
   graph: GraphTrack | null
   primerItemById: ReadonlyMap<string, PrimerItem>
+  /** Guide sites the scan found, by their stand-in annotation id. */
+  guideItemById: ReadonlyMap<string, GuideItem>
+  /** Guide keys picked for conversion, outlined in the accent colour. */
+  guidePicks: ReadonlySet<string>
   /** Frames to translate; empty means the feature (annotation) modes. */
   translationFrames: readonly ReadingFrame[]
   translationCode: GeneticCode
@@ -1101,9 +1114,14 @@ export function paintSequenceRows(
     const colorGroups = new Map<string, typeof annBatch>()
     const proposalBatch: typeof annBatch = []
     const primerBatch: typeof annBatch = []
+    const guideBatch: typeof annBatch = []
     for (const a of annBatch) {
       if (isPrimerItemId(a.ann.id)) {
         primerBatch.push(a)
+        continue
+      }
+      if (isGuideId(a.ann.id)) {
+        guideBatch.push(a)
         continue
       }
       const orfK = keyFromOrfId(a.ann.id)
@@ -1206,9 +1224,29 @@ export function paintSequenceRows(
     }
     ctx.globalAlpha = 1
 
+    // Guides: protospacer bar, PAM block, cut ticks. Also one by one, and
+    // also few, since a scan draws only what the panel is showing.
+    const guideItemsNow = s.guideItemById
+    const guidePicksNow = s.guidePicks
+    for (const a of guideBatch) {
+      const item = guideItemsNow.get(a.ann.id)
+      if (!item) continue
+      drawGuideItem(ctx, item, a.cy, rowStart, rowEnd, L, doc.sequence.length, {
+        hovered: a.ann.id === hoveredAnnotationId,
+        preview: item.preview,
+        picked: guidePicksNow.has(item.key),
+        guide: COLORS.guide,
+        pam: COLORS.guidePam,
+        cut: COLORS.guideCut,
+        accent: COLORS.caret,
+        stroke: visibleStroke(COLORS.guide),
+      })
+    }
+    ctx.globalAlpha = 1
+
     // Draw hovered annotation on top
     for (const a of annBatch) {
-      if (a.ann.id !== hoveredAnnotationId || isPrimerItemId(a.ann.id)) continue
+      if (a.ann.id !== hoveredAnnotationId || isPrimerItemId(a.ann.id) || isGuideId(a.ann.id)) continue
       ctx.fillStyle = a.ann.color
       ctx.globalAlpha = 0.55
       ctx.beginPath()
@@ -1232,7 +1270,7 @@ export function paintSequenceRows(
     ctx.textAlign = 'center'
     for (const a of annBatch) {
       const barW = a.x2 - a.x1
-      if (barW <= 20 || isPrimerItemId(a.ann.id) || a.label === false) continue
+      if (barW <= 20 || isPrimerItemId(a.ann.id) || isGuideId(a.ann.id) || a.label === false) continue
       const h = L.annotationRowH
       const arrowW = Math.min(6, barW / 3)
       const cw = Math.min(5, barW / 4)

@@ -75,7 +75,7 @@ export type HitRegion =
       startAngle: number
       span: number
     }
-  | { kind: 'point'; id: string; type: 'enzyme'; x: number; y: number; r: number }
+  | { kind: 'point'; id: string; type: 'enzyme' | 'guide'; x: number; y: number; r: number }
   /** A feature bar on a linear figure. */
   | { kind: 'box'; id: string; type: 'feature'; x: number; y: number; w: number; h: number }
   /** A cut-site name: the box its text fills, centred on x, y and turned by `rotate`. */
@@ -119,6 +119,21 @@ export interface ScenePrimer {
   tail3?: boolean
 }
 
+/**
+ * A guide's cut on the map. Only the cut and the direction are needed: the
+ * protospacer itself rides the feature rings once it is a feature, and a
+ * 20-base arc on a plasmid-sized map is a smudge, while the cut is the thing
+ * a map is read for.
+ */
+export interface SceneGuide {
+  key: string
+  label: string
+  cutPos: number
+  strand: 1 | -1
+  /** A staggered cutter: the second cut, drawn as a short companion tick. */
+  secondCut?: number
+}
+
 export interface SceneGcSeries {
   /** GC fraction per window, 0 to 1. */
   content: number[]
@@ -146,6 +161,11 @@ export interface PlasmidSceneInput {
 
   enzymeGroups: SceneEnzymeGroup[]
   hoveredEnzymeKey: string | null
+
+  /** Guide cuts, when the guide overlay is on. */
+  guides?: SceneGuide[]
+  hoveredGuideKey?: string | null
+  selectedGuideKey?: string | null
 
   primers: ScenePrimer[]
 
@@ -293,6 +313,7 @@ export function buildPlasmidScene(input: PlasmidSceneInput): PlasmidScene {
   const {
     size, seqLen, style, colors, measureText, rings, hoveredAnnotationId,
     proposalIds, pickedIds, enzymeGroups, hoveredEnzymeKey, primers,
+    guides, hoveredGuideKey, selectedGuideKey,
     selection, selectionSpansOrigin, selectionLength, methylation, gc,
     gcPercent, legend, displayOrigin, name, topology,
     showFeatureLabels = true, showCentre = true,
@@ -580,6 +601,39 @@ export function buildPlasmidScene(input: PlasmidSceneInput): PlasmidScene {
         hitId: group.key,
       })
     }
+  }
+
+  // --- Guide cuts ---
+  // Drawn outside the backbone rather than across it, so a guide and an
+  // enzyme at the same position stay told apart, and the selected one is
+  // what the eye lands on.
+  for (const guide of guides ?? []) {
+    const angle = posToAngle(guide.cutPos, seqLen)
+    const hovered = guide.key === hoveredGuideKey
+    const chosen = guide.key === selectedGuideKey
+    const ink = chosen ? colors.accent : colors.guide
+    const from = baseRadius + 2
+    const to = baseRadius + (chosen || hovered ? 16 : 11)
+    items.push({
+      kind: 'line',
+      x1: cx + Math.cos(angle) * from, y1: cy + Math.sin(angle) * from,
+      x2: cx + Math.cos(angle) * to, y2: cy + Math.sin(angle) * to,
+      stroke: ink, width: hovered || chosen ? 3 : 1.5,
+    })
+    // The companion tick of a staggered cutter, close enough to read as a pair.
+    if (guide.secondCut !== undefined) {
+      const a2 = posToAngle(guide.secondCut, seqLen)
+      items.push({
+        kind: 'line',
+        x1: cx + Math.cos(a2) * from, y1: cy + Math.sin(a2) * from,
+        x2: cx + Math.cos(a2) * (from + (to - from) * 0.6), y2: cy + Math.sin(a2) * (from + (to - from) * 0.6),
+        stroke: ink, width: hovered || chosen ? 2 : 1,
+      })
+    }
+    const mx = cx + Math.cos(angle) * to
+    const my = cy + Math.sin(angle) * to
+    items.push({ kind: 'dot', x: mx, y: my, r: hovered || chosen ? 3.5 : 2, fill: ink })
+    hitRegions.push({ kind: 'point', id: guide.key, type: 'guide', x: mx, y: my, r: 10 })
   }
 
   // --- Place ruler and enzyme labels together ---

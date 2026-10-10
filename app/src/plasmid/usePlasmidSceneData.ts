@@ -16,6 +16,10 @@ import { orfIdFor, orfName, keyFromOrfId } from '../utils/orf-features'
 import { groupCutSites, enzymeGroupKey, type GroupedCutSite } from '../enzymes/grouping'
 import { usePrimerSites, useDesignPreview } from '../primers/usePrimerSites'
 import { primerItems, type PrimerItem } from '../primers/display'
+import { cutPosition } from '../crispr/finder'
+import { resolveNuclease } from '../crispr/nucleases'
+import { guideKey, guideName } from '../utils/guide-features'
+import type { SceneGuide } from './scene'
 import { gcPercent } from '../primers/thermodynamics'
 import type { ScenePrimer, SceneEnzymeGroup } from './scene'
 import { getPlasmidStyle } from './styles'
@@ -158,6 +162,35 @@ export function usePlasmidSceneData(doc: DocumentState) {
     [doc.sequence.bases, damMeth, dcmMeth],
   )
 
+  // Guide cuts for the map: a tick where each one cuts, which is what a map
+  // is read for. The protospacers themselves are 20 bases on a plasmid-wide
+  // circle, so they are left to the sequence view and to the feature rings.
+  const showGuides = useEditorStore(s => s.showGuides)
+  const guideResults = useEditorStore(s => s.guideResults)
+  const crisprNucleaseId = useEditorStore(s => s.crisprNucleaseId)
+  const customNucleases = useEditorStore(s => s.customNucleases)
+  const drawScope = useEditorStore(s => s.crisprDraw)
+  const guidePicks = useEditorStore(s => s.guidePicks)
+  const selectedKey = useEditorStore(s => s.selectedGuideKey)
+  const sceneGuides = useMemo<SceneGuide[]>(() => {
+    if (!showGuides || guideResults.length === 0) return []
+    const nuclease = resolveNuclease(crisprNucleaseId, customNucleases)
+    if (!nuclease || nuclease.cleaves === 'none') return []
+    const circular = doc.sequence.topology === 'circular'
+    const scope = drawScope === 'all'
+      ? guideResults
+      : drawScope === 'picked'
+        ? guideResults.filter(c => guidePicks.has(guideKey(c.site)))
+        : guideResults.filter(c => guideKey(c.site) === selectedKey)
+    return scope.filter(c => !c.site.offEnd).map(c => ({
+      key: guideKey(c.site),
+      label: guideName(c.site, nuclease),
+      cutPos: cutPosition(c.site, doc.sequence.length, circular),
+      strand: c.site.strand,
+      ...(c.site.cutTop !== c.site.cutBottom ? { secondCut: c.site.cutBottom } : {}),
+    }))
+  }, [showGuides, guideResults, crisprNucleaseId, customNucleases, drawScope, guidePicks, selectedKey, doc.sequence.length, doc.sequence.topology])
+
   const gcSeries = useMemo(
     () => (showGcRing ? computeGcSeries(doc.sequence.bases) : null),
     [showGcRing, doc.sequence.bases],
@@ -176,7 +209,7 @@ export function usePlasmidSceneData(doc: DocumentState) {
   }, [showPlasmidLegend, allAnnotations])
 
   return {
-    style, allAnnotations, rings, annById, proposalIds, pickedIds, sceneEnzymes, enzymeByKey,
+    style, allAnnotations, rings, annById, proposalIds, pickedIds, sceneEnzymes, enzymeByKey, sceneGuides,
     primerSites, designPreview, allPrimerItems, primerItemById, siteCountOf, scenePrimers,
     methylation, gcSeries, gcOverall, legend,
   }

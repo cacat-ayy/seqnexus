@@ -552,6 +552,7 @@ function SequenceView({ onFindRequest, onFindClose, onAnnotateRequest, onEditFea
   const autoAnnotationPicks = useEditorStore(s => s.autoAnnotationPicks)
   const orfPicks = useEditorStore(s => s.orfPicks)
   const motifPicks = useEditorStore(s => s.motifPicks)
+  const guidePicks = useEditorStore(s => s.guidePicks)
   const enzymeCutSites = useMemo(() => (showEnzymes ? allEnzymeCutSites : []), [showEnzymes, allEnzymeCutSites])
 
   // Used by the delete confirmation
@@ -619,7 +620,7 @@ function SequenceView({ onFindRequest, onFindClose, onAnnotateRequest, onEditFea
 
   // Everything in the feature lanes, and the translation settings, built the
   // same way the PDF export builds them.
-  const { primerSites, designPreview, allPrimerItems, primerItemById, annTree, allAnnotations } = useSequenceTracks(doc)
+  const { primerSites, designPreview, allPrimerItems, primerItemById, guideItemById, annTree, allAnnotations } = useSequenceTracks(doc)
   /** How many sites the primer behind an item has, for the tooltip. */
   const siteCountOf = (item: PrimerItem) =>
     (item.preview ? designPreview.sites : primerSites).get(item.primer.id)?.length ?? 1
@@ -657,6 +658,8 @@ function SequenceView({ onFindRequest, onFindClose, onAnnotateRequest, onEditFea
   const motifPicksRef = useRef(motifPicks)
   const graphRef = useRef(graph)
   const primerItemByIdRef = useRef(primerItemById)
+  const guideItemByIdRef = useRef(guideItemById)
+  const guidePicksRef = useRef(guidePicks)
   const onFindRequestRef = useRef(onFindRequest)
 
   // Sync refs on every render (cheap assignments, no effects needed)
@@ -687,6 +690,8 @@ function SequenceView({ onFindRequest, onFindClose, onAnnotateRequest, onEditFea
   motifPicksRef.current = motifPicks
   graphRef.current = graph
   primerItemByIdRef.current = primerItemById
+  guideItemByIdRef.current = guideItemById
+  guidePicksRef.current = guidePicks
   onFindRequestRef.current = onFindRequest
   const onFindCloseRef = useRef(onFindClose)
   onFindCloseRef.current = onFindClose
@@ -928,6 +933,8 @@ function SequenceView({ onFindRequest, onFindClose, onAnnotateRequest, onEditFea
       motifPicks: motifPicksRef.current,
       graph: graphRef.current,
       primerItemById: primerItemByIdRef.current,
+      guideItemById: guideItemByIdRef.current,
+      guidePicks: guidePicksRef.current,
       translationFrames: translationFramesRef.current,
       translationCode: translationCodeRef.current,
       aminoAcidStyle: aminoAcidStyleRef.current,

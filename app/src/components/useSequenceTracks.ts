@@ -21,6 +21,9 @@ import type { GraphTrack } from './sequence-paint'
 import { proposalsFrom, proposalAnnotations } from '../utils/auto-annotations'
 import { usePrimerSites, useDesignPreview } from '../primers/usePrimerSites'
 import { primerItems, type PrimerItem } from '../primers/display'
+import { guideItems, type GuideItem } from '../crispr/display'
+import { resolveNuclease } from '../crispr/nucleases'
+import { guideKey } from '../utils/guide-features'
 import { geneticCode } from '../codon/genetic-codes'
 import { framesFor, translationRowCount, translatesSelection } from '../codon/translation-display'
 
@@ -35,6 +38,12 @@ export function useSequenceTracks(doc: DocumentState) {
   const activeTabId = useEditorStore(s => s.activeTabId)
   const designPicks = useEditorStore(s => s.primerDesign.picks)
   const designBatch = useEditorStore(s => s.primerDesign.batch)
+  const showGuides = useEditorStore(s => s.showGuides)
+  const guideResults = useEditorStore(s => s.guideResults)
+  const guideDraw = useEditorStore(s => s.crisprDraw)
+  const guidePicks = useEditorStore(s => s.guidePicks)
+  const selectedGuideKey = useEditorStore(s => s.selectedGuideKey)
+  const customNucleases = useEditorStore(s => s.customNucleases)
   const showAutoAnnotations = useEditorStore(s => s.showAutoAnnotations)
   const allAutoAnnotations = useEditorStore(s => s.autoAnnotations)
   const autoOverlapThreshold = useEditorStore(s => s.autoAnnotateOverlapThreshold)
@@ -104,6 +113,23 @@ export function useSequenceTracks(doc: DocumentState) {
     [allPrimerItems],
   )
 
+  // Guides: one lane item per site the scan found, with the PAM inside its
+  // footprint so it gets room in the lane. The overlay switch governs them,
+  // the way it governs ORFs: the panel can list sites without drawing them.
+  const allGuideItems = useMemo(() => {
+    if (!showGuides || guideResults.length === 0) return []
+    const wanted = guideDraw === 'all'
+      ? guideResults
+      : guideDraw === 'picked'
+        ? guideResults.filter(c => guidePicks.has(guideKey(c.site)))
+        : guideResults.filter(c => guideKey(c.site) === selectedGuideKey)
+    return guideItems(wanted, id => resolveNuclease(id, customNucleases), doc.sequence.length)
+  }, [showGuides, guideResults, guideDraw, guidePicks, selectedGuideKey, customNucleases, doc.sequence.length])
+  const guideItemById = useMemo(
+    () => new Map<string, GuideItem>(allGuideItems.map(i => [i.annotation.id, i])),
+    [allGuideItems],
+  )
+
   /**
    * Auto-annotation proposals, as annotations.
    *
@@ -135,6 +161,9 @@ export function useSequenceTracks(doc: DocumentState) {
     for (const item of allPrimerItems) {
       tree.insert(item.annotation)
     }
+    for (const item of allGuideItems) {
+      tree.insert(item.annotation)
+    }
     for (const ann of autoAnnotations) {
       tree.insert(ann)
     }
@@ -145,17 +174,19 @@ export function useSequenceTracks(doc: DocumentState) {
       tree.insert(ann)
     }
     return tree
-  }, [visibleAnnotations, orfAnnotations, allPrimerItems, autoAnnotations, motifAnnotations, peptideAnnotations])
+  }, [visibleAnnotations, orfAnnotations, allPrimerItems, allGuideItems, autoAnnotations, motifAnnotations, peptideAnnotations])
 
   // Combined list for hit-testing (visible annotations + ORFs + primers + proposals)
   const allAnnotations = useMemo(() => {
-    const extra = [...orfAnnotations, ...allPrimerItems.map(i => i.annotation), ...autoAnnotations, ...motifAnnotations, ...peptideAnnotations]
+    const extra = [...orfAnnotations, ...allPrimerItems.map(i => i.annotation), ...allGuideItems.map(i => i.annotation), ...autoAnnotations, ...motifAnnotations, ...peptideAnnotations]
     if (extra.length === 0) return visibleAnnotations
     return [...visibleAnnotations, ...extra]
-  }, [visibleAnnotations, orfAnnotations, allPrimerItems, autoAnnotations, motifAnnotations, peptideAnnotations])
+  }, [visibleAnnotations, orfAnnotations, allPrimerItems, allGuideItems, autoAnnotations, motifAnnotations, peptideAnnotations])
 
   return {
-    primerSites, designPreview, allPrimerItems, primerItemById, visibleAnnotations, annTree, allAnnotations,
+    primerSites, designPreview, allPrimerItems, primerItemById,
+    allGuideItems, guideItemById,
+    visibleAnnotations, annTree, allAnnotations,
   }
 }
 

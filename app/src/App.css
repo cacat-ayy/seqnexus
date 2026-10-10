@@ -39,6 +39,10 @@
   --canvas-enzyme: #e53e3e;
   --canvas-enzyme-bg: rgba(229,62,62,.08);
   --canvas-enzyme-bg-hover: rgba(229,62,62,.22);
+  /* CRISPR guide overlay: the spacer bar, the PAM shade, the cut tick. */
+  --canvas-guide: #7c3aed;
+  --canvas-guide-pam: #c4b5fd;
+  --canvas-guide-cut: #6d28d9;
   --canvas-search: rgba(250,204,21,.32);
   --canvas-search-current: rgba(249,115,22,.42);
   --canvas-search-edge: #ea580c;
@@ -271,6 +275,7 @@
   --canvas-ruler: #94a3b8; --canvas-ruler-tick: #334155; --canvas-row-sep: #2d3a4e;
   --canvas-backbone: #94a3b8; --canvas-codon: rgba(148,163,184,.16);
   --canvas-enzyme: #f87171; --canvas-enzyme-bg: rgba(248,113,113,.18); --canvas-enzyme-bg-hover: rgba(248,113,113,.35);
+  --canvas-guide: #a78bfa; --canvas-guide-pam: #6d5bbd; --canvas-guide-cut: #c4b5fd;
   --props-bg: #162032; --input-bg: #162032; --input-border: #334155;
   --status-bg: #1e293b; --find-bg: #1e293b;
   --base-a: #4ade80; --base-c: #60a5fa; --base-g: #fbbf24; --base-t: #f87171; --base-other: #64748b;
@@ -298,6 +303,7 @@
   --canvas-ruler: #7dd3fc; --canvas-ruler-tick: #1e293b; --canvas-row-sep: #131d33;
   --canvas-backbone: #7dd3fc; --canvas-codon: rgba(148,163,184,.16);
   --canvas-enzyme: #fb7185; --canvas-enzyme-bg: rgba(251,113,133,.2); --canvas-enzyme-bg-hover: rgba(251,113,133,.38);
+  --canvas-guide: #c084fc; --canvas-guide-pam: #7e22ce; --canvas-guide-cut: #d8b4fe;
   --props-bg: #0a0f1e; --input-bg: #0a0f1e; --input-border: #1e293b;
   --status-bg: #0c1222; --find-bg: #0c1222;
   --base-a: #4ade80; --base-c: #60a5fa; --base-g: #fbbf24; --base-t: #f87171; --base-other: #64748b;
@@ -323,6 +329,7 @@
   --canvas-ruler: #586e75; --canvas-ruler-tick: #d6ceb5; --canvas-row-sep: #f0e8cc;
   --canvas-backbone: #586e75;
   --canvas-enzyme: #dc322f; --canvas-enzyme-bg: rgba(220,50,47,.1); --canvas-enzyme-bg-hover: rgba(220,50,47,.25);
+  --canvas-guide: #6c71c4; --canvas-guide-pam: #a3a7dc; --canvas-guide-cut: #5257a8;
   --props-bg: #f5eed6; --input-bg: #f5eed6; --input-border: #d6ceb5;
   --status-bg: #fdf6e3; --find-bg: #f5eed6;
 }
@@ -344,6 +351,7 @@
   --canvas-ruler: #4d7c5a; --canvas-ruler-tick: #d1e5d1; --canvas-row-sep: #e6f2e6;
   --canvas-backbone: #4d7c5a;
   --canvas-enzyme: #dc2626; --canvas-enzyme-bg: rgba(220,38,38,.08); --canvas-enzyme-bg-hover: rgba(220,38,38,.22);
+  --canvas-guide: #7c3aed; --canvas-guide-pam: #c4b5fd; --canvas-guide-cut: #6d28d9;
   --props-bg: #f0f7f0; --input-bg: #f0f7f0; --input-border: #d1e5d1;
   --status-bg: #f8fcf8; --find-bg: #f0f7f0;
 }
@@ -365,6 +373,7 @@
   --canvas-ruler: #78616b; --canvas-ruler-tick: #e8d5db; --canvas-row-sep: #f5eaee;
   --canvas-backbone: #78616b;
   --canvas-enzyme: #dc2626; --canvas-enzyme-bg: rgba(220,38,38,.08); --canvas-enzyme-bg-hover: rgba(220,38,38,.22);
+  --canvas-guide: #7c3aed; --canvas-guide-pam: #c4b5fd; --canvas-guide-cut: #6d28d9;
   --props-bg: #f9f3f5; --input-bg: #f9f3f5; --input-border: #e8d5db;
   --status-bg: #fffbfc; --find-bg: #f9f3f5;
 }
@@ -386,6 +395,7 @@
   --canvas-ruler: #6b5b8a; --canvas-ruler-tick: #ddd4ee; --canvas-row-sep: #ece6f5;
   --canvas-backbone: #6b5b8a;
   --canvas-enzyme: #dc2626; --canvas-enzyme-bg: rgba(220,38,38,.08); --canvas-enzyme-bg-hover: rgba(220,38,38,.22);
+  --canvas-guide: #0d9488; --canvas-guide-pam: #5eead4; --canvas-guide-cut: #0f766e;
   --props-bg: #f3eff9; --input-bg: #f3eff9; --input-border: #ddd4ee;
   --status-bg: #faf8ff; --find-bg: #f3eff9;
 }
@@ -408,6 +418,7 @@
   --canvas-ruler: #bfbfbf; --canvas-ruler-tick: #44475a; --canvas-row-sep: #343746;
   --canvas-backbone: #bfbfbf; --canvas-codon: rgba(148,163,184,.16);
   --canvas-enzyme: #ff5555; --canvas-enzyme-bg: rgba(255,85,85,.18); --canvas-enzyme-bg-hover: rgba(255,85,85,.35);
+  --canvas-guide: #8be9fd; --canvas-guide-pam: #4e8a99; --canvas-guide-cut: #a4f0ff;
   --props-bg: #21222c; --input-bg: #21222c; --input-border: #44475a;
   --status-bg: #282a36; --find-bg: #21222c;
   --base-a: #4ade80; --base-c: #60a5fa; --base-g: #fbbf24; --base-t: #f87171; --base-other: #64748b;
@@ -434,6 +445,7 @@
   --canvas-ruler: #d8dee9; --canvas-ruler-tick: #3b4252; --canvas-row-sep: #3b4252;
   --canvas-backbone: #d8dee9; --canvas-codon: rgba(148,163,184,.16);
   --canvas-enzyme: #bf616a; --canvas-enzyme-bg: rgba(191,97,106,.18); --canvas-enzyme-bg-hover: rgba(191,97,106,.35);
+  --canvas-guide: #b48ead; --canvas-guide-pam: #8a6b85; --canvas-guide-cut: #d0b4cb;
   --props-bg: #272c36; --input-bg: #272c36; --input-border: #3b4252;
   --status-bg: #2e3440; --find-bg: #272c36;
   --base-a: #4ade80; --base-c: #60a5fa; --base-g: #fbbf24; --base-t: #f87171; --base-other: #64748b;
@@ -460,6 +472,7 @@
   --canvas-ruler: #a6adc8; --canvas-ruler-tick: #313244; --canvas-row-sep: #2a2b3d;
   --canvas-backbone: #a6adc8; --canvas-codon: rgba(148,163,184,.16);
   --canvas-enzyme: #f38ba8; --canvas-enzyme-bg: rgba(243,139,168,.18); --canvas-enzyme-bg-hover: rgba(243,139,168,.35);
+  --canvas-guide: #94e2d5; --canvas-guide-pam: #5f9c92; --canvas-guide-cut: #b8f0e6;
   --props-bg: #181825; --input-bg: #181825; --input-border: #313244;
   --status-bg: #1e1e2e; --find-bg: #181825;
   --base-a: #4ade80; --base-c: #60a5fa; --base-g: #fbbf24; --base-t: #f87171; --base-other: #64748b;

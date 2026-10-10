@@ -170,6 +170,7 @@ export interface PlasmidColors {
   search: string
   searchCurrent: string
   enzyme: string
+  guide: string
   primer: string
   gc: string
   gcSkewPos: string
@@ -190,6 +191,7 @@ const PRINT_COLORS: PlasmidColors = {
   search: '#888888',
   searchCurrent: '#000000',
   enzyme: '#333333',
+  guide: '#555555',
   primer: '#555555',
   gc: '#666666',
   gcSkewPos: '#777777',
@@ -227,6 +229,7 @@ export function resolvePlasmidColors(
     search: v('--warning', '#f59e0b'),
     searchCurrent: v('--canvas-search-edge', '#ea580c'),
     enzyme: v('--canvas-enzyme', '#e53e3e'),
+    guide: v('--canvas-guide', '#7c3aed'),
     primer: v('--success', '#16a34a'),
     gc: v('--text-muted', '#94a3b8'),
     gcSkewPos: v('--accent', '#6366f1'),

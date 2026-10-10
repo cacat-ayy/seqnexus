@@ -27,6 +27,7 @@ import PrimerTooltip from './primers/PrimerTooltip'
 import { isPrimerItemId } from '../primers/display'
 
 import { buildPlasmidScene, type PlasmidScene } from '../plasmid/scene'
+import { guideKey } from '../utils/guide-features'
 import { renderSceneToCanvas, type Viewport } from '../plasmid/renderCanvas'
 import { plasmidToPng, plasmidToSvgBlob } from '../plasmid/exportImage'
 import { resolvePlasmidColors, type PlasmidColors } from '../plasmid/styles'
@@ -74,11 +75,23 @@ function PlasmidMap(_props: PlasmidMapProps) {
   const { target: enzymeTooltip, show: showEnzymeTooltip, hide: hideEnzymeTooltip } =
     useDelayedHover<HoverTarget & { group: GroupedCutSite }>()
   const [hoveredEnzymeKey, setHoveredEnzymeKey] = useState<string | null>(null)
+  const [hoveredGuideKey, setHoveredGuideKey] = useState<string | null>(null)
+  const selectedGuideKey = useEditorStore(s => s.selectedGuideKey)
+  const setSelectedGuideKey = useEditorStore(s => s.setSelectedGuideKey)
+  const guideResults = useEditorStore(s => s.guideResults)
 
   const {
-    style, allAnnotations, rings, annById, proposalIds, pickedIds, sceneEnzymes, enzymeByKey,
+    style, allAnnotations, rings, annById, proposalIds, pickedIds, sceneEnzymes, enzymeByKey, sceneGuides,
     allPrimerItems, primerItemById, siteCountOf, scenePrimers, methylation, gcSeries, gcOverall, legend,
   } = usePlasmidSceneData(doc)
+
+  /** A guide cut on the map selects its protospacer, as a site click does. */
+  const selectGuide = useCallback((key: string) => {
+    const found = guideResults.find(c => guideKey(c.site) === key)
+    if (!found) return
+    setSelectedGuideKey(key)
+    useEditorStore.getState().setSelection({ anchor: found.site.start, caret: found.site.end })
+  }, [guideResults, setSelectedGuideKey])
 
   // Context menu
   interface ContextMenuState {
@@ -154,6 +167,9 @@ function PlasmidMap(_props: PlasmidMapProps) {
       pickedIds,
       enzymeGroups: sceneEnzymes,
       hoveredEnzymeKey,
+      guides: sceneGuides,
+      hoveredGuideKey,
+      selectedGuideKey,
       primers: scenePrimers,
       selection,
       selectionSpansOrigin: isOriginSpanningSelection(selection, 'circular'),
@@ -170,7 +186,7 @@ function PlasmidMap(_props: PlasmidMapProps) {
   }, [
     canvasSize, doc.sequence.length, doc.sequence.topology, doc.name, doc.metadata,
     style, colors, rings, hoveredAnnotationId, proposalIds, pickedIds, sceneEnzymes,
-    hoveredEnzymeKey, scenePrimers, selection, extraSelections, search, methylation, gcSeries, gcOverall, legend,
+    hoveredEnzymeKey, sceneGuides, hoveredGuideKey, selectedGuideKey, scenePrimers, selection, extraSelections, search, methylation, gcSeries, gcOverall, legend,
   ])
 
   const sceneRef = useRef<PlasmidScene | null>(null)
@@ -289,6 +305,10 @@ function PlasmidMap(_props: PlasmidMapProps) {
     }
 
     const hit = hitTest(x, y, scn)
+    if (hit?.type === 'guide') {
+      selectGuide(hit.id)
+      return
+    }
     if (hit?.type === 'enzyme') {
       const group = enzymeByKey.get(hit.id)
       if (group) {
@@ -322,7 +342,7 @@ function PlasmidMap(_props: PlasmidMapProps) {
     if (e.shiftKey) setSelection({ anchor: selection.anchor, caret: pos })
     else setCaret(pos)
   }, [
-    doc.sequence.length, doc.name, toSceneXY, hitTest, enzymeByKey, annById,
+    doc.sequence.length, doc.name, toSceneXY, hitTest, enzymeByKey, annById, selectGuide,
     scenePrimers, selection.anchor, setSelection, setCaret, setViewMode, pickRange,
   ])
 
@@ -364,6 +384,11 @@ function PlasmidMap(_props: PlasmidMapProps) {
     const hit = hitTest(pt.x, pt.y, pt.scene)
 
     const store = useEditorStore.getState()
+    if (hit?.type === 'guide') {
+      if (hoveredGuideKey !== hit.id) setHoveredGuideKey(hit.id)
+    } else if (hoveredGuideKey !== null) {
+      setHoveredGuideKey(null)
+    }
     if (hit?.type === 'enzyme') {
       const group = enzymeByKey.get(hit.id)
       if (group) {
@@ -390,7 +415,7 @@ function PlasmidMap(_props: PlasmidMapProps) {
     else hideAnnTooltip()
     canvas.style.cursor = hit ? 'pointer' : viewportRef.current.scale > 1 ? 'grab' : 'crosshair'
   }, [
-    doc.sequence, toSceneXY, hitTest, enzymeByKey, hoveredEnzymeKey,
+    doc.sequence, toSceneXY, hitTest, enzymeByKey, hoveredEnzymeKey, hoveredGuideKey,
     setHoveredAnnotation, showAnnTooltip, hideAnnTooltip, showEnzymeTooltip, hideEnzymeTooltip,
   ])
 

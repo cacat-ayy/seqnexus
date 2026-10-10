@@ -1,0 +1,442 @@
+/* The Guides tab: settings, the score landscape, the candidate list and the
+   inspector for the selected site. Classes are prefixed gp- for the panel
+   and gi- for the inspector. */
+
+.gp {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  flex: 1;
+}
+
+.gp-settings {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-2-5);
+  border-bottom: 1px solid var(--border-light);
+}
+
+.gp-field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-0-5);
+  min-width: 0;
+}
+
+.gp-field-wide {
+  flex: 1 1 100%;
+}
+
+.gp-field label {
+  font-size: var(--text-2xs);
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.gp-field select {
+  font-size: var(--text-xs);
+  padding: var(--space-1) var(--space-1-5);
+  border: 1px solid var(--input-border);
+  border-radius: var(--radius-sm);
+  background: var(--input-bg);
+  color: var(--text);
+  max-width: 100%;
+}
+
+.gp-checks {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-1-5) var(--space-3);
+  flex: 1 1 100%;
+}
+
+.gp-checks select {
+  font-size: var(--text-xs);
+  padding: var(--space-0-5) var(--space-1);
+  border: 1px solid var(--input-border);
+  border-radius: var(--radius-sm);
+  background: var(--input-bg);
+  color: var(--text);
+  margin-left: auto;
+}
+
+.gp-check {
+  display: inline-flex;
+  align-items: center;
+  white-space: nowrap;
+  gap: var(--space-1);
+  font-size: var(--text-xs);
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+
+.gp-note {
+  flex: 1 1 100%;
+  font-size: var(--text-2xs);
+  color: var(--text-muted);
+  line-height: 1.45;
+}
+
+/* --- Status --- */
+
+.gp-status {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  padding: var(--space-1-5) var(--space-2-5);
+  font-size: var(--text-xs);
+  color: var(--text-secondary);
+}
+
+.gp-status-count {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1-5);
+  min-width: 0;
+}
+
+.gp-picked {
+  color: var(--accent);
+}
+
+.gp-warn {
+  color: var(--warning);
+}
+
+/* --- The score landscape --- */
+
+.gp-landscape {
+  position: relative;
+  margin: 0 var(--space-2-5) var(--space-1-5);
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-sm);
+  background: var(--bg-alt);
+  cursor: crosshair;
+}
+
+.gp-landscape svg {
+  display: block;
+  width: 100%;
+  height: 46px;
+}
+
+.gp-bar {
+  fill: var(--accent);
+  opacity: 0.55;
+}
+
+.gp-bar.warn {
+  fill: var(--warning);
+}
+
+.gp-bar.bad {
+  fill: var(--danger);
+  opacity: 0.4;
+}
+
+.gp-bar.sel {
+  fill: var(--accent-dark);
+  opacity: 1;
+}
+
+.gp-landscape-base {
+  stroke: var(--border);
+  stroke-width: 1;
+}
+
+.gp-landscape-label {
+  position: absolute;
+  top: 2px;
+  left: var(--space-1);
+  font-size: var(--text-2xs);
+  color: var(--text-faint);
+  pointer-events: none;
+}
+
+/* --- Toolbar above the list --- */
+
+.gp-toolbar {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: 0 var(--space-2-5) var(--space-1-5);
+}
+
+.gp-toolbar select {
+  font-size: var(--text-xs);
+  padding: var(--space-0-5) var(--space-1);
+  border: 1px solid var(--input-border);
+  border-radius: var(--radius-sm);
+  background: var(--input-bg);
+  color: var(--text);
+}
+
+.gp-spacer {
+  flex: 1;
+}
+
+/* --- The candidate list --- */
+
+.gp-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  overflow-y: auto;
+  flex: 1;
+  min-height: 0;
+  border-top: 1px solid var(--border-light);
+}
+
+.gp-row {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: var(--space-1) var(--space-2);
+  padding: var(--space-1-5) var(--space-2-5);
+  border-bottom: 1px solid var(--border-light);
+  cursor: pointer;
+}
+
+.gp-row:hover {
+  background: var(--bg-hover);
+}
+
+.gp-row.sel {
+  background: var(--accent-bg);
+}
+
+.gp-row.picked {
+  box-shadow: inset 2px 0 0 var(--accent);
+}
+
+.gp-row-main {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-1-5);
+  min-width: 0;
+}
+
+.gp-pos {
+  font-size: var(--text-2xs);
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+  flex-shrink: 0;
+}
+
+/* The spacer gives way, the PAM never does: a row that cut the PAM off
+   would hide the one part of the site the nuclease reads. */
+.gp-seq {
+  display: flex;
+  align-items: baseline;
+  min-width: 0;
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  color: var(--text);
+}
+
+.gp-spacer-seq {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+
+.gp-pam {
+  flex-shrink: 0;
+  color: var(--text-secondary);
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+  border-radius: var(--radius-xs);
+}
+
+.gp-scores {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2);
+  font-size: var(--text-2xs);
+  font-variant-numeric: tabular-nums;
+  color: var(--text-secondary);
+  flex-shrink: 0;
+}
+
+.gp-score-strong {
+  color: var(--text);
+  font-weight: 600;
+}
+
+.gp-chips {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1);
+}
+
+.gp-chip {
+  font-size: var(--text-2xs);
+  padding: 0 var(--space-1);
+  border-radius: var(--radius-xs);
+  background: var(--warning-bg);
+  color: var(--warning);
+  white-space: nowrap;
+}
+
+.gp-chip.bad {
+  background: var(--danger-bg);
+  color: var(--danger);
+}
+
+.gp-empty {
+  padding: var(--space-4) var(--space-3);
+  text-align: center;
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+}
+
+.gp-more {
+  padding: var(--space-1-5) var(--space-2-5);
+  font-size: var(--text-2xs);
+  color: var(--text-muted);
+  text-align: center;
+}
+
+/* --- The inspector --- */
+
+.gi {
+  border-top: 1px solid var(--border);
+  background: var(--props-bg);
+  padding: var(--space-2) var(--space-2-5);
+  max-height: 46%;
+  overflow-y: auto;
+  flex-shrink: 0;
+}
+
+.gi-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  margin-bottom: var(--space-1-5);
+}
+
+.gi-title {
+  font-size: var(--text-md);
+  font-weight: 600;
+  color: var(--text);
+}
+
+.gi-actions {
+  display: flex;
+  gap: var(--space-1);
+}
+
+.gi-seq {
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  word-break: break-all;
+  background: var(--bg);
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-sm);
+  padding: var(--space-1-5);
+  margin-bottom: var(--space-2);
+}
+
+.gi-grid {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: var(--space-0-5) var(--space-2);
+  font-size: var(--text-xs);
+  margin-bottom: var(--space-2);
+}
+
+.gi-grid dt {
+  color: var(--text-muted);
+}
+
+.gi-grid dd {
+  margin: 0;
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+}
+
+.gi-section {
+  margin-bottom: var(--space-2);
+}
+
+.gi-section-title {
+  font-size: var(--text-2xs);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-muted);
+  margin-bottom: var(--space-1);
+}
+
+.gi-terms {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.gi-term {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-2);
+  font-size: var(--text-xs);
+  padding: var(--space-0-5) 0;
+}
+
+.gi-term-delta {
+  font-variant-numeric: tabular-nums;
+  color: var(--success);
+}
+
+.gi-term-delta.down {
+  color: var(--danger);
+}
+
+.gi-caveat {
+  font-size: var(--text-2xs);
+  color: var(--text-muted);
+  line-height: 1.45;
+  margin-top: var(--space-1);
+}
+
+.gi-flag {
+  font-size: var(--text-xs);
+  color: var(--text-secondary);
+  padding: var(--space-0-5) 0;
+  line-height: 1.45;
+}
+
+.gi-deletions {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--text-2xs);
+}
+
+.gi-deletions th {
+  text-align: left;
+  font-weight: 500;
+  color: var(--text-muted);
+  padding: var(--space-0-5) var(--space-1) var(--space-0-5) 0;
+}
+
+.gi-deletions td {
+  padding: var(--space-0-5) var(--space-1) var(--space-0-5) 0;
+  font-variant-numeric: tabular-nums;
+  color: var(--text);
+}
+
+.gi-mh {
+  font-family: var(--font-mono);
+}
+
+.gi-shift {
+  color: var(--warning);
+}
+
+.gp-note-row {
+  padding: 0 var(--space-2-5) var(--space-1-5);
+}

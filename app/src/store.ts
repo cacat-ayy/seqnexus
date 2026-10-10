@@ -63,6 +63,9 @@ import { matchKey, proposalsFrom } from './utils/auto-annotations'
 import { orfKey, convertibleOrfs, orfToAnnotationData } from './utils/orf-features'
 import { motifKey, convertibleMotifs, motifToAnnotationData } from './utils/motif-features'
 import type { MotifHit } from './protein/motifs'
+import type { GuideCandidate, GuideDrawScope, GuideScanInfo, Nuclease } from './crispr/types'
+import { guideKey, guideToAnnotationData, convertibleGuides } from './utils/guide-features'
+import { DEFAULT_NUCLEASE_ID, resolveNuclease } from './crispr/nucleases'
 import type { StructureRef } from './structure/model'
 
 /** A digest's peptides drawn over the protein they came from. */
@@ -144,6 +147,7 @@ export interface DocumentTab {
   showEnzymes: boolean
   showAutoAnnotations: boolean
   showMotifs: boolean
+  showGuides: boolean
   // Cached analysis results (preserved across tab switches)
   orfResults: ORFResult[]
   enzymeCutSites: CutSite[]
@@ -177,7 +181,7 @@ export const EMPTY_DESIGN: PrimerDesignState = {
   batch: [],
 }
 
-export type SidebarTab = 'features' | 'primers'
+export type SidebarTab = 'features' | 'primers' | 'guides'
 export type PrimerView = 'list' | 'design'
 
 export interface ExplorerFolder {
@@ -633,6 +637,43 @@ interface EditorStore {
   motifResults: MotifHit[]
   setMotifResults: (hits: MotifHit[]) => void
   /** Motif keys picked for conversion into features. Transient, not per tab. */
+  /**
+   * The guide scan for the open document: every site the chosen nuclease
+   * could target, scored. Rebuilt by useGuideScan when the sequence or the
+   * settings change, so it is app state rather than per-tab cache.
+   */
+  guideResults: GuideCandidate[]
+  setGuideResults: (candidates: GuideCandidate[], info?: Partial<GuideScanInfo>) => void
+  clearGuides: () => void
+  /** What the last scan could not do, and whether one is running. */
+  guideScanInfo: GuideScanInfo
+  setGuideScanRunning: (running: boolean) => void
+  /** Guide keys picked for conversion into features. Transient, not per tab. */
+  guidePicks: Set<string>
+  toggleGuidePick: (key: string) => void
+  clearGuidePicks: () => void
+  /** The site the inspector is showing, by key. */
+  selectedGuideKey: string | null
+  setSelectedGuideKey: (key: string | null) => void
+  /** Turn the picked guides (or all of them) into features, in one undo step. */
+  applyGuides: (keys?: Iterable<string>) => number
+  /** Which nuclease the scan uses, and how it is run. Persisted. */
+  crisprNucleaseId: string
+  /** 0 means the nuclease's own default spacer length. */
+  crisprSpacerLength: number
+  /** Limit the scan to the selection. */
+  crisprSelectionOnly: boolean
+  /**
+   * What the overlay draws. A relaxed PAM finds a site every few bases, and
+   * all of them at once is a wall rather than a figure, so the panel can ask
+   * for the picked ones or the selected one instead.
+   */
+  crisprDraw: GuideDrawScope
+  setCrisprParams: (params: Partial<{ crisprNucleaseId: string; crisprSpacerLength: number; crisprSelectionOnly: boolean; crisprDraw: GuideDrawScope }>) => void
+  /** Nucleases the user described. Persisted beside the other settings. */
+  customNucleases: Nuclease[]
+  addCustomNuclease: (nuclease: Nuclease) => void
+  removeCustomNuclease: (id: string) => void
   motifPicks: Set<string>
   toggleMotifPick: (key: string) => void
   clearMotifPicks: () => void
@@ -741,10 +782,13 @@ interface EditorStore {
   showAutoAnnotations: boolean
   /** Protein only: the motif hits drawn as an overlay. */
   showMotifs: boolean
+  /** DNA only: the guide sites drawn as an overlay. */
+  showGuides: boolean
   toggleOrfs: () => void
   toggleEnzymes: () => void
   toggleAutoAnnotations: () => void
   toggleMotifs: () => void
+  toggleGuides: () => void
 
   // Tab management
   openDocument: (name: string, bases: string, topology?: 'linear' | 'circular', description?: string, origin?: DocumentOrigin, alphabet?: Alphabet) => string
@@ -1114,7 +1158,8 @@ const SIDEBAR_TAB_KEY = STORAGE_KEYS.featureSidebarTab
 
 function loadSidebarTab(): SidebarTab {
   try {
-    return localStorage.getItem(SIDEBAR_TAB_KEY) === 'primers' ? 'primers' : 'features'
+    const saved = localStorage.getItem(SIDEBAR_TAB_KEY)
+    return saved === 'primers' || saved === 'guides' ? saved : 'features'
   } catch {
     return 'features'
   }
@@ -1145,6 +1190,7 @@ function makeTab(doc: DocumentState): DocumentTab {
     showEnzymes: false,
     showAutoAnnotations: false,
     showMotifs: false,
+    showGuides: false,
     orfResults: [],
     enzymeCutSites: [],
     enzymeNames: [],
@@ -1367,6 +1413,7 @@ export const useEditorStore = create<EditorStore>((set, get) => {
         showEnzymes: active.showEnzymes,
         showAutoAnnotations: active.showAutoAnnotations,
         showMotifs: active.showMotifs,
+        showGuides: active.showGuides,
       } : {}),
     })
   }
@@ -2025,6 +2072,80 @@ export const useEditorStore = create<EditorStore>((set, get) => {
       // Picks are about what is on screen; hiding the overlay forgets them.
       if (!next) set({ orfPicks: new Set() })
     },
+    showGuides: false,
+    toggleGuides: () => {
+      const tab = getActiveTab()
+      if (!tab) return
+      const next = !tab.showGuides
+      updateActiveTab({ showGuides: next })
+      // Picks are about what is on screen; hiding the overlay forgets them.
+      if (!next) set({ guidePicks: new Set(), selectedGuideKey: null })
+    },
+
+    // --- CRISPR guides ---
+    guideResults: [],
+    guideScanInfo: { running: false, truncated: false, skippedAmbiguous: 0 },
+    setGuideResults: (candidates, info) => {
+      set({
+        guideResults: candidates,
+        guideScanInfo: { ...get().guideScanInfo, running: false, ...info },
+      })
+      // A re-scan with other settings returns other sites; a pick or a
+      // selection pointing at one that is gone has nothing left to point at.
+      const live = new Set(candidates.map(c => guideKey(c.site)))
+      const picks = get().guidePicks
+      if (picks.size > 0) {
+        const kept = new Set([...picks].filter(k => live.has(k)))
+        if (kept.size !== picks.size) set({ guidePicks: kept })
+      }
+      const selected = get().selectedGuideKey
+      if (selected && !live.has(selected)) set({ selectedGuideKey: null })
+    },
+    clearGuides: () => set({
+      guideResults: [],
+      guidePicks: new Set(),
+      selectedGuideKey: null,
+      guideScanInfo: { running: false, truncated: false, skippedAmbiguous: 0 },
+    }),
+    setGuideScanRunning: (running) => set({ guideScanInfo: { ...get().guideScanInfo, running } }),
+    guidePicks: new Set<string>(),
+    toggleGuidePick: (key) => {
+      const next = new Set(get().guidePicks)
+      if (next.has(key)) next.delete(key)
+      else next.add(key)
+      set({ guidePicks: next })
+    },
+    clearGuidePicks: () => set({ guidePicks: new Set() }),
+    selectedGuideKey: null,
+    setSelectedGuideKey: (key) => set({ selectedGuideKey: key }),
+    applyGuides: (keys) => {
+      const state = get()
+      const nuclease = resolveNuclease(state.crisprNucleaseId, state.customNucleases)
+      if (!nuclease) return 0
+      const wanted = keys ? new Set(keys) : null
+      const chosen = state.guideResults
+        .filter(c => !wanted || wanted.has(guideKey(c.site)))
+        .map(c => c.site)
+      const toAdd = convertibleGuides(chosen, nuclease, state.doc.annotations)
+      if (toAdd.length === 0) return 0
+      get().addAnnotations(toAdd.map(site => guideToAnnotationData(site, nuclease)))
+      set({ guidePicks: new Set() })
+      return toAdd.length
+    },
+    crisprNucleaseId: DEFAULT_NUCLEASE_ID,
+    crisprSpacerLength: 0,
+    crisprSelectionOnly: false,
+    crisprDraw: 'all',
+    setCrisprParams: (params) => set(params),
+    customNucleases: [],
+    addCustomNuclease: (nuclease) => set(s2 => ({
+      customNucleases: [...s2.customNucleases.filter(n => n.id !== nuclease.id), nuclease],
+    })),
+    removeCustomNuclease: (id) => set(s2 => ({
+      customNucleases: s2.customNucleases.filter(n => n.id !== id),
+      ...(s2.crisprNucleaseId === id ? { crisprNucleaseId: DEFAULT_NUCLEASE_ID } : {}),
+    })),
+
     showMotifs: false,
     toggleMotifs: () => {
       const tab = getActiveTab()
@@ -2317,6 +2438,7 @@ export const useEditorStore = create<EditorStore>((set, get) => {
         autoAnnotationPicks: new Set<string>(),
         orfPicks: new Set<string>(),
         showMotifs: tab.showMotifs,
+        showGuides: tab.showGuides,
         motifResults: [],
         motifPicks: new Set<string>(),
         lastOpenedTabId: tab.id,
@@ -2431,6 +2553,7 @@ export const useEditorStore = create<EditorStore>((set, get) => {
         autoAnnotationPicks: new Set<string>(),
         orfPicks: new Set<string>(),
         showMotifs: tab.showMotifs,
+        showGuides: tab.showGuides,
         motifResults: [],
         motifPicks: new Set<string>(),
         lastOpenedTabId: tab.id,
@@ -2655,6 +2778,7 @@ export const useEditorStore = create<EditorStore>((set, get) => {
         primerDesign: tab.primerDesign,
         autoAnnotations: tab.autoAnnotations,
         showMotifs: tab.showMotifs,
+        showGuides: tab.showGuides,
         // Motif hits are recomputed by the scan hook for the incoming tab.
         motifResults: [],
         peptideOverlay: null,
@@ -2743,6 +2867,7 @@ export const useEditorStore = create<EditorStore>((set, get) => {
         hiddenAnnotationIds: rt.hiddenAnnotationIds ?? [],
         showOrfs: rt.showOrfs ?? false,
         showMotifs: false,
+        showGuides: false,
         showEnzymes: rt.showEnzymes ?? false,
         showAutoAnnotations: rt.showAutoAnnotations ?? false,
         orfResults: [],
@@ -2847,6 +2972,7 @@ export const useEditorStore = create<EditorStore>((set, get) => {
         hiddenAnnotationIds: rt.hiddenAnnotationIds ?? [],
         showOrfs: rt.showOrfs ?? false,
         showMotifs: false,
+        showGuides: false,
         showEnzymes: rt.showEnzymes ?? false,
         showAutoAnnotations: rt.showAutoAnnotations ?? false,
         orfResults: [],

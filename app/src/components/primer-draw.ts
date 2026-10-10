@@ -20,14 +20,14 @@ export interface PrimerDrawStyle {
   mismatch: string
 }
 
-type Range = [number, number]
+export type Range = [number, number]
 
-/** A [start, end) span as 1-2 non-wrapping ranges. */
-function unwrap(start: number, end: number, seqLen: number): Range[] {
+/** A [start, end) span as 1-2 non-wrapping ranges. Shared with the guide drawer. */
+export function unwrapSpan(start: number, end: number, seqLen: number): Range[] {
   return start < end ? [[start, end]] : [[start, seqLen], [0, end]]
 }
 
-function clip([s, e]: Range, rowStart: number, rowEnd: number): Range | null {
+export function clipSpan([s, e]: Range, rowStart: number, rowEnd: number): Range | null {
   const a = Math.max(s, rowStart)
   const b = Math.min(e, rowEnd)
   return a < b ? [a, b] : null
@@ -76,7 +76,7 @@ export function drawPrimerItem(
 
     const lineY = ay + 1.5
     for (const tail of tails) {
-      const vis = clip(tail.range, rowStart, rowEnd)
+      const vis = clipSpan(tail.range, rowStart, rowEnd)
       if (!vis) continue
       const x1 = xOf(vis[0])
       const x2 = xOf(vis[1] - 1) + L.bpWidth
@@ -112,8 +112,8 @@ export function drawPrimerItem(
 
   // --- Annealed part: bar with the arrowhead at the 3' end ---
   const threePrime = site.strand === 1 ? site.end : site.start
-  for (const seg of unwrap(site.start, site.end, seqLen)) {
-    const vis = clip(seg, rowStart, rowEnd)
+  for (const seg of unwrapSpan(site.start, site.end, seqLen)) {
+    const vis = clipSpan(seg, rowStart, rowEnd)
     if (!vis) continue
     const x1 = xOf(vis[0])
     const x2 = xOf(vis[1] - 1) + L.bpWidth

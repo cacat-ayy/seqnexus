@@ -35,26 +35,10 @@ export interface RestrictionEnzyme {
   heatInactivation?: number | null
 }
 
-// IUPAC ambiguity code expansion
-export const IUPAC: Record<string, string> = {
-  A: 'A', C: 'C', G: 'G', T: 'T',
-  R: 'AG', Y: 'CT', S: 'GC', W: 'AT',
-  K: 'GT', M: 'AC', B: 'CGT', D: 'AGT',
-  H: 'ACT', V: 'ACG', N: 'ACGT',
-}
-
-/**
- * Convert a recognition sequence with IUPAC codes to a regex pattern.
- * Returns a case-insensitive pattern string.
- */
-export function recognitionToRegex(recognition: string): string {
-  return recognition.split('').map(c => {
-    const expanded = IUPAC[c.toUpperCase()]
-    if (!expanded) return c
-    if (expanded.length === 1) return expanded
-    return `[${expanded}]`
-  }).join('')
-}
+// The IUPAC codes and the pattern builder live in models/iupac.ts, so a
+// module that only matches an ambiguous pattern does not pull in this table.
+// Re-exported here because this is where callers have always found them.
+export { IUPAC, recognitionToRegex } from '../models/iupac'
 
 /**
  * Common restriction enzymes - curated set covering the most-used enzymes

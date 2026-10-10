@@ -42,10 +42,11 @@ export function useSequencePdfSource(): SequencePdfSource {
   const autoPicks = useEditorStore(s => s.autoAnnotationPicks)
   const orfPicks = useEditorStore(s => s.orfPicks)
   const motifPicks = useEditorStore(s => s.motifPicks)
+  const guidePicks = useEditorStore(s => s.guidePicks)
   const screenBasesPerRow = useBasesPerRow()
   const graph = useProteinGraph(doc)
 
-  const { annTree, primerItemById, visibleAnnotations } = useSequenceTracks(doc)
+  const { annTree, primerItemById, guideItemById, visibleAnnotations } = useSequenceTracks(doc)
   const { translationFrames, translationRows, translateSelection, translationCode } = useTranslationSettings(doc.sequence.alphabet)
   const {
     style: mapStyle, rings, proposalIds, pickedIds, sceneEnzymes, scenePrimers,
@@ -107,6 +108,8 @@ export function useSequencePdfSource(): SequencePdfSource {
     features: visibleAnnotations,
     groupedSites,
     primerItemById,
+    guideItemById,
+    guidePicks,
     autoPicks,
     orfPicks,
     motifPicks,
@@ -128,7 +131,7 @@ export function useSequencePdfSource(): SequencePdfSource {
     screenBasesPerRow,
     plasmidScene,
   }), [
-    doc, annTree, visibleAnnotations, groupedSites, primerItemById, autoPicks, orfPicks, motifPicks, graph,
+    doc, annTree, visibleAnnotations, groupedSites, primerItemById, guideItemById, guidePicks, autoPicks, orfPicks, motifPicks, graph,
     translationFrames, translationRows, translateSelection, translationCode, aminoAcidStyle,
     threeLetter, basePalette, paintBackground, showComplement, showAnnotations, colors,
     selection, search, zoomLevel, screenBasesPerRow, plasmidScene,

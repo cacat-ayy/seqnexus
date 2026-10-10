@@ -7,7 +7,7 @@ import { renderSceneToSvg } from '../plasmid/renderSvg'
 const colors: PlasmidColors = {
   bg: '#ffffff', backbone: '#000000', text: '#000000', textMuted: '#444444', tickMinor: '#999999',
   accent: '#000000', selection: 'rgba(0,0,0,0.12)', search: '#888888', searchCurrent: '#000000',
-  enzyme: '#333333', primer: '#555555', gc: '#666666', gcSkewPos: '#777777', gcSkewNeg: '#bbbbbb',
+  enzyme: '#333333', guide: '#7c3aed', primer: '#555555', gc: '#666666', gcSkewPos: '#777777', gcSkewNeg: '#bbbbbb',
   dam: '#666666', dcm: '#999999',
 }
 const measure = (text: string) => text.length * 6

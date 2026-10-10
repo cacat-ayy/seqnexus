@@ -87,6 +87,10 @@ of each build.
   protein search in all six frames, regex, and a list of hits with their
   strand, feature and context
 - **ORF finder** - 6-frame, configurable, Web Worker
+- **CRISPR guide design** - protospacers for a dozen nucleases or one you
+  describe yourself, scored for activity, for the repair the break is likely to
+  get and against the rules a spacer has to pass, drawn on the sequence with
+  the PAM and the cut; see [CRISPR Guide Design](#crispr-guide-design)
 - **Restriction enzyme analysis** - 546 enzymes from REBASE, gel simulation
 - **Primers** - primers and probes as oligos with 5'/3' overhangs and
   mismatches, binding sites found automatically; a docked design workbench
@@ -2179,6 +2183,165 @@ in reversed, since then there is no base 1 to keep.
 
 ---
 
+## CRISPR Guide Design
+
+Guides are found, scored and kept the way restriction sites are found and
+cloning parts are kept: a scan over the open sequence, an overlay that draws
+what it found, and a conversion into features for the ones worth keeping. The
+Guides tab in the right sidebar holds the whole of it, and there is no Run
+button: the settings are the scan.
+
+### Nucleases are data
+
+A nuclease is a record, like a restriction enzyme in `enzymes/db.ts`. It
+carries its PAM as an IUPAC pattern, which side of the protospacer the PAM
+sits on, the spacer lengths it accepts, where it cuts and whether it cuts at
+all. Adding one is a row in `crispr/nucleases.ts`, and the same record can be
+built from what a user types, so a PAM that was published this month can be
+scanned today. The shipped set covers the SpCas9 family and its PAM variants,
+the D10A nickase and a catalytically dead version for interference and
+activation, SaCas9 and its KKH variant, St1, Nme and Cj Cas9, and the Cas12a
+proteins with their 5' PAM and staggered cut.
+
+Both cut offsets are stored as distances in bases from the PAM edge of the
+protospacer, counted into the protospacer and onward, so they do not change
+when the spacer length does:
+
+| Nuclease | PAM | Spacer | Cut offsets | End |
+|----------|-----|--------|-------------|-----|
+| SpCas9 | NGG, after | 20 | 3 and 3 | blunt |
+| SaCas9 | NNGRRT, after | 21 | 3 and 3 | blunt |
+| Cas12a | TTTV, before | 23 | 18 and 23 | 5' overhang |
+
+`cut.site` is the cut on the strand the protospacer is written on and
+`cut.opposite` the cut on the other; the finder turns both into sense-strand
+coordinates, reported as `cutTop` and `cutBottom` the way the enzyme finder
+reports `fwdCut` and `revCut`. Anything that draws a break or measures a
+fragment can then treat a nuclease and an enzyme alike.
+
+A nuclease the user describes may leave both cut positions empty. That is not
+a missing field but a claim withheld: the row finds sites and scores them, and
+reports no cut, so nothing downstream pretends to know where the break is.
+
+### Finding sites
+
+The PAM is matched as an IUPAC pattern on both strands and the spacer is taken
+from the side the nuclease expects it, which makes the scan linear in the
+sequence length. A circular molecule is searched across its origin, so a site
+spanning the origin is found once and its coordinates are wrapped back into
+the sequence, with an end below its start as elsewhere in the app. On a linear
+molecule a PAM with no room for its spacer is not a site and is left out,
+while a site whose cut falls off the end is reported and flagged: the
+recognition is real, nothing is cut.
+
+A spacer holding anything other than A, C, G or T is not returned. It could
+not be ordered and its scores would be meaningless, so the scan counts those
+instead and the panel says how many, which is what makes an unfinished contig
+explain itself rather than look empty.
+
+A two-base PAM on a long sequence is effectively unbounded, so the scan stops
+at a site cap and says that it did. The panel then suggests narrowing the scan
+to the selection, which is the setting it already offers.
+
+### Scoring, in three separate columns
+
+A single figure of merit would hide which property a guide fails on, so three
+kinds of claim are kept apart and sorted one at a time.
+
+**The activity model.** What ships is a transparent heuristic over sequence
+properties that are consistently reported to track SpCas9 activity: GC content
+against an optimum of 55%, T at the four bases next to the PAM, which base sits
+against the PAM, the first base of an NGG PAM, and penalties for a terminator
+run, a long homopolymer and self-folding. It is not one of the published fitted
+models. Those are regressions over thousands of measured guides with a fixed
+window of flanking sequence, and their coefficients belong in a data file; the
+model registry in `crispr/score/ontarget.ts` exists so such a table can be
+added as data and selected per nuclease without touching the finder or the
+panel. Because the number is a heuristic, every term is returned with its
+contribution and the inspector shows the arithmetic.
+
+Only the SpCas9 family carries a model. Every other nuclease reports no score
+rather than borrowing one fitted for a different protein, which would read as
+information while being noise.
+
+**The repair outlook.** End joining often uses a short identical stretch on
+either side of the break, deleting what lies between the two copies and keeping
+one. Which deletions are available is a property of the sequence, so it can be
+predicted, and the share of them that shift the reading frame is the most
+useful single number when the goal is to knock a gene out. Following Bae and
+colleagues, every pair of identical stretches flanking the cut within a
+40-base window is enumerated and scored
+
+```
+pattern = 100 * exp(-deletionLength / 20) * (length + gcCount)
+```
+
+so short deletions and GC-rich microhomologies dominate, and the out-of-frame
+score is the share of the total carried by deletions whose length is not a
+multiple of three. Pairs are enumerated once per deletion length by walking the
+diagonals of the comparison, which counts each maximal microhomology a single
+time rather than once per nested copy of it. The formula is implemented as
+published; the tests check its invariants, not numeric agreement with the
+authors' own tool. A cut too close to the end of a linear molecule returns
+nothing rather than a number from a short window, and above a cap of 2000 sites
+the prediction is left out of the batch and made for the selected site alone.
+
+**The flags.** Properties of the sequence that hold whatever the nuclease, each
+reported as a named chip with a sentence of detail: GC outside 35% to 75% (and
+badly outside 25% to 85%), four or more T in a row, which reads as a terminator
+and cuts a transcribed guide short, a homopolymer of five or more, a
+self-folding stem of seven bases or more, and the promoter's start base, where
+U6 transcribes best from a G and T7 from two. The last is a note rather than a
+fault: the usual answer is to order the guide with the extra base added.
+
+### What the views draw
+
+In the sequence view a guide is a stand-in annotation in the feature lanes,
+the way a primer binding site is, so it rides the existing stacking, hover and
+hit-testing. Its footprint is the protospacer plus the PAM, so the PAM has room
+in the lane rather than being drawn over its neighbour. Within that footprint
+three things are drawn in order of prominence: the protospacer as a bar with
+its arrowhead at the 3' end, the PAM as a solid block in its own shade, and the
+cut as a tick through the bar. A staggered cutter gets two ticks joined across
+the middle, which is what makes an overhang visible without reading a number.
+Picked guides are outlined in the accent colour, as picked ORFs and motifs are.
+
+On the plasmid map only the cut is drawn, as a tick outside the backbone with a
+dot at its end and a shorter companion tick for the second cut of a staggered
+pair. A 20-base arc on a plasmid-wide circle is a smudge; the cut is what a map
+is read for, and the protospacer is there in the rings once it is a feature.
+Clicking a tick selects its protospacer.
+
+Above the candidate list is a strip dividing the sequence into as many buckets
+as the strip is wide, each drawing its best candidate, coloured by the worst
+flag that candidate carries. A table of a thousand rows hides whether the
+candidates cluster and where the gaps are, which is the one thing the eye is
+good at.
+
+The colours are theme tokens (`--canvas-guide`, `--canvas-guide-pam`,
+`--canvas-guide-cut`), defined for all ten themes and read through
+`readSequenceColors`, so the print palette picks them up as it does the rest.
+
+### Keeping a guide
+
+A converted guide becomes a `misc_binding` feature over the protospacer alone,
+not the PAM: the spacer is the part you order and the part that binds, while
+the PAM belongs to the target, so a feature over it would claim the nuclease
+recognises DNA it only reads from. The PAM and both cut positions go in the
+note, which is what a GenBank round trip keeps. The inspector copies the
+spacer without the PAM for the same reason.
+
+### Limits
+
+The scan looks at the open sequence only. Off-target search over other
+sequences, strategy-led design (knockout, deletion, knock-in, base and prime
+editing), scaffold and construct output, screening design and the analysis of
+editing outcomes are later phases; what is here finds sites, says what is
+wrong with them, predicts what their break is likely to become, and keeps the
+ones worth keeping.
+
+---
+
 ## File Format Support
 
 | Format | Read | Write | Notes |
@@ -3139,6 +3302,25 @@ print colours on white, whatever the app's theme.
 
 - Ikai A (1980) "Thermostability and aliphatic index of globular proteins."
   *J Biochem* 88:1895-1898.
+
+- Bae S, Kweon J, Kim HS, Kim JS (2014) "Microhomology-based choice of Cas9
+  nuclease target sites." *Nature Methods* 11:705-706. (The out-of-frame score
+  and the pattern weighting.)
+
+- Jinek M, Chylinski K, Fonfara I, Hauer M, Doudna JA, Charpentier E (2012) "A
+  programmable dual-RNA-guided DNA endonuclease in adaptive bacterial
+  immunity." *Science* 337:816-821. (SpCas9 and its blunt cut three bases from
+  the PAM.)
+
+- Zetsche B, Gootenberg JS, Abudayyeh OO, Slaymaker IM, Makarova KS,
+  Essletzbichler P, Volz SE, Joung J, van der Oost J, Regev A, Koonin EV,
+  Zhang F (2015) "Cpf1 is a single RNA-guided endonuclease of a class 2 CRISPR-
+  Cas system." *Cell* 163:759-771. (The 5' PAM and the staggered cut.)
+
+- Ran FA, Cong L, Yan WX, Scott DA, Gootenberg JS, Kriz AJ, Zetsche B, Shalem
+  O, Wu X, Makarova KS, Koonin EV, Sharp PA, Zhang F (2015) "In vivo genome
+  editing using Staphylococcus aureus Cas9." *Nature* 520:186-191. (SaCas9 and
+  its NNGRRT PAM.)
 
 - Gasteiger E, Hoogland C, Gattiker A, Duvaud S, Wilkins MR, Appel RD,
   Bairoch A (2005) "Protein identification and analysis tools on the ExPASy
