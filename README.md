@@ -311,6 +311,41 @@ change to the bases, including undo and redo, drops them. Base edits rewrite
 the sequence in place, so ranges kept across an edit could point at the
 wrong bases.
 
+### A gene and its CDS
+
+NCBI records give each coding region twice: a `gene` feature, carrying the
+locus tag and the gene's database link, and a `CDS` over the same bases,
+carrying everything about the protein. On a plasmid map that is two arrows
+for one gene. Every reader (GenBank, NCBI fetch, SnapGene, Geneious) folds
+such a gene into its CDS: the gene is dropped and its qualifiers are added to
+the CDS's, so the locus tag and the gene's `/db_xref` are kept. This is what
+SnapGene does when it reads GenBank.
+
+A gene is folded only when it has exactly the CDS's span and strand and is
+the same gene: the same `/gene`, or failing that the same `/locus_tag`, or
+failing both the same name. A gene that is longer than its CDS (one with
+UTRs, an expression cassette with its promoter), a gene with no CDS (an rRNA
+gene), and a spliced gene drawn exon by exon are kept. A GenBank export
+writes the CDS only.
+
+### The source feature
+
+Every GenBank record also has a `source` feature over the whole sequence,
+carrying the organism, molecule type and strain. It says what the sequence
+is, not where anything is on it, so as a feature it would only be one more
+ring or row the length of the sequence. Every reader (GenBank, NCBI fetch,
+SnapGene, Geneious) takes it out of the features into the document's
+metadata, where nothing draws or lists it, as SnapGene does not show it
+either. A GenBank export writes it back as the first feature,
+`source 1..<length>` over the sequence as it is then, with its qualifiers.
+Only the qualifiers are kept: a source over the whole sequence stays over
+the whole sequence whatever is inserted or deleted. Documents made from one
+(a PCR product, an edited or codon-optimized copy) keep it.
+
+A `source` over only part of the sequence (one of several in a construct,
+saying which stretch comes from which organism) has a position that matters
+and stays a feature.
+
 ---
 
 ## Feature Panel
@@ -2202,6 +2237,26 @@ clutter.
   every other site fades. Names are the reliable target in a crowded stretch,
   since they are the one part already spread out.
 
+### Saved enzyme sets
+
+The Restriction Analysis panel runs a subset of the database: one of the
+built-in groups (common 6-cutters, Type IIS, blunt cutters and so on), or a
+set of the user's own. A set is made from what the panel lists: narrow the
+enzymes down with the subset, the search and the cut filters, and save the
+list under a name. A saved set can be renamed, have its enzymes edited as a
+list of names, or be deleted (with Undo). Geneious enzyme sets come in as
+saved sets too (see [Geneious files](#geneious-files)). The codon
+optimizer's restriction sites to avoid can be a saved set as well as a
+built-in group; a set deleted since leaves it avoiding none.
+
+A set holds enzyme names, spelt as the database spells them and matched
+without regard to case, not the enzymes themselves, so it keeps working
+when the database is rebuilt. A name the database does not know is left
+out and said so: the database is REBASE's commercially available enzymes,
+and a set from elsewhere can name others. Sets are saved with the session
+and travel in session files; a merged session adds its sets beside the ones
+already saved, skipping any with the same name and enzymes.
+
 ---
 
 ## Restriction Cloning
@@ -2693,7 +2748,7 @@ edits of the same length apart.
 | GenPept (.gp, .gpt) | Yes | Yes | Protein records in GenBank's layout ("aa" on the LOCUS line). See [Proteins](#proteins). |
 | FASTA (.fasta, .fa, .faa) | Yes | Yes | Multi-sequence support. Each record is sorted into DNA or protein by its letters; a .faa file is all protein. |
 | SnapGene (.dna) | Yes | Yes | Binary TLV format. Handles sequence, features, primers, topology, methylation. |
-| Geneious (.geneious) | Yes | - | ZIP-compressed XML. Extracts sequence, topology, and features. |
+| Geneious (.geneious) | Yes | - | A Geneious folder export: every sequence, protein and sequence list in it, with features and primers, and its oligos into the primer library. See [Geneious files](#geneious-files). |
 | AB1 (.ab1) | Yes | - | Sanger chromatogram traces with quality scores. |
 | SCF (.scf) | Yes | - | Sanger chromatogram traces. |
 | GFF3 (.gff, .gff3) | Yes | - | Feature annotations with embedded FASTA. |
@@ -2707,6 +2762,121 @@ edits of the same length apart.
 SnapGene and Geneious parsers are reverse-engineered from the binary/XML
 formats. SnapGene uses a TLV (type-length-value) packet structure; Geneious
 uses ZIP-compressed Java XMLSerializable format.
+
+### Geneious files
+
+A `.geneious` file is an export of one Geneious folder. It is a ZIP holding
+one XML file, the document list, and for read sets and assemblies binary
+side files (`fileData.N`) in Geneious's own formats. The document list is a
+flat series of `<geneiousDocument class="...">` elements, one per document,
+and the name of the folder.
+
+Each document is read on its own, by its class, and opened as what it is:
+
+- **Sequences** (GenBank downloads, sequences made in Geneious, Sanger
+  reads, consensus sequences) open as sequences, a document whose molecule
+  type is AA as a protein. Each keeps its own name (the one it was renamed
+  to in Geneious, when it was), description, topology and features.
+- **Sequence lists** open as their member sequences.
+- **Alignments** open as alignment items, nucleotide or protein as Geneious
+  marks them. A Sanger contig (reads assembled in Geneious) opens as an
+  alignment of its reads, a read that went in reverse-complemented marked
+  so, and a contig built against a reference has that row as the
+  alignment's reference. A tree built in Geneious keeps the alignment it was
+  built from, and that alignment is opened under the tree's name; the tree
+  itself is not drawn, which the notice says.
+- **Sanger reads** open as chromatograms. Geneious keeps the original .ab1
+  file whole inside its chromatogram document (base64 in `<rawdata>`), so
+  the read is parsed by the same AB1 reader as a file opened directly. A
+  read is two documents in Geneious: that file, and the sequence made from
+  it, which carries the name the read was given, its trim and a reference to
+  the file's URN. The two are joined by that reference: the chromatogram
+  takes the read's name and its Geneious trim (the "trimmed" annotations at
+  its ends), and the sequence is not opened again beside it. A read trimmed
+  nowhere in Geneious is quality trimmed as any imported read is.
+- **Structures** open as their proteins with the 3D view, as a PDB file
+  does: Geneious keeps the PDB text in the document, and it goes through the
+  same structure reader. A structure with no protein chain (a small
+  molecule) is reported.
+- **Oligos** go to the primer library, with their role (primer or probe)
+  and description.
+- **Enzyme sets** are saved as enzyme sets of the Restriction Analysis panel
+  (see [Saved enzyme sets](#saved-enzyme-sets)). Geneious lists each enzyme
+  with its REBASE record; the name is matched to the database, and enzymes
+  it does not know are named in the notice and left out. A set already
+  saved with the same name and enzymes is not saved twice.
+- **Genome links** (a genome Geneious lists by its NCBI accession and length
+  without the sequence, which can be a whole chromosome) are not
+  downloaded. The notice offers the list, and each link opens the Fetch
+  dialog with its accession filled in; that dialog asks before downloading a
+  record of more than 10 Mb.
+- Everything opened from one file is filed in one explorer folder named
+  after the Geneious folder, and one notice says what was opened and what
+  was not.
+
+How the content is read, and why:
+
+- **Each document is parsed separately.** The XML is cut at the top-level
+  document boundaries by a string scan and each document goes through the
+  XML parser on its own. Searching the whole file for the first sequence
+  element, as an earlier reader did, takes one document's sequence, another
+  field's label as its name, and every document's features at once; a
+  large export also never becomes one DOM.
+- **Residues** are in `<charSequence>`, or in `<INSDSeq_sequence>` for some
+  GenBank downloads. `<sequence_residues>` is a 500-letter preview and is
+  used only when it is the whole sequence; a document with only the preview
+  is reported, not opened short. Geneious writes residues in alternating
+  case, which carries no meaning, so they are uppercased. RNA keeps its U,
+  as a FASTA import does.
+- **Features are stored twice**: in `<sequenceAnnotations>`, the current
+  state, and in the override properties of the GenBank record, the state at
+  download. The current copy is read; the download copy only for a record
+  that has no other. A feature added in Geneious after download is in the
+  first and not the second.
+- **Intervals** are 1-based and inclusive, listed 5' to 3' along the
+  feature as GenBank lists the parts of a join, so they go through the same
+  location resolver as GenBank and SnapGene: a feature across the origin of
+  a circular sequence is wrapped, one with gaps keeps its exons.
+- **Feature names**: Geneious names a feature from a GenBank record
+  "<name> <type>" ("bla CDS", "lacZalpha misc", "CAP protein binding site
+  protein bind"), and by its type alone when the record gives no name ("rep
+  origin"). The type is taken off when what is left is the feature's own
+  name from its qualifiers (label, gene, standard_name, product,
+  region_name, note, as the GenBank reader names features) or another of its
+  qualifier values, and a name that is only the type becomes that GenBank
+  name. A feature then reads as a GenBank import of the same record names
+  it. A name typed in Geneious, which no qualifier backs, is kept, and so is
+  a number after the type ("MAPK10 exon 10").
+- **Feature types**: Geneious renames some GenBank keys (polylinker for
+  misc_feature) and keeps the key in an `NCBI Feature Key` qualifier, which
+  wins; that qualifier is itself mapped, since Geneious sometimes keeps its
+  own name there (helix for SecStr). Geneious names that are not feature keys are mapped: promoter
+  variants to promoter, origin of replication to rep_origin, att sites to
+  protein_bind, helix, strand and turn to SecStr, a Bond to a disulfide.
+  Geneious bookkeeping qualifiers (hidden flags, annotation group ids, the
+  join type) are dropped, and spaces in qualifier names become underscores
+  so the feature can be written to GenBank.
+- **Primers**: a primer annotated in Geneious records its whole oligo, tail
+  included, in a `Sequence` qualifier. Such a feature becomes a primer on
+  the sequence, as the GenBank and SnapGene readers keep primers. A
+  primer_bind feature without one (a retrovirus's primer binding site, a
+  vector's sequencing primer sites from its GenBank record) stays a
+  feature.
+
+- **Alignment rows** are gapped sequences, but Geneious does not write their
+  leading and trailing gaps: it keeps them as counts (`gapPrefixLength`,
+  `gapSuffixLength`) on the row's `<charSequence>`, and they are put back
+  as gaps so every row is the alignment's width. Annotations on alignment
+  rows are not carried over: an alignment item holds rows, not features.
+
+Not opened, and reported by kind: trees with no alignment in the file,
+chromatogram documents whose file does not read, structures with no protein
+chain, enzyme sets with no enzymes, genome links (Geneious stores only the
+NCBI accession and length of a genome it lists; a genome it never
+downloaded is a run of `?`), NGS read sets and assemblies (their reads are in
+Geneious's binary side files, partly as Java serialization), and documents
+of any other class. History records and assembly reports are skipped
+silently.
 
 ---
 
@@ -3445,7 +3615,7 @@ the optimizer silently inventing a preference.
 
 | Constraint | Detail |
 |------------|--------|
-| Forbidden motifs | Enzyme groups, individual enzymes, custom IUPAC motifs, and presets for Type IIS sites, internal Shine-Dalgarno, polyA signals, cryptic splice sites and E. coli promoter boxes. Checked on both strands. |
+| Forbidden motifs | Enzyme groups (built in, or a saved enzyme set), individual enzymes, custom IUPAC motifs, and presets for Type IIS sites, internal Shine-Dalgarno, polyA signals, cryptic splice sites and E. coli promoter boxes. Checked on both strands. |
 | Homopolymers | Separate limits for A/T and G/C runs |
 | GC content | Global bounds plus a sliding local window |
 | Repeats | Direct repeats over N bp |

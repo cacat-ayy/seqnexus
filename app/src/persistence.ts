@@ -19,6 +19,7 @@ import { sanitizeView } from './msa/view'
 import { toUid, parseUid, tabUid, type ItemMeta } from './explorer/types'
 import type { LibraryOligo } from './primers/oligo'
 import type { GuideRecord } from './crispr/types'
+import { sanitizeEnzymeSets, type EnzymeSet } from './enzymes/sets'
 import { type DocumentSnapshot, type DocumentState, type UndoSnapshot, snapshot, restore } from './models/Document'
 import { PieceTable, type PieceTableSnapshot } from './models/PieceTable'
 import { Sequence } from './models/Sequence'
@@ -265,6 +266,8 @@ interface SerializedSessionV2 {
   oligos?: LibraryOligo[]
   /** The guide library. Plain data; optional so older sessions still load. */
   guides?: GuideRecord[]
+  /** Saved enzyme sets. Plain data; optional so older sessions still load. */
+  enzymeSets?: EnzymeSet[]
   /** Virtual gels. Optional so older sessions still load. */
   gels?: SerializedGel[]
   /** Cloning designs. Optional so older sessions still load. */
@@ -449,6 +452,7 @@ function buildSessionData(theme: string): {
       activeReadSetId: state.activeReadSetId,
       oligos: state.oligos.length > 0 ? state.oligos : undefined,
       guides: state.guideLibrary.length > 0 ? state.guideLibrary : undefined,
+      enzymeSets: state.enzymeSets.length > 0 ? state.enzymeSets : undefined,
       gels: serializeGels(state.gels),
       clones: serializeClones(state.clones),
       activeGelId: state.activeGelId,
@@ -632,7 +636,7 @@ export function savedStateChanged(state: EditorState, prev: EditorState): boolea
   }
   const keys: (keyof EditorState)[] = [
     'activeTabId', 'folders', 'itemMeta', 'tagColors', 'sequencingReads', 'activeSequencingReadIds',
-    'alignments', 'contigs', 'oligos', 'gels', 'activeGelId', 'activeAlignmentId', 'activeContigId',
+    'alignments', 'contigs', 'oligos', 'guideLibrary', 'enzymeSets', 'gels', 'activeGelId', 'activeAlignmentId', 'activeContigId',
     'clones', 'activeCloneId', 'assemblies', 'activeAssemblyId', 'readSets', 'activeReadSetId',
     'orfMinCodons', 'orfStartCodons', 'orfAllowInterior',
     'enzymeSubset', 'enzymeSearchQuery', 'enzymeFilterByCount', 'enzymeMinCuts', 'enzymeMaxCuts',
@@ -811,6 +815,7 @@ export interface RestoredSession {
   oligos: LibraryOligo[]
   /** Optional so a session written before guides existed still restores. */
   guides?: GuideRecord[]
+  enzymeSets?: EnzymeSet[]
   gels: GelDoc[]
   clones: CloneDoc[]
   activeGelId?: string | null
@@ -1137,6 +1142,7 @@ async function loadV2(data: SerializedSessionV2): Promise<RestoredSession | null
     activeAssemblyId: data.activeAssemblyId ?? null,
     oligos: data.oligos ?? [],
     guides: data.guides ?? [],
+    enzymeSets: sanitizeEnzymeSets(data.enzymeSets),
     gels: deserializeGels(data.gels),
     clones: deserializeClones(data.clones),
     activeGelId: data.activeGelId ?? null,
@@ -1465,6 +1471,7 @@ export function importSessionFromJson(json: string): RestoredSession {
     activeAssemblyId: data.activeAssemblyId ?? null,
     oligos: data.oligos ?? [],
     guides: data.guides ?? [],
+    enzymeSets: sanitizeEnzymeSets(data.enzymeSets),
     gels: deserializeGels(data.gels),
     clones: deserializeClones(data.clones),
     activeGelId: data.activeGelId ?? null,

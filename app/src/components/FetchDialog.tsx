@@ -25,6 +25,8 @@ interface Props {
   open: boolean
   onClose: () => void
   onFetched: (doc: DocumentState) => void
+  /** An accession to start with, such as a genome link from an imported file. */
+  initialQuery?: string
 }
 
 /** Records longer than this are confirmed before downloading. */
@@ -45,7 +47,7 @@ function guessSource(text: string): Source {
   return 'nucleotide'
 }
 
-export default function FetchDialog({ open, onClose, onFetched }: Props) {
+export default function FetchDialog({ open, onClose, onFetched, initialQuery }: Props) {
   const [query, setQuery] = useState('')
   /** The source chosen by hand; null follows the guess. */
   const [chosen, setChosen] = useState<Source | null>(null)
@@ -63,14 +65,14 @@ export default function FetchDialog({ open, onClose, onFetched }: Props) {
   // Focus input on open
   useEffect(() => {
     if (open) {
-      setQuery('')
+      setQuery(initialQuery ?? '')
       setChosen(null)
       setLoading(false)
       setError(null)
       setLarge(null)
       requestAnimationFrame(() => inputRef.current?.focus())
     }
-  }, [open])
+  }, [open, initialQuery])
 
   const handleQueryChange = useCallback((value: string) => {
     setQuery(value)

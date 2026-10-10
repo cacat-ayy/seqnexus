@@ -13,8 +13,10 @@ import { readFasta, type FastaRead } from '../io/fasta'
 import { parseGenBankMulti } from '../io/genbank'
 import { parseGenbankFile } from '../workers/genbank-parser'
 import { parseSnapGene } from '../io/snapgene'
-import { parseGeneious } from '../io/geneious'
-import { importTraceFiles, isTraceFile } from '../sanger/import'
+import { describeSkipped, readGeneious, type GeneiousImport, type GeneiousSkipped } from '../io/geneious'
+import { resolveEnzymeNames } from '../enzymes/sets'
+import { toUid } from '../explorer/types'
+import { importTraceFiles, initialTrim, isTraceFile } from '../sanger/import'
 import { parseFastq, meanQuality } from '../io/fastq'
 import { countRecords, isNgsByName, NGS_FEW_RECORDS } from '../ngs/peek'
 import { structureFromFile } from '../structure/sources'
@@ -53,6 +55,9 @@ function looksLikeAlignmentFile(text: string, fileName: string): boolean {
   return fmt === 'fasta' && fastaLooksAligned(text)
 }
 
+/** "a", "a and b", "a, b and c". */
+const listed = (parts: string[]) => parts.length < 2 ? parts.join('') : `${parts.slice(0, -1).join(', ')} and ${parts[parts.length - 1]}`
+
 /** Parser and reader failures, reduced to something fit for a detail line. */
 export const errorDetail = (err: unknown): string | undefined =>
   err instanceof Error ? err.message : err ? String(err) : undefined
@@ -84,6 +89,8 @@ export interface FileImportHandlers {
   onReadFiles: (files: File[]) => void
   /** BAM and SAM files go to the read alignment import dialog. */
   onAlignmentFiles: (files: File[]) => void
+  /** Genome links a Geneious file listed: show them, each to be fetched on request. */
+  onGenomeLinks: (source: string, links: GeneiousSkipped[]) => void
 }
 
 export function useFileImport(h: FileImportHandlers) {
@@ -125,6 +132,108 @@ export function useFileImport(h: FileImportHandlers) {
       }
     })
   }, [openRecordsAsking, openDocumentState])
+
+  /**
+   * Open what a Geneious export holds: its sequences as tabs and its oligos
+   * in the primer library, filed together in a folder named after the
+   * Geneious folder, with one summary of what was opened and what was not.
+   */
+  const openGeneious = useCallback(async (result: GeneiousImport, source: string) => {
+    // Structures go through the structure reader first, which keeps their
+    // coordinates for the 3D view, so everything in the file opens together.
+    const skipped = [...result.skipped]
+    const structureDocs: DocumentState[] = []
+    for (const s of result.structures) {
+      try {
+        const docs = proteinsFromStructure(await structureFromFile(s.fileName, s.text), s.name)
+        if (docs.length > 0) structureDocs.push(...docs)
+        else skipped.push({ kind: 'structure', name: s.name })
+      } catch {
+        skipped.push({ kind: 'unreadable', name: s.name })
+      }
+    }
+    const sequences = [...result.sequences, ...structureDocs]
+
+    openRecordsAsking(source, sequences.length, n => {
+      const store = () => useEditorStore.getState()
+      const count = (k: number, one: string, many: string) => `${k.toLocaleString()} ${k === 1 ? one : many}`
+      const docs = sequences.slice(0, n)
+      const tabIds = docs.map(d => openDocumentState(d))
+      // Reads come in trimmed as they were in Geneious, or by quality when
+      // they were not. Adding them makes one the open item; a sequence
+      // opened from the same file stays the open one.
+      const readIds = result.traces.length > 0
+        ? store().addSequencingReads(result.traces.map(t => {
+          const [trimStart, trimEnd] = t.trim ?? initialTrim(t.data)
+          return { data: t.data, trimStart, trimEnd }
+        }))
+        : []
+      if (readIds.length > 0 && tabIds.length > 0) store().setActiveTab(tabIds[tabIds.length - 1])
+      // Alignments are filed quietly; one is shown only when nothing else was opened.
+      const alignmentIds = result.alignments.map((a, i) => addAlignment(
+        { ...a.doc, origin: { ...a.doc.origin, file: source } },
+        { name: a.name, activate: tabIds.length === 0 && readIds.length === 0 && i === 0 },
+      ))
+      const oligoIds = result.oligos.length > 0 ? store().addLibraryOligos(result.oligos) : []
+      // Enzyme sets are saved by the names the enzyme database uses; one
+      // already saved under the same name with the same enzymes is not saved again.
+      const enzymeLines: string[] = []
+      let setsSaved = 0
+      let setsAlready = 0
+      for (const set of result.enzymeSets) {
+        const { known, missing } = resolveEnzymeNames(set.enzymes)
+        if (known.length === 0) { skipped.push({ kind: 'enzymeSet', name: set.name }); continue }
+        if (missing.length > 0) {
+          enzymeLines.push(`${count(missing.length, 'enzyme', 'enzymes')} of "${set.name}" not in the enzyme database, so left out (${missing.slice(0, 4).join(', ')}${missing.length > 4 ? ', …' : ''})`)
+        }
+        if (store().enzymeSets.some(s => s.name === set.name && s.enzymes.join() === known.join())) { setsAlready++; continue }
+        store().addEnzymeSet(set.name, known)
+        setsSaved++
+      }
+      const items = tabIds.length + readIds.length + alignmentIds.length + oligoIds.length
+      if (items > 1) {
+        const folderId = store().createFolder(result.folder || source.replace(/\.[^.]+$/, ''))
+        for (const id of tabIds) store().moveTabToFolder(id, folderId)
+        for (const id of readIds) store().moveItemToFolder(toUid('read', id), folderId)
+        for (const id of alignmentIds) store().moveItemToFolder(toUid('alignment', id), folderId)
+        for (const id of oligoIds) store().moveItemToFolder(toUid('oligo', id), folderId)
+      }
+      // A structure opened last is the open item: show it as one.
+      if (docs.length > 0 && docs[docs.length - 1].metadata?.structure) store().setViewMode('structure')
+
+      const proteins = docs.filter(d => d.sequence.alphabet === 'protein').length
+      const opened: string[] = []
+      if (docs.length > proteins) opened.push(count(docs.length - proteins, 'sequence', 'sequences'))
+      if (proteins > 0) opened.push(count(proteins, 'protein', 'proteins'))
+      if (readIds.length > 0) opened.push(count(readIds.length, 'chromatogram', 'chromatograms'))
+      if (alignmentIds.length > 0) opened.push(count(alignmentIds.length, 'alignment', 'alignments'))
+      const lines = [...describeSkipped(skipped), ...enzymeLines]
+      const already = result.oligos.length - oligoIds.length
+      if (already > 0) lines.unshift(`${count(already, 'oligo was', 'oligos were')} already in the primer library`)
+      if (setsAlready > 0) lines.unshift(`${count(setsAlready, 'enzyme set was', 'enzyme sets were')} already saved`)
+      const detail = lines.length > 0 ? lines.join('\n') : undefined
+      // Genome links are listed on request, each a click from the Fetch
+      // dialog; the notice stays up until it is dismissed so the list can be had.
+      const links = skipped.filter(s => s.kind === 'genome' && s.accession)
+      const linkOptions = links.length > 0
+        ? { action: { label: 'Show links', onClick: () => handlers.current.onGenomeLinks(source, links) }, duration: 0 }
+        : {}
+
+      const extras: string[] = []
+      if (oligoIds.length > 0) extras.push(`${count(oligoIds.length, 'oligo', 'oligos')} added to the primer library`)
+      if (setsSaved > 0) extras.push(`${count(setsSaved, 'enzyme set', 'enzyme sets')} saved`)
+      if (opened.length === 0 && extras.length === 0) {
+        if ((already > 0 || setsAlready > 0) && skipped.length === 0) notify.info(`Nothing new in "${source}"`, { detail })
+        else notify.error(`Nothing in "${source}" could be opened`, { detail, ...linkOptions })
+        return
+      }
+      const message = opened.length === 0
+        ? `${extras.join('; ')} from "${source}"`
+        : `Opened ${listed(opened)} from "${source}"${extras.map(e => `; ${e}`).join('')}`
+      if (lines.length > 0) notify.warning(message, { detail, ...linkOptions })
+      else if (items > 1 || setsSaved > 0) notify.success(message)
+    })
+  }, [openRecordsAsking, openDocumentState, addAlignment])
 
   const [parseProgress, setParseProgress] = useState<{ bytesRead: number; totalBytes: number } | null>(null)
 
@@ -202,15 +311,17 @@ export function useFileImport(h: FileImportHandlers) {
       reader.onerror = () => notify.error(`Could not read "${file.name}"`)
       reader.readAsArrayBuffer(file)
     } else if (file.name.match(/\.geneious$/i)) {
-      // Geneious ZIP+XML format
+      // A Geneious folder export: every document in it, each as what it is.
       const reader = new FileReader()
       reader.onload = () => {
+        let result: GeneiousImport
         try {
-          const doc = parseGeneious(reader.result as ArrayBuffer)
-          openDocumentState(doc)
+          result = readGeneious(reader.result as ArrayBuffer)
         } catch (err) {
           notify.error(`Could not read "${file.name}"`, { detail: errorDetail(err) })
+          return
         }
+        void openGeneious(result, file.name)
       }
       reader.onerror = () => notify.error(`Could not read "${file.name}"`)
       reader.readAsArrayBuffer(file)
@@ -294,7 +405,7 @@ export function useFileImport(h: FileImportHandlers) {
       reader.onerror = () => notify.error(`Could not read "${file.name}"`)
       reader.readAsText(file)
     }
-  }, [openDocumentState, openAlignmentFile, openDocsInFolder])
+  }, [openDocumentState, openAlignmentFile, openDocsInFolder, openGeneious])
 
   /**
    * Open several files. Sanger traces are imported together, so a plate

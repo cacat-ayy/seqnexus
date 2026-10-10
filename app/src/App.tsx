@@ -93,6 +93,8 @@ import { isFocusTrapActive } from './hooks/useFocusTrap'
 import { BUILD_DATE, CITATION_BIBTEX, CITATION_TEXT } from './citation'
 import { copyText } from './utils/clipboard'
 import FetchDialog from './components/FetchDialog'
+import GenomeLinksDialog from './components/GenomeLinksDialog'
+import type { GeneiousSkipped } from './io/geneious'
 const AlignmentDialog = lazy(() => import('./components/AlignmentDialog'))
 const AlignmentWorkspace = lazy(() => import('./components/alignment/AlignmentWorkspace'))
 const ReadWorkspace = lazy(() => import('./components/sanger/ReadWorkspace'))
@@ -498,6 +500,10 @@ export default function App() {
     ) s.setActiveGel(null)
   }), [])
   const [fetchModalOpen, setFetchModalOpen] = useState(false)
+  /** The accession the Fetch dialog opens with, when something asked for one. */
+  const [fetchQuery, setFetchQuery] = useState<string | undefined>(undefined)
+  /** Genome links from an imported Geneious file, listed on request. */
+  const [genomeLinks, setGenomeLinks] = useState<{ source: string; links: GeneiousSkipped[] } | null>(null)
   const [sessionExportOpen, setSessionExportOpen] = useState(false)
   const [sessionImportOpen, setSessionImportOpen] = useState(false)
   const [sessionImportData, setSessionImportData] = useState<{ filename: string; json: string } | null>(null)
@@ -831,6 +837,7 @@ export default function App() {
     },
     onReadFiles: files => setReadImportFiles(files),
     onAlignmentFiles: files => setAlignmentImports(q => [...q, ...files]),
+    onGenomeLinks: (source, links) => setGenomeLinks({ source, links }),
   })
 
   // --- File menu actions ---
@@ -966,7 +973,9 @@ export default function App() {
       session.itemMeta,
       session.tagColors,
       session.oligos,
+      session.guides,
     )
+    useEditorStore.getState().restoreEnzymeSets(session.enzymeSets ?? [])
     useEditorStore.getState().restoreAssemblies(session.assemblies, session.activeAssemblyId ?? null)
     useEditorStore.getState().restoreGels(session.gels, session.activeGelId ?? null)
     useEditorStore.getState().restoreClones(session.clones, session.activeCloneId ?? null)
@@ -989,6 +998,7 @@ export default function App() {
       session.contigs, session.itemMeta, session.tagColors,
       session.oligos,
     )
+    useEditorStore.getState().mergeEnzymeSets(session.enzymeSets ?? [])
     useEditorStore.getState().mergeAssemblies(session.assemblies)
     useEditorStore.getState().mergeGels(session.gels)
     useEditorStore.getState().mergeClones(session.clones)
@@ -2608,9 +2618,19 @@ export default function App() {
           <AssembleDialog readIds={assembleReadIds} onClose={() => setAssembleReadIds(null)} />
         </Suspense>
       )}
+      <GenomeLinksDialog
+        links={genomeLinks}
+        onClose={() => setGenomeLinks(null)}
+        onFetch={accession => {
+          setGenomeLinks(null)
+          setFetchQuery(accession)
+          setFetchModalOpen(true)
+        }}
+      />
       <FetchDialog
         open={fetchModalOpen}
-        onClose={() => setFetchModalOpen(false)}
+        initialQuery={fetchQuery}
+        onClose={() => { setFetchModalOpen(false); setFetchQuery(undefined) }}
         onFetched={(doc) => {
           // A UniProt entry arrives with its origin set; NCBI records get theirs here.
           openDocumentState({ ...doc, metadata: { ...doc.metadata, origin: doc.metadata?.origin ?? 'ncbi' } })

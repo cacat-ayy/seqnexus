@@ -85,6 +85,12 @@ export interface SequenceMetadata {
   uniprot?: UniProtReference
   /** Protein only: the 3D structure shown beside it (coordinates are cached, not stored here). */
   structure?: StructureRef
+  /**
+   * The qualifiers of the record's source feature (organism, mol_type,
+   * strain...), taken out of the features on import and written back as
+   * `source 1..<length>` on GenBank export. See io/source-feature.ts.
+   */
+  source?: Record<string, string[]>[]
 }
 
 export interface DocumentState {

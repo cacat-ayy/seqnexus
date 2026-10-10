@@ -6,19 +6,13 @@ import {
 } from '../persistence'
 import { findORFs } from '../workers/orf-finder'
 import { findEnzymeSitesAsync } from '../workers/enzyme-finder'
-import { ENZYME_DB, ENZYME_GROUPS, type RestrictionEnzyme } from '../enzymes/db'
+import type { RestrictionEnzyme } from '../enzymes/db'
+import { subsetEnzymes, type EnzymeSet } from '../enzymes/sets'
 import { demoDocument } from '../demo'
 
-const SUBSET_TO_GROUP: Record<string, string | null> = {
-  all: null, common6: 'Common (6-cutters)', rare8: 'Rare (8-cutters)',
-  freq4: 'Frequent (4-cutters)', goldengate: 'Golden Gate (Type IIS)',
-  all6: 'All 6-cutters', all4: 'All 4-cutters', all8plus: 'All 8+ cutters',
-  blunt: 'Blunt cutters', overhang5: "5' overhang", overhang3: "3' overhang", typeIIS: 'Type IIS',
-}
-
-function getSubsetEnzymes(subset: string, searchQuery: string): RestrictionEnzyme[] {
-  const groupName = SUBSET_TO_GROUP[subset]
-  let enzymes = groupName ? ENZYME_DB.filter(e => ENZYME_GROUPS[groupName]?.includes(e.name)) : ENZYME_DB
+/** The enzymes a restored Restriction Analysis ran, narrowed by its search. */
+function getSubsetEnzymes(subset: string, searchQuery: string, sets: readonly EnzymeSet[]): RestrictionEnzyme[] {
+  let enzymes = subsetEnzymes(subset, sets)
   if (searchQuery.trim()) {
     const q = searchQuery.trim().toUpperCase()
     enzymes = enzymes.filter(e => e.name.toUpperCase().includes(q) || e.recognition.toUpperCase().includes(q))
@@ -60,7 +54,7 @@ export function useSessionPersistence(
       if (cancelled) return
       const warnings = consumeLoadWarnings()
       if (warnings.length > 0) setSessionLoadWarnings(warnings)
-      if (saved && (saved.tabs.length > 0 || saved.sequencingReads.length > 0 || saved.alignments.length > 0 || saved.contigs.length > 0 || saved.readSets.length > 0 || saved.oligos.length > 0 || saved.gels.length > 0 || saved.clones.length > 0)) {
+      if (saved && (saved.tabs.length > 0 || saved.sequencingReads.length > 0 || saved.alignments.length > 0 || saved.contigs.length > 0 || saved.readSets.length > 0 || saved.oligos.length > 0 || (saved.guides?.length ?? 0) > 0 || (saved.enzymeSets?.length ?? 0) > 0 || saved.gels.length > 0 || saved.clones.length > 0)) {
         useEditorStore.getState().restoreSession(
           saved.tabs,
           saved.activeTabId,
@@ -80,6 +74,7 @@ export function useSessionPersistence(
         useEditorStore.getState().restoreReadSets(saved.readSets, saved.activeReadSetId ?? null)
         useEditorStore.getState().restoreGels(saved.gels, saved.activeGelId ?? null)
         useEditorStore.getState().restoreClones(saved.clones, saved.activeCloneId ?? null)
+        useEditorStore.getState().restoreEnzymeSets(saved.enzymeSets ?? [])
         // Restore ORF/enzyme panel params so searches re-run on panel open
         const store = useEditorStore.getState()
         if (saved.orfParams) {
@@ -112,7 +107,7 @@ export function useSessionPersistence(
           }
           if (store.showEnzymes && saved.enzymeParams) {
             const ep = saved.enzymeParams
-            const enzymes = getSubsetEnzymes(ep.subset, ep.searchQuery)
+            const enzymes = getSubsetEnzymes(ep.subset, ep.searchQuery, useEditorStore.getState().enzymeSets)
             findEnzymeSitesAsync(doc.sequence.bases, enzymes, doc.sequence.topology).then(allSites => {
               const perEnzyme = new Map<string, typeof allSites>()
               for (const site of allSites) {

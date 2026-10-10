@@ -16,7 +16,7 @@ import { defaultColorForType, type Annotation } from '../../models/Annotation'
 import { reverseComplement } from '../../models/complement'
 import { annotationBases, annotationProtein, canTranslateAnnotation } from '../../utils/annotation-sequence'
 import { copyText } from '../../utils/clipboard'
-import { blastFeature, duplicateFeature, selectFeature, zoomToFeature } from './feature-actions'
+import { blastFeature, duplicateFeature, selectAndCenterFeature, zoomToFeature } from './feature-actions'
 
 const ICON = 13
 
@@ -46,7 +46,7 @@ export function FeatureContextMenu({ x, y, ann, hidden, readOnly, onClose, onEdi
 
   return (
     <ContextMenuPopup x={x} y={y} onClose={onClose} label={`Feature ${ann.name}`}>
-      <MenuItem icon={<SquareDashedMousePointer size={ICON} />} onSelect={act(() => selectFeature(ann))}>
+      <MenuItem icon={<SquareDashedMousePointer size={ICON} />} onSelect={act(() => selectAndCenterFeature(ann))}>
         Select
       </MenuItem>
       <MenuItem icon={<ZoomIn size={ICON} />} onSelect={act(() => zoomToFeature(ann))}>

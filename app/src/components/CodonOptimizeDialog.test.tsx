@@ -10,6 +10,7 @@ import { describe, it, expect, beforeEach } from 'vitest'
 import CodonOptimizeDialog from './CodonOptimizeDialog'
 import { useEditorStore } from '../store'
 import { DEFAULT_CODON_SETTINGS } from '../codon/settings'
+import { setKey } from '../enzymes/sets'
 import { translate } from '../utils/codon'
 
 const store = () => useEditorStore.getState()
@@ -161,6 +162,20 @@ describe('codon optimization dialog', () => {
     const search = document.querySelector<HTMLInputElement>('.cod-enzyme-search input')!
     await act(async () => { fireEvent.change(search, { target: { value: 'ecor' } }) })
     expect(names()).toEqual(['EcoRI', 'EcoRV'])
+  })
+
+  it('offers the saved enzyme sets beside the built-in categories', async () => {
+    const id = store().addEnzymeSet('BioBrick', ['EcoRI', 'XbaI', 'SpeI', 'PstI'])
+    await openModal()
+    const select = document.querySelector<HTMLSelectElement>('#cod-enzyme-group')!
+    const option = [...select.querySelectorAll('optgroup[label="Your sets"] option')].map(o => o.textContent)
+    expect(option).toEqual(['BioBrick (4)'])
+
+    await act(async () => { fireEvent.change(select, { target: { value: setKey(id) } }) })
+    const names = [...document.querySelectorAll('.cod-enzyme-name')].map(el => el.textContent)
+    expect(names).toEqual(['EcoRI', 'PstI', 'SpeI', 'XbaI'])
+    expect(store().codonSettings.enzymeGroup).toBe(setKey(id))
+    store().removeEnzymeSet(id)
   })
 
   it('stops avoiding an enzyme when it is unticked', async () => {

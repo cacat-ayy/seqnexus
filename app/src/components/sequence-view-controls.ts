@@ -85,3 +85,21 @@ export function zoomSequenceViewTo(start: number, end: number): boolean {
   zoomToHandler(start, end)
   return true
 }
+
+let centerHandler: ((start: number, end: number) => void) | null = null
+
+/** The mounted sequence view offers its centring on a range; returns the unregister. */
+export function registerSequenceViewCenter(fn: (start: number, end: number) => void): () => void {
+  centerHandler = fn
+  return () => { if (centerHandler === fn) centerHandler = null }
+}
+
+/**
+ * Scroll the sequence view so the range [start, end) is in the middle of it,
+ * at the zoom it has. False when no sequence view is mounted.
+ */
+export function centerSequenceViewOn(start: number, end: number): boolean {
+  if (!centerHandler) return false
+  centerHandler(start, end)
+  return true
+}

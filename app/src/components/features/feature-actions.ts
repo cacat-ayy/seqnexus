@@ -6,13 +6,24 @@
 import { useEditorStore } from '../../store'
 import type { Annotation } from '../../models/Annotation'
 import { notify } from '../../toast'
-import { zoomSequenceViewTo } from '../sequence-view-controls'
+import { centerSequenceViewOn, zoomSequenceViewTo } from '../sequence-view-controls'
 
 /** Select a feature's span and scroll the sequence to it. */
 export function selectFeature(ann: Pick<Annotation, 'start' | 'end'>): void {
   const store = useEditorStore.getState()
   store.smoothScrollRequested = true
   store.setSelection({ anchor: ann.start, caret: ann.end })
+}
+
+/**
+ * Select a feature and centre it in the sequence view, for the deliberate
+ * ways of picking one (a double-click, the menu's Select). A plain click
+ * only brings it into view, so running down the list does not keep moving
+ * the sequence under the eye.
+ */
+export function selectAndCenterFeature(ann: Pick<Annotation, 'start' | 'end'>): void {
+  selectFeature(ann)
+  centerSequenceViewOn(ann.start, ann.end)
 }
 
 /**

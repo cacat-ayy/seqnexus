@@ -139,10 +139,28 @@ export default function ExplorerTree({
   // Bring a row into view when it is opened from outside the explorer, such
   // as from the command palette. Nothing did this before, so opening a tab
   // that way left the tree wherever it happened to be scrolled.
+  //
+  // Only when the open item changes. The rows change for many other reasons
+  // (a folder expanded, a filter typed), and revealing the open item on each
+  // of those made expanding a folder jump to wherever the open item was, the
+  // bottom of a long folder after an import. A newly opened item may sit in
+  // a folder the panel expands on the next render, so it gets one retry.
+  const revealPending = useRef<{ uid: string; retry: boolean } | null>(null)
   useEffect(() => {
-    if (!scrollToUid) return
-    const index = nodes.findIndex(n => n.type === 'item' && n.item.uid === scrollToUid)
-    if (index !== -1) revealIndex(index)
+    revealPending.current = scrollToUid ? { uid: scrollToUid, retry: true } : null
+  }, [scrollToUid])
+  useEffect(() => {
+    const pending = revealPending.current
+    if (!pending) return
+    const index = nodes.findIndex(n => n.type === 'item' && n.item.uid === pending.uid)
+    if (index !== -1) {
+      revealIndex(index)
+      revealPending.current = null
+    } else if (pending.retry) {
+      pending.retry = false
+    } else {
+      revealPending.current = null
+    }
   }, [scrollToUid, nodes, revealIndex])
 
   // Keyboard focus has to survive windowing: moving the cursor can scroll a

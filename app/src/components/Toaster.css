@@ -72,6 +72,8 @@
   font-size: var(--text-xs);
   color: var(--text-secondary);
   overflow-wrap: anywhere;
+  /* Details list one item per line (import warnings, what was not opened). */
+  white-space: pre-line;
 }
 
 .toast-action {

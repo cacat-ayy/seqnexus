@@ -1,8 +1,9 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest'
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { render, screen, act, fireEvent, cleanup } from '@testing-library/react'
 import { isWidgetKeyTarget } from '../utils/key-target'
 import FeatureSidebar from './FeatureSidebar'
 import { useEditorStore } from '../store'
+import { registerSequenceViewCenter } from './sequence-view-controls'
 
 const store = () => useEditorStore.getState()
 
@@ -170,5 +171,82 @@ describe('FeatureSidebar editing and keyboard', () => {
     fireEvent.change(screen.getByLabelText('Filter features'), { target: { value: 'type:cds len<20' } })
     expect(document.getElementById('fs-opt-f2')).not.toBeNull()
     expect(document.getElementById('fs-opt-f1')).toBeNull()
+  })
+})
+
+describe('FeatureSidebar hover card and context menu', () => {
+  beforeEach(() => {
+    vi.useFakeTimers()
+    store().loadDocument('test', 'ACGT'.repeat(50), 'linear')
+    store().setSidebarTab('features')
+    store().addAnnotation({ id: 'mcs', name: 'MCS', type: 'misc_feature', start: 10, end: 60, strand: 1 })
+  })
+  afterEach(() => { vi.useRealTimers(); cleanup() })
+
+  const row = () => screen.getByText('MCS').closest('.ft-summary') as HTMLElement
+  const card = () => document.querySelector('.ft-tooltip-name')
+
+  it('shows the hover card after a pause on a row', () => {
+    render(<FeatureSidebar open onClose={() => {}} />)
+    fireEvent.mouseEnter(row())
+    act(() => { vi.advanceTimersByTime(500) })
+    expect(card()).not.toBeNull()
+  })
+
+  it('does not show it under the context menu, pending or already showing', () => {
+    render(<FeatureSidebar open onClose={() => {}} />)
+    // Pending: right-clicked before the card appeared.
+    fireEvent.mouseEnter(row())
+    fireEvent.contextMenu(row())
+    act(() => { vi.advanceTimersByTime(500) })
+    expect(screen.getByRole('menu')).toBeInTheDocument()
+    expect(card()).toBeNull()
+  })
+
+  it('takes away a card already showing when the menu opens', () => {
+    render(<FeatureSidebar open onClose={() => {}} />)
+    const r = row()
+    fireEvent.mouseEnter(r)
+    act(() => { vi.advanceTimersByTime(500) })
+    expect(card()).not.toBeNull()
+    fireEvent.contextMenu(r)
+    expect(card()).toBeNull()
+  })
+})
+
+describe('FeatureSidebar centring a picked feature', () => {
+  let centred: [number, number][] = []
+  let unregister: () => void = () => {}
+  beforeEach(() => {
+    centred = []
+    unregister = registerSequenceViewCenter((start, end) => { centred.push([start, end]) })
+    store().loadDocument('test', 'ACGT'.repeat(50), 'linear')
+    store().setSidebarTab('features')
+    store().addAnnotation({ id: 'lac', name: 'lacZ', type: 'CDS', start: 120, end: 180, strand: 1 })
+  })
+  afterEach(() => { unregister(); cleanup() })
+
+  const row = () => screen.getByText('lacZ').closest('.ft-summary') as HTMLElement
+
+  it('selects and centres the feature on a double-click', () => {
+    render(<FeatureSidebar open onClose={() => {}} />)
+    fireEvent.doubleClick(row())
+    expect(store().selection).toEqual({ anchor: 120, caret: 180 })
+    expect(centred).toEqual([[120, 180]])
+  })
+
+  it('centres it from the context menu\'s Select', () => {
+    render(<FeatureSidebar open onClose={() => {}} />)
+    fireEvent.contextMenu(row())
+    fireEvent.click(screen.getByRole('menuitem', { name: /^Select/ }))
+    expect(store().selection).toEqual({ anchor: 120, caret: 180 })
+    expect(centred).toEqual([[120, 180]])
+  })
+
+  it('only scrolls it into view on a single click', () => {
+    render(<FeatureSidebar open onClose={() => {}} />)
+    fireEvent.click(row())
+    expect(store().selection).toEqual({ anchor: 120, caret: 180 })
+    expect(centred).toEqual([])
   })
 })

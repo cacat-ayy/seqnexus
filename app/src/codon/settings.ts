@@ -10,6 +10,7 @@ import {
   parseCustomMotifs, type ConstraintOptions, type MotifSpec,
 } from './constraints'
 import { DEFAULT_GENETIC_CODE_ID } from './genetic-codes'
+import type { EnzymeSet } from '../enzymes/sets'
 import { DEFAULT_OPTIMIZE_OPTIONS, type CodonStrategy, type OptimizationMode } from './optimize'
 import { DEFAULT_TARGET_OPTIONS, type TargetKind, type TargetOptions } from './targets'
 import { DEFAULT_USAGE_TABLE_ID } from './usage-tables'
@@ -82,17 +83,20 @@ export const DEFAULT_CODON_SETTINGS: CodonSettings = {
   protectFeatures: DEFAULT_TARGET_OPTIONS.protectFeatures,
 }
 
-/** The enzymes of the chosen category that are still ticked. */
-export function selectedEnzymeNames(settings: CodonSettings): string[] {
+/**
+ * The enzymes of the chosen category that are still ticked. `sets` are the
+ * user's saved enzyme sets, for a category that is one of them.
+ */
+export function selectedEnzymeNames(settings: CodonSettings, sets: readonly EnzymeSet[] = []): string[] {
   if (!settings.enzymeGroup) return []
   const excluded = new Set(settings.enzymeExcluded)
-  return enzymeNamesInGroup(settings.enzymeGroup).filter(n => !excluded.has(n))
+  return enzymeNamesInGroup(settings.enzymeGroup, sets).filter(n => !excluded.has(n))
 }
 
 /** Every motif the settings ask to avoid, deduplicated by sequence. */
-export function motifsFor(settings: CodonSettings): MotifSpec[] {
+export function motifsFor(settings: CodonSettings, sets: readonly EnzymeSet[] = []): MotifSpec[] {
   const all: MotifSpec[] = [
-    ...motifsForEnzymes(selectedEnzymeNames(settings)),
+    ...motifsForEnzymes(selectedEnzymeNames(settings, sets)),
     ...settings.presetIds.flatMap(id => MOTIF_PRESETS.find(p => p.id === id)?.motifs ?? []),
     ...parseCustomMotifs(settings.customMotifs),
   ]
@@ -105,9 +109,9 @@ export function motifsFor(settings: CodonSettings): MotifSpec[] {
   })
 }
 
-export function constraintOptionsFor(settings: CodonSettings): ConstraintOptions {
+export function constraintOptionsFor(settings: CodonSettings, sets: readonly EnzymeSet[] = []): ConstraintOptions {
   return {
-    motifs: motifsFor(settings),
+    motifs: motifsFor(settings, sets),
     maxHomopolymerAT: settings.maxHomopolymerAT,
     maxHomopolymerGC: settings.maxHomopolymerGC,
     minGC: settings.minGC,
@@ -120,8 +124,8 @@ export function constraintOptionsFor(settings: CodonSettings): ConstraintOptions
   }
 }
 
-export function constraintSetFor(settings: CodonSettings): ConstraintSet {
-  return new ConstraintSet(constraintOptionsFor(settings))
+export function constraintSetFor(settings: CodonSettings, sets: readonly EnzymeSet[] = []): ConstraintSet {
+  return new ConstraintSet(constraintOptionsFor(settings, sets))
 }
 
 export function targetOptionsFor(settings: CodonSettings): TargetOptions {

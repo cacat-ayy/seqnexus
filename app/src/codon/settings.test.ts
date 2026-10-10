@@ -11,6 +11,7 @@ import {
   constraintSetFor, targetOptionsFor, type CodonSettings,
 } from './settings'
 import { ALL_ENZYMES_GROUP, enzymeNamesInGroup } from './constraints'
+import { setKey, type EnzymeSet } from '../enzymes/sets'
 
 const settings = (over: Partial<CodonSettings> = {}): CodonSettings =>
   ({ ...DEFAULT_CODON_SETTINGS, ...over })
@@ -34,6 +35,21 @@ describe('defaults', () => {
 })
 
 describe('enzyme categories', () => {
+  it('takes a saved enzyme set as a category', () => {
+    const sets: EnzymeSet[] = [{ id: 'enzset_1', name: 'BioBrick', enzymes: ['XbaI', 'EcoRI', 'PstI'], createdAt: 0 }]
+    const s = settings({ enzymeGroup: setKey('enzset_1'), enzymeExcluded: ['PstI'] })
+    expect(enzymeNamesInGroup(setKey('enzset_1'), sets)).toEqual(['EcoRI', 'PstI', 'XbaI'])
+    expect(selectedEnzymeNames(s, sets)).toEqual(['EcoRI', 'XbaI'])
+    expect(motifsFor(s, sets).map(m => m.name).sort()).toEqual(['EcoRI', 'XbaI'])
+    expect(constraintOptionsFor(s, sets).motifs).toHaveLength(2)
+  })
+
+  it('avoids nothing for a saved set that was deleted', () => {
+    const s = settings({ enzymeGroup: setKey('gone') })
+    expect(selectedEnzymeNames(s, [])).toEqual([])
+    expect(motifsFor(s, [])).toEqual([])
+  })
+
   it('takes every enzyme of the chosen category', () => {
     const s = settings({ enzymeGroup: 'Common (6-cutters)' })
     expect(selectedEnzymeNames(s)).toEqual(enzymeNamesInGroup('Common (6-cutters)'))

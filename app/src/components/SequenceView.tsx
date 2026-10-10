@@ -40,12 +40,14 @@ import { proteinMass, formatMass } from '../protein/properties'
 import SequenceMinimap from './minimap/SequenceMinimap'
 import { createViewportSource } from './minimap/viewport'
 
-import { publishBasesPerRow, publishVisibleRange, registerSequenceViewFit, registerSequenceViewZoomTo } from './sequence-view-controls'
+import { publishBasesPerRow, publishVisibleRange, registerSequenceViewCenter, registerSequenceViewFit, registerSequenceViewZoomTo } from './sequence-view-controls'
 
 const MINIMAP_SEQ_THRESHOLD = 1_000 // show minimap for sequences >= 1 kb
 const MAX_ZOOM = 20
 /** Summed ctrl+wheel delta per zoom level: one mouse notch, or a short pinch. */
 const WHEEL_ZOOM_STEP = 50
+/** Space kept above and below a range zoomed to or centred, so it is not flush with the edges. */
+const RANGE_MARGIN = 24
 /** Bases jumped by Ctrl+←/→: one ruler group. */
 const WORD_JUMP = 10
 
@@ -1863,8 +1865,6 @@ function SequenceView({ onFindRequest, onFindClose, onAnnotateRequest, onEditFea
     const sites = showEnzymesNow
       ? groupCutSites(enzymeCutSitesRef.current, doc.metadata?.damMethylated || false, doc.metadata?.dcmMethylated || false)
       : NO_SITES
-    // Rows above and below, so the range is not flush with the edges.
-    const MARGIN = 24
     let best: { z: number; top: number; span: number; rowStart: number } | null = null
     for (let z = 0; z <= MAX_ZOOM; z++) {
       const L = getLayout(z, width, showEnzymesNow, seqLen, {
@@ -1878,11 +1878,11 @@ function SequenceView({ onFindRequest, onFindClose, onAnnotateRequest, onEditFea
       const last = Math.floor(Math.max(start, end - 1) / L.basesPerRow)
       const top = rl.rowY(first)
       const span = rl.rowY(last + 1) - top
-      if (best && span + 2 * MARGIN > viewH) break
+      if (best && span + 2 * RANGE_MARGIN > viewH) break
       best = { z, top, span, rowStart: first * L.basesPerRow }
     }
     if (!best) return
-    const offsetY = Math.max(MARGIN, (viewH - best.span) / 2)
+    const offsetY = Math.max(RANGE_MARGIN, (viewH - best.span) / 2)
     const store = useEditorStore.getState()
     if (best.z === store.zoomLevel) {
       // After the frame in which the new selection's follow-the-caret
@@ -1896,7 +1896,33 @@ function SequenceView({ onFindRequest, onFindClose, onAnnotateRequest, onEditFea
     store.setZoom(best.z)
   }, [fitToView])
 
+  /**
+   * Scroll so the bases [start, end) sit in the middle of the view, at the
+   * zoom it has: a feature picked from a list lands where the eye is, not at
+   * the edge the follow-the-caret scroll leaves it on. A range taller than
+   * the view starts a margin below the top. A range across the origin is
+   * centred on its part from the start to the end of the sequence.
+   */
+  const centerRange = useCallback((start: number, end: number) => {
+    const container = containerRef.current
+    const seqLen = docRef.current.sequence.length
+    if (!container || seqLen === 0) return
+    const perRow = layoutRef.current.basesPerRow
+    const rl = rowLayoutRef.current
+    const stop = start > end ? seqLen : end
+    const first = Math.floor(start / perRow)
+    const last = Math.min(Math.floor(Math.max(start, stop - 1) / perRow), Math.max(0, rl.totalRows - 1))
+    const top = rl.rowY(first)
+    const span = rl.rowY(last) + rl.rowH(last) - top
+    const offsetY = Math.max(RANGE_MARGIN, (container.clientHeight - span) / 2)
+    const target = Math.max(0, top - offsetY)
+    // After the frame in which the selection's follow-the-caret scroll runs,
+    // as in zoomToRange, so this one lands last.
+    requestAnimationFrame(() => requestAnimationFrame(() => container.scrollTo({ top: target, behavior: 'smooth' })))
+  }, [])
+
   useEffect(() => registerSequenceViewZoomTo(zoomToRange), [zoomToRange])
+  useEffect(() => registerSequenceViewCenter(centerRange), [centerRange])
   useEffect(() => () => publishVisibleRange(null), [])
 
   // Attach event listeners once (all callbacks are stable via refs)

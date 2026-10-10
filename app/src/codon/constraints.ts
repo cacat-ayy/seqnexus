@@ -13,6 +13,7 @@
  */
 
 import { ENZYME_DB, ENZYME_GROUPS, getEnzyme, recognitionToRegex } from '../enzymes/db'
+import { setForKey, type EnzymeSet } from '../enzymes/sets'
 import { reverseComplement } from '../models/complement'
 
 export type ViolationKind =
@@ -129,17 +130,21 @@ export const ALL_ENZYMES_GROUP = 'All enzymes'
 /** Enzyme category names, for the picker. */
 export const ENZYME_GROUP_OPTIONS: string[] = [ALL_ENZYMES_GROUP, ...Object.keys(ENZYME_GROUPS)]
 
-/** Enzyme names in a category, sorted, with duplicates removed. */
-export function enzymeNamesInGroup(group: string): string[] {
+/**
+ * Enzyme names in a category, sorted, with duplicates removed. A category is
+ * a built-in group by name, or one of the user's saved enzyme sets by its
+ * key (see enzymes/sets.ts); a set since deleted has no enzymes.
+ */
+export function enzymeNamesInGroup(group: string, sets: readonly EnzymeSet[] = []): string[] {
   const names = group === ALL_ENZYMES_GROUP
     ? ENZYME_DB.map(e => e.name)
-    : ENZYME_GROUPS[group] ?? []
+    : setForKey(group, sets)?.enzymes ?? ENZYME_GROUPS[group] ?? []
   return [...new Set(names)].sort((a, b) => a.localeCompare(b))
 }
 
 /** Motif specs for a named enzyme group from the enzyme database. */
-export function motifsForEnzymeGroup(group: string): MotifSpec[] {
-  return motifsForEnzymes(enzymeNamesInGroup(group))
+export function motifsForEnzymeGroup(group: string, sets: readonly EnzymeSet[] = []): MotifSpec[] {
+  return motifsForEnzymes(enzymeNamesInGroup(group, sets))
 }
 
 export function motifsForEnzymes(names: readonly string[]): MotifSpec[] {

@@ -16,6 +16,8 @@ import { cleanOligo, newPrimerId, primerOligoFromFeature, type PrimerData } from
 import { findBindingSites } from '../primers/binding'
 import { resolveForward } from './location'
 import { idSource } from './ids'
+import { mergeGenesIntoCds } from './gene-cds'
+import { takeSource } from './source-feature'
 
 // Packet type constants
 const PACKET_DNA       = 0x00
@@ -136,7 +138,8 @@ export function parseSnapGene(buffer: ArrayBuffer): DocumentState {
   }
 
   const seq = new Sequence(sequence.toUpperCase(), topology)
-  const annotations = resolveFeatures(rawFeatures, seq.length, topology === 'circular')
+  const { annotations, source } = takeSource(mergeGenesIntoCds(resolveFeatures(rawFeatures, seq.length, topology === 'circular')), seq.length)
+  if (source.length > 0) metadata.source = source
   const primers = resolvePrimers(rawPrimers, seq)
   return {
     name,

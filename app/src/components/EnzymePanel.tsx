@@ -8,53 +8,15 @@ import './EnzymePanel.css'
 import { useState, useMemo, useEffect, useCallback, useRef } from 'react'
 import { X, GalleryVertical } from 'lucide-react'
 import { useEditorStore } from '../store'
-import { ENZYME_DB, ENZYME_GROUPS, type RestrictionEnzyme, methylationEffect } from '../enzymes/db'
+import { methylationEffect } from '../enzymes/db'
+import { BUILT_IN_SUBSETS, setKey, subsetEnzymes } from '../enzymes/sets'
+import EnzymeSetControls from './EnzymeSetControls'
 import type { CutSite } from '../enzymes/finder'
 import { findEnzymeSitesAsync } from '../workers/enzyme-finder'
 import { useExitAnimation } from '../hooks/useExitAnimation'
 import { useFocusTrap } from '../hooks/useFocusTrap'
 import { digestWorkspace } from '../gel/workspace'
 import { useBackdropDismiss } from '../hooks/useBackdropDismiss'
-
-type SubsetKey = 'all' | 'common6' | 'rare8' | 'freq4' | 'goldengate' | 'all6' | 'all4' | 'all8plus' | 'blunt' | 'overhang5' | 'overhang3' | 'typeIIS'
-
-const SUBSET_LABELS: Record<SubsetKey, string> = {
-  all: 'All enzymes',
-  common6: 'Common (6-cutters)',
-  rare8: 'Rare (8-cutters)',
-  freq4: 'Frequent (4-cutters)',
-  goldengate: 'Golden Gate (Type IIS)',
-  all6: 'All 6-cutters',
-  all4: 'All 4-cutters',
-  all8plus: 'All 8+ cutters',
-  blunt: 'Blunt cutters',
-  overhang5: "5' overhang",
-  overhang3: "3' overhang",
-  typeIIS: 'Type IIS',
-}
-
-const SUBSET_TO_GROUP: Record<SubsetKey, string | null> = {
-  all: null,
-  common6: 'Common (6-cutters)',
-  rare8: 'Rare (8-cutters)',
-  freq4: 'Frequent (4-cutters)',
-  goldengate: 'Golden Gate (Type IIS)',
-  all6: 'All 6-cutters',
-  all4: 'All 4-cutters',
-  all8plus: 'All 8+ cutters',
-  blunt: 'Blunt cutters',
-  overhang5: "5' overhang",
-  overhang3: "3' overhang",
-  typeIIS: 'Type IIS',
-}
-
-function getSubsetEnzymes(subset: SubsetKey): RestrictionEnzyme[] {
-  const groupName = SUBSET_TO_GROUP[subset]
-  if (!groupName) return ENZYME_DB
-  const names = ENZYME_GROUPS[groupName]
-  if (!names) return ENZYME_DB
-  return ENZYME_DB.filter(e => names.includes(e.name))
-}
 
 interface Props {
   open: boolean
@@ -81,12 +43,13 @@ export default function EnzymePanel({ open, onClose }: Props) {
   const toggleEnzymes = useEditorStore(s => s.toggleEnzymes)
 
   const setEnzymeParams = useEditorStore(s => s.setEnzymeParams)
-  const subset = useEditorStore(s => s.enzymeSubset) as SubsetKey
+  const subset = useEditorStore(s => s.enzymeSubset)
+  const enzymeSets = useEditorStore(s => s.enzymeSets)
   const searchQuery = useEditorStore(s => s.enzymeSearchQuery)
   const filterByCount = useEditorStore(s => s.enzymeFilterByCount)
   const minCuts = useEditorStore(s => s.enzymeMinCuts)
   const maxCuts = useEditorStore(s => s.enzymeMaxCuts)
-  const setSubset = useCallback((v: SubsetKey) => setEnzymeParams({ enzymeSubset: v }), [setEnzymeParams])
+  const setSubset = useCallback((v: string) => setEnzymeParams({ enzymeSubset: v }), [setEnzymeParams])
   const setSearchQuery = useCallback((v: string) => setEnzymeParams({ enzymeSearchQuery: v }), [setEnzymeParams])
   const setFilterByCount = useCallback((v: boolean) => setEnzymeParams({ enzymeFilterByCount: v }), [setEnzymeParams])
   const setMinCuts = useCallback((v: number) => setEnzymeParams({ enzymeMinCuts: v }), [setEnzymeParams])
@@ -109,7 +72,7 @@ export default function EnzymePanel({ open, onClose }: Props) {
 
   // Compute all sites for the selected subset, filtered by search query
   const candidateEnzymes = useMemo(() => {
-    let enzymes = getSubsetEnzymes(subset)
+    let enzymes = subsetEnzymes(subset, enzymeSets)
     if (searchQuery.trim()) {
       const q = searchQuery.trim().toUpperCase()
       enzymes = enzymes.filter(e =>
@@ -118,7 +81,7 @@ export default function EnzymePanel({ open, onClose }: Props) {
       )
     }
     return enzymes
-  }, [subset, searchQuery])
+  }, [subset, searchQuery, enzymeSets])
 
   // Scan for sites asynchronously in a Web Worker
   useEffect(() => {
@@ -175,6 +138,9 @@ export default function EnzymePanel({ open, onClose }: Props) {
     sites.sort((a, b) => a.position - b.position)
     return { enzymes, sites }
   }, [candidateEnzymes, perEnzymeSites, filterByCount, minCuts, maxCuts, posStart, posEnd])
+
+  /** The enzymes the panel lists, which "Save list as set" keeps. */
+  const listedNames = useMemo(() => filteredResult.enzymes.map(e => e.name), [filteredResult.enzymes])
 
   // Total matching enzyme count
   const matchCount = filteredResult.sites.length
@@ -262,12 +228,22 @@ export default function EnzymePanel({ open, onClose }: Props) {
               <select
                 className="select re-select"
                 value={subset}
-                onChange={e => setSubset(e.target.value as SubsetKey)}
+                onChange={e => setSubset(e.target.value)}
               >
-                {Object.entries(SUBSET_LABELS).map(([key, label]) => (
-                  <option key={key} value={key}>{label}</option>
-                ))}
+                <optgroup label="Built in">
+                  {BUILT_IN_SUBSETS.map(s => (
+                    <option key={s.key} value={s.key}>{s.label}</option>
+                  ))}
+                </optgroup>
+                {enzymeSets.length > 0 && (
+                  <optgroup label="Your sets">
+                    {enzymeSets.map(s => (
+                      <option key={s.id} value={setKey(s.id)}>{s.name} ({s.enzymes.length})</option>
+                    ))}
+                  </optgroup>
+                )}
               </select>
+              <EnzymeSetControls subset={subset} onSubset={setSubset} listed={listedNames} />
             </div>
 
             <div className="re-field">

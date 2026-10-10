@@ -30,6 +30,7 @@ import {
 import { combinedMetrics, runOptimization, type OptimizationRun } from '../codon/run'
 import { backTranslate } from '../codon/back-translate'
 import { notify } from '../toast'
+import { setKey } from '../enzymes/sets'
 import { useExitAnimation } from '../hooks/useExitAnimation'
 import { useFocusTrap } from '../hooks/useFocusTrap'
 import { useBackdropDismiss } from '../hooks/useBackdropDismiss'
@@ -88,6 +89,7 @@ export default function CodonOptimizeDialog({ open, onClose }: Props) {
   const removeCustomUsageTable = useEditorStore(s => s.removeCustomUsageTable)
   const substituteBases = useEditorStore(s => s.substituteBases)
   const openDocumentState = useEditorStore(s => s.openDocumentState)
+  const enzymeSets = useEditorStore(s => s.enzymeSets)
 
   const [featureIds, setFeatureIds] = useState<Set<string>>(new Set())
   const [advancedOpen, setAdvancedOpen] = useState(false)
@@ -109,8 +111,8 @@ export default function CodonOptimizeDialog({ open, onClose }: Props) {
 
   /** Enzymes of the chosen category, and the subset the filter box shows. */
   const groupEnzymes = useMemo(
-    () => settings.enzymeGroup ? enzymeNamesInGroup(settings.enzymeGroup) : [],
-    [settings.enzymeGroup],
+    () => settings.enzymeGroup ? enzymeNamesInGroup(settings.enzymeGroup, enzymeSets) : [],
+    [settings.enzymeGroup, enzymeSets],
   )
   const visibleEnzymes = useMemo(() => {
     const q = enzymeQuery.trim().toLowerCase()
@@ -171,7 +173,7 @@ export default function CodonOptimizeDialog({ open, onClose }: Props) {
           annotations: protein ? [] : doc.annotations,
           code,
           table,
-          constraints: constraintSetFor(settings),
+          constraints: constraintSetFor(settings, enzymeSets),
           targetOptions: targetOptionsFor(settings),
           optimizeOptions: {
             mode: settings.mode,
@@ -197,7 +199,7 @@ export default function CodonOptimizeDialog({ open, onClose }: Props) {
 
     return () => { cancelled = true; clearTimeout(timer) }
     // eslint-disable-next-line react-hooks/exhaustive-deps -- selectionRange is rebuilt each render; its values are covered by `selection`
-  }, [open, table, code, settings, target, protein, featureIds, workingSequence, doc.annotations, selection, autoRun, manualRun])
+  }, [open, table, code, settings, enzymeSets, target, protein, featureIds, workingSequence, doc.annotations, selection, autoRun, manualRun])
 
   const before = useMemo(() => result ? combinedMetrics(result.regions, 'before') : null, [result])
   const after = useMemo(() => result ? combinedMetrics(result.regions, 'after') : null, [result])
@@ -287,7 +289,7 @@ export default function CodonOptimizeDialog({ open, onClose }: Props) {
   const { visible, closing, onAnimationEnd } = useExitAnimation(open)
   if (!visible) return null
 
-  const motifCount = motifsFor(settings).length
+  const motifCount = motifsFor(settings, enzymeSets).length
   const violationSummary = new Map<string, number>()
   for (const region of result?.regions ?? []) {
     for (const v of region.violations) {
@@ -547,11 +549,22 @@ export default function CodonOptimizeDialog({ open, onClose }: Props) {
                   onChange={e => patch({ enzymeGroup: e.target.value, enzymeExcluded: [] })}
                 >
                   <option value="">None</option>
-                  {ENZYME_GROUP_OPTIONS.map(group => (
-                    <option key={group} value={group}>
-                      {group} ({enzymeNamesInGroup(group).length})
-                    </option>
-                  ))}
+                  <optgroup label="Built in">
+                    {ENZYME_GROUP_OPTIONS.map(group => (
+                      <option key={group} value={group}>
+                        {group} ({enzymeNamesInGroup(group).length})
+                      </option>
+                    ))}
+                  </optgroup>
+                  {enzymeSets.length > 0 && (
+                    <optgroup label="Your sets">
+                      {enzymeSets.map(set => (
+                        <option key={set.id} value={setKey(set.id)}>
+                          {set.name} ({set.enzymes.length})
+                        </option>
+                      ))}
+                    </optgroup>
+                  )}
                 </select>
 
                 {settings.enzymeGroup && (
@@ -567,7 +580,7 @@ export default function CodonOptimizeDialog({ open, onClose }: Props) {
                         />
                       </div>
                       <span className="cod-hint">
-                        {selectedEnzymeNames(settings).length} of {groupEnzymes.length}
+                        {selectedEnzymeNames(settings, enzymeSets).length} of {groupEnzymes.length}
                       </span>
                     </div>
                     <div className="cod-enzyme-actions">

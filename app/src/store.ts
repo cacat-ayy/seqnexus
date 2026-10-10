@@ -42,6 +42,7 @@ import { loadDisplaySettings, saveDisplaySettings, type DisplaySettings } from '
 import type { PlasmidStyleId } from './plasmid/styles'
 import type { Ab1Data } from './io/ab1'
 import type { CutSite } from './enzymes/finder'
+import { DEFAULT_SUBSET, freeSetName, setKey, type EnzymeSet } from './enzymes/sets'
 import type { ORFResult } from './workers/orf-finder'
 import type { DesignResult } from './primers/design/types'
 import type { ContigDoc } from './assembly/types'
@@ -284,6 +285,7 @@ const readSetIds = makeIdGenerator('rset')
 const oligoIds = makeIdGenerator('libo')
 const gelIds = makeIdGenerator('gel')
 const cloneIds = makeIdGenerator('clone')
+const enzymeSetIds = makeIdGenerator('enzset')
 
 /**
  * How each kind of item keeps its history. Edits sharing a key within a
@@ -645,6 +647,18 @@ interface EditorStore {
   enzymeMinCuts: number
   enzymeMaxCuts: number
   setEnzymeParams: (params: Partial<{ enzymeSubset: string; enzymeSearchQuery: string; enzymeFilterByCount: boolean; enzymeMinCuts: number; enzymeMaxCuts: number }>) => void
+  /** Saved enzyme sets, offered beside the built-in subsets (see enzymes/sets.ts). */
+  enzymeSets: EnzymeSet[]
+  /** Save a set under a name no other set has; returns its id. */
+  addEnzymeSet: (name: string, enzymes: string[]) => string
+  renameEnzymeSet: (id: string, name: string) => void
+  setEnzymeSetEnzymes: (id: string, enzymes: string[]) => void
+  /** Delete a set; a panel showing it goes back to the default subset. */
+  removeEnzymeSet: (id: string) => void
+  /** Replace every saved set: a session restored or replaced. */
+  restoreEnzymeSets: (sets: EnzymeSet[]) => void
+  /** Add a merged session's sets, skipping any already saved with the same name and enzymes. */
+  mergeEnzymeSets: (sets: EnzymeSet[]) => void
 
   // Motif display state (cross-view). The scan is the app's (useMotifScan),
   // as the auto-annotation scan is; the results live here for the overlay,
@@ -1862,12 +1876,45 @@ export const useEditorStore = create<EditorStore>((set, get) => {
     setEnzymeCutSites: (sites) => { set({ enzymeCutSites: sites }); updateActiveTab({ enzymeCutSites: sites }) },
     setEnzymeNames: (names) => { set({ enzymeNames: names }); updateActiveTab({ enzymeNames: names }) },
     clearEnzymes: () => { set({ enzymeCutSites: [], enzymeNames: [] }); updateActiveTab({ enzymeCutSites: [], enzymeNames: [] }) },
-    enzymeSubset: 'common6',
+    enzymeSubset: DEFAULT_SUBSET,
     enzymeSearchQuery: '',
     enzymeFilterByCount: true,
     enzymeMinCuts: 1,
     enzymeMaxCuts: 1,
     setEnzymeParams: (params) => set(params),
+    enzymeSets: [],
+    addEnzymeSet: (name, enzymes) => {
+      const sets = get().enzymeSets
+      const id = enzymeSetIds.next()
+      set({ enzymeSets: [...sets, { id, name: freeSetName(name, sets), enzymes: [...new Set(enzymes)], createdAt: Date.now() }] })
+      return id
+    },
+    renameEnzymeSet: (id, name) => set(s => ({
+      enzymeSets: s.enzymeSets.map(e => (e.id === id ? { ...e, name: freeSetName(name, s.enzymeSets, id) } : e)),
+    })),
+    setEnzymeSetEnzymes: (id, enzymes) => set(s => ({
+      enzymeSets: s.enzymeSets.map(e => (e.id === id ? { ...e, enzymes: [...new Set(enzymes)] } : e)),
+    })),
+    removeEnzymeSet: (id) => set(s => ({
+      enzymeSets: s.enzymeSets.filter(e => e.id !== id),
+      ...(s.enzymeSubset === setKey(id) ? { enzymeSubset: DEFAULT_SUBSET } : {}),
+    })),
+    restoreEnzymeSets: (sets) => {
+      for (const e of sets) {
+        const n = Number(/_(\d+)$/.exec(e.id)?.[1])
+        if (Number.isFinite(n)) enzymeSetIds.syncTo(n)
+      }
+      set({ enzymeSets: sets })
+    },
+    mergeEnzymeSets: (incoming) => {
+      const sets = [...get().enzymeSets]
+      const same = (a: EnzymeSet, b: EnzymeSet) => a.name === b.name && a.enzymes.join() === b.enzymes.join()
+      for (const e of incoming) {
+        if (sets.some(s => same(s, e))) continue
+        sets.push({ ...e, id: enzymeSetIds.next(), name: freeSetName(e.name, sets) })
+      }
+      set({ enzymeSets: sets })
+    },
 
     // ORF display
     orfResults: [],

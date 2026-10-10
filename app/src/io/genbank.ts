@@ -14,6 +14,8 @@ import { cleanOligo, newPrimerId, type PrimerData } from '../primers/oligo'
 import { findBindingSites } from '../primers/binding'
 import { parseGenBankLocation, resolveLocation, formatGenBankLocation } from './location'
 import { idSource } from './ids'
+import { mergeGenesIntoCds } from './gene-cds'
+import { takeSource, type SourceQualifiers } from './source-feature'
 
 const ids = idSource('ann')
 
@@ -41,6 +43,8 @@ export interface GenBankRecord {
   bases: string
   annotations: AnnotationData[]
   primers: PrimerData[]
+  /** The qualifiers of the source feature over the whole record, kept out of the features. */
+  source: SourceQualifiers[]
   /** Things the reader could not take in as written, for the user. */
   warnings: string[]
 }
@@ -283,7 +287,8 @@ function buildRecord(r: RecordInProgress): GenBankRecord {
     description = ''
   }
 
-  const { primers, rest } = primersFromFeatures(annotations)
+  const { annotations: features, source } = takeSource(mergeGenesIntoCds(annotations), seqLen)
+  const { primers, rest } = primersFromFeatures(features)
   return {
     name,
     description: description || undefined,
@@ -293,6 +298,7 @@ function buildRecord(r: RecordInProgress): GenBankRecord {
     bases,
     annotations: rest,
     primers,
+    source,
     warnings: warnings.map(w => `${name}: ${w}`),
   }
 }
@@ -312,6 +318,7 @@ function featureName(f: RawFeature): string {
 export function toDocument(rec: GenBankRecord): DocumentState {
   // Strandedness is a DNA property; a protein carries no metadata from here.
   const metadata: SequenceMetadata = rec.alphabet === 'protein' ? {} : { strandedness: rec.strandedness }
+  if (rec.source.length > 0) metadata.source = rec.source
   return {
     name: rec.name,
     description: rec.description,
@@ -351,7 +358,7 @@ export function parseGenBank(text: string, warnings?: string[]): DocumentState {
 function emptyRecord(): GenBankRecord {
   return {
     name: 'Untitled', topology: 'linear', strandedness: 'double', alphabet: 'dna',
-    bases: '', annotations: [], primers: [], warnings: [],
+    bases: '', annotations: [], primers: [], source: [], warnings: [],
   }
 }
 
@@ -383,6 +390,13 @@ export function writeGenBank(state: DocumentState): string {
 
   // FEATURES
   lines.push('FEATURES             Location/Qualifiers')
+  // The record's source, kept out of the features, over the whole sequence as it is now.
+  for (const quals of state.metadata?.source ?? []) {
+    lines.push(`     source          1..${bp}`)
+    for (const [key, values] of Object.entries(quals)) {
+      for (const val of values) lines.push(...qualifierLines(key, val))
+    }
+  }
   for (const ann of [...state.annotations, ...primerFeatures(state)]) {
     // A disulfide between two residues is a GenPept bond, not a join.
     const bond = ann.type === 'disulfide' && ann.segments?.length === 2

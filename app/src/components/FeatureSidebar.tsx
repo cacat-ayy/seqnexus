@@ -26,7 +26,7 @@ import FeatureEditor from './features/FeatureEditor'
 import FeatureRow from './features/FeatureRow'
 import FeatureListOptions, { type FeatureListView } from './features/FeatureListOptions'
 import { FeatureContextMenu, GroupContextMenu } from './features/FeatureMenus'
-import { deleteFeaturesWithUndo, rowDomId, selectFeature } from './features/feature-actions'
+import { deleteFeaturesWithUndo, rowDomId, selectAndCenterFeature, selectFeature } from './features/feature-actions'
 import { useListMultiSelect } from '../hooks/useListMultiSelect'
 import {
   Plus, X, ChevronRight, ChevronDown, Eye, EyeOff, Search, PanelRightClose, ChevronsDownUp, ChevronsUpDown,
@@ -308,6 +308,10 @@ function FeatureSidebar({ open, onClose }: FeatureSidebarProps) {
     e.preventDefault()
     e.stopPropagation()
     setActiveId(ann.id)
+    // The menu replaces the hover card: one pending or showing would sit
+    // under the menu, saying the same thing.
+    if (tooltipTimer.current) { clearTimeout(tooltipTimer.current); tooltipTimer.current = null }
+    setTooltip(null)
     setCtxMenu({ x: e.clientX, y: e.clientY, ann })
   }, [])
 
@@ -460,6 +464,7 @@ function FeatureSidebar({ open, onClose }: FeatureSidebarProps) {
   const handleRowDoubleClick = useCallback((ann: Annotation) => {
     setExpandedId(prev => (prev === ann.id ? null : ann.id))
     setRenameRequest(null)
+    selectAndCenterFeature(ann)
   }, [])
 
   const handleToggleHidden = useCallback((ann: Annotation) => toggleAnnotationVisibility(ann.id), [toggleAnnotationVisibility])
@@ -969,8 +974,8 @@ function FeatureSidebar({ open, onClose }: FeatureSidebarProps) {
         </>
         )}
 
-        {/* Hover tooltip */}
-        {tooltip && (
+        {/* Hover tooltip, never while a menu is open over the rows */}
+        {tooltip && !ctxMenu && !groupMenu && (
           <AnnotationTooltip
             ann={tooltip.ann}
             sequence={sequence}
@@ -986,7 +991,7 @@ function FeatureSidebar({ open, onClose }: FeatureSidebarProps) {
             ann={ctxMenu.ann}
             hidden={hiddenSet.has(ctxMenu.ann.id)}
             readOnly={readOnly}
-            onClose={() => setCtxMenu(null)}
+            onClose={() => { setCtxMenu(null); setTooltip(null) }}
             onEdit={() => openEditor(ctxMenu.ann.id)}
             onRename={() => openEditor(ctxMenu.ann.id, true)}
             onDelete={() => deleteNow([ctxMenu.ann])}
@@ -1002,7 +1007,7 @@ function FeatureSidebar({ open, onClose }: FeatureSidebarProps) {
             anns={groupMenuAnns}
             allHidden={groupMenuAnns.length > 0 && groupMenuAnns.every(a => hiddenSet.has(a.id))}
             readOnly={readOnly}
-            onClose={() => setGroupMenu(null)}
+            onClose={() => { setGroupMenu(null); setTooltip(null) }}
             onRecolor={() => {
               const input = groupColorInputs.current.get(groupMenu.type)
               if (!input) return

@@ -51,13 +51,17 @@
   border-bottom: none;
 }
 
+/* The left border is the selection bar, as on an explorer row: always there,
+   coloured only when it means something, so no state shifts the row's
+   content. The left corners stay square so the bar is a straight line. */
 .ft-summary {
   display: flex;
   align-items: center;
   gap: var(--space-1);
-  padding: var(--space-1) var(--space-0-5);
+  padding: var(--space-1) var(--space-0-5) var(--space-1) var(--space-1-5);
   cursor: pointer;
-  border-radius: var(--radius-sm);
+  border-left: 3px solid transparent;
+  border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
   font-size: var(--text-md);
   user-select: none;
 }
@@ -803,7 +807,7 @@
    list; the tint alone is too subtle against the dimmed/hidden styling. */
 .fs-item.picked > .ft-summary {
   background: var(--accent-bg);
-  box-shadow: inset 2px 0 0 0 var(--accent);
+  border-left-color: var(--accent);
 }
 
 .fs-item.picked > .ft-summary:hover {
@@ -845,7 +849,7 @@
 
 /* A feature under the caret or the selection: half the picked row's bar. */
 .fs-item.here:not(.picked) > .ft-summary {
-  box-shadow: inset 2px 0 0 0 color-mix(in srgb, var(--accent) 45%, transparent);
+  border-left-color: color-mix(in srgb, var(--accent) 45%, transparent);
 }
 
 /* Hovered here, or on the map or in the sequence. */

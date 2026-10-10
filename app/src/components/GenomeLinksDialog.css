@@ -1,0 +1,55 @@
+/* ===== Genome links listed by an imported Geneious file ===== */
+
+.genome-links-modal {
+  width: 560px;
+  max-width: 95vw;
+}
+
+.gl-intro {
+  margin: 0 0 var(--space-2-5);
+  font-size: var(--text-sm);
+  color: var(--text-secondary);
+}
+
+/* A long list (a Geneious folder of 150 chromosomes) scrolls inside the dialog. */
+.gl-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  max-height: 60vh;
+  overflow-y: auto;
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-input);
+}
+
+.gl-row {
+  display: grid;
+  grid-template-columns: 1fr auto auto auto;
+  align-items: center;
+  gap: var(--space-2-5);
+  padding: var(--space-1-5) var(--space-2-5);
+  font-size: var(--text-sm);
+  border-bottom: 1px solid var(--border-light);
+}
+.gl-row:last-child { border-bottom: none; }
+
+.gl-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text);
+}
+
+.gl-accession {
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  color: var(--text-secondary);
+}
+
+.gl-length {
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+  text-align: right;
+  min-width: 56px;
+}
