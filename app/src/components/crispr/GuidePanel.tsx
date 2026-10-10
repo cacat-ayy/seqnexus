@@ -25,6 +25,7 @@ import { REPAIR_CAP } from '../../crispr/score/guide'
 import GuideLandscape from './GuideLandscape'
 import GuideInspector from './GuideInspector'
 import NucleaseDialog from './NucleaseDialog'
+import OffTargetSection from './OffTargetSection'
 import type { GuideCandidate, GuideDrawScope } from '../../crispr/types'
 
 type Sort = 'position' | 'score' | 'frame' | 'gc'
@@ -61,6 +62,7 @@ export default function GuidePanel() {
   const origin = useEditorStore(s => s.doc.metadata?.displayOrigin ?? 0)
   const isProtein = useEditorStore(s => s.doc.sequence.alphabet === 'protein')
   const readOnly = useEditorStore(s => s.readOnly)
+  const offTargetReports = useEditorStore(s => s.offTargetReports)
 
   const [sort, setSort] = useState<Sort>('position')
   const [dialogOpen, setDialogOpen] = useState(false)
@@ -182,6 +184,13 @@ export default function GuidePanel() {
         {nuclease?.note && <p className="gp-note">{nuclease.note}</p>}
       </div>
 
+      {candidates.length > 0 && (
+        <OffTargetSection
+          pickedKeys={[...picks]}
+          hasSelection={selectedKey !== null}
+        />
+      )}
+
       <div className="gp-status">
         <span className="gp-status-count">
           {info.running
@@ -257,6 +266,14 @@ export default function GuidePanel() {
                 </span>
               </div>
               <div className="gp-scores">
+                {offTargetReports[key] && (
+                  <span
+                    className={offTargetReports[key].specificity < 50 ? 'gp-spec-low' : 'gp-spec'}
+                    title={`Specificity in what was searched: ${offTargetReports[key].hits.length} other site${offTargetReports[key].hits.length === 1 ? '' : 's'} found`}
+                  >
+                    S {offTargetReports[key].specificity}
+                  </span>
+                )}
                 {candidate.scores.onTarget !== null && (
                   <span className="gp-score-strong">{candidate.scores.onTarget}</span>
                 )}

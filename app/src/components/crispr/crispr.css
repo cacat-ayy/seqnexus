@@ -440,3 +440,162 @@
 .gp-note-row {
   padding: 0 var(--space-2-5) var(--space-1-5);
 }
+
+/* --- Off-target section --- */
+
+.gp-section {
+  border-bottom: 1px solid var(--border-light);
+  padding-bottom: var(--space-1-5);
+}
+
+.gp-section-title {
+  font-size: var(--text-2xs);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-muted);
+  padding: var(--space-2) var(--space-2-5) 0;
+}
+
+.gp-settings-tight {
+  border-bottom: none;
+  padding-bottom: var(--space-1);
+}
+
+.gp-file-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1-5);
+  min-width: 0;
+}
+
+.gp-file-name {
+  font-size: var(--text-2xs);
+  color: var(--text-secondary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.gp-run-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: 0 var(--space-2-5);
+}
+
+.gp-progress {
+  font-size: var(--text-2xs);
+  color: var(--text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.gp-spec {
+  color: var(--success);
+}
+
+.gp-spec-low {
+  color: var(--danger);
+}
+
+/* --- Off-target list in the inspector --- */
+
+.gi-spec {
+  float: right;
+  text-transform: none;
+  letter-spacing: 0;
+  color: var(--text-secondary);
+}
+
+.gi-offtargets {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--text-2xs);
+}
+
+.gi-offtargets td {
+  padding: var(--space-0-5) var(--space-1) var(--space-0-5) 0;
+  vertical-align: top;
+}
+
+.gi-ot-seq {
+  font-family: var(--font-mono);
+  white-space: nowrap;
+}
+
+.gi-ot-same {
+  color: var(--text-faint);
+}
+
+.gi-ot-diff {
+  color: var(--danger);
+  font-weight: 700;
+}
+
+.gi-ot-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--space-1);
+  color: var(--text-secondary);
+}
+
+.gi-ot-mm {
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.gi-ot-where {
+  color: var(--text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 140px;
+}
+
+.gi-ot-score {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  color: var(--text);
+}
+
+.gp-section-toggle {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  width: 100%;
+  padding: var(--space-1-5) var(--space-2-5);
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: var(--text-muted);
+  text-align: left;
+}
+
+.gp-section-toggle:hover {
+  background: var(--bg-hover);
+}
+
+.gp-section-toggle .gp-section-title {
+  padding: 0;
+}
+
+.gp-section-hint {
+  margin-left: auto;
+  font-size: var(--text-2xs);
+  color: var(--text-faint);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.gi-ot-ask {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.gi-ot-ask .gi-caveat {
+  margin: 0;
+}

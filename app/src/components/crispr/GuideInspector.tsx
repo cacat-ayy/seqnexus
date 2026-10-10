@@ -10,10 +10,13 @@
  */
 
 import { useMemo } from 'react'
-import { Copy, Plus } from 'lucide-react'
+import { Copy, Crosshair, Plus } from 'lucide-react'
 import { useEditorStore } from '../../store'
 import { guideDetail } from '../../crispr/score/guide'
 import { guideKey, guideName } from '../../utils/guide-features'
+import OffTargetList from './OffTargetList'
+import { useOffTargetRun } from '../../hooks/useOffTargetRun'
+import { SCOPE_LABEL } from '../../crispr/targets'
 import { onTargetModelName } from '../../crispr/score/ontarget'
 import { displayPosition } from '../../models/Document'
 import { notify } from '../../toast'
@@ -31,6 +34,10 @@ export default function GuideInspector({ candidate, nuclease }: Props) {
   const origin = useEditorStore(s => s.doc.metadata?.displayOrigin ?? 0)
   const readOnly = useEditorStore(s => s.readOnly)
   const applyGuides = useEditorStore(s => s.applyGuides)
+  const reports = useEditorStore(s => s.offTargetReports)
+  const scope = useEditorStore(s => s.offTargetScope)
+  const searching = useEditorStore(s => s.offTargetRun !== null)
+  const { run, ready } = useOffTargetRun()
 
   const { site } = candidate
   const detail = useMemo(
@@ -94,6 +101,12 @@ export default function GuideInspector({ candidate, nuclease }: Props) {
             <dd>{detail.scores.onTarget} of 100</dd>
           </>
         )}
+        {reports[guideKey(site)] && (
+          <>
+            <dt>Specificity</dt>
+            <dd>{reports[guideKey(site)].specificity} of 100, in what was searched</dd>
+          </>
+        )}
         {detail.scores.outOfFrame !== null && (
           <>
             <dt>Out of frame</dt>
@@ -128,6 +141,22 @@ export default function GuideInspector({ candidate, nuclease }: Props) {
               {flag.detail}
             </p>
           ))}
+        </div>
+      )}
+
+      {reports[guideKey(site)] ? (
+        <OffTargetList report={reports[guideKey(site)]} />
+      ) : (
+        <div className="gi-section gi-ot-ask">
+          <button
+            className="btn btn-sm"
+            onClick={() => void run([guideKey(site)])}
+            disabled={!ready}
+            title="Look for other places this spacer could bind"
+          >
+            <Crosshair size={12} /> {searching ? 'Searching…' : 'Check off-targets'}
+          </button>
+          <span className="gi-caveat">in {SCOPE_LABEL[scope].toLowerCase()}</span>
         </div>
       )}
 

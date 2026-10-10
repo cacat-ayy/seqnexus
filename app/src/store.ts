@@ -64,8 +64,19 @@ import { orfKey, convertibleOrfs, orfToAnnotationData } from './utils/orf-featur
 import { motifKey, convertibleMotifs, motifToAnnotationData } from './utils/motif-features'
 import type { MotifHit } from './protein/motifs'
 import type { GuideCandidate, GuideDrawScope, GuideScanInfo, Nuclease } from './crispr/types'
+
+/** How far an off-target search has got, for the progress line. */
+export interface OffTargetRun {
+  guidesDone: number
+  guidesTotal: number
+  targetsDone: number
+  targetsTotal: number
+  targetName: string
+}
 import { guideKey, guideToAnnotationData, convertibleGuides } from './utils/guide-features'
 import { DEFAULT_NUCLEASE_ID, resolveNuclease } from './crispr/nucleases'
+import { DEFAULT_OFFTARGET, type OffTargetReport, type OffTargetSettings } from './crispr/offtarget'
+import type { LoadedTargets, TargetScope } from './crispr/targets'
 import type { StructureRef } from './structure/model'
 
 /** A digest's peptides drawn over the protein they came from. */
@@ -670,6 +681,24 @@ interface EditorStore {
    */
   crisprDraw: GuideDrawScope
   setCrisprParams: (params: Partial<{ crisprNucleaseId: string; crisprSpacerLength: number; crisprSelectionOnly: boolean; crisprDraw: GuideDrawScope }>) => void
+  /**
+   * Off-target reports, by guide key. A guide has one only after the user
+   * asks for it: the search reads every sequence they named, which is not
+   * something to do on every keystroke.
+   */
+  offTargetReports: Record<string, OffTargetReport>
+  setOffTargetReports: (reports: Record<string, OffTargetReport>) => void
+  clearOffTargets: () => void
+  /** Which sequences the search is allowed to look at, and how hard it looks. */
+  offTargetScope: TargetScope
+  offTargetSettings: OffTargetSettings
+  setOffTargetParams: (params: Partial<{ offTargetScope: TargetScope; offTargetSettings: OffTargetSettings }>) => void
+  /** A FASTA file loaded to search against, with the records it holds. */
+  offTargetFile: LoadedTargets | null
+  setOffTargetFile: (file: LoadedTargets | null) => void
+  /** How far the search has got, or null when none is running. */
+  offTargetRun: OffTargetRun | null
+  setOffTargetRun: (run: OffTargetRun | null) => void
   /** Nucleases the user described. Persisted beside the other settings. */
   customNucleases: Nuclease[]
   addCustomNuclease: (nuclease: Nuclease) => void
@@ -2100,12 +2129,21 @@ export const useEditorStore = create<EditorStore>((set, get) => {
       }
       const selected = get().selectedGuideKey
       if (selected && !live.has(selected)) set({ selectedGuideKey: null })
+      // A report belongs to the spacer it was run for; a site that is no
+      // longer found has no report to show.
+      const reports = get().offTargetReports
+      const keys = Object.keys(reports)
+      if (keys.some(k => !live.has(k))) {
+        set({ offTargetReports: Object.fromEntries(keys.filter(k => live.has(k)).map(k => [k, reports[k]])) })
+      }
     },
     clearGuides: () => set({
       guideResults: [],
       guidePicks: new Set(),
       selectedGuideKey: null,
       guideScanInfo: { running: false, truncated: false, skippedAmbiguous: 0 },
+      offTargetReports: {},
+      offTargetRun: null,
     }),
     setGuideScanRunning: (running) => set({ guideScanInfo: { ...get().guideScanInfo, running } }),
     guidePicks: new Set<string>(),
@@ -2137,6 +2175,19 @@ export const useEditorStore = create<EditorStore>((set, get) => {
     crisprSelectionOnly: false,
     crisprDraw: 'all',
     setCrisprParams: (params) => set(params),
+    offTargetReports: {},
+    setOffTargetReports: (reports) => set(s2 => ({
+      offTargetReports: { ...s2.offTargetReports, ...reports },
+      offTargetRun: null,
+    })),
+    clearOffTargets: () => set({ offTargetReports: {}, offTargetRun: null }),
+    offTargetScope: 'document',
+    offTargetSettings: DEFAULT_OFFTARGET,
+    setOffTargetParams: (params) => set(params),
+    offTargetFile: null,
+    setOffTargetFile: (offTargetFile) => set({ offTargetFile }),
+    offTargetRun: null,
+    setOffTargetRun: (offTargetRun) => set({ offTargetRun }),
     customNucleases: [],
     addCustomNuclease: (nuclease) => set(s2 => ({
       customNucleases: [...s2.customNucleases.filter(n => n.id !== nuclease.id), nuclease],

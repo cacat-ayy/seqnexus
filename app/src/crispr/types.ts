@@ -33,6 +33,12 @@ export interface Nuclease {
   /** IUPAC, written 5' to 3' on the protospacer strand. */
   pam: string
   pamSide: PamSide
+  /**
+   * PAMs the nuclease also binds, far less often than its own. They are not
+   * used to find guides, only to look for places a finished guide could bind
+   * by accident, and only when the off-target search is asked for them.
+   */
+  altPams?: readonly string[]
   /** Spacer lengths this nuclease accepts; the first is the default. */
   spacerLengths: readonly number[]
   /** Distances from the PAM edge of the protospacer to each cut. */

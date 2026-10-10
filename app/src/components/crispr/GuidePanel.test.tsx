@@ -7,7 +7,7 @@
  * useGuideScan), so these tests put candidates in the store the way a scan
  * would and check what the panel does with them.
  */
-import { render, screen, act, cleanup, fireEvent } from '@testing-library/react'
+import { render, screen, act, cleanup, fireEvent, waitFor } from '@testing-library/react'
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 import GuidePanel from './GuidePanel'
 import { useEditorStore } from '../../store'
@@ -116,5 +116,115 @@ describe('GuidePanel', () => {
     act(() => { store().openDocument('a protein', 'MKVLAAGIVGLNLGGK', 'linear', undefined, 'new', 'protein') })
     render(<GuidePanel />)
     expect(screen.getByText(/A protein has no PAM to find/)).toBeTruthy()
+  })
+})
+
+describe('GuidePanel off-targets', () => {
+  beforeEach(() => {
+    for (const tab of store().tabs) store().closeTab(tab.id)
+    store().openDocument('guides', BASES)
+    store().setCrisprParams({ crisprNucleaseId: 'spcas9', crisprSpacerLength: 0, crisprSelectionOnly: false })
+    store().clearGuides()
+    store().setOffTargetParams({ offTargetScope: 'document' })
+  })
+  afterEach(cleanup)
+
+  it('keeps the search folded away until it is wanted', () => {
+    act(() => { store().setGuideResults(scan()) })
+    render(<GuidePanel />)
+    // The section is there, collapsed, so the candidate list keeps the room.
+    expect(screen.getByText('Off-targets')).toBeTruthy()
+    expect(screen.queryByRole('button', { name: /Check off-targets/ })).toBeNull()
+    act(() => { screen.getByText('Off-targets').click() })
+    // Nothing is selected yet, so the button has nothing to check.
+    expect((screen.getByRole('button', { name: /Check off-targets/ }) as HTMLButtonElement).disabled).toBe(true)
+  })
+
+  it('searches the selected guide and shows what it found', async () => {
+    const candidates = scan()
+    act(() => {
+      store().setGuideResults(candidates)
+      store().setSelectedGuideKey(guideKey(candidates[0].site))
+    })
+    render(<GuidePanel />)
+    await act(async () => { screen.getByRole('button', { name: /Check off-targets/ }).click() })
+    await waitFor(() => expect(Object.keys(store().offTargetReports)).toHaveLength(1))
+
+    const report = store().offTargetReports[guideKey(candidates[0].site)]
+    // Its own site is excluded, and this short sequence holds nothing else.
+    expect(report.onTargetSites).toBe(1)
+    expect(report.hits).toHaveLength(0)
+    expect(report.specificity).toBe(100)
+    expect(screen.getByText(/Searched guides/)).toBeTruthy()
+    expect(screen.getByText(/Nothing else this guide could bind/)).toBeTruthy()
+  })
+
+  it('puts the specificity on the row once it is known', async () => {
+    const candidates = scan()
+    act(() => {
+      store().setGuideResults(candidates)
+      store().setSelectedGuideKey(guideKey(candidates[0].site))
+    })
+    render(<GuidePanel />)
+    await act(async () => { screen.getByRole('button', { name: /Check off-targets/ }).click() })
+    await waitFor(() => expect(screen.getByText('S 100')).toBeTruthy())
+  })
+
+  it('finds a near match elsewhere in the sequence and marks the mismatches', async () => {
+    // A second copy of the spacer with two changed bases, and its own PAM.
+    const near = 'ACGTTCGTACGTACGTTCGT'
+    const withNear = BASES + 'CATCATCATC' + near + 'TGG' + 'CATCATCATC'
+    act(() => {
+      for (const tab of store().tabs) store().closeTab(tab.id)
+      store().openDocument('near', withNear)
+      store().clearGuides()
+      const { sites } = findGuideSites(withNear, spCas9, 'linear')
+      const scored = scoreSites(sites, spCas9, withNear, 'linear')
+      store().setGuideResults(scored)
+      const target = scored.find(c => c.site.spacer === 'ACGTACGTACGTACGTACGT')
+      if (target) store().setSelectedGuideKey(guideKey(target.site))
+    })
+    render(<GuidePanel />)
+    await act(async () => { screen.getByRole('button', { name: /Check off-targets/ }).click() })
+    await waitFor(() => expect(Object.keys(store().offTargetReports)).toHaveLength(1))
+    const report = Object.values(store().offTargetReports)[0]
+    expect(report.hits).toHaveLength(1)
+    expect(report.hits[0].mismatches).toBe(2)
+    expect(report.specificity).toBeLessThan(100)
+    expect(report.specificity).toBeGreaterThan(80)
+    // Both mismatches are shown as letters against dots for the matches.
+    expect(screen.getAllByText(/^[ACGT]$/).length).toBeGreaterThanOrEqual(2)
+  })
+
+  it('will not search a file scope with no file loaded', () => {
+    const candidates = scan()
+    act(() => {
+      store().setGuideResults(candidates)
+      store().setSelectedGuideKey(guideKey(candidates[0].site))
+      store().setOffTargetParams({ offTargetScope: 'file' })
+    })
+    render(<GuidePanel />)
+    act(() => { screen.getByText('Off-targets').click() })
+    expect(screen.getAllByRole('button', { name: /Check off-targets/ })
+      .every(b => (b as HTMLButtonElement).disabled)).toBe(true)
+    expect(screen.getByRole('button', { name: /Load FASTA/ })).toBeTruthy()
+  })
+
+  it('forgets a report when the scan no longer finds its guide', () => {
+    const candidates = scan()
+    const key = guideKey(candidates[0].site)
+    act(() => {
+      store().setGuideResults(candidates)
+      store().setOffTargetReports({
+        [key]: {
+          spacer: candidates[0].site.spacer, nucleaseId: 'spcas9', hits: [], specificity: 100,
+          searched: [], onTargetSites: 1, truncated: false,
+          settings: { maxMismatches: 3, bulges: false, alternativePams: false, maxHits: 1000 },
+        },
+      })
+    })
+    expect(Object.keys(store().offTargetReports)).toHaveLength(1)
+    act(() => { store().setGuideResults([]) })
+    expect(Object.keys(store().offTargetReports)).toHaveLength(0)
   })
 })

@@ -90,7 +90,9 @@ of each build.
 - **CRISPR guide design** - protospacers for a dozen nucleases or one you
   describe yourself, scored for activity, for the repair the break is likely to
   get and against the rules a spacer has to pass, drawn on the sequence with
-  the PAM and the cut; see [CRISPR Guide Design](#crispr-guide-design)
+  the PAM and the cut; off-target search with mismatches and bulges over any
+  sequence you name, which the result always names back; see
+  [CRISPR Guide Design](#crispr-guide-design)
 - **Restriction enzyme analysis** - 546 enzymes from REBASE, gel simulation
 - **Primers** - primers and probes as oligos with 5'/3' overhangs and
   mismatches, binding sites found automatically; a docked design workbench
@@ -2294,6 +2296,69 @@ self-folding stem of seven bases or more, and the promoter's start base, where
 U6 transcribes best from a G and T7 from two. The last is a note rather than a
 fault: the usual answer is to order the guide with the extra base added.
 
+### Off-target search
+
+A guide is only as good as the places it does not bind, so the panel can take
+a finished spacer and look for near copies of it next to a usable PAM. The
+search is the site finder run the other way round: PAM positions first, which
+is cheap, then the spacer compared from its PAM-proximal end outward so a
+site that cannot qualify is abandoned after a few bases.
+
+**What is searched is always named.** The app ships no genome. Pretending
+otherwise would be the worst thing this feature could do, because a
+specificity score from a 5 kb plasmid reads exactly like one from a
+chromosome. The scope is the first control in the section, not a buried
+setting, and every result carries the names and the total size of what was
+read back to the panel, which prints them under the count. Three scopes: the
+open sequence, every open sequence, or a FASTA file (one record or many)
+loaded for the purpose, up to a size the page can hold.
+
+**Mismatches and unpaired bases.** The budget is up to six mismatches.
+Bulges, meaning one unpaired base in the target or in the guide, are off by
+default because they multiply the work, not because they do not happen; with
+them on, each PAM position also gets a comparison at one base longer and one
+base shorter, with the gap position enumerated so the result stays exact
+rather than heuristic. Weaker PAMs are a separate switch: the SpCas9 rows
+carry NAG as an alternative, which is searched only when asked and scored
+down when found.
+
+**Scoring is a heuristic, for the same reason the activity model is.** A
+mismatch leaves most of the site's activity when it falls at the far end of
+the spacer and almost none when it falls against the PAM, so each mismatch
+multiplies the site's score by a factor interpolated between the two:
+
+| Where the mismatch falls | Factor |
+|--------------------------|--------|
+| against the PAM | 0.08 |
+| at the far end of the spacer | 0.85 |
+| an alternative PAM, whatever the mismatches | 0.2 |
+| an unpaired base | 0.25 |
+
+The line between the two ends is deliberately straight. The real profile is
+bumpy and sequence-dependent, and smoothing it is more honest than inventing
+the bumps. A fitted table belongs in a data file beside the model, exactly as
+for the activity model.
+
+The aggregate takes the shape the field uses: a guide with nothing else to
+bind scores 100, and the score falls as credible hits accumulate.
+
+```
+specificity = 100 / (1 + sum of hit scores)
+```
+
+**The guide's own site is not one of its off-targets**, so it is excluded and
+counted separately. A second perfect match elsewhere is reported, and marked:
+a spacer that matches two places exactly cannot tell them apart.
+
+**What a hit lands in matters as much as how many bases differ.** When the
+target is a document with features, the smallest feature covering the hit is
+named on the row, and one in a coding feature is marked. Each hit is drawn as
+two lines, the spacer and the site under it with matching bases as dots, so
+the mismatches are the only letters there are to read.
+
+The search runs in the worker, reports progress target by target, and can
+cover several guides in one pass, since the targets are read once either way.
+
 ### What the views draw
 
 In the sequence view a guide is a stand-in annotation in the feature lanes,
@@ -2333,12 +2398,14 @@ spacer without the PAM for the same reason.
 
 ### Limits
 
-The scan looks at the open sequence only. Off-target search over other
-sequences, strategy-led design (knockout, deletion, knock-in, base and prime
-editing), scaffold and construct output, screening design and the analysis of
-editing outcomes are later phases; what is here finds sites, says what is
-wrong with them, predicts what their break is likely to become, and keeps the
-ones worth keeping.
+The off-target search reads what you give it and nothing else, and both the
+activity model and the mismatch model are stated heuristics rather than
+fitted tables. Strategy-led design (knockout, deletion, knock-in, base and
+prime editing), scaffold and construct output, screening design and the
+analysis of editing outcomes are later phases. What is here finds sites, says
+what is wrong with them, predicts what their break is likely to become, says
+where else each one could bind in the sequence you name, and keeps the ones
+worth keeping.
 
 ---
 
@@ -3321,6 +3388,24 @@ print colours on white, whatever the app's theme.
   O, Wu X, Makarova KS, Koonin EV, Sharp PA, Zhang F (2015) "In vivo genome
   editing using Staphylococcus aureus Cas9." *Nature* 520:186-191. (SaCas9 and
   its NNGRRT PAM.)
+
+- Hsu PD, Scott DA, Weinstein JA, Ran FA, Konermann S, Agarwala V, Li Y, Fine
+  EJ, Wu X, Shalem O, Cradick TJ, Marraffini LA, Bao G, Zhang F (2013) "DNA
+  targeting specificity of RNA-guided Cas9 nucleases." *Nature Biotechnology*
+  31:827-832. (That a mismatch costs most next to the PAM, and the shape of
+  the aggregate specificity score.)
+
+- Bae S, Park J, Kim JS (2014) "Cas-OFFinder: a fast and versatile algorithm
+  that searches for potential off-target sites of Cas9 RNA-guided
+  endonucleases." *Bioinformatics* 30:1473-1475. (Searching with mismatches
+  and with unpaired bases on either side.)
+
+- Doench JG, Fusi N, Sullender M, Hegde M, Vaimberg EW, Donovan KF, Smith I,
+  Tothova Z, Wilen C, Orchard R, Virgin HW, Listgarten J, Root DE (2016)
+  "Optimized sgRNA design to maximize activity and minimize off-target effects
+  of CRISPR-Cas9." *Nature Biotechnology* 34:184-191. (The fitted activity and
+  mismatch models this app does not ship, and the shape a data file would
+  take.)
 
 - Gasteiger E, Hoogland C, Gattiker A, Duvaud S, Wilkins MR, Appel RD,
   Bairoch A (2005) "Protein identification and analysis tools on the ExPASy
