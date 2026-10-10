@@ -18,6 +18,7 @@ import { sanitizeDoc, type AlnDoc } from './msa/model'
 import { sanitizeView } from './msa/view'
 import { toUid, parseUid, tabUid, type ItemMeta } from './explorer/types'
 import type { LibraryOligo } from './primers/oligo'
+import type { GuideRecord } from './crispr/types'
 import { type DocumentSnapshot, type DocumentState, type UndoSnapshot, snapshot, restore } from './models/Document'
 import { PieceTable, type PieceTableSnapshot } from './models/PieceTable'
 import { Sequence } from './models/Sequence'
@@ -262,6 +263,8 @@ interface SerializedSessionV2 {
   activeReadSetId?: string | null
   /** The primer library. Plain data; optional so older sessions still load. */
   oligos?: LibraryOligo[]
+  /** The guide library. Plain data; optional so older sessions still load. */
+  guides?: GuideRecord[]
   /** Virtual gels. Optional so older sessions still load. */
   gels?: SerializedGel[]
   /** Cloning designs. Optional so older sessions still load. */
@@ -445,6 +448,7 @@ function buildSessionData(theme: string): {
       readSets: state.readSets.length > 0 ? state.readSets : undefined,
       activeReadSetId: state.activeReadSetId,
       oligos: state.oligos.length > 0 ? state.oligos : undefined,
+      guides: state.guideLibrary.length > 0 ? state.guideLibrary : undefined,
       gels: serializeGels(state.gels),
       clones: serializeClones(state.clones),
       activeGelId: state.activeGelId,
@@ -805,6 +809,8 @@ export interface RestoredSession {
   readSets: ReadSetRecord[]
   activeReadSetId?: string | null
   oligos: LibraryOligo[]
+  /** Optional so a session written before guides existed still restores. */
+  guides?: GuideRecord[]
   gels: GelDoc[]
   clones: CloneDoc[]
   activeGelId?: string | null
@@ -1130,6 +1136,7 @@ async function loadV2(data: SerializedSessionV2): Promise<RestoredSession | null
     assemblies: linked.assemblies,
     activeAssemblyId: data.activeAssemblyId ?? null,
     oligos: data.oligos ?? [],
+    guides: data.guides ?? [],
     gels: deserializeGels(data.gels),
     clones: deserializeClones(data.clones),
     activeGelId: data.activeGelId ?? null,
@@ -1457,6 +1464,7 @@ export function importSessionFromJson(json: string): RestoredSession {
     assemblies: linked.assemblies,
     activeAssemblyId: data.activeAssemblyId ?? null,
     oligos: data.oligos ?? [],
+    guides: data.guides ?? [],
     gels: deserializeGels(data.gels),
     clones: deserializeClones(data.clones),
     activeGelId: data.activeGelId ?? null,

@@ -74,6 +74,7 @@ export function useSessionPersistence(
           saved.itemMeta,
           saved.tagColors,
           saved.oligos,
+          saved.guides,
         )
         useEditorStore.getState().restoreAssemblies(saved.assemblies, saved.activeAssemblyId ?? null)
         useEditorStore.getState().restoreReadSets(saved.readSets, saved.activeReadSetId ?? null)

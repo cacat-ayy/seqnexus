@@ -93,7 +93,10 @@ of each build.
   the PAM and the cut; off-target search with mismatches and bulges over any
   sequence you name, which the result always names back; tasks for knocking a
   gene out, deleting a region, knocking a payload in with a donor that will not
-  be re-cut, base editing with its bystanders spelt out, and tiling a region;
+  be re-cut, base editing with its bystanders spelt out, prime editing with the
+  pegRNA built in its pieces, and tiling a region; the oligos to order with
+  every added base marked, a screening amplicon and the enzyme that reads it
+  out, and a library of the guides you keep;
   see [CRISPR Guide Design](#crispr-guide-design)
 - **Restriction enzyme analysis** - 546 enzymes from REBASE, gel simulation
 - **Primers** - primers and probes as oligos with 5'/3' overhangs and
@@ -2455,6 +2458,79 @@ Every task works from the selection or from a feature of the document, chosen
 the same way, and the inspector and the off-target search stay available
 throughout.
 
+### Prime editing
+
+A pegRNA is an ordinary guide with a tail: after the scaffold comes a template
+for the edit, then a short stretch that pairs with the nicked strand and
+primes the copying. The tail reads as the reverse complement of the strand
+that will be made, which is the part that is easy to get backwards, so it is
+built once and shown in its three pieces.
+
+In the protospacer strand's own frame:
+
+| Piece | What it is |
+|-------|------------|
+| nick | where the nickase cuts, three bases in from the PAM for SpCas9 |
+| primer site | the bases just before the nick, reverse complemented |
+| template | the edited sequence from the nick onwards, reverse complemented |
+| pegRNA | spacer, then scaffold, then template, then primer site |
+
+The edit is given as a span to replace and what to put there, which covers a
+substitution, an insertion and a deletion without three cases. An edit behind
+the nick is refused rather than fudged: the template is copied forwards, so a
+change behind it cannot be written, and the panel says which way round the
+guide needs to be.
+
+The second nick of the paired strategy is offered from the same scan,
+filtered to guides that nick the other strand within a band of distances,
+which is a rule of thumb and therefore a setting.
+
+### Ordering
+
+Four shapes, because that is how guides are made: two annealed oligos into a
+cut vector, a template to transcribe, a synthetic RNA, or a pegRNA's own
+longer oligo. Every base the app adds is shown as an addition rather than
+folded into the sequence, since the additions are where mistakes live: the G
+a U6 promoter wants and only when the spacer does not already start with one,
+the overhangs the vector wants, the promoter in front of a template.
+
+**The scaffold is a vector's property, not a target's.** It is chosen in the
+library view, where opening one shows its sequence and its length, since the
+section asks you to check it against the plasmid on your bench and that
+cannot be done without reading it. What ships is deliberately short: a scaffold is a long constant that is easy to print
+wrongly and impossible to notice wrongly, so only the near-universal ones are
+shipped, each saying what it is, and for anything else the panel asks for the
+sequence from the plasmid in hand and keeps it. A scaffold that was never
+typed is better than one that is almost right. The same reasoning applies to
+the vector overhangs, which are presets that can be read and changed rather
+than something guessed from a vector name.
+
+### Screening
+
+Decided with the order, not after it, because a guide that cannot be screened
+cheaply is worth knowing about before the oligos are bought.
+
+- **An amplicon across the cut**, designed through the ordinary primer
+  designer, with the cut kept well away from both primers so a trace can be
+  read through it and a small indel still shows.
+- **A restriction site the cut sits inside.** An edit at the break disturbs
+  the site, so the amplicon from an edited copy is no longer cut and two bands
+  become one. The site has to be unique in the amplicon or an uncut band means
+  nothing, so enzymes cutting it more than once are left out, and the ones
+  whose site the cut falls nearest the middle of come first.
+
+When no enzyme qualifies, the panel says so: that guide needs sequencing
+rather than a gel.
+
+### The guide library
+
+Guides you keep, like the oligo library and in the same shape. A guide saved
+once is yours across every document, and the useful question about it later
+is not what it scored when you designed it but whether it binds the sequence
+in front of you now, so each row says where it binds here, or that it does
+not. Scores are shown as what they were when the guide was kept, because a
+number recorded in March is not a measurement made today.
+
 ### Keeping a guide
 
 A converted guide becomes a `misc_binding` feature over the protospacer alone,
@@ -2469,12 +2545,15 @@ spacer without the PAM for the same reason.
 The off-target search reads what you give it and nothing else, and both the
 activity model and the mismatch model are stated heuristics rather than fitted
 tables. The knock-in donor changes one base at most to stop re-cutting; a site
-that survives every single change is reported rather than worked around. Prime
-editing, scaffold and construct output, screening design and the analysis of
-editing outcomes are later phases. What is here finds sites, says what is wrong
-with them, predicts what their break is likely to become, says where else each
-one could bind in the sequence you name, designs for a goal rather than a
-position, and keeps the ones worth keeping.
+that survives every single change is reported rather than worked around.
+Scaffolds and vector overhangs are shipped only where they are near-universal,
+and are otherwise asked for. The analysis of editing outcomes, from traces,
+amplicon reads or plates, is the one phase still to come. What is here finds
+sites, says what is wrong with them, predicts what their break is likely to
+become, says where else each one could bind in the sequence you name, designs
+for a goal rather than a position, writes the pegRNA for an edit, produces the
+oligos to order with every added base accounted for, says how you will tell
+afterwards whether it worked, and keeps what you want to use again.
 
 ---
 

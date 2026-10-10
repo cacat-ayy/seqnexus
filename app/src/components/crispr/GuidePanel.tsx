@@ -32,6 +32,9 @@ import DeletionTask from './tasks/DeletionTask'
 import KnockinTask from './tasks/KnockinTask'
 import BaseEditTask from './tasks/BaseEditTask'
 import TileTask from './tasks/TileTask'
+import PrimeEditTask from './tasks/PrimeEditTask'
+import OrderTask from './tasks/OrderTask'
+import GuideLibrary from './GuideLibrary'
 import type { CrisprTask, GuideCandidate, GuideDrawScope } from '../../crispr/types'
 
 const TASKS: { id: CrisprTask; label: string; hint: string }[] = [
@@ -40,7 +43,9 @@ const TASKS: { id: CrisprTask; label: string; hint: string }[] = [
   { id: 'deletion', label: 'Delete', hint: 'Pairs that take a region out' },
   { id: 'knockin', label: 'Knock in', hint: 'A donor for the selected guide' },
   { id: 'baseedit', label: 'Base edit', hint: 'Guides whose editing window reaches a base' },
+  { id: 'primeedit', label: 'Prime edit', hint: 'A pegRNA that writes an edit in' },
   { id: 'tile', label: 'Tile', hint: 'A spaced set across a region' },
+  { id: 'order', label: 'Order', hint: 'The oligos to buy, and how to screen afterwards' },
 ]
 
 type Sort = 'position' | 'score' | 'frame' | 'gc'
@@ -80,6 +85,8 @@ export default function GuidePanel() {
   const offTargetReports = useEditorStore(s => s.offTargetReports)
   const task = useEditorStore(s => s.crisprTask)
   const setTask = useEditorStore(s => s.setCrisprTask)
+  const view = useEditorStore(s => s.crisprView)
+  const setView = useEditorStore(s => s.setCrisprView)
 
   const [sort, setSort] = useState<Sort>('position')
   const [dialogOpen, setDialogOpen] = useState(false)
@@ -127,8 +134,25 @@ export default function GuidePanel() {
     return <div className="gp-empty">A protein has no PAM to find. Open the DNA to design guides against it.</div>
   }
 
+  if (view === 'library') {
+    return (
+      <div className="gp">
+        <div className="fs-segmented" role="tablist" aria-label="Guides view">
+          <button role="tab" aria-selected={false} onClick={() => setView('design')}>Design</button>
+          <button role="tab" aria-selected className="active">Library</button>
+        </div>
+        <GuideLibrary />
+      </div>
+    )
+  }
+
   return (
     <div className="gp">
+      <div className="fs-segmented" role="tablist" aria-label="Guides view">
+        <button role="tab" aria-selected className="active">Design</button>
+        <button role="tab" aria-selected={false} onClick={() => setView('library')}>Library</button>
+      </div>
+
       <div className="gp-tasks" role="tablist" aria-label="What to design">
         {TASKS.map(t => (
           <button
@@ -227,7 +251,9 @@ export default function GuidePanel() {
       {task === 'deletion' && <DeletionTask candidates={candidates} nuclease={nuclease!} />}
       {task === 'knockin' && <KnockinTask candidates={candidates} nuclease={nuclease!} />}
       {task === 'baseedit' && <BaseEditTask candidates={candidates} nuclease={nuclease!} onSelect={handleRow} />}
+      {task === 'primeedit' && <PrimeEditTask candidates={candidates} nuclease={nuclease!} />}
       {task === 'tile' && <TileTask candidates={candidates} nuclease={nuclease!} onSelect={handleRow} />}
+      {task === 'order' && <OrderTask candidates={candidates} nuclease={nuclease!} />}
 
       {task === 'find' && (
         <>
@@ -314,7 +340,7 @@ export default function GuidePanel() {
       )}
 
       {/* The inspector belongs to whichever task picks one guide at a time. */}
-      {selected && nuclease && task !== 'deletion' && task !== 'knockin' && (
+      {selected && nuclease && task !== 'deletion' && task !== 'knockin' && task !== 'primeedit' && task !== 'order' && (
         <GuideInspector
           key={guideKey(selected.site)}
           candidate={selected}

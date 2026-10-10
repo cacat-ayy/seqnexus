@@ -63,7 +63,10 @@ import { matchKey, proposalsFrom } from './utils/auto-annotations'
 import { orfKey, convertibleOrfs, orfToAnnotationData } from './utils/orf-features'
 import { motifKey, convertibleMotifs, motifToAnnotationData } from './utils/motif-features'
 import type { MotifHit } from './protein/motifs'
-import type { CrisprTask, GuideCandidate, GuideDrawScope, GuideScanInfo, Nuclease } from './crispr/types'
+import type { CrisprTask, CrisprView, GuideCandidate, GuideDrawScope, GuideRecord, GuideScanInfo, Nuclease } from './crispr/types'
+import type { Scaffold } from './crispr/scaffolds'
+import type { OrderFormat } from './crispr/order'
+import { freeName } from './crispr/library'
 
 /** How far an off-target search has got, for the progress line. */
 export interface OffTargetRun {
@@ -671,6 +674,27 @@ interface EditorStore {
   /** What the panel is being used for; the scan is the same for all of them. */
   crisprTask: CrisprTask
   setCrisprTask: (task: CrisprTask) => void
+  /** Designing, or looking at what has been kept. */
+  crisprView: CrisprView
+  setCrisprView: (view: CrisprView) => void
+  /**
+   * Guides kept across documents, like the oligo library. A guide is saved
+   * with what it scored at the time, which is a record of that moment rather
+   * than a measurement of the sequence in front of you now.
+   */
+  guideLibrary: GuideRecord[]
+  addGuides: (guides: Omit<GuideRecord, 'id' | 'createdAt'>[]) => string[]
+  updateGuide: (id: string, patch: Partial<Omit<GuideRecord, 'id'>>) => void
+  removeGuides: (ids: Iterable<string>) => void
+  /** Scaffolds the user typed in, beside the shipped ones. */
+  customScaffolds: Scaffold[]
+  addCustomScaffold: (scaffold: Scaffold) => void
+  removeCustomScaffold: (id: string) => void
+  /** What an order is made of, remembered between guides. */
+  crisprScaffoldId: string | null
+  crisprOrderFormat: OrderFormat
+  crisprVectorId: string
+  setOrderParams: (params: Partial<{ crisprScaffoldId: string | null; crisprOrderFormat: OrderFormat; crisprVectorId: string }>) => void
   /** Which nuclease the scan uses, and how it is run. Persisted. */
   crisprNucleaseId: string
   /** 0 means the nuclease's own default spacer length. */
@@ -971,6 +995,7 @@ interface EditorStore {
     itemMeta?: Record<string, ItemMeta>,
     tagColors?: Record<string, string>,
     oligos?: LibraryOligo[],
+    guides?: GuideRecord[],
   ) => void
 
   // Merge imported session into existing state (adds items alongside existing ones)
@@ -1186,7 +1211,9 @@ const emptyDoc: DocumentState = {
   annotations: [],
 }
 
-const CRISPR_TASKS: CrisprTask[] = ['find', 'knockout', 'deletion', 'knockin', 'baseedit', 'tile']
+const CRISPR_TASKS: CrisprTask[] = ['find', 'knockout', 'deletion', 'knockin', 'baseedit', 'primeedit', 'tile', 'order']
+
+const newGuideId = makeIdGenerator('guide')
 
 function loadCrisprTask(): CrisprTask {
   try {
@@ -2184,6 +2211,41 @@ export const useEditorStore = create<EditorStore>((set, get) => {
       set({ guidePicks: new Set() })
       return toAdd.length
     },
+    crisprView: 'design',
+    setCrisprView: (crisprView) => set({ crisprView }),
+    guideLibrary: [],
+    addGuides: (guides) => {
+      const ids: string[] = []
+      set(s2 => {
+        const library = [...s2.guideLibrary]
+        for (const guide of guides) {
+          const id = newGuideId.next()
+          ids.push(id)
+          library.push({ ...guide, id, name: freeName(guide.name, library), createdAt: Date.now() })
+        }
+        return { guideLibrary: library }
+      })
+      return ids
+    },
+    updateGuide: (id, patch) => set(s2 => ({
+      guideLibrary: s2.guideLibrary.map(g => (g.id === id ? { ...g, ...patch, id: g.id } : g)),
+    })),
+    removeGuides: (ids) => {
+      const doomed = new Set(ids)
+      set(s2 => ({ guideLibrary: s2.guideLibrary.filter(g => !doomed.has(g.id)) }))
+    },
+    customScaffolds: [],
+    addCustomScaffold: (scaffold) => set(s2 => ({
+      customScaffolds: [...s2.customScaffolds.filter(x => x.id !== scaffold.id), scaffold],
+    })),
+    removeCustomScaffold: (id) => set(s2 => ({
+      customScaffolds: s2.customScaffolds.filter(x => x.id !== id),
+      ...(s2.crisprScaffoldId === id ? { crisprScaffoldId: null } : {}),
+    })),
+    crisprScaffoldId: null,
+    crisprOrderFormat: 'annealed',
+    crisprVectorId: 'bbsi-cacc',
+    setOrderParams: (params) => set(params),
     crisprTask: loadCrisprTask(),
     setCrisprTask: (crisprTask) => {
       set({ crisprTask })
@@ -2921,7 +2983,7 @@ export const useEditorStore = create<EditorStore>((set, get) => {
       }
     },
 
-    restoreSession(restoredTabs, restoredActiveId, restoredFolders, seqReads, activeSeqReadIds, savedAlignments, savedContigs, restoredActiveAlignmentId, restoredActiveContigId, restoredItemMeta, restoredTagColors, restoredOligos) {
+    restoreSession(restoredTabs, restoredActiveId, restoredFolders, seqReads, activeSeqReadIds, savedAlignments, savedContigs, restoredActiveAlignmentId, restoredActiveContigId, restoredItemMeta, restoredTagColors, restoredOligos, restoredGuides) {
       const tabs: DocumentTab[] = restoredTabs.map(rt => ({
         id: rt.id,
         doc: rt.doc,
@@ -2982,6 +3044,7 @@ export const useEditorStore = create<EditorStore>((set, get) => {
         return c
       })
       for (const o of restoredOligos ?? []) syncId(o.id, oligoIds, 'libo')
+      for (const g of restoredGuides ?? []) syncId(g.id, newGuideId, 'guide')
 
       // Determine which view was last active, and validate that the referenced entity still exists
       const validActiveAlignId = restoredActiveAlignmentId && alignments.some(a => a.id === restoredActiveAlignmentId)
@@ -3018,6 +3081,7 @@ export const useEditorStore = create<EditorStore>((set, get) => {
         contigs,
         activeContigId: validActiveContigId,
         oligos: restoredOligos ?? [],
+        guideLibrary: restoredGuides ?? [],
         itemMeta: restoredItemMeta ?? {},
         tagColors: restoredTagColors ?? {},
       })
