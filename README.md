@@ -6,6 +6,200 @@ for genome-scale sequences; tested up to around 5 Mb, which is a limit of what
 has been exercised rather than of the data structures. Builds to a single
 self-contained HTML file.
 
+## Contents
+
+- [Repo Layout](#repo-layout)
+- [Quick Start](#quick-start)
+- [Publishing](#publishing)
+- [Tech Stack](#tech-stack)
+- [Overview](#overview)
+- [Architecture](#architecture)
+  - [Data Structures](#data-structures)
+  - [Rendering](#rendering)
+  - [Web Workers](#web-workers)
+- [Storage & Persistence](#storage--persistence)
+  - [Why IndexedDB + localStorage](#why-indexeddb--localstorage)
+  - [Persistence format](#persistence-format)
+  - [Orphan cleanup](#orphan-cleanup)
+  - [Auto-save](#auto-save)
+- [Working in the Editor](#working-in-the-editor)
+  - [The explorer](#the-explorer)
+  - [Views](#views)
+  - [The command palette](#the-command-palette)
+  - [Undo](#undo)
+  - [Themes](#themes)
+  - [Keyboard shortcuts](#keyboard-shortcuts)
+  - [Session files and backups](#session-files-and-backups)
+- [Plasmid Map](#plasmid-map)
+  - [One scene, two renderers](#one-scene-two-renderers)
+  - [Styles and labels](#styles-and-labels)
+  - [Rings and tracks](#rings-and-tracks)
+  - [Working on the map](#working-on-the-map)
+- [Selections](#selections)
+  - [Several ranges](#several-ranges)
+  - [Joined translation](#joined-translation)
+  - [Copying, deleting, typing](#copying-deleting-typing)
+- [Annotations](#annotations)
+  - [Joined features](#joined-features)
+  - [A gene and its CDS](#a-gene-and-its-cds)
+  - [The source feature](#the-source-feature)
+- [Feature Panel](#feature-panel)
+  - [Filter](#filter)
+  - [Following the sequence](#following-the-sequence)
+  - [Keyboard](#keyboard)
+  - [Editing](#editing)
+  - [CDS checks](#cds-checks)
+- [Feature Library and Auto-annotation](#feature-library-and-auto-annotation)
+  - [The built-in library](#the-built-in-library)
+  - [The scan](#the-scan)
+  - [Limits](#limits)
+- [Find](#find)
+  - [Nucleotide search](#nucleotide-search)
+  - [Protein search](#protein-search)
+  - [Limits](#limits-1)
+  - [Replace](#replace)
+  - [Display](#display)
+- [ORF Finder](#orf-finder)
+  - [ORFs as features](#orfs-as-features)
+- [Proteins](#proteins)
+  - [Alphabet](#alphabet)
+  - [What a protein does not have](#what-a-protein-does-not-have)
+  - [Import and export](#import-and-export)
+  - [Residue colours](#residue-colours)
+  - [Find](#find-1)
+  - [Numbering](#numbering)
+  - [Properties](#properties)
+  - [DNA and protein](#dna-and-protein)
+  - [Back-translation](#back-translation)
+  - [Auto-annotation](#auto-annotation)
+  - [Alignment, BLAST and find](#alignment-blast-and-find)
+  - [Graph tracks](#graph-tracks)
+  - [Motifs and sites](#motifs-and-sites)
+  - [UniProt and NCBI protein import](#uniprot-and-ncbi-protein-import)
+  - [Disulfide bonds](#disulfide-bonds)
+  - [Variants](#variants)
+  - [Domain map](#domain-map)
+  - [Proteolysis](#proteolysis)
+  - [SDS-PAGE](#sds-page)
+  - [Secondary structure](#secondary-structure)
+  - [3D structure](#3d-structure)
+  - [Limits](#limits-2)
+- [Melting Temperature (Tm)](#melting-temperature-tm)
+  - [Selection tooltip](#selection-tooltip)
+  - [Nearest-neighbor method](#nearest-neighbor-method)
+  - [Hairpin and self-dimer Tm](#hairpin-and-self-dimer-tm)
+- [Restriction Enzyme Database](#restriction-enzyme-database)
+  - [How sites are drawn in the sequence view](#how-sites-are-drawn-in-the-sequence-view)
+  - [Saved enzyme sets](#saved-enzyme-sets)
+- [Virtual Gel](#virtual-gel)
+  - [Lanes](#lanes)
+  - [Migration model](#migration-model)
+  - [Bands](#bands)
+  - [Ladders](#ladders)
+  - [Looks and export](#looks-and-export)
+  - [Diagnostic digest designer](#diagnostic-digest-designer)
+- [Primers](#primers)
+  - [Primers as oligos](#primers-as-oligos)
+  - [Design workbench](#design-workbench)
+  - [Primer library](#primer-library)
+  - [Overview of the search](#overview-of-the-search)
+  - [Individual Primer Scoring](#individual-primer-scoring)
+  - [Pair Scoring](#pair-scoring)
+  - [Thermodynamics](#thermodynamics)
+  - [User-Configurable Parameters](#user-configurable-parameters)
+- [Codon Optimization](#codon-optimization)
+  - [Targets](#targets)
+  - [Genetic codes](#genetic-codes)
+  - [Codon usage tables](#codon-usage-tables)
+  - [What gets changed](#what-gets-changed)
+  - [Constraints](#constraints)
+  - [Algorithm](#algorithm)
+  - [Metrics](#metrics)
+  - [Applying](#applying)
+- [Sequence Alignment](#sequence-alignment)
+  - [Engines](#engines)
+  - [The alignment viewer](#the-alignment-viewer)
+  - [Editing an alignment](#editing-an-alignment)
+  - [Adding sequences and realigning](#adding-sequences-and-realigning)
+  - [Alignment formats](#alignment-formats)
+  - [Figures](#figures)
+  - [Built-in pairwise algorithms](#built-in-pairwise-algorithms)
+  - [Scoring](#scoring)
+  - [Size limits](#size-limits)
+- [BLAST](#blast)
+- [CRISPR Guide Design](#crispr-guide-design)
+  - [Nucleases are data](#nucleases-are-data)
+  - [Finding sites](#finding-sites)
+  - [Scoring, in three separate columns](#scoring-in-three-separate-columns)
+  - [Off-target search](#off-target-search)
+  - [What the views draw](#what-the-views-draw)
+  - [Designing for a goal](#designing-for-a-goal)
+  - [Prime editing](#prime-editing)
+  - [Ordering](#ordering)
+  - [Screening](#screening)
+  - [Reading the result](#reading-the-result)
+  - [The guide library](#the-guide-library)
+  - [Keeping a guide](#keeping-a-guide)
+  - [Limits](#limits-3)
+- [Cloning](#cloning)
+  - [Each part is cut on its own](#each-part-is-cut-on-its-own)
+  - [Which sites a map offers](#which-sites-a-map-offers)
+  - [Which piece goes into the reaction](#which-piece-goes-into-the-reaction)
+  - [The reaction strip](#the-reaction-strip)
+  - [The product keeps the vector's numbering](#the-product-keeps-the-vectors-numbering)
+  - [Ends and ligation](#ends-and-ligation)
+  - [Seamless assembly (HiFi, Gibson, In-Fusion, SLIC)](#seamless-assembly-hifi-gibson-in-fusion-slic)
+  - [Golden Gate](#golden-gate)
+  - [Overhang fidelity](#overhang-fidelity)
+  - [Gateway](#gateway)
+  - [TOPO](#topo)
+  - [Methylation](#methylation)
+  - [What the reaction gives](#what-the-reaction-gives)
+  - [Junctions](#junctions)
+  - [Oligos to order](#oligos-to-order)
+  - [Verifying the construct](#verifying-the-construct)
+  - [Libraries](#libraries)
+  - [Limits](#limits-4)
+- [Sanger Assembly](#sanger-assembly)
+  - [Assemblies and contigs](#assemblies-and-contigs)
+  - [Plates of clones](#plates-of-clones)
+  - [Trimmed ends in a contig](#trimmed-ends-in-a-contig)
+  - [Trimming reads](#trimming-reads)
+  - [Overview figures](#overview-figures)
+- [NGS Read Sets](#ngs-read-sets)
+  - [Import](#import)
+  - [Storage](#storage)
+  - [QC](#qc)
+  - [Quality report](#quality-report)
+  - [Trimming and filtering](#trimming-and-filtering)
+  - [Export](#export)
+  - [Limits](#limits-5)
+- [NGS Mapping and Assembly](#ngs-mapping-and-assembly)
+  - [Mapping to a reference](#mapping-to-a-reference)
+  - [Stored mappings](#stored-mappings)
+  - [Viewing a mapping](#viewing-a-mapping)
+  - [Variants](#variants-1)
+  - [Samples](#samples)
+  - [Primer clipping](#primer-clipping)
+  - [Junctions](#junctions-1)
+  - [Guided pipeline](#guided-pipeline)
+  - [De novo assembly](#de-novo-assembly)
+  - [Figures](#figures-1)
+  - [Scale](#scale)
+  - [SAM and BAM](#sam-and-bam)
+- [Fetching from NCBI and UniProt](#fetching-from-ncbi-and-uniprot)
+- [File Format Support](#file-format-support)
+  - [Geneious files](#geneious-files)
+- [PDF Export](#pdf-export)
+  - [One painter, two outputs](#one-painter-two-outputs)
+  - [Layout](#layout)
+  - [Fonts and text](#fonts-and-text)
+  - [Colours](#colours)
+  - [Limits](#limits-6)
+  - [Figures and reports](#figures-and-reports)
+- [References](#references)
+- [License](#license)
+
 ## Repo Layout
 
 ```
@@ -23,6 +217,8 @@ self-contained HTML file.
     └── src/
 ```
 
+---
+
 ## Quick Start
 
 ```bash
@@ -36,6 +232,8 @@ npm run build         # tsc -b && vite build
 
 The dev server mirrors the deployed site: `/` serves the landing page and
 `/app.html` serves the editor built live from `src/`.
+
+---
 
 ## Publishing
 
@@ -53,6 +251,8 @@ of each build.
 > `build.outDir` is the repo root, so `emptyOutDir` is pinned to `false` in
 > `app/vite.config.ts`. Do not turn it on: it would delete the repository.
 
+---
+
 ## Tech Stack
 
 - Vite 5 + React 18 + TypeScript 5.6
@@ -65,9 +265,12 @@ of each build.
 - vite-plugin-singlefile for single HTML builds
 - vitest for testing
 
-## Features
+---
+
+## Overview
 
 - **Multi-document tabs** with session persistence (localStorage + IndexedDB)
+  and session files for backup; see [Storage & Persistence](#storage--persistence)
 - **Proteins** as documents of their own: FASTA and GenPept in and out, the
   same viewer with residue colour schemes, features, find and numbering from
   any residue; mass, pI and charge, extinction coefficient and the sequence
@@ -75,10 +278,10 @@ of each build.
   back-translation, tag and protease-site annotation, blastp; see
   [Proteins](#proteins)
 - **Three zoom modes** (21 levels): line → dots → letters
-- **Linear and circular views** with split mode (resizable divider)
+- **Linear and circular views** with split mode (resizable divider); see
+  [Plasmid Map](#plasmid-map)
 - **GenBank import/export** with streaming parser for large files (>1MB)
 - **FASTA, SnapGene (.dna), Geneious (.geneious), GFF3 import/export**
-- **Sanger chromatogram viewer** (AB1, SCF) with quality scores and base editing
 - **Annotation editing** - a feature panel grouped by type or sorted by
   position, with a filter that takes `type:`, `len>` and `strand:` terms, run
   from the keyboard, following the selection, and checking every CDS for its
@@ -89,7 +292,7 @@ of each build.
 - **Find/replace** on both strands, with IUPAC codes, up to 3 mismatches,
   protein search in all six frames, regex, and a list of hits with their
   strand, feature and context
-- **ORF finder** - 6-frame, configurable, Web Worker
+- **ORF finder** - 6-frame, configurable, Web Worker; see [ORF Finder](#orf-finder)
 - **CRISPR guide design** - protospacers for a dozen nucleases or one you
   describe yourself, scored for activity, for the repair the break is likely to
   get and against the rules a spacer has to pass, drawn on the sequence with
@@ -103,17 +306,20 @@ of each build.
   afterwards, either by taking an edited chromatogram apart against its
   control or by counting alleles in amplicon reads;
   see [CRISPR Guide Design](#crispr-guide-design)
-- **Restriction enzyme analysis** - 546 enzymes from REBASE, gel simulation
+- **Restriction enzyme analysis** - hundreds of enzymes from REBASE, with a
+  virtual gel; see [Virtual Gel](#virtual-gel)
 - **Primers** - primers and probes as oligos with 5'/3' overhangs and
   mismatches, binding sites found automatically; a docked design workbench
   with a candidate track, per-primer inspector and live pair checks
 - **Codon optimization** - 19 genetic codes, host usage tables (built-in, or
   imported from EMBOSS cusp / GCG CodonFrequency), motif/homopolymer/GC/repeat
   constraints
-- **Sequence alignment** - pairwise (global/local) and multiple sequence alignment
+- **Sequence alignment** - pairwise (global/local) and multiple sequence
+  alignment with MAFFT, MUSCLE or Kalign, in an editable alignment view; see
+  [Sequence Alignment](#sequence-alignment)
 - **In-silico cloning** - restriction cloning on real plasmid maps (click the
   sites to cut), seamless assembly (HiFi/Gibson/In-Fusion/SLIC), Golden Gate,
-  Gateway, TOPO, and combinatorial libraries
+  Gateway, TOPO, and combinatorial libraries; see [Cloning](#cloning)
 - **NGS read sets** - FASTQ(.gz) import with R1/R2 pairing, QC charts and
   verdicts, fastp trimming and minimap2 mapping (WebAssembly), FASTQ.gz export;
   mappings viewed from a whole genome down to single bases (coverage, reads
@@ -123,14 +329,16 @@ of each build.
   verification per sample; primer clipping for amplicons; soft-clip junctions;
   a guided pipeline from reads to variants; figures as SVG, PNG or PDF;
   mappings exported as BAM (with its index) or SAM, and imported from either
-- **Sanger sequencing** - chromatograms, trimming, mapping to a reference or de
-  novo assembly kept as assemblies with their contigs, variants, clone
-  verification
-- **NCBI BLAST** - search NCBI databases directly from the editor
+- **Sanger sequencing** - chromatograms (AB1, SCF) with quality scores and
+  base editing, trimming, mapping to a reference or de novo assembly kept as
+  assemblies with their contigs, variants, clone verification; see
+  [Sanger Assembly](#sanger-assembly)
+- **NCBI BLAST** - search NCBI databases directly from the editor; see
+  [BLAST](#blast)
 - **PDF export** of the sequence as the text view draws it, vector, on A4
-- **10 themes** (5 light, 5 dark)
-- **File explorer** with folders, search, drag-to-group
-- **Keyboard shortcuts** and right-click context menus
+- **10 themes** (5 light, 5 dark), a **file explorer** with folders, tags,
+  search and grouping, a **command palette**, keyboard shortcuts and
+  right-click context menus; see [Working in the Editor](#working-in-the-editor)
 
 ---
 
@@ -232,6 +440,205 @@ warns the user to export their work.
 
 ---
 
+## Working in the Editor
+
+The window is three panels: the file explorer on the left, the centre panel
+(a sequence, protein, alignment, contig, read set, gel or cloning design),
+and the right sidebar (features, enzymes, primers and the other tools). The
+centre panel keeps one tab per open document.
+
+### The explorer
+
+Everything in the session is an explorer item of one of ten kinds: sequence,
+protein, Sanger read, NGS read set, alignment, assembly, contig, gel, cloning
+design and oligo. Each kind has its own icon; topology (circular or linear)
+is a pip on the icon and a word in the metadata line, so a plasmid and an
+alignment can be told apart at a glance.
+
+- **Folders and grouping.** Items live in folders you make (drag to move,
+  or file a selection from the bulk bar). How the list is shaped is a
+  presentation choice, separate from the folders: group by folder, by kind,
+  by tag, by date, or show a flat list, and sort by name, creation, last
+  change, size or kind. Switching modes never moves anything. Rows come in
+  three densities.
+- **Filter and search.** The filter bar takes a text search, a set of kinds
+  and a set of tags; an item matches a tag filter when it carries any of the
+  listed tags. The filter is deliberately not saved between sessions: a
+  saved filter that hides items would open the next session with work
+  apparently missing and no visible cause. A count badge shows whenever a
+  filter is active.
+- **Tags and notes.** Any item takes tags (existing tags are chips to
+  toggle, so reusing one cannot introduce a near-duplicate by typo) and a
+  short free-text note. Both show in the hover card, together with the
+  description and a thumbnail: the plasmid map for a circular sequence, the
+  trace for a read. The card is built only on hover, so a session of
+  several hundred items costs nothing to scroll.
+- **Deleting.** A delete needs no confirmation: the item lands in a delete
+  buffer, a toast offers Undo, and the same five most recent entries stay
+  reachable in a Recently Deleted strip above the tree until the session
+  ends. Bulk deletes still confirm.
+- **Selection.** Click, Ctrl+click and Shift+click select items; the bulk
+  bar at the foot of the panel offers what can be done with all of them
+  (export, align, file into a folder, tag, delete). The tree is a flat,
+  windowed list, which is what keeps a few hundred reads scrolling
+  smoothly and gives Shift+click its ordering for free.
+- **Keyboard.** Arrow keys move through the tree, Left and Right fold and
+  unfold groups, typing jumps to the next item whose name starts with what
+  was typed, Enter opens.
+- **Collapsed.** Collapsed, the explorer becomes a narrow rail of per-kind
+  counts; clicking a kind expands the panel and scrolls to that group.
+
+### Views
+
+A sequence opens in the text view, the plasmid map, or split, with the two
+stacked and a draggable divider between them; see [Plasmid Map](#plasmid-map).
+The text view has three render modes chosen by zoom level (line, dots,
+letters; see [Rendering](#rendering)), with Ctrl+wheel zooming around the
+pointer. The minimap along the edge shows the whole sequence with the
+viewport, features and any graph track on it.
+
+### The command palette
+
+Ctrl+K (Cmd+K on a Mac) opens the command palette. Every command in the app
+is in it, in five groups (File, Edit, Analyse, View, Cloning), with its
+shortcut shown beside it and the ones that need something you do not have
+open greyed out. The toolbar's overflow menu is built from the same
+registry, so the two cannot drift apart. Search is a subsequence match
+biased towards word boundaries, and each command carries extra search terms
+("print figure publication" finds Export PDF). Recent commands come first.
+
+### Undo
+
+Every document keeps its own undo history, up to 100 steps. A step is a
+lightweight snapshot: the piece table's tree (a few hundred bytes, however
+long the sequence) and a reference to the annotation array, which is shared
+between consecutive steps when an edit left the features alone. Each step
+carries a label ("Add feature lacZ"), shown in the Undo and Redo tooltips.
+A continuous interaction, such as dragging a colour picker over a group of
+features, collapses into one step rather than one per frame. Alignments,
+contigs, gels and cloning designs keep their own histories the same way, so
+Ctrl+Z and Ctrl+Y work in every workspace.
+
+### Themes
+
+There are ten themes: Light, Solarized, Nature, Rosé and Lavender (light);
+Dark, Midnight, Dracula, Nord and Catppuccin (dark). A theme is a block of
+CSS custom properties on the app root, selected by a `data-theme`
+attribute; every colour in the app, including the ones the canvases draw
+with, comes from those tokens. Exports (PDF, SVG, PNG, gel images,
+publication maps) ignore the theme and draw in the light theme's colours or
+a fixed print palette, so a figure looks the same whoever exports it.
+
+### Keyboard shortcuts
+
+| Keys | Action |
+|------|--------|
+| Ctrl+K | Command palette |
+| Ctrl+F | Find and replace |
+| Ctrl+G | Go to position |
+| Ctrl+Z, Ctrl+Y | Undo, redo |
+| Ctrl+Shift+S | Export |
+| Ctrl+P | Export PDF |
+| Arrow keys | Move the caret; Shift extends the selection |
+| Ctrl+Left, Ctrl+Right | Jump by one ruler group (10 bases) |
+| Ctrl+drag, Ctrl+click | Add a range or a feature to the selection |
+| Ctrl+wheel | Zoom around the pointer |
+| Delete, Backspace | Delete the selection (confirmed above a size) |
+
+Mac uses Cmd where Ctrl is written. Each workspace adds its own keys, listed
+in its section: the feature panel, the alignment editor, the gel and the
+explorer.
+
+### Session files and backups
+
+Everything the app holds lives in this browser's storage (see
+[Storage & Persistence](#storage--persistence)), which the browser may
+clear: under storage pressure, after a week without a visit in Safari, or
+when site data is cleared. The copy that survives that is a session file.
+
+**Export Session** writes one JSON file (format `seqnexus-session`, version
+1) with every sequence, protein, primer, enzyme set, gel and cloning design,
+and optionally the Sanger reads, alignments and contigs, which can be large.
+NGS read sets are never included, since their reads would make the file
+huge; they stay in the browser. **Import Session** merges a file into the
+current session, giving everything fresh ids and rewriting the references
+between items, so a session can be imported twice or into another session
+without collisions.
+
+The status bar keeps track of when the last complete export was made (one
+that left out reads, alignments or contigs does not count) and whether
+anything has changed since. A reminder appears weekly or monthly (or never),
+and whatever the schedule, a warning appears when storage is above 80% of
+the browser's quota. Dismissing a reminder is "later", not "never".
+
+---
+
+## Plasmid Map
+
+The circular view draws the sequence as a ring with its features, cut sites,
+primers and tracks around it. A linear sequence is drawn on the same ring,
+broken at the origin with an end bar on each side, so it does not read as a
+circle. The map view, the split view, the cloning workspace's maps, the
+explorer's thumbnails and the PDF export's map page all draw from the same
+code.
+
+### One scene, two renderers
+
+The map is built in two passes. A layout pass turns the document into a
+backend-neutral display list (arcs, labels, leader lines, ticks), using only
+a text-measurement callback from the host. An emitter then walks that list:
+one issues Canvas 2D calls for the screen, the other writes SVG. Because
+both consume the same list with the same measurer, an exported figure
+matches the screen down to the label positions, and label placement can be
+tested without a DOM.
+
+The SVG export writes real `<text>` elements, not outlines, so a figure stays
+editable and searchable in Illustrator or Inkscape, with curved feature
+names on `<textPath>`. Both exports render at fit scale whatever the zoom on
+screen, so a figure is never cropped to the viewport you happened to be
+looking at; PNG is rendered at 3x, roughly 300 dpi for a figure placed at
+2.5 inches.
+
+### Styles and labels
+
+Four presets (Modern, Classic, Minimal and Publication) set the backbone
+radius, feature fill opacity, outline colour, fonts and where feature names
+go when they do not fit inside their own arc: inside the ring on tiers, or
+outside with leader lines. Publication draws black on white and ignores the
+theme. Ruler numbers and cut-site names share one tier map inside the
+circle, lower tiers filled first, and a name pushed inward gets a leader
+line back to the backbone. Overlapping features are stacked onto separate
+rings.
+
+### Rings and tracks
+
+- Features, stacked so that none overlap.
+- Cut sites of the enzymes shown in the enzyme panel, with a mark on the
+  backbone and a name; see [Restriction Enzyme Database](#restriction-enzyme-database).
+- Primer binding sites from the primer library.
+- Dam (GATC) and Dcm (CCWGG) methylation sites, when switched on.
+- GC content and GC skew as a ring, sampled into a fixed number of windows
+  (one per half degree) rather than a fixed window size, so a 3 kb plasmid
+  and a 5 Mb genome cost the same and the ring never has more arcs than
+  there are pixels to hold them.
+- A legend.
+
+### Working on the map
+
+A drag around the ring selects, in the direction the pointer turned, so a
+drag past the origin keeps going rather than flipping to the short way
+round; a range past the origin has its anchor after its caret, as
+everywhere else in the app. A linear sequence cannot be selected across its
+ends. Ctrl+wheel zooms around the pointer, with a visible button to reset
+to fit, since a zoom the pointer cannot undo needs a way back. Clicking a
+feature selects it; clicking a cut site puts the caret there; the pointer
+hit order in a crowded multiple cloning site is the cut-site name under the
+pointer first (the layout has already spread the names apart, so they are
+the one target that can be hit on purpose), then the nearest mark on the
+backbone, then the topmost feature arc.
+
+---
+
 ## Selections
 
 A selection is a range of bases. On a circular sequence it may run across the
@@ -267,6 +674,11 @@ drag on the map still pans it when zoomed in.
   to 3'. A range across the origin of a circular sequence is read first, the
   order in which a GenBank `join()` across the origin is written.
 
+The extra ranges are tied to the tab and to the sequence's edit count. Any
+change to the bases, including undo and redo, drops them. Base edits rewrite
+the sequence in place, so ranges kept across an edit could point at the
+wrong bases.
+
 ### Joined translation
 
 With several ranges selected, the selection's translation reads them as one
@@ -294,6 +706,17 @@ ranges at once.
   parts in place of the start and end, and its One Span button annotates the
   whole stretch from the first part to the last instead.
 
+---
+
+## Annotations
+
+A feature is a typed, stranded range with qualifiers, stored in the
+document's interval tree (see [Data Structures](#data-structures)). A
+feature made of several ranges (the exons of a spliced CDS) keeps them as
+segments. The readers normalise what they import, so that a plasmid map
+shows one arrow per thing rather than one per GenBank convention; this
+section records those rules.
+
 ### Joined features
 
 A feature with parts (the exons of a spliced CDS, or one made from several
@@ -305,11 +728,6 @@ a codon split by an intron is drawn in two pieces with one residue. Copying
 the feature's protein reads the exons too; copying its bases gives the whole
 span, introns included. Clicking anywhere on the feature's span, introns
 included, selects the whole span.
-
-The extra ranges are tied to the tab and to the sequence's edit count. Any
-change to the bases, including undo and redo, drops them. Base edits rewrite
-the sequence in place, so ranges kept across an edit could point at the
-wrong bases.
 
 ### A gene and its CDS
 
@@ -583,15 +1001,1316 @@ hit's own orientation, with mismatched bases marked.
 
 ---
 
+## ORF Finder
+
+Find ORFs (in the Analyse group) scans all six frames of the sequence and
+draws every open reading frame as an overlay on the sequence view and the
+map, listed in a panel grouped by strand and frame with clickable positions.
+
+- **What counts.** An ORF runs from a start codon to the next in-frame stop
+  codon of the document's genetic code. The start codons are chosen from
+  ATG, GTG, TTG and CTG (ATG by default); the minimum size is given in
+  codons, stop included. Interior ORFs (one that starts at a downstream
+  start codon inside a longer ORF on the same strand) are shown by default
+  and can be filtered out, leaving only the longest ORF ending at each stop.
+- **Circular sequences.** Reading continues past the end into the start, at
+  most one turn less a base, so an ORF across the origin is found once and
+  cannot overlap itself. An ORF met from more than one frame of the scan
+  (possible when the length is not a multiple of three) is listed once, with
+  the frame counted from its own start.
+- **Where it runs.** In a Web Worker; the same code runs on the page when a
+  worker cannot be started (see the [Limits](#limits-5) of NGS read sets for
+  when that is).
+
+### ORFs as features
+
+The overlay is an analysis result, not part of the document. Ctrl+click
+picks ORFs on the canvas, and Add turns the picked ones (or all of them)
+into CDS features in one undo step. An ORF that already has a feature with
+exactly its span and strand is left out of what Add would create, so
+pressing Add twice cannot make two copies; the bar is deliberately that
+tight so a merely overlapping CDS (a shorter isoform, a neighbouring gene)
+does not quietly swallow an ORF you could add. Unlike auto-annotation
+suggestions, ORFs are not hidden once something covers them: the overlay
+answers "where are the open reading frames", and the answer does not change
+because one of them is now annotated. Toggle ORF Display hides the overlay.
+
+---
+
+## Proteins
+
+A protein is the same document as a DNA sequence: the same piece table, the
+same annotations and interval tree, the same undo history, explorer row,
+folders, tags and session storage. The only difference in the model is the
+alphabet the Sequence carries (`dna` or `protein`), which every edit and
+snapshot keeps. A protein is always linear; a snapshot without an alphabet
+is DNA.
+
+### Alphabet
+
+A protein may hold the twenty standard amino acids, selenocysteine (U) and
+pyrrolysine (O), the ambiguity codes B (D or N), Z (E or Q), J (I or L) and
+X (any residue), and the stop (`*`). Typing and pasting check against this
+set the way DNA is checked against the IUPAC codes, and refuse anything else
+with the offending characters named.
+
+A pasted or imported record is sorted into DNA or protein by its letters: a
+letter that only a protein can hold (E, F, I, J, L, O, P, Q, X, Z or a stop)
+settles it; otherwise at least nine letters in ten have to be A, C, G, T, U
+or N for the record to be DNA. The rule errs towards protein for short
+stretches written only in IUPAC letters (ACDGHKMNRSTVWY are all codes), which
+is the safer mistake: a peptide opened as DNA would be reverse-complemented
+and translated, a short DNA fragment opened as a protein is only coloured
+oddly. The New Sequence dialog follows the same guess until the molecule is
+chosen by hand.
+
+### What a protein does not have
+
+Everything that needs bases is left out of a protein's view rather than
+offered and refused: the complement strand, the translation rows, restriction
+enzymes, ORFs, primers, the plasmid map and split view, GC content, Tm and
+codon usage, methylation and cloning. The panel bar shows Features, Motifs,
+Auto and Display; the toolbar buttons for the DNA tools are disabled with a
+note saying why, and the ORF finder's slot holds the motif finder. The feature type list offers
+protein feature keys (Region, Domain, Site, Chain, sig_peptide, transmembrane,
+disulfide and so on, the GenPept keys and the UniProt categories spelt as one
+word so they survive export) instead of promoters and terminators.
+
+In the explorer a protein is its own kind, with its own icon, group and
+filter, so a workspace of plasmids and the proteins they encode reads at a
+glance. A protein row says its length in residues (`245 aa`) and omits the
+topology word.
+
+### Import and export
+
+- **FASTA.** Each record is sorted by the rule above. A `.faa` file is read
+  as protein throughout.
+- **GenPept.** A GenBank-format record whose LOCUS line counts `aa` is a
+  protein. Features sit on residues; a Region is named by its
+  `/region_name`, a Site by its `/note`. The writer produces the same layout
+  (`LOCUS name 142 aa linear date`, no molecule type, residues in lowercase
+  blocks of ten), so a protein exported as "GenBank" is a GenPept file that
+  NCBI's own tools read.
+- **Plain text and the clipboard** go through the FASTA reader.
+- **Export:** GenPept, FASTA, GFF3 and the feature CSV, and the PDF of the
+  sequence view. SnapGene's `.dna` is a DNA format and is not offered for a
+  protein; in a bulk export it falls back to GenPept.
+
+### Residue colours
+
+A protein document has its own colour preference, separate from the base
+colour scheme, since a nucleotide palette says nothing about residues. The
+schemes are the ones the translation strip under a DNA sequence already
+offers, plus the two alignment conventions that colour a residue on its own
+rather than by its column:
+
+| Scheme | What it shows | Source |
+|--------|---------------|--------|
+| Hydrophobicity | Kyte-Doolittle hydropathy, blue (polar) to orange (hydrophobic) | Kyte and Doolittle (1982) |
+| Polarity (default) | Acidic, basic, polar and non-polar groups, as textbooks colour them | |
+| RasMol | The RasMol amino acid palette | |
+| Clustal | Clustal X residue colours | Thompson et al. (1997) |
+| MacClade | MacClade residue colours | |
+| Taylor | One hue per residue, neighbours in the wheel are chemically similar | Taylor (1997) |
+| Zappo | Physicochemical groups, as Jalview draws them | Waterhouse et al. (2009) |
+
+As for bases, a scheme tints the letters or fills the cell behind each
+residue, with the glyph drawn in whatever contrasts. The composition in the
+statistics popover uses the same colours. Three-letter spelling is not drawn
+on a protein's canvas: a residue is one cell wide there, where a codon in
+the translation strip is three.
+
+### Find
+
+On a protein the query is searched as residues, on the one strand there is,
+so the DNA/Protein and both-strands controls are not shown. The ambiguity
+codes read as sets (X any residue but a stop, B D or N, Z E or Q, J I or L),
+mismatches are allowed and counted in residues, and a regular expression
+works as it does on DNA. A replacement is residues, checked against the same
+alphabet.
+
+### Numbering
+
+A protein can be numbered from any residue, so a mature chain can count from
+1 after its signal peptide, or a fragment can keep the numbering of the
+record it came from. The start is set in the properties dialog and applies
+to the ruler, the selection readout, feature positions and the find list.
+It is stored as a negative display origin: the field that rotates a circular
+sequence's numbering shifts a linear one's instead (`-24` shows the first
+residue as 25). One field, two meanings told apart by sign, so every place
+that already formats a position through `displayPosition` handles both.
+
+### Properties
+
+The Stats button of a protein opens its properties, computed from the
+residues on every render (the maths is O(n) and a protein is short). With a
+selection the numbers are of the selected residues, and a switch goes back
+to the whole protein; the selection readout in the status bar and the drag
+pill show the mass of a selection as well. The constants follow ExPASy
+ProtParam, which the tests check against for a published 121-residue report
+(mass, formula, charged residues, pI, GRAVY, aliphatic and instability
+index all agree; the instability index to within 0.02).
+
+- **Mass.** The sum of the average residue masses plus one water, and the
+  monoisotopic mass. Selenocysteine and pyrrolysine have their own masses;
+  B, Z and J take the mean of what they stand for, X the mean of the
+  twenty; stops and gaps weigh nothing. The elemental formula leaves the
+  ambiguity codes out.
+- **Charge and pI.** Net charge by Henderson-Hasselbalch over the N
+  terminus, Lys, Arg, His (positive) and the C terminus, Asp, Glu, Cys,
+  Tyr (negative). The pI is where it crosses zero, found by bisection to
+  0.001 pH. Four pKa sets are offered, since the set is most of why two
+  calculators disagree: EMBOSS (the default, what the `iep` program
+  reports), Bjellqvist (the ExPASy values, with their residue-specific
+  terminal pKa), Lehninger (free amino acids) and Grimsley (averages
+  measured in folded proteins). A slider gives the charge at any pH, and a
+  titration curve shows it from 0 to 14 with the pI marked.
+- **Absorbance at 280 nm.** Pace et al. (1995): 5500 per Trp, 1490 per
+  Tyr, 125 per cystine. Three values: every Cys reduced, every pair of Cys
+  as a cystine, and the disulfides the document annotates (`disulfide`
+  features). A280 of a 1 mg/mL solution is ε over the average mass.
+- **Indices.** GRAVY (the mean Kyte-Doolittle hydropathy), the aliphatic
+  index of Ikai (1980), the instability index of Guruprasad et al. (1990)
+  with its 40 threshold, and aromaticity (the fraction of Phe, Trp and Tyr).
+- **Composition** with the residue colours of the view.
+
+### DNA and protein
+
+A coding feature, or a selection, is translated into a protein document of
+its own from the context menu (the selection is read in frame from its
+first base, in the direction it was dragged). The protein remembers its
+source: the document, the feature, the coding span and strand, the exons
+of a spliced feature, the `/codon_start` offset and the genetic code. A
+single trailing stop is dropped; internal stops are kept so a nonsense
+mutation shows. Features inside the coding region come along at residue
+resolution, the coding feature itself excepted.
+
+In the protein, a chip beside the name says where it came from and selects
+the codons of the current residue selection in the DNA (or the whole coding
+region). The context menu adds "Show codons in …", and "Add features to …",
+which puts the protein's features on the DNA at the codons they cover,
+skipping any the DNA already has, as one undo step on the DNA. The mapping
+walks exons, so a feature across an intron becomes a joined feature. In the
+explorer a translated protein nests under its DNA.
+
+"Find in DNA" takes a selected peptide to any open DNA document and
+searches its six frames, through the protein search that already exists.
+
+### Back-translation
+
+For a protein the codon optimizer becomes a back-translator: every residue
+gets the codon the chosen host uses most (B, Z and J as Asp, Glu and Ile;
+X, U and O have no codon and are reported), and that DNA is then optimized
+with the same settings and constraints as any coding sequence, so a motif
+to avoid is avoided here too. "Open as DNA" opens the result with the
+protein as its one coding feature. There is nothing to apply in place.
+
+### Auto-annotation
+
+A protein is scanned against a protein library instead of the DNA
+databases: a curated list of epitope and purification tags (His6, FLAG,
+HA, Myc, V5, Strep, Avi, ALFA, HiBiT, Spy and Snoop tags and others),
+protease sites (TEV, thrombin, HRV 3C, enterokinase, Factor Xa), linkers,
+localization signals (NLS, NES, KDEL, HDEL, SKL) and 2A peptides; a
+second list of protein parts with the fusion partners (GST, MBP, SUMO,
+thioredoxin, SNAP, CLIP, HaloTag, Fc, DHFR, KSI, the TAP tag, cellulose-
+and chitin-binding domains), more epitope tags (AU1, AU5, Ty1, KT3, OLLAS, NE, E2, HSV, Protein C and
+others), the TVMV site, near-infrared and blue reporters, and activation
+domains; and the coding entries of the DNA library translated with the
+standard code, so the same GFP or kanR is found on a plasmid and on its
+protein. Versions of one entry (the three TAP tags, the two E2 tags) form
+a group, as in the DNA library. Parts shorter than six residues are left
+out of that list (the four-residue C-tag, polyArg, polyAsp, the PKA
+site): a natural protein contains them by chance, so a hit would mean
+nothing. The scan is
+the DNA matcher on residues, with a 3-mer seed and one strand. Peptides
+shorter than ten residues are matched exactly, since a six-residue tag with
+one mismatch is not that tag; longer entries take the similarity threshold.
+Proposals, picks and conversion work as for DNA.
+
+### Alignment, BLAST and find
+
+Protein documents appear in the alignment dialog, which already recognised
+protein letters and switches to BLOSUM62 and the protein colour schemes.
+BLAST offers blastp and tblastn for a protein query and swaps its saved
+program when the open document changes kind; hits of a protein search link
+to NCBI's protein records.
+
+### Graph tracks
+
+A protein can carry one graph track under its feature lanes, drawn as a
+filled curve on every row of the sequence view, along the minimap, and in
+the PDF. The curve is the mean of a per-residue scale over a window centred
+on each residue; the window is cut short at the two ends so every residue
+has a value (ProtScale leaves the first and last half-windows blank), and
+residues the scale does not know (X, B, Z, a stop) are left out of the mean
+rather than counted as zero. Two prefix sums make the profile O(n) whatever
+the window. The scales, their default windows and their sources:
+
+| Scale | Window | Guide | Source |
+|-------|--------|-------|--------|
+| Hydropathy | 9 | 0; above is hydrophobic | Kyte and Doolittle (1982) |
+| Hydrophilicity | 7 | 0; peaks are exposed, likely antigenic | Hopp and Woods (1981) |
+| Hydrophobicity | 9 | 0 | Eisenberg et al. (1984), the consensus scale |
+| Charge at pH 7 | 9 | 0 | Side-chain charge by Henderson-Hasselbalch with the EMBOSS pKa values; Lys, Arg, His positive, Asp, Glu, Cys, Tyr negative, the rest zero |
+| Flexibility | 9 | 1 | Vihinen et al. (1994) normalized B-factors |
+
+The windows are ProtScale's defaults, and any odd window from 1 to 21 can
+be chosen instead. The minimap's copy of the track is the same values
+averaged into one bin per pixel, with the value under the pointer in the
+hover readout.
+
+### Motifs and sites
+
+The motif finder sits where the ORF finder sits for DNA and answers the same
+question for residues: where are the things worth a feature. It scans the
+protein against a short library of patterns written in PROSITE notation
+(`N-{P}-[ST]-{P}`: elements separated by hyphens, `x` any residue, `[..]`
+one of, `{..}` none of, `(n)` or `(n,m)` repeats, `<` and `>` the ends),
+which a small parser turns into a regular expression. Every occurrence is
+reported, overlaps included, by matching in a lookahead at each position.
+
+The library is deliberately short. PROSITE's full set of patterns finds a
+site every few residues of any protein, which is why its own tools hide the
+frequent patterns by default; what is kept here is what a lab checks a
+construct for. The categories: modification sites (the N-glycosylation
+sequon, kinase and myristoylation sites, amidation, sumoylation, the CAAX
+box), processing sites (furin, caspase-3, the acid-labile Asp-Pro bond),
+targeting signals (mono- and bipartite nuclear localization signals, ER
+retention, PTS1, RGD), binding and catalytic signatures (the P-loop,
+EF-hand, C2H2 zinc finger, the serine and cysteine protease active sites),
+the leucine zipper, and the sequence liabilities a developability review
+flags (deamidation, Asp isomerization, oxidation-prone and glycation-prone
+pairs). Each entry names its PROSITE accession or the paper it comes from;
+the panel shows the pattern beside the hits. A pattern this short also
+matches by chance, so a hit is a place to look, not a finding, and the panel
+says so.
+
+Membrane spans ride the same overlay as one more category, from the rule of
+Kyte and Doolittle (1982): a 19-residue window whose mean hydropathy
+exceeds 1.6. Each residue whose window passes marks a candidate; runs of
+them, widened to the window they were judged by and merged where they
+touch, are the segments, and segments shorter than 15 residues are dropped.
+Only whole windows count, so the ends of a protein do not pass on half a
+window of leucines. The rule finds hydrophobic stretches, not whether the
+protein is in a membrane at all, which is why its hits are provisional
+features until converted.
+
+Hits are drawn as an overlay like ORFs, in the colour of their category:
+Ctrl-click picks one, the panel bar converts the picked ones (or all of
+them) into features of the type the pattern names (`glycosylation`,
+`modified_residue`, `Site`, `Motif`, `active_site`, `transmembrane`) as one
+undo step. A hit the document already has a feature for, by name and
+residues, is not added twice. Categories can be switched off in the panel
+and the overlay follows. The scan is a regular-expression pass over a short
+protein and runs on the residues themselves, so a substitution moves a site
+at once.
+
+### UniProt and NCBI protein import
+
+"Import by Accession" takes a UniProt accession or entry name (`P69905`,
+`HBA_HUMAN`), an NCBI protein accession (`NP_000509.1`, GenPept from the
+`protein` database) or a nucleotide accession, guessing the source from the
+accession's shape: UniProt accessions follow a fixed pattern (a letter, a
+digit, then letters and digits in the published arrangement), RefSeq
+proteins start `NP_`, `XP_`, `WP_`, `YP_` or `AP_`, GenBank proteins are
+three letters and five or seven digits. The guess can be overridden.
+
+A UniProt entry comes through the REST service's JSON, which the server
+sends with CORS headers so the page can ask for it directly. The document
+is named after the gene (or the entry name), described by the recommended
+protein name and organism, and carries the entry's features as annotations
+on their residues: chains, peptides, signal and transit peptides, domains
+(zinc fingers and DNA-binding regions among them), regions (coiled coils,
+compositional bias, topological domains), motifs, repeats, membrane
+segments, active and binding sites, modified residues (lipidation and
+cross-links among them), glycosylation, disulfide bonds and natural and
+mutagenesis variants. A natural variant is named in the short HGVS form
+(`p.D7G`) with the original and the alternative residues as qualifiers.
+Secondary structure (helix, turn, strand), sequence conflicts, the initiator
+methionine and features without a fixed position are left out: they are
+about the record, not the protein. The entry's PDB identifiers and whether
+AlphaFold has a model are kept in the document's metadata for the 3D
+viewer.
+
+### Disulfide bonds
+
+A disulfide is a feature of type `disulfide` with two one-residue segments,
+one per cysteine, so the feature model that already carries exons carries
+bonds. It is drawn as an arc from one cysteine to the other over the feature
+lane rather than as a bar with a line across; the properties panel counts
+it for the extinction coefficient. Two cysteines selected together (Ctrl-
+click) offer "Add Disulfide Bond" in the context menu. In GenPept the bond
+is written as `bond(48,52)`, which is the format's own notation and what
+the reader already accepted.
+
+### Variants
+
+A protein in a lab is usually a variant of something, so an edit to a
+protein is written down. Replacing selected residues (typing over a
+selection, pasting, or "Mutate to" in the context menu, which lists the
+twenty residues and a stop for a single selected residue) and deleting
+residues create a `variant` feature on the residues the edit left behind,
+named in the one-letter HGVS short form the literature uses (`p.K27M`,
+`p.K27del`, `p.K27_L29del`, `p.K27_L28insAG`, `p.K27_V28delinsRST`,
+`p.K27*`), with the recommended three-letter name (`p.Lys27Met`) in the
+note and the original residues, the replacement and the position as
+qualifiers. Positions follow the displayed numbering. The feature and the
+edit are one undo step. A deletion that meets one already recorded extends
+it, so Backspace held down is one deletion and not five. Inserting at the
+caret is not recorded: a protein typed in from scratch is not a variant of
+its first residue. The feature list, grouped by type, is the mutation list;
+"Add features to" carries variants to the DNA with everything else. The
+record can be switched off in the display settings.
+
+### Domain map
+
+A protein's Map view is a linear domain map: the chain as a bar with a
+residue ruler, its features in lanes above it as bars in their colours
+(the name inside when it fits, beside it otherwise), one-residue features
+as lollipops with the name above, and disulfide bonds as brackets under
+the chain joining their cysteines. Split stacks the map over the sequence
+at the map's own height. Hovering a feature shows its card, clicking it
+selects its residues, and the current selection is a band on the map.
+
+The map is built as the same backend-neutral display list the plasmid map
+uses (rectangles, lines, dots and text with a halo), so one canvas
+renderer, one SVG emitter and one image export draw it, and the exported
+PNG or SVG is the figure on screen. The plasmid map's style setting applies
+(Publication draws black on white and ignores the theme) and so does its
+palette. Features are laid out greedily into lanes, widest first, with a
+site's label counted as its width so names do not collide; the map is as
+tall as the lanes need. The scene gained a height beside its size for this,
+which the renderers honour and the square plasmid map leaves unset.
+
+### Proteolysis
+
+The Digest button (the restriction enzymes' slot on a protein) cuts the
+protein with one or more proteases. The rules follow ExPASy PeptideCutter
+where it states a simple rule: a residue before the bond, and a residue
+after it (proline, usually) that blocks the cut. Trypsin after Lys or Arg
+not before Pro; chymotrypsin after Phe, Tyr, Trp (high specificity) or
+also Leu and Met (low); Lys-C after Lys; Arg-C after Arg; Glu-C after Glu
+(bicarbonate) or Glu and Asp (phosphate); Asp-N before Asp; pepsin at pH
+1.3 after Phe or Leu, not before Pro nor after a Pro at P2; cyanogen
+bromide after Met. PeptideCutter's longer exception lists (trypsin's CKD,
+DKD, CKH, CKY, RRH, RRR and the WKP and MRP exceptions to the proline rule)
+are not applied: they fine-tune a minority of sites, and the simple rule is
+what every other tool uses. The engineered proteases cut at their
+recognition sequence only: TEV at ENLYFQ before Gly or Ser, thrombin at
+LVPR before Gly or Ser, Factor Xa after IEGR or IDGR, enterokinase after
+DDDDK, HRV 3C at LEVLFQ before Gly. Several proteases pool their sites.
+
+With missed cleavages, every run of up to n+1 consecutive fragments is a
+peptide too, listed beside the complete digest and marked partial. Each
+peptide carries its position in the displayed numbering, monoisotopic and
+average mass (the ProtParam residue masses plus one water), m/z at charges
+1 to 3 from the monoisotopic mass and the proton's mass (1.007276 Da), pI
+with the EMBOSS pKa set, and GRAVY. The header gives the number of
+peptides, the sequence coverage of the complete digest and the largest
+peptide. A peptide clicked is selected on the sequence; "Show on sequence"
+draws the peptides as bars over the protein (alternating colours, partials
+grey), the table exports as CSV, and "Run on gel" opens an SDS-PAGE gel
+with the protein intact beside the digest.
+
+### SDS-PAGE
+
+The virtual gel has a kind: agarose for DNA, SDS-PAGE for proteins. A gel
+started from a protein is poured as 12% acrylamide with a protein ladder,
+the protein intact and a tryptic digest; the kind can be switched in the
+gel's settings, which then offer the acrylamide percentage instead of
+agarose and buffer, protein ladders instead of DNA ladders, and protein
+lanes (a protein document, intact or cut with the proteases above, with
+missed cleavages) instead of sequence and PCR lanes. Every label, the size
+cursor, the inspector, the CSV and the PDF print kilodaltons.
+
+The migration model is the agarose model's sigmoid in log size with the
+protein's mass as the size. SDS gives every chain the same charge per
+mass, so mobility is set by size alone and the distance run is linear in
+log mass across the gel's useful window, which is the Ferguson relation a
+standard curve is drawn on. Each acrylamide percentage is given the
+window it is recommended for (6%: 60 to 250 kDa, 8%: 40 to 180, 10%: 25 to
+120, 12%: 15 to 80, 15%: 8 to 50); the characteristic mass is the window's
+geometric centre and the steepness puts the window's ends near 15% and 95%
+of the run. Bromophenol blue runs with the ion front in SDS-PAGE, so the
+run slider is the front of the run. Band spread, merging, brightness and
+the detection threshold are the agarose model's. The species' size field
+holds base pairs on a DNA gel and daltons on a protein gel, so the band,
+label and layout code is written once. A digest lane shares the load among
+the complete digest's peptides by mass, with each missed cleavage leaving a
+partial a fifth of its share; a peptide can be selected in the protein or
+opened as a protein of its own, numbered as in the chain it came from.
+
+The ladders are representative of the common prestained 10 to 250 kDa and
+dual-colour sets, an unstained broad-range set (6.5 to 200 kDa) and a
+low-range peptide marker (1.4 to 26.6 kDa), equal mass per band with the
+coloured reference bands heavier, about 2.5 µg in a well. Gradient gels
+are not modelled.
+
+### Secondary structure
+
+Chou and Fasman's conformational parameters (1978) are three more graph
+tracks (helix, strand and turn propensity, windows 7, 5 and 5), and their
+nucleate-and-extend rule predicts helices and strands that ride the motif
+overlay as a Structural category beside the membrane spans. A helix is
+nucleated where four of six residues have P(alpha) above 1.03 and
+extended both ways while the mean over four residues stays at or above
+1.00; a strand where three of five residues have P(beta) above 1.05, with
+the same extension; a segment is kept when it is at least six (helix) or
+five (strand) residues long and its own propensity beats the other's, and
+where a helix and a strand overlap the one with the higher mean keeps the
+residues. Turns are not predicted (the tetrapeptide probabilities are
+left out). The method is about 55 to 60% accurate per residue and is kept
+for its transparency: the propensity table says why a helix is predicted
+where it is. The segments are provisional until converted, like every
+other hit on the overlay. GOR IV and COILS are not included: GOR IV's
+parameter tables are too large to embed faithfully and COILS's scoring
+matrix is not reproduced here; a structure from PDB or AlphaFold (the 3D
+view below) is the better answer for both.
+
+### 3D structure
+
+A protein's 3D view puts its structure beside its sequence. The structure
+comes from one of three places: an experimental entry from the RCSB PDB by
+PDB id (the entry's mmCIF, since large entries have no PDB-format file), the
+AlphaFold database's model for a UniProt accession (the prediction API names
+the current model file, fetched in PDB format), or a PDB or mmCIF file
+opened from disk. A protein imported from UniProt offers the PDB entries
+and the AlphaFold model its record names as one click. Opening a structure
+file directly opens each distinct protein chain as a protein of its own
+(the copies of a homodimer are one protein), with the structure attached.
+
+The document keeps a reference only: the source, the id, the chain and the
+key the coordinates are cached under. The coordinates themselves are kept
+in the browser's IndexedDB, so a structure opens again offline; a fetched
+one is fetched again when the cache is gone. A file's coordinates cannot be
+fetched, so on another computer the panel asks for the file again (the
+cache key is a hash of the file's text, so the same file reattaches). Only
+the id goes to RCSB or the AlphaFold database, never the sequence.
+
+**Lining up the residues.** A structure's residue numbers rarely match a
+sequence's positions: the construct carries a tag the crystal lost, the
+structure starts at the mature chain, disordered loops are missing, or the
+depositors numbered from the native protein. So the protein is aligned to
+each chain (Needleman-Wunsch, BLOSUM62, gap open -10 and extend -0.5, the
+alignment tool's protein defaults) and the alignment gives the residue map;
+chains with the same sequence are aligned once and the chain with the most
+identical residues is chosen. The footer says how many residues aligned and
+how identical they are, and a warning appears below 30% identity. The
+alignment is redone after every edit, so a mutation or deletion moves the
+map with it. The chain can be changed by hand.
+
+Reading the file: residues of the first model with an alpha carbon and a
+residue name the code table knows (the twenty, selenocysteine and
+pyrrolysine, and the modified residues structures use for standard ones,
+such as selenomethionine, phosphoserine and pyroglutamate, read as their
+parent), numbered by the author numbering; waters, ligands and nucleic
+acids drop out without a list of them. Each residue's B-factor is the mean
+over its atoms; in an AlphaFold model that column holds the pLDDT.
+
+**The view.** The viewer is 3Dmol.js (Rego and Koes 2015), loaded on first
+use from a script beside app.html, so it costs nothing until a structure is
+shown and works when the app is opened from disk. The matched chain is drawn
+as cartoon, sticks or a surface; other chains are faint cartoons, ligands
+sticks, water hidden. Colouring:
+
+| Colour | What it shows |
+|--------|---------------|
+| Features | Each residue in the colour of the smallest visible feature covering it, so a site inside a domain shows the site |
+| Residue scheme | The protein colour scheme of the sequence view |
+| N to C | Blue at the N terminus to red at the C terminus, to read a fold's topology |
+| Chain | One colour per chain |
+| Confidence | AlphaFold's pLDDT in the AlphaFold database's four bands and colours: very high above 90, confident 70 to 90, low 50 to 70, very low below 50 |
+
+A surface is built per colour as patches shaped by the whole chain (3Dmol's
+per-vertex colour callback does not reach every vertex of a surface), and
+the N-to-C spectrum is cut to 20 steps on a surface to keep the patches
+few.
+
+**Linked to the sequence.** Residues selected in the sequence are drawn as
+sticks in the accent colour; a feature hovered in the sequence lights up its
+residues; a residue clicked in 3D is selected (and scrolled to) in the
+sequence; hovering a residue names it, its chain, its position in the
+protein and, for an AlphaFold model, its pLDDT. The view exports as PNG.
+
+### Limits
+
+The three-letter spelling is not drawn on a protein's canvas.
+The motif library is a curated subset of PROSITE, not the database; a
+pattern file cannot yet be imported. The domain map is not placed in the
+PDF export, which draws the sequence view; export it as SVG or PNG. SDS-PAGE
+gradient gels and glycosylated or otherwise anomalous migration are not
+modelled. The structure view shows structures; it does not predict them,
+and it does not edit coordinates. Residues are matched to the structure by
+author number, so a structure using insertion codes (27, 27A) maps the
+first of each number only. Only the first model of an NMR ensemble is read.
+
+---
+
+## Melting Temperature (Tm)
+
+Tm appears in the selection tooltip (for selections of 4-200 bp), the primer
+hover card and menu, and the primer design tool.
+
+### Selection tooltip
+
+- **≤ 14 bp**: Wallace rule - `Tm = 2×(A+T) + 4×(G+C)`. Simple base-counting
+  formula for very short oligos.
+- **15-200 bp**: nearest-neighbor method (see below).
+- **> 200 bp or < 4 bp**: Tm is not shown.
+
+Default conditions: 250 nM oligo, 50 mM Na⁺. These are not user-configurable
+for the selection tooltip - they use the same defaults as the primer design tool.
+
+### Nearest-neighbor method
+
+Uses the **SantaLucia (1998) unified nearest-neighbor model** for DNA/DNA
+duplexes.
+
+#### Parameters
+
+Enthalpy (ΔH) and entropy (ΔS) are computed by summing contributions from
+each adjacent dinucleotide step plus initiation parameters based on terminal
+base pairs:
+
+| Terminal base | ΔH_init (cal/mol) | ΔS_init (cal/mol·K) |
+|---------------|------------------:|---------------------:|
+| G or C        |               100 |               −2.8   |
+| A or T        |              2300 |                4.1   |
+
+The 10 unique nearest-neighbor parameters (with symmetry equivalents):
+
+| Pair  | ΔH (cal/mol) | ΔS (cal/mol·K) |
+|-------|-------------:|----------------:|
+| AA/TT |        −7900 |          −22.2  |
+| AT    |        −7200 |          −20.4  |
+| TA    |        −7200 |          −21.3  |
+| CA/TG |        −8500 |          −22.7  |
+| GT/AC |        −8400 |          −22.4  |
+| CT/AG |        −7800 |          −21.0  |
+| GA/TC |        −8200 |          −22.2  |
+| CG    |       −10600 |          −27.2  |
+| GC    |        −9800 |          −24.4  |
+| GG/CC |        −8000 |          −19.9  |
+
+#### Tm calculation
+
+```
+Tm(1M) = ΔH / (ΔS + R × ln(Ct/4)) − 273.15
+```
+
+where R = 1.987 cal/(mol·K) and Ct is the total primer concentration in M.
+The Ct/4 term assumes non-self-complementary oligonucleotides.
+
+#### Salt correction
+
+The Tm at the actual salt concentration uses the **Owczarzy et al. (2004)
+monovalent cation correction**:
+
+```
+1/Tm(Na) = 1/Tm(1M) + (4.29e-5 × f_GC − 3.95e-5) × ln([Na⁺])
+                     + 9.40e-6 × (ln([Na⁺]))²
+```
+
+When Mg²⁺ is provided (primer design only), the **Owczarzy (2008) divalent
+correction** is used instead, with free Mg²⁺ = Mg²⁺ − dNTPs (1:1 chelation).
+
+### Hairpin and self-dimer Tm
+
+The primer hover card and the design workbench show the Tm of each oligo's
+strongest hairpin and self-dimer (`app/src/primers/secondary.ts`). This is a
+**simplified nearest-neighbor model**, not Primer3's full thermodynamic
+alignment, so the numbers are shown as estimates (≈). They are calculated
+for the whole oligo, tails included, under the design tool's default buffer.
+
+What is simplified: only ungapped helices count. A hairpin stem must pair
+perfectly. A dimer may contain single internal mismatches. Neither may
+contain bulges or internal loops. Hairpins get no special triloop or
+tetraloop bonuses.
+
+#### Self-dimer
+
+1. Slide the oligo antiparallel along a second copy of itself. At every
+   offset, find the most stable ungapped paired stretch (ΔG37 from the NN
+   tables, including single internal mismatches). Keep the stretch with the
+   lowest ΔG37 overall (`bestDimer` in `structure.ts`).
+2. Score that stretch as a duplex: ΔH and ΔS from the unified NN parameters,
+   the internal-mismatch parameters (Allawi & SantaLucia 1997-98, Peyret
+   1999) and the initiation terms, as in the duplex Tm above.
+3. Both strands are the same molecule. At the Tm half of all strands are
+   paired, so the equilibrium constant is 1/Ct instead of the 4/Ct used for
+   two different strands:
+
+   ```
+   Tm(1M) = ΔH / (ΔS + R × ln(Ct))
+   ```
+
+4. Apply the Owczarzy (2008) salt correction to the stretch's own GC
+   fraction and length.
+
+Because the dimer is bimolecular, its Tm rises with oligo concentration.
+
+#### Hairpin
+
+1. Try every loop of 3 or more bases. For each one, zip the stem outward
+   from the loop for as long as the bases pair perfectly (at least 3 bp).
+2. Score each fold:
+
+   ```
+   ΔH = Σ ΔH(stem NN pairs) + ΔH(terminal mismatch)
+   ΔS = Σ ΔS(stem NN pairs) + ΔS(terminal mismatch) − ΔG37(loop) / 310.15 K
+   ```
+
+   - **Stem pairs** use the same unified NN table as duplexes. There is no
+     initiation term, because the fold is unimolecular.
+   - **Terminal mismatch:** the first and last loop bases face each other
+     across the closing base pair. They are scored with the terminal-mismatch
+     table, for loops longer than 3 bases.
+   - **Loop penalty** is treated as purely entropic, using the hairpin-loop
+     ΔG37 of SantaLucia & Hicks (2004):
+
+     | Loop (nt) | 3   | 4   | 5   | 6   | 7   | 8   | 9   | 10  | 12  | 14  | 16  | 18  | 20  | 25  | 30  |
+     |-----------|-----|-----|-----|-----|-----|-----|-----|-----|-----|-----|-----|-----|-----|-----|-----|
+     | ΔG37 (kcal/mol) | 3.5 | 3.5 | 3.3 | 4.0 | 4.2 | 4.3 | 4.5 | 4.6 | 5.0 | 5.1 | 5.3 | 5.5 | 5.7 | 6.1 | 6.3 |
+
+     Lengths between entries are interpolated linearly. Beyond 30 nt, the
+     penalty grows as ΔG(30) + 2.44 × R × T × ln(n / 30).
+
+3. A hairpin melts where ΔG = 0, independent of concentration:
+
+   ```
+   Tm(1M) = ΔH / ΔS
+   ```
+
+   It is then salt-corrected with the Owczarzy (2008) formula, using the
+   stem as the helix. That formula was fitted on duplexes, so this step is
+   an approximation.
+
+4. The fold with the highest Tm is reported.
+
+#### Grading
+
+A structure is graded against the Tm at which the primer itself anneals
+(the annealed-part Tm for a tailed primer):
+
+| Grade | Structure Tm |
+|-------|--------------|
+| good (green) | ≤ annealing Tm − 15 °C, or no structure |
+| ok (amber)   | between annealing Tm − 15 °C and − 5 °C |
+| poor (red)   | > annealing Tm − 5 °C |
+
+A structure that pairs the oligo's 3' end is graded one step worse, because
+a polymerase can extend it into primer-dimer or self-primed product.
+
+For probes, the card also checks the TaqMan rules:
+- **5' base:** a G at the 5' end quenches the reporter dye.
+- **Tm margin:** the probe's Tm minus the higher Tm of the nearest flanking
+  primer pair (within 2 kb). ≥ 6 °C is good, 3-6 °C is ok, less is poor.
+
+---
+
+## Restriction Enzyme Database
+
+The enzyme database is auto-generated from **REBASE** (Roberts et al.) using
+`scripts/build-enzyme-db.ts`. The current build contains 546 enzymes with:
+
+- Recognition sequences (IUPAC ambiguity codes)
+- Cut positions on both strands
+- Overhang type (blunt, 5' overhang, 3' overhang)
+- Commercial supplier availability (NEB, Thermo, etc.)
+- Isoschizomer grouping
+- Methylation sensitivity (dam, dcm, CpG)
+- Optimal temperature and heat inactivation data
+
+The enzyme finder runs in a Web Worker. It expands IUPAC ambiguity codes into
+all possible concrete sequences and scans both strands of the target sequence.
+Results are grouped by isoschizomer family on the plasmid map to reduce visual
+clutter.
+
+### How sites are drawn in the sequence view
+
+- **Names** sit above the ruler at their cut, each in the lowest row where it
+  clears the name before it. A line gets only the rows its own names need (up
+  to five), so a line with no site carries no space for them. Names that fit
+  in none of those rows become a "+N" chip in a row above, which lists them on
+  hover and selects the stretch they cover on click. Earlier, every line had
+  three rows and the overflow was drawn into the top one over its neighbours.
+- **A bar per site** marks its recognition sequence between the ruler and the
+  bases, in lanes so sites that overlap or merely touch stay apart. This
+  replaced a tint on the bases themselves, which merged adjacent sites (the
+  usual case in a multiple cloning site) into one block. There are no bars at
+  the most zoomed-out levels, where a six-base site is under a pixel.
+- **The cut** is a step through both strands: down through the top strand at
+  its cut, across between the strands, down through the bottom strand at its
+  cut. The step's width is the overhang, so a sticky end, a blunt end and
+  which strand protrudes read at a glance. With only one strand shown, it is
+  the top-strand cut alone.
+- **Hovering** a name, a bar or a chip ties a site together: its name, its
+  line to the ruler, its bar, a tint over its bases and its cut light up, and
+  every other site fades. Names are the reliable target in a crowded stretch,
+  since they are the one part already spread out.
+
+### Saved enzyme sets
+
+The Restriction Analysis panel runs a subset of the database: one of the
+built-in groups (common 6-cutters, Type IIS, blunt cutters and so on), or a
+set of the user's own. A set is made from what the panel lists: narrow the
+enzymes down with the subset, the search and the cut filters, and save the
+list under a name. A saved set can be renamed, have its enzymes edited as a
+list of names, or be deleted (with Undo). Geneious enzyme sets come in as
+saved sets too (see [Geneious files](#geneious-files)). The codon
+optimizer's restriction sites to avoid can be a saved set as well as a
+built-in group; a set deleted since leaves it avoiding none.
+
+A set holds enzyme names, spelt as the database spells them and matched
+without regard to case, not the enzymes themselves, so it keeps working
+when the database is rebuilt. A name the database does not know is left
+out and said so: the database is REBASE's commercially available enzymes,
+and a set from elsewhere can name others. Sets are saved with the session
+and travel in session files; a merged session adds its sets beside the ones
+already saved, skipping any with the same name and enzymes.
+
+---
+
+## Virtual Gel
+
+A gel is an explorer item: a set of running conditions and an ordered row of
+up to 20 lanes, each holding one sample, the way a real comb leaves wells
+empty. It opens as a workspace with the gel drawn tall on the left and an
+inspector on the right for the selected lane or the running conditions.
+Nothing is behind a Run button: the gel is re-simulated on every change.
+Every change is an undo step. A gel has a kind: agarose for DNA, SDS-PAGE
+for proteins (see [SDS-PAGE](#sds-page) under Proteins for the protein
+side).
+
+### Lanes
+
+A lane is a ladder, a sequence (uncut, or cut with any enzymes; the digest
+dialog's "Run on gel" starts a gel from the current digest), a PCR product
+(a template and two primers from the primer library), typed-in band sizes
+to compare against a real gel, or a protein. Lanes are worked directly on
+the gel: click a lane to select it, drag wells to reorder, click the empty
+well after the last lane to add one, hover a band to see what is in it, and
+read the size at any height off the cursor line. Keyboard: Left and Right
+pick a lane, Alt+Left and Alt+Right move it, Delete removes it, Insert adds
+one.
+
+Mass is tracked from the load (500 ng for a digest, 100 ng for a PCR, 50 ng
+per typed band) down to every fragment, which gets the share of the load
+its length is of the whole, so brightness on the gel means something.
+Uncut circular DNA splits into forms with different mobilities: a clean
+miniprep is 80% supercoiled, 17% nicked and 3% linear by default, with
+other presets offered. A circular sequence cut once is one full-length
+linear molecule. Sites that dam or dcm methylation blocks are skipped, by
+the same rule as the cloning digest (see [Methylation](#methylation)), so
+the two always agree. A PCR lane shows the product and, fainter (15% of its
+mass, at most eight), any other product the pair could make.
+
+The lane inspector lists every molecule in the lane with its size, form and
+mass and its coordinates on the source. Rows and bands are linked (hover a
+row to outline its band), a fragment can be found in its sequence with the
+fragment selected, and a band can be cut out: the fragment opens as a new
+sequence with its features carried over and its ends described, the way a
+band is cut out of an agarose gel and purified.
+
+### Migration model
+
+Mobility relative to free DNA follows a sigmoid in log size:
+
+```
+r(L) = m + (1 - m) / (1 + (L / Lc)^alpha)
+```
+
+Small fragments slip through the pores and approach r = 1; large ones
+reptate at a limiting mobility m, so everything above the resolution window
+piles into a compression zone below the wells instead of spreading out. Lc
+is the size the gel separates best: 1,900 bp at 1% agarose in TAE, falling
+with the agarose percentage to the power 1.8 as the pores shrink. TBE
+sieves a little harder (Lc scaled by 0.8), which is why it resolves small
+fragments better. alpha is 1.25; m is 0.05 at 1% and shrinks with denser
+gels. Agarose runs from 0.5% to 3%.
+
+The run is timed by the bromophenol blue front, as it is at the bench ("run
+until the dye is three quarters down"), which stands in for voltage x time.
+The dye is a small molecule with a fixed relative mobility (0.9; xylene
+cyanol 0.32), so the DNA size it co-migrates with falls out of the model:
+about 350 bp in 1% TAE and 100 bp in 2%, matching loading-dye charts.
+Fragments that would travel past the end of the gel have run off and are
+listed as such. Three formats set the run length: mini (60 mm), midi (130
+mm) and large (180 mm).
+
+The parameters were tuned by eye against published ladder images and dye
+co-migration tables. The model is approximate by design: good enough to
+judge whether two bands will separate, not a substitute for a real gel.
+
+### Bands
+
+Each molecule lands at a distance from the well with a Gaussian spread, in
+millimetres, from three sources: stacking out of the well (DNA entering the
+gel stacks into a layer much thinner than the well, 0.18 mm sigma),
+diffusion, which grows with distance and hits small fragments hardest, and
+overloading, where a band holding hundreds of ng is visibly fatter (from
+100 ng up). Molecules whose centres are closer than 1.6 mean sigmas merge
+into one band, so 3,000 and 2,950 bp read as a single, brighter band, as
+they would for real; the merged band's centre is mass-weighted and its
+spread follows the law of total variance. Bands under 2 ng are below what
+ethidium bromide shows and are drawn faint.
+
+### Ladders
+
+Each ladder band carries a mass. Most commercial ladders load roughly equal
+mass per band, with one or two reference bands at about 2.5x to orient by
+eye, and the built-in ladders follow that pattern for a 500 ng load;
+they are representative, not any one vendor's datasheet. Lambda/HindIII is
+a digest of a single molecule, so its fragments are equimolar and their
+masses scale with size, which is why its 125 bp band is barely visible on a
+real gel too. Protein ladders (the common 10-250 kDa and broad-range sets)
+load about 2.5 µg.
+
+### Looks and export
+
+The gel is imaged through a look: UV with ethidium bromide, the same
+inverted, blue light with SYBR Safe or GelGreen, or a schematic of flat
+vector bands for figures. A look is a colour ramp from bare gel to
+saturated band; exposure is adjustable from -2 to +2 stops. The canvas, the
+high-resolution PNG, the SVG (labels, wells and schematic bands as real
+vector shapes, a raster slab embedded as an image) and the PDF all paint the
+same scene, so they cannot drift apart. A lane table exports as CSV, and
+the PDF carries it under the image.
+
+### Diagnostic digest designer
+
+Given the sequences a sample might be (the clone you wanted, the empty
+vector, the insert backwards), the designer finds the enzymes that tell
+them apart on this gel. Every single enzyme and, optionally, every pair
+from a pool (common 6- and 8-cutters, all 6-cutters, or every enzyme) is
+tried on every candidate, and each digest is run through the same migration
+and band model the gel draws, so "distinct" means distinct at this agarose
+percentage and run length.
+
+A design scores well when the candidates' band patterns sit far apart (the
+smallest, over all pairs of candidates, of the largest gap between a band
+in one lane and the nearest band in the other, a Hausdorff distance; under
+1 mm is hard to tell by eye, 3 mm counts as fully distinct), when each
+pattern is readable (at most seven bands, inside the gel's useful range,
+none merged, none under 250 bp), and when it needs one familiar enzyme
+rather than two. Pairs are only tried among enzymes that cut every
+candidate at most four times, and no design may cut a candidate more than
+eight times, which keeps a full 6-cutter search fast. With a single
+candidate only readability counts: a clean confirmatory digest. Applying a
+design lays the gel out for it (a ladder that fits, then a lane per
+candidate) in one undo step. Isoschizomers that would do the same job are
+listed with each design.
+
+---
+
+## Primers
+
+### Primers as oligos
+
+A primer is stored as the oligo you would order: its full 5'→3' sequence,
+tails included (`app/src/primers/oligo.ts`). Where it binds is never stored.
+It is recomputed from the sequence (`binding.ts`): 10-mer seeds find candidate
+diagonals on both strands in one pass over the template, and the best-scoring
+run of paired bases along each diagonal is the annealed part. Whatever lies
+outside that run is a tail, so overhangs (restriction sites, homology arms,
+promoters) need no special handling. Mismatches inside the run are allowed;
+a primer only counts as bound where its 3' end pairs, a probe anywhere.
+
+Tailed primers have two Tms, both shown: the annealed part (first cycles)
+and the whole oligo (once the tail is copied into the product). SnapGene
+files keep the full sequence; GenBank writes one `primer_bind` feature per
+binding site with the oligo in `/primer_sequence`.
+
+Hovering a primer or probe on the sequence or map shows its Tm, GC, length,
+hairpin and self-dimer Tm with a traffic-light grade (see "Hairpin and
+self-dimer Tm" above), the restriction sites in its 5' tail and, for probes,
+the TaqMan checks. Tap Shift while any hover card is open to pin it, so its
+text can be selected; Esc or a click elsewhere unpins it. Right-clicking
+opens a compact menu (summary line, then actions, with Copy, New Primer and
+Origin in submenus). It works with the arrow keys and scrolls on short
+screens.
+
+### Design workbench
+
+The Design view of the sidebar's Primers tab, with five tasks:
+
+- **PCR / qPCR** - a pair (and optionally a TaqMan probe) around a target
+- **Cloning** - binding parts that start exactly at the insert's ends, behind
+  restriction-site tails (with padding, and a warning if the enzyme also cuts
+  the insert) or homology arms read off a vector (Gibson / In-Fusion)
+- **Mutagenesis** - substitutions, insertions and deletions, back-to-back
+  (Q5 SDM style) or overlapping (QuikChange rule, Tm ≥ 78 °C); the mutant
+  can be opened as a new sequence
+- **Sequencing** - primers tiled so reads overlap across a region, each
+  binding the template exactly once
+- **Check a primer** - where an oligo binds in every open sequence
+
+Any forward/reverse pick can be run as an in-silico PCR (`primers/pcr.ts`):
+the product opens as a new sequence with both 5' tails built in and the
+template's features carried over, ready for the cloning dialog.
+
+### Primer library
+
+Oligos you keep across sequences, listed in the explorer's **Oligos** group
+(folders, tags, notes, stars and search as for any item). A library oligo
+that binds the open sequence carries a badge; opening one shows where it
+binds in every open sequence. When you open a sequence that library primers
+bind, a notice offers them, and the Primers tab lists them with Add buttons.
+Library oligos are copied onto a sequence, not linked, so editing one leaves
+the other alone.
+
+Oligos come in by paste or file (CSV/TSV with Name and Sequence columns,
+"name sequence" lines, bare sequences or FASTA; unreadable lines are
+listed) and go out as CSV, FASTA or a tab-separated order sheet (Name,
+Sequence, Scale, Purification, as vendor bulk-entry forms take them). The
+library is saved with the session and included in session export.
+
+In the PCR task the target follows the selection; regions can be excluded. Each run returns the best pairs and the
+whole candidate landscape (best candidate per 3' end), drawn as a track so
+either side can be picked on its own. Picks are oligo sequences: they can be
+trimmed or extended along the template, are drawn on the sequence and map as
+dashed previews, and are re-scored as a pair live. Presets set the ranges;
+buffer presets set the salt and oligo concentrations for the Tm model.
+
+### Overview of the search
+
+1. **Enumerate candidates** - slide windows of varying length upstream (forward)
+   and downstream (reverse) of the target region, skipping excluded regions
+2. **Score each candidate** - evaluate against thermodynamic and structural
+   criteria, producing a weighted penalty with a per-term breakdown
+3. **Pair candidates** - combine the best 200 of each side, filter by product
+   size, and add pair-level penalties (Tm matching, cross-dimer)
+4. **Rank and return** - sort pairs by total penalty; return the top pairs and
+   the thinned candidate lists
+
+A target longer than the maximum product is reported, not worked around by
+changing the settings.
+
+### Individual Primer Scoring
+
+Each candidate primer is evaluated on multiple criteria. Hard constraints
+reject the primer entirely; soft penalties contribute to a weighted score.
+
+#### Hard Constraints (reject if violated)
+
+| Criterion | Default range |
+|-----------|---------------|
+| Tm | 57-63 °C |
+| GC content | 40-60% |
+| Homopolymer run | ≤ 4 bases |
+
+#### Soft Penalties (weighted score)
+
+| Criterion | Weight | Description |
+|-----------|--------|-------------|
+| Tm deviation | 1.0 per °C | Distance from optimal Tm (default 60°C) |
+| Length deviation | 0.5 per base | Distance from optimal length (default 20 bp) |
+| GC deviation | 0.1 per % | Distance from 50% GC |
+| No GC clamp | +1.0 | No G or C in the last 2 bases at the 3' end |
+| 3' stability (too stable) | +2.0 | ΔG₃₇ of last 5 bases < −9.0 kcal/mol |
+| 3' stability (too weak) | +1.0 | ΔG₃₇ of last 5 bases > −5.0 kcal/mol |
+| Self-complementarity ≥ 8 bp | +3.0 | Significant self-dimer potential |
+| Self-complementarity ≥ 5 bp | +1.0 | Moderate self-dimer potential |
+| 3' end self-dimer ≥ 4 bp | +4.0 | 3' end can pair with itself (blocks extension) |
+| 3' end self-dimer ≥ 3 bp | +1.5 | Moderate 3' dimer risk |
+| Hairpin stem ≥ 4 bp | +2.0 | Can fold into a hairpin |
+| Hairpin stem ≥ 3 bp | +0.5 | Weak hairpin potential |
+| Homopolymer run ≥ 3 | +0.5 per extra base | Soft penalty for long runs |
+
+### Pair Scoring
+
+```
+pair_penalty = fwd_penalty + rev_penalty
+             + |Tm_fwd − Tm_rev| × 1.0        (Tm matching)
+             + |product_size − optimal| × 0.01  (product size)
+             + cross_dimer_penalty               (3' cross-dimer)
+```
+
+### Thermodynamics
+
+Tm uses the unified nearest-neighbour parameters with the Owczarzy (2008)
+salt correction (monovalent and Mg²⁺, with Mg²⁺ bound by dNTPs), and is
+validated against Biopython's `Tm_NN` reference values. A primer's Tm at a
+binding site is taken against the template bases it faces: internal
+mismatches use the Allawi & SantaLucia / Peyret tables and the first tail
+base the terminal-mismatch table (tables from Biopython, BSD 3-Clause; see
+`primers/thermo/tables.ts`). Dimer ΔG allows single internal mismatches;
+loops and bulges are not modelled. An off-target scan reports weaker sites
+where a primer's last 8 bases pair perfectly.
+
+The cross-dimer check considers the 3' end of both primers. (Before the
+workbench it checked the second primer's 5' end by mistake, so a dimer on the
+reverse primer's 3' end went unpenalised.)
+
+### User-Configurable Parameters
+
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| Tm range | 57-63 °C | Min/max acceptable Tm |
+| Optimal Tm | 60 °C | Target Tm for penalty calculation |
+| Primer length | 18-25 bp | Min/max primer length |
+| Product size | 150-1000 bp | Min/max amplicon size |
+| GC content | 40-60% | Min/max GC of each primer |
+| Na⁺ concentration | 50 mM | Monovalent cation concentration for Tm calculation |
+| Mg²⁺ / dNTPs | 1.5 / 0.8 mM | Divalent correction, free Mg²⁺ = Mg²⁺ − dNTPs |
+| Primer concentration | 250 nM | Oligo concentration for Tm calculation |
+
+Presets: Standard PCR, GC-rich template, Long amplicon (1-5 kb) and qPCR with
+probe (70-150 bp, probe Tm 68-72 °C).
+
+---
+
+## Codon Optimization
+
+Rewrites a coding region for expression in another host: pick the codons the
+host translates well, keep the restriction sites your cloning strategy needs
+free, and stay inside what a synthesis vendor will accept.
+
+The protein is the invariant. Whatever the settings, the optimizer re-translates
+its own output and throws if it does not match the input protein, rather than
+returning a sequence that codes for something else.
+
+### Targets
+
+| Target | What it optimizes |
+|--------|-------------------|
+| Selection | The selected bases, read in frame from the first one |
+| Coding features | Every CDS-like feature, individually checkable |
+| Whole sequence | Frame 1 from position 0 |
+
+A feature on the minus strand is read and written back in its own orientation,
+`/codon_start` is honoured, and an origin-spanning feature on a circular
+sequence is followed round the join. Each region is reduced to a coding-strand
+string plus a map from every base back to its genomic index, so those three
+cases share one code path rather than three.
+
+Two CDSs that share bases cannot both be optimized: rewriting one changes the
+other's reading frame. The first wins and the overlap is reported.
+
+### Genetic codes
+
+19 NCBI translation tables (1-6, 9-14, 16, 21-26), stored as diffs against the
+standard code. This decides which codons are synonymous, so a mitochondrial
+gene is not truncated at a TGA that codes for tryptophan in its own code.
+`utils/codon.ts` re-exports table 1, so the app has one copy of the standard
+code rather than two that can drift.
+
+### Codon usage tables
+
+| Source | Notes |
+|--------|-------|
+| Built-in | E. coli K-12, B. subtilis, S. cerevisiae, P. pastoris, H. sapiens, CHO, Sf9, A. thaliana |
+| Imported | EMBOSS cusp (.cusp) and GCG CodonFrequency (.cod). Persisted in IndexedDB. |
+
+The built-in tables are written from published genome-wide averages and are
+flagged `approximate` in the data and in the UI: the rankings and rare-codon
+calls are right, the low-order digits may differ from a particular reference.
+Import a table when the exact figures matter.
+
+Both formats are whitespace-aligned tables with a header naming their columns,
+and they order those columns differently:
+
+```
+cusp    #Codon AA Fraction Frequency Number
+GCG      AmAcid Codon Number /1000 Fraction ..
+```
+
+So the header is read and the columns taken by name, preferring Fraction, then
+the per-thousand frequency, then the raw count. Within a family all three are
+proportional, so the choice is about robustness rather than correctness: some
+GCG tables ship with the count column zeroed. Anything else with one codon and
+one number per line is still accepted as a plain list, which covers a Kazusa
+block or a quick paste.
+
+A family with no usage stays at zero rather than being spread evenly, so
+`unusableResidues` can report an amino acid the table cannot encode instead of
+the optimizer silently inventing a preference.
+
+### What gets changed
+
+- **Every codon**, choosing either the most frequent synonym or one sampled
+  from the host distribution. Sampling is seeded, so a run reproduces exactly,
+  and it avoids the long identical runs that "most frequent" produces.
+- **Rare codons only**, above a configurable within-family threshold.
+
+### Constraints
+
+| Constraint | Detail |
+|------------|--------|
+| Forbidden motifs | Enzyme groups (built in, or a saved enzyme set), individual enzymes, custom IUPAC motifs, and presets for Type IIS sites, internal Shine-Dalgarno, polyA signals, cryptic splice sites and E. coli promoter boxes. Checked on both strands. |
+| Homopolymers | Separate limits for A/T and G/C runs |
+| GC content | Global bounds plus a sliding local window |
+| Repeats | Direct repeats over N bp |
+| Hairpins | Inverted repeats with a stem over N bp within a loop distance |
+| CpG | Avoided when asked, for mammalian constructs |
+| Locked codons | Start, stop, the first N codons, and anything under a protected non-coding feature |
+
+Constraints are checked across the region boundary into the untouched flanks,
+so a site that would straddle the edge is still avoided.
+
+### Algorithm
+
+Greedy left to right with bounded backtracking. Each codon takes the best
+synonym that leaves the window it can affect free of violations; when nothing
+fits, the walk steps back and tries the previous codon's next choice. Past the
+step budget it keeps the best remaining option and reports the violation rather
+than failing the whole run.
+
+A full dynamic program is not an option here: the state would have to be the
+last K bases, where K is the longest constraint window, so the table is 4^K
+wide.
+
+Direct repeats are the one constraint that is not local, since the other copy
+can be anywhere. They are tracked in an index built as the walk proceeds and
+rolled back on backtracking, which keeps the run linear where re-scanning per
+codon would make it quadratic.
+
+Optimization runs on the main thread. A few thousand codons take milliseconds,
+and the dialog previews on a 200 ms debounce; past 60 kb of target it waits for
+an explicit run instead.
+
+### Metrics
+
+CAI, GC, GC3, rare codon count and the longest A/T and G/C runs, before and
+after. CAI is the geometric mean of relative adaptiveness over the region,
+skipping single-codon families (Met, Trp), which carry no information about
+adaptation and would only drag every score toward 1.
+
+### Applying
+
+Applying is an equal-length substitution through `substituteBasesInPlace`: one
+undo entry, and no annotation moves, because no coordinate changes. This is why
+it does not reuse `replaceBases`, which deletes then inserts, and would drop
+the very CDS being optimized (an annotation fully inside a deleted range is
+removed). The result can also be opened as a new sequence, leaving the original
+untouched.
+
+---
+
 ## Sequence Alignment
 
-### Algorithms
+### Engines
 
-Multiple alignment normally runs MAFFT 7.520, MUSCLE 5 or Kalign 3: the
-biowasm WebAssembly builds kept in `wasm/` (see `wasm/README.md`), one job per
-worker so a job can be cancelled. "Automatic" picks MAFFT L-INS-i where it is
-quick enough, Kalign for large sets, and the built-in pairwise aligner for two
-sequences.
+Multiple alignment normally runs MAFFT 7.520, MUSCLE 5 or Kalign 3.3: the
+biowasm WebAssembly builds kept in `wasm/` (see `wasm/README.md`), one job
+per worker so a job can be cancelled. MAFFT runs as `tbfast`, which does
+the pairwise stage, the progressive alignment and 16 rounds of iterative
+refinement itself, with the three *-INS-i strategies the `mafft` script
+offers: L-INS-i (local pairwise, best when sequences share one alignable
+domain with unalignable ends), G-INS-i (global pairwise, for sequences
+similar over their whole length) and E-INS-i (generalised affine gaps, for
+several conserved domains separated by long unalignable regions). Kalign
+detects DNA or protein itself.
+
+"Automatic" uses the built-in pairwise aligner for exactly two sequences,
+MAFFT L-INS-i when its estimated running time is 20 seconds or less, and
+Kalign otherwise. The estimate comes from timing the WebAssembly builds on
+one thread and is good to a factor of two or three: enough to warn before
+starting something that will take minutes, which the dialog does.
+
+Rows are sent to the tool renamed `s0`, `s1`, ... (names with spaces, odd
+characters or duplicates can confuse the tools) and put back in input
+order whatever order the tool writes them in. Every row is checked to have
+come back with exactly its residues, so a tool that dropped or changed one
+cannot slip a wrong alignment through. A fresh WebAssembly instance is
+started for every run, which costs milliseconds against seconds of
+alignment.
+
+### The alignment viewer
+
+An alignment is a document of its own: a stack of gapped rows that you own
+and edit. A row is a copy; it remembers which sequence it came from, for
+display, but editing it never reaches back into the source, and the source
+changing never reaches into the alignment. "Extract row as sequence" is the
+way out. Every row is the same length, and the document stays rectangular
+with no gap-only columns at the right edge. How the alignment came to be
+(the engine and strategy, or the file and format it was imported from) is
+kept with it, for display and for "realign".
+
+The grid draws names on the left, header tracks on top and residues in a
+scrolling canvas; only the visible cells are painted. Display settings are
+kept per alignment, outside its undo history (changing the colours is not
+an edit), and saved with it:
+
+- **Colour schemes.** Some colour a residue by what it is (Zappo, Taylor,
+  nucleotides); others by its column: Clustal X colours a residue only where
+  the column is conserved enough, percent identity shades by how many rows
+  share it, BLOSUM62 compares with the consensus. Colours can fill the cell
+  or the letter, and residues identical to the comparison row or consensus
+  can be drawn as dots. The palette is blended into the theme's canvas
+  colour, so one set of colours reads on light and dark themes.
+- **Tracks.** Consensus (with a threshold from "most common residue" to
+  unanimous), identity and similarity graphs, a sequence logo and Clustal
+  conservation marks, all read off the column profile. Mean pairwise
+  identity for a selection is computed from the column counts (the
+  identical pairs in a column with counts c_k are the sum of C(c_k, 2))
+  rather than by comparing every pair of rows, so the statistics stay
+  linear in the selection's size and update on every edit.
+- **Translation.** A DNA alignment can show a translation strip, or colour
+  bases by the amino acid they encode. Each row is read from its own first
+  residue in the chosen frame, skipping gaps, so a codon can straddle a gap.
+  A gap run inside the coding stretch whose length is not a multiple of
+  three shifts the frame for the rest of the row; those runs and internal
+  stops are reported, since they are usually alignment or sequencing errors
+  to correct.
+- **Search.** A motif (IUPAC codes for DNA, X for protein) is searched in
+  each row without its gaps, so a motif split by a gap is still found, and
+  reported as the columns it spans.
+
+Gestures: drag across cells to select a block, drag along the ruler to
+select columns, click a name to select its row (Ctrl adds, Shift extends),
+drag names to reorder, double-click a name to rename. The inspector shows
+statistics for the selection (the whole alignment when nothing is selected)
+and the actions that apply to it.
+
+### Editing an alignment
+
+Viewing is the default; Edit turns on direct editing. Type residues to
+overwrite (or insert, with the Insert key), Space or `-` inserts a gap,
+Backspace and Delete remove gaps or replace residues with gaps, and a
+selected block can be dragged sideways to slide it through the gaps beside
+it. Edits that make some rows longer pad the others with trailing gaps.
+Every change is a named undo step.
+
+### Adding sequences and realigning
+
+Sequences (open sequences, Sanger reads as trimmed, or pasted FASTA) can be
+added to an alignment in two ways. "Fit to this alignment" aligns each new
+sequence to the alignment as a profile, the column residue frequencies,
+and only inserts gap columns into the existing rows, so hand edits stay as
+they are. Profile-sequence scoring is the expected substitution score
+under the column's frequencies, with affine (Gotoh) gaps and free end gaps,
+so a partial sequence (a read, a fragment, a single domain) lies where it
+fits instead of being stretched across the whole alignment. "Realign
+everything" runs an engine on all rows.
+
+Realign also works on a selection: only the chosen block is sent to the
+engine, as ungapped residues, and the result is spliced back in place, so
+the rest of the alignment, including hand edits, is untouched. Rows with no
+residues in the block are left alone.
+
+### Alignment formats
+
+Alignments are read and written as aligned FASTA (also A2M), Clustal (as
+written by Clustal W/X/Omega, MUSCLE and MAFFT), PHYLIP (strict or relaxed
+names, sequential or interleaved; files rarely say which, so the reader
+tries each and keeps the first reading in which every row has the declared
+length), NEXUS (the DATA or CHARACTERS block, with comments, quoted names,
+interleaving, MATCHCHAR and polymorphisms; other blocks are skipped),
+Stockholm (annotation lines skipped, first alignment only), GCG MSF (with
+its checksum), MEGA (.meg; a distance matrix in the same extension is
+refused with a clear message) and PIR/NBRF (also used for MODELLER). The
+format is decided by the file's content first and its extension only when
+the content does not say.
+
+### Figures
+
+Export the alignment as a figure: pick the region, the line width, the
+tracks and the size, see it, then save SVG, PNG or PDF. Colours,
+highlighting and translation follow the current view.
+
+### Built-in pairwise algorithms
 
 The built-in algorithms are pure TypeScript with no external dependencies:
 
@@ -626,9 +2345,11 @@ by BLAST and minimap2:
 This reduces a 4 kb × 4.6 Mb alignment to a hash lookup plus SW on ~4 kb × ~8 kb.
 Highly repetitive k-mers (>500 occurrences) are skipped to limit memory.
 
-#### Progressive MSA (multiple sequences)
+#### Built-in progressive MSA
 
-For 3+ sequences, uses progressive multiple sequence alignment:
+The alignment worker also carries a progressive multiple aligner, used when
+it is handed three or more sequences (the alignment tool itself sends three
+or more to MAFFT, MUSCLE or Kalign):
 1. Compute all-pairs distance matrix via pairwise NW scores
 2. Build a UPGMA guide tree
 3. Align sequences/profiles progressively following the tree
@@ -654,6 +2375,852 @@ the two profiles.
 | Global pairwise (too large) | Rejected with error | - |
 
 All alignment runs in a Web Worker to keep the UI responsive.
+
+---
+
+## BLAST
+
+BLAST Search (in the Analyse group, and from a feature's menu) sends the
+whole sequence, the selection or a feature to NCBI BLAST and shows the hits
+in the editor. It needs a network connection; nothing runs locally.
+
+- **Programs and databases.** For a DNA query: megablast (fast, high
+  similarity), blastn, blastx (translated query against a protein
+  database) and tblastx; for a protein query: blastp and tblastn. The
+  nucleotide databases offered are core_nt, nt, RefSeq RNA, RefSeq
+  representative genomes, RefSeq Select and wgs; the protein ones are nr,
+  Swiss-Prot, RefSeq protein and pdb. Opening the dialog from a protein
+  switches to blastp against nr, and from DNA back to megablast against
+  core_nt. The E-value threshold (10 by default) and the number of hits (25)
+  can be set. Settings are remembered between searches.
+- **How it runs.** The NCBI URL API's two-phase workflow: the search is
+  submitted and answered with a request id (RID), then its status is polled
+  every 15 seconds until it is ready and the result is fetched as JSON.
+  Requests use URL-encoded form bodies so the browser sends no CORS
+  preflight. A search still running after 15 minutes is given up on, with
+  the RID shown so it can be looked up at NCBI.
+- **Results.** A table of hits with accession, title, organism, E-value,
+  bit score, identity and coverage; each hit expands to its HSPs with the
+  aligned query, midline and subject. Checked hits can be added to the
+  document as features over the aligned query range in one undo step. The
+  last ten results are kept in the browser's localStorage and reopen
+  without a new search.
+
+---
+
+## CRISPR Guide Design
+
+Guides are found, scored and kept the way restriction sites are found and
+cloning parts are kept: a scan over the open sequence, an overlay that draws
+what it found, and a conversion into features for the ones worth keeping. The
+Guides tab in the right sidebar holds the whole of it, and there is no Run
+button: the settings are the scan.
+
+### Nucleases are data
+
+A nuclease is a record, like a restriction enzyme in `enzymes/db.ts`. It
+carries its PAM as an IUPAC pattern, which side of the protospacer the PAM
+sits on, the spacer lengths it accepts, where it cuts and whether it cuts at
+all. Adding one is a row in `crispr/nucleases.ts`, and the same record can be
+built from what a user types, so a PAM that was published this month can be
+scanned today. The shipped set covers the SpCas9 family and its PAM variants,
+the D10A nickase and a catalytically dead version for interference and
+activation, SaCas9 and its KKH variant, St1, Nme and Cj Cas9, and the Cas12a
+proteins with their 5' PAM and staggered cut.
+
+Both cut offsets are stored as distances in bases from the PAM edge of the
+protospacer, counted into the protospacer and onward, so they do not change
+when the spacer length does:
+
+| Nuclease | PAM | Spacer | Cut offsets | End |
+|----------|-----|--------|-------------|-----|
+| SpCas9 | NGG, after | 20 | 3 and 3 | blunt |
+| SaCas9 | NNGRRT, after | 21 | 3 and 3 | blunt |
+| Cas12a | TTTV, before | 23 | 18 and 23 | 5' overhang |
+
+`cut.site` is the cut on the strand the protospacer is written on and
+`cut.opposite` the cut on the other; the finder turns both into sense-strand
+coordinates, reported as `cutTop` and `cutBottom` the way the enzyme finder
+reports `fwdCut` and `revCut`. Anything that draws a break or measures a
+fragment can then treat a nuclease and an enzyme alike.
+
+A nuclease the user describes may leave both cut positions empty. That is not
+a missing field but a claim withheld: the row finds sites and scores them, and
+reports no cut, so nothing downstream pretends to know where the break is.
+
+### Finding sites
+
+The PAM is matched as an IUPAC pattern on both strands and the spacer is taken
+from the side the nuclease expects it, which makes the scan linear in the
+sequence length. A circular molecule is searched across its origin, so a site
+spanning the origin is found once and its coordinates are wrapped back into
+the sequence, with an end below its start as elsewhere in the app. On a linear
+molecule a PAM with no room for its spacer is not a site and is left out,
+while a site whose cut falls off the end is reported and flagged: the
+recognition is real, nothing is cut.
+
+A spacer holding anything other than A, C, G or T is not returned. It could
+not be ordered and its scores would be meaningless, so the scan counts those
+instead and the panel says how many, which is what makes an unfinished contig
+explain itself rather than look empty.
+
+A two-base PAM on a long sequence is effectively unbounded, so the scan stops
+at a site cap and says that it did. The panel then suggests narrowing the scan
+to the selection, which is the setting it already offers.
+
+### Scoring, in three separate columns
+
+A single figure of merit would hide which property a guide fails on, so three
+kinds of claim are kept apart and sorted one at a time.
+
+**The activity model.** What ships is a transparent heuristic over sequence
+properties that are consistently reported to track SpCas9 activity: GC content
+against an optimum of 55%, T at the four bases next to the PAM, which base sits
+against the PAM, the first base of an NGG PAM, and penalties for a terminator
+run, a long homopolymer and self-folding. It is not one of the published fitted
+models. Those are regressions over thousands of measured guides with a fixed
+window of flanking sequence, and their coefficients belong in a data file; the
+model registry in `crispr/score/ontarget.ts` exists so such a table can be
+added as data and selected per nuclease without touching the finder or the
+panel. Because the number is a heuristic, every term is returned with its
+contribution and the inspector shows the arithmetic.
+
+Only the SpCas9 family carries a model. Every other nuclease reports no score
+rather than borrowing one fitted for a different protein, which would read as
+information while being noise.
+
+**The repair outlook.** End joining often uses a short identical stretch on
+either side of the break, deleting what lies between the two copies and keeping
+one. Which deletions are available is a property of the sequence, so it can be
+predicted, and the share of them that shift the reading frame is the most
+useful single number when the goal is to knock a gene out. Following Bae and
+colleagues, every pair of identical stretches flanking the cut within a
+40-base window is enumerated and scored
+
+```
+pattern = 100 * exp(-deletionLength / 20) * (length + gcCount)
+```
+
+so short deletions and GC-rich microhomologies dominate, and the out-of-frame
+score is the share of the total carried by deletions whose length is not a
+multiple of three. Pairs are enumerated once per deletion length by walking the
+diagonals of the comparison, which counts each maximal microhomology a single
+time rather than once per nested copy of it. The formula is implemented as
+published; the tests check its invariants, not numeric agreement with the
+authors' own tool. A cut too close to the end of a linear molecule returns
+nothing rather than a number from a short window, and above a cap of 2000 sites
+the prediction is left out of the batch and made for the selected site alone.
+
+**The flags.** Properties of the sequence that hold whatever the nuclease, each
+reported as a named chip with a sentence of detail: GC outside 35% to 75% (and
+badly outside 25% to 85%), four or more T in a row, which reads as a terminator
+and cuts a transcribed guide short, a homopolymer of five or more, a
+self-folding stem of seven bases or more, and the promoter's start base, where
+U6 transcribes best from a G and T7 from two. The last is a note rather than a
+fault: the usual answer is to order the guide with the extra base added.
+
+### Off-target search
+
+A guide is only as good as the places it does not bind, so the panel can take
+a finished spacer and look for near copies of it next to a usable PAM. The
+search is the site finder run the other way round: PAM positions first, which
+is cheap, then the spacer compared from its PAM-proximal end outward so a
+site that cannot qualify is abandoned after a few bases.
+
+**What is searched is always named.** The app ships no genome. Pretending
+otherwise would be the worst thing this feature could do, because a
+specificity score from a 5 kb plasmid reads exactly like one from a
+chromosome. The scope is the first control in the section, not a buried
+setting, and every result carries the names and the total size of what was
+read back to the panel, which prints them under the count. Three scopes: the
+open sequence, every open sequence, or a FASTA file (one record or many)
+loaded for the purpose, up to a size the page can hold.
+
+**Mismatches and unpaired bases.** The budget is up to six mismatches.
+Bulges, meaning one unpaired base in the target or in the guide, are off by
+default because they multiply the work, not because they do not happen; with
+them on, each PAM position also gets a comparison at one base longer and one
+base shorter, with the gap position enumerated so the result stays exact
+rather than heuristic. Weaker PAMs are a separate switch: the SpCas9 rows
+carry NAG as an alternative, which is searched only when asked and scored
+down when found.
+
+**Scoring is a heuristic, for the same reason the activity model is.** A
+mismatch leaves most of the site's activity when it falls at the far end of
+the spacer and almost none when it falls against the PAM, so each mismatch
+multiplies the site's score by a factor interpolated between the two:
+
+| Where the mismatch falls | Factor |
+|--------------------------|--------|
+| against the PAM | 0.08 |
+| at the far end of the spacer | 0.85 |
+| an alternative PAM, whatever the mismatches | 0.2 |
+| an unpaired base | 0.25 |
+
+The line between the two ends is deliberately straight. The real profile is
+bumpy and sequence-dependent, and smoothing it is more honest than inventing
+the bumps. A fitted table belongs in a data file beside the model, exactly as
+for the activity model.
+
+The aggregate takes the shape the field uses: a guide with nothing else to
+bind scores 100, and the score falls as credible hits accumulate.
+
+```
+specificity = 100 / (1 + sum of hit scores)
+```
+
+**The guide's own site is not one of its off-targets**, so it is excluded and
+counted separately. A second perfect match elsewhere is reported, and marked:
+a spacer that matches two places exactly cannot tell them apart.
+
+**What a hit lands in matters as much as how many bases differ.** When the
+target is a document with features, the smallest feature covering the hit is
+named on the row, and one in a coding feature is marked. Each hit is drawn as
+two lines, the spacer and the site under it with matching bases as dots, so
+the mismatches are the only letters there are to read.
+
+The search runs in the worker, reports progress target by target, and can
+cover several guides in one pass, since the targets are read once either way.
+
+### What the views draw
+
+In the sequence view a guide is a stand-in annotation in the feature lanes,
+the way a primer binding site is, so it rides the existing stacking, hover and
+hit-testing. Its footprint is the protospacer plus the PAM, so the PAM has room
+in the lane rather than being drawn over its neighbour. Within that footprint
+three things are drawn in order of prominence: the protospacer as a bar with
+its arrowhead at the 3' end, the PAM as a solid block in its own shade, and the
+cut as a tick through the bar. A staggered cutter gets two ticks joined across
+the middle, which is what makes an overhang visible without reading a number.
+Picked guides are outlined in the accent colour, as picked ORFs and motifs are.
+
+On the plasmid map only the cut is drawn, as a tick outside the backbone with a
+dot at its end and a shorter companion tick for the second cut of a staggered
+pair. A 20-base arc on a plasmid-wide circle is a smudge; the cut is what a map
+is read for, and the protospacer is there in the rings once it is a feature.
+Clicking a tick selects its protospacer.
+
+Above the candidate list is a strip dividing the sequence into as many buckets
+as the strip is wide, each drawing its best candidate, coloured by the worst
+flag that candidate carries. A table of a thousand rows hides whether the
+candidates cluster and where the gaps are, which is the one thing the eye is
+good at.
+
+The colours are theme tokens (`--canvas-guide`, `--canvas-guide-pam`,
+`--canvas-guide-cut`), defined for all ten themes and read through
+`readSequenceColors`, so the print palette picks them up as it does the rest.
+
+### Designing for a goal
+
+Finding sites is the start of the job, not the job. The panel's tasks each
+take the same scan and turn it into the answer to one question, so switching
+between them costs nothing and nothing is scanned twice.
+
+**Knock out.** A cut anywhere in a gene is not equally useful. Too near the
+start codon and translation can restart past the damage; too near the stop and
+a frameshifted protein keeps almost all of itself. So guides are ranked by
+where they cut along the coding sequence, measured by walking the exons in
+translation order rather than by subtracting coordinates, and each row says
+which codon it cuts in and how much of the gene lies behind it. The ranking is
+lexicographic, not a weighted sum, for the same reason the score columns stay
+apart:
+
+1. cuts inside the preferred stretch, 5% to 65% of the gene by default
+2. no disqualifying flag
+3. the out-of-frame share, when it is known
+4. the activity score, when the nuclease has a model
+5. earlier in the gene
+
+**Delete.** Two cuts, one each side of a region, and the ends join. A pair is
+judged on what it costs beyond the region asked for, so the overshoot on each
+side is the first number on the row and the junction the join would leave is
+next to it. Opening the result builds a real document: the bases with the span
+gone, every feature moved, features wholly inside the deletion dropped, ones
+that straddle it kept and marked truncated as elsewhere in the app, and a mark
+at the join.
+
+**Knock in.** A donor is the payload with a slice of the original sequence on
+either side, which is not the interesting part. The interesting part is
+whether the nuclease can still find its site once the repair is done. So the
+donor is built, then scanned, and only then edited:
+
+- if the payload broke the site, nothing is changed and the panel says so
+- otherwise one base is changed to stop the repaired copy being cut again,
+  preferring the PAM over the seed, since breaking the PAM stops the nuclease
+  binding at all
+- inside a coding sequence a change that leaves the protein alone is preferred,
+  and when none exists the panel names the codon that changes
+- the edited donor is scanned again, so the claim that it cannot be cut is
+  checked rather than asserted
+
+Arms default to 40 bases either side and can be made asymmetric, which doubles
+the arm on the far side from the PAM.
+
+**Base edit.** A base editor changes every base of its kind inside a short
+stretch of the protospacer, so the bystanders are the whole difficulty and
+they are listed, not summarised. Positions are counted the way the literature
+counts them, from the end of the protospacer away from the PAM. Four editors
+ship, two cytosine and two adenine, with their usual windows; the window is
+editable, since a construct in hand may differ. When the chosen target base
+falls in a gene, every edit in the window is given its codon consequence,
+marked silent, missense or nonsense, and guides are ordered by how few
+bystanders they bring.
+
+**Tile.** A greedy pick down the quality order with a spacing rule, which is
+what gives even coverage instead of the cluster you get by taking the best few
+guides in a region. The gaps are reported as plainly as the picks, since a gap
+is what a tiling set is judged on, and the set copies out as a table or
+becomes features in one step.
+
+Every task works from the selection or from a feature of the document, chosen
+the same way, and the inspector and the off-target search stay available
+throughout.
+
+### Prime editing
+
+A pegRNA is an ordinary guide with a tail: after the scaffold comes a template
+for the edit, then a short stretch that pairs with the nicked strand and
+primes the copying. The tail reads as the reverse complement of the strand
+that will be made, which is the part that is easy to get backwards, so it is
+built once and shown in its three pieces.
+
+In the protospacer strand's own frame:
+
+| Piece | What it is |
+|-------|------------|
+| nick | where the nickase cuts, three bases in from the PAM for SpCas9 |
+| primer site | the bases just before the nick, reverse complemented |
+| template | the edited sequence from the nick onwards, reverse complemented |
+| pegRNA | spacer, then scaffold, then template, then primer site |
+
+The edit is given as a span to replace and what to put there, which covers a
+substitution, an insertion and a deletion without three cases. An edit behind
+the nick is refused rather than fudged: the template is copied forwards, so a
+change behind it cannot be written, and the panel says which way round the
+guide needs to be.
+
+The second nick of the paired strategy is offered from the same scan,
+filtered to guides that nick the other strand within a band of distances,
+which is a rule of thumb and therefore a setting.
+
+### Ordering
+
+Four shapes, because that is how guides are made: two annealed oligos into a
+cut vector, a template to transcribe, a synthetic RNA, or a pegRNA's own
+longer oligo. Every base the app adds is shown as an addition rather than
+folded into the sequence, since the additions are where mistakes live: the G
+a U6 promoter wants and only when the spacer does not already start with one,
+the overhangs the vector wants, the promoter in front of a template.
+
+**The scaffold is a vector's property, not a target's.** It is chosen in the
+library view, where opening one shows its sequence and its length, since the
+section asks you to check it against the plasmid on your bench and that
+cannot be done without reading it. What ships is deliberately short: a scaffold is a long constant that is easy to print
+wrongly and impossible to notice wrongly, so only the near-universal ones are
+shipped, each saying what it is, and for anything else the panel asks for the
+sequence from the plasmid in hand and keeps it. A scaffold that was never
+typed is better than one that is almost right. The same reasoning applies to
+the vector overhangs, which are presets that can be read and changed rather
+than something guessed from a vector name.
+
+### Screening
+
+Decided with the order, not after it, because a guide that cannot be screened
+cheaply is worth knowing about before the oligos are bought.
+
+- **An amplicon across the cut**, designed through the ordinary primer
+  designer, with the cut kept well away from both primers so a trace can be
+  read through it and a small indel still shows.
+- **A restriction site the cut sits inside.** An edit at the break disturbs
+  the site, so the amplicon from an edited copy is no longer cut and two bands
+  become one. The site has to be unique in the amplicon or an uncut band means
+  nothing, so enzymes cutting it more than once are left out, and the ones
+  whose site the cut falls nearest the middle of come first.
+
+When no enzyme qualifies, the panel says so: that guide needs sequencing
+rather than a gel.
+
+### Reading the result
+
+The last question is whether it worked, and it is answered from whichever
+evidence came back from the bench. Two routes, one result.
+
+**From two chromatograms.** An edited pool is a mixture: most molecules carry
+one of a handful of small insertions or deletions and the rest are untouched,
+so downstream of the break the trace is the same sequence read at several
+offsets at once. That looks like noise and is not. Given the same amplicon
+from an unedited control it can be taken apart:
+
+1. The two traces are lined up on their base calls before the cut, where they
+   should be identical, and the agreement is reported. If they disagree the
+   comparison is not valid, and the panel says so rather than fitting anyway.
+2. Over a window after the cut, one column is built per candidate offset from
+   the control, and the edited signal is fitted as a non-negative mixture of
+   them. Non-negativity is not a refinement here but the thing that makes the
+   answer mean anything: a mixture cannot have negative parts, and an
+   ordinary least-squares fit happily returns them. The solver is the
+   active-set method of Lawson and Hanson.
+3. The mixture is reported as a spectrum of length changes with their shares,
+   the share that shifts the reading frame, and the quality of both fits.
+
+What it cannot do is separate two different edits of the same length, or say
+which allele is which. It reports lengths and shares, which is what a trace
+can support.
+
+**From amplicon reads.** Each read is aligned to the amplicon and judged on a
+window around the break: the reference, an insertion, a deletion, a
+substitution, or the donor that was supplied. Reads that agree are one
+allele, and the table of alleles with their shares is the result, alongside
+the spectrum and, for a base editing run, how often each position in the
+window reads as something else.
+
+Two decisions are worth stating. The window is narrow and centred on the cut,
+because a change at the far end of an amplicon is a sequencing error or a
+polymorphism rather than an edit, and counting it as one inflates every
+number. And a read that does not span the whole window is not counted at all
+rather than counted as unmodified, since a read that stops inside the window
+cannot speak for the rest of it. Both counts of discarded reads are reported.
+
+Alignment is accurate and not cheap, so a run takes a sample of a large read
+set rather than the lot, and says how many reads it looked at and how many
+the set holds.
+
+### The guide library
+
+Guides you keep, like the oligo library and in the same shape. A guide saved
+once is yours across every document, and the useful question about it later
+is not what it scored when you designed it but whether it binds the sequence
+in front of you now, so each row says where it binds here, or that it does
+not. Scores are shown as what they were when the guide was kept, because a
+number recorded in March is not a measurement made today.
+
+### Keeping a guide
+
+A converted guide becomes a `misc_binding` feature over the protospacer alone,
+not the PAM: the spacer is the part you order and the part that binds, while
+the PAM belongs to the target, so a feature over it would claim the nuclease
+recognises DNA it only reads from. The PAM and both cut positions go in the
+note, which is what a GenBank round trip keeps. The inspector copies the
+spacer without the PAM for the same reason.
+
+### Limits
+
+The off-target search reads what you give it and nothing else, and both the
+activity model and the mismatch model are stated heuristics rather than fitted
+tables. The knock-in donor changes one base at most to stop re-cutting; a site
+that survives every single change is reported rather than worked around.
+Scaffolds and vector overhangs are shipped only where they are near-universal,
+and are otherwise asked for. Reading a result back decomposes a trace or
+counts reads; it does not genotype a plate of clones well by well, and an
+analysis is held for the session rather than kept as its own item, so it is
+copied out as a table rather than saved. Trace decomposition cannot tell two
+edits of the same length apart.
+
+---
+
+## Cloning
+
+A cloning design is an explorer item that says what goes in, how it is
+joined and what to call the product, for one of five methods: restriction
+cloning (cut each part at the sites you click on its map, and ligate the
+ends), Golden Gate (Type IIS enzymes cut beside their sites, so parts join
+seamlessly in one pot), seamless assembly (HiFi, Gibson, In-Fusion, SLIC:
+parts join on shared ends, in any order), Gateway (recombine a cassette
+between att sites into a destination vector) and TOPO (topoisomerase joins
+a PCR product straight into a ready-cut vector).
+
+The design is what gets saved; results never are. Nothing is behind a
+Simulate button: the design is re-run on every change, so the product, and
+the reason there is not one, are always in front of you, and a fix to an
+engine reaches every old design the next time it is opened. Each part
+carries a snapshot of its sequence with a short fingerprint: a design that
+only pointed at its sources would silently change, or break, when one was
+edited or deleted, whereas one that keeps a copy can say "this source has
+changed since, refresh?" and leave the choice to you. A part is a whole
+sequence or a stretch of one (a stretch is a linear piece, whatever the
+sequence was), with a role (vector or insert), an orientation (either way
+round, forward only, or reverse only) and, for restriction cloning, whether
+its ends were dephosphorylated. Every change is an undo step.
+
+The workspace shows each part as the same plasmid map the sequence view
+draws: one tab per part, plus one for the product, modelled on SnapGene's
+Insert Fragment dialog. On a part's map you click the sites to cut at; the
+product tab draws what comes out, with each part's contribution marked on
+the backbone in that part's colour.
+
+### Each part is cut on its own
+
+Every part carries its own enzymes, chosen by clicking its sites. A part with
+none of its own is cut with the design's enzymes, so the common case (cut
+vector and insert with the same pair) is still one list. Cutting per part is
+what makes compatible-end cloning possible: a vector opened with BamHI takes
+an insert cut with BglII, because the two leave the same four-base 5'
+protrusion, and a vector cut with EagI takes a NotI fragment for the same
+reason. One shared list cannot express that, since BglII would then also be
+used on the vector.
+
+The first click cuts at a site, a second cuts at another as well (two cuts
+take out the piece between them), and a third starts again from the site just
+clicked. Shift+click adds a site regardless, for a three-enzyme digest.
+Clicking a chosen site stops cutting there.
+
+A site stands for its enzyme, not for one position: a digest cuts everywhere
+that enzyme binds, so choosing one site marks every site of that enzyme as
+chosen, which is what will happen in the tube.
+
+### Which sites a map offers
+
+The map shows every enzyme that cuts that part exactly once, which is the set
+someone deciding where to open a vector looks at first, plus every enzyme the
+design names, wherever and however often it cuts. The single cutters are the
+commercially available enzymes with a recognition site of six bases or more
+that cut inside or beside it, one name per specificity, preferring the name
+people clone with: Type IIS enzymes are left out, because they cut away from
+their site and are chosen deliberately for Golden Gate rather than found by
+browsing. Neoschizomers stay separate, since enzymes that read the same site
+but cut it differently leave different ends. A site the host's methylation
+blocks is still drawn, faded, so the reason it cannot be used is visible
+rather than the site simply being absent.
+
+### Which piece goes into the reaction
+
+Clicking the molecule away from a site chooses which piece of the digest is
+used. Without a choice it follows from what the part is for: a vector gives
+its longest piece (cut twice, that is the backbone, and the short piece is
+what the insert replaces), an insert being taken out of a donor plasmid gives
+its shortest (the long piece is the donor's own backbone, which is discarded),
+and a linear insert gives its longest, since its ends are only the few bases
+outside the sites.
+
+### The reaction strip
+
+Under the maps, each piece is drawn with both strands written out at each end,
+as on a bench sheet, then the product. An end is green when it pairs with an
+end of another piece, amber when it pairs only with its own piece's other end
+(so that piece will close on itself) and red when it pairs with nothing, which
+is usually the whole explanation for why a design gives no product.
+
+### The product keeps the vector's numbering
+
+A circular product of a cut-and-ligate reaction is rotated so that the
+vector's first base is the product's first base, which is what SnapGene does
+and what makes the coordinates upstream of the insertion unchanged. The
+rotation moves bases, features, part spans and junctions together; a feature
+that now runs across the origin ends below its start, as elsewhere in the app.
+It is skipped when the vector's own first base was cut away or the vector went
+in reversed, since then there is no base 1 to keep.
+
+### Ends and ligation
+
+A cut leaves a single-stranded protrusion on one strand. An end's kind is
+which strand that is (a 5' end when the protruding strand's 5' end is at
+this end of the molecule, 3' otherwise, or blunt), and its bases are always
+written 5' to 3' along the strand that protrudes. That is the one
+convention under which an end reads the same whichever way round you hold
+the molecule, so flipping a fragment leaves both ends untouched, and it
+makes annealing the ordinary base-pairing test: two ends meet when one's
+bases are the reverse complement of the other's. Writing both ends as
+top-strand bases instead, which is tempting since that is where they come
+from, would make annealing an equality test and silently restrict ligation
+to palindromic overhangs. An ambiguous base in an end (N, or any IUPAC
+code) means the ends cannot be said to pair, so they do not.
+
+Each side of a junction supplies the phosphate for one of its two nicks. A
+junction with neither phosphate (two dephosphorylated ends) does not hold
+together at all; one with a single phosphate leaves a nicked product,
+which still transforms, since the cell repairs it. A fragment's top strand
+carries the bases it contributes at each junction, so the product's
+sequence is the parts' top strands concatenated, with nothing to add or
+trim, and digesting a sequence and concatenating the pieces back in order
+returns the original.
+
+Fragments are tried in both orientations, since an insert with two
+compatible ends goes in either way round and the wrong way round is a real
+product people get. A path of fragments whose touching ends anneal is a
+product: circular when the last end meets the first, linear otherwise.
+Products are deduplicated up to rotation and listed best first.
+
+### Seamless assembly (HiFi, Gibson, In-Fusion, SLIC)
+
+NEBuilder HiFi, Gibson Assembly, In-Fusion and SLIC all do the same thing:
+chew back one strand at each end, let the single strands anneal over a
+shared stretch, fill in and seal. So one engine runs all of them, and a kit
+is only a set of expectations about the shared stretch, taken from the
+suppliers' own guidance:
+
+| Kit | Overlap searched | Ideal | Worth a look above | Overlap Tm | Mismatches repaired |
+|-----|------------------|-------|--------------------|------------|---------------------|
+| NEBuilder HiFi | 15-60 bp | 25 bp (30 bp from five fragments) | 40 bp | not required | 2 |
+| Gibson Assembly | 15-60 bp | 25 bp | 40 bp | at least 48 °C | 0 |
+| In-Fusion | 15-40 bp | 15 bp | 25 bp | not required | 0 |
+| SLIC / CPEC | 20-100 bp | 30 bp | 80 bp | at least 50 °C | 0 |
+
+HiFi's polymerase and ligase tolerate a mismatch or two and it wants a
+longer overlap for more than a few fragments; classic Gibson leans on the
+overlap melting above the 50 °C assembly temperature; In-Fusion works at
+room temperature, so the overlap only has to be long enough; SLIC anneals
+without an exonuclease mix, so it wants a long, strongly melting overlap.
+The melting temperature of each junction's overlap is reported with the
+product.
+
+Two things a plain "does A's tail match B's head" search cannot do, and
+that people need constantly:
+
+- **A circular part has no ends.** Hand it a plasmid and an insert carrying
+  arms, and the plasmid is opened where the arms land: arms that sit next
+  to each other give a clean insertion, arms flanking a stretch delete it.
+  Nobody has to linearise a vector by hand first. Two circular parts have
+  no fixed end between them at all, so they are left alone, and an arm that
+  could land in more than one place on a circle is reported as ambiguous.
+- **Order and orientation are found, not assumed.** Every part is tried
+  both ways round, and the order comes out of which overlaps exist rather
+  than the order the parts were listed in. The longest part is never
+  flipped: any assembly that needs it the other way round is the same
+  molecule read on the other strand, so nothing is lost, and the product
+  comes out in the backbone's frame.
+
+The overlap search anchors on an exact 12-base seed at the 3' end of the
+arm, where annealing starts, then checks the rest with the kit's mismatch
+allowance. A clean match always beats a longer one with a mismatch in it,
+and only then does the longest win: preferring length first would make the
+result depend on which way round the pair was searched, since where the
+strands disagree the product takes one part's bases over the other's, and
+the two searches would pick different parts. Mismatch tolerance is for arms
+that really do disagree (a silent mutation left in a primer), not for
+extending a good overlap. A single linear part whose own ends share
+homology closes on itself, provided the arms are at most half of it. The
+search over orderings is capped at 100,000 chain extensions.
+
+Each part contributes the stretch from where its incoming overlap starts to
+where its outgoing overlap begins, so every shared stretch is written once.
+Features are read from a window widened by the outgoing overlap, so a
+promoter or a CDS ending at an arm keeps its real extent instead of being
+clipped at a junction drawn an arbitrary few bases to one side. Homology
+between parts that are not meant to meet is reported as a warning: those
+arms anneal too, and the assembly that comes out is not the one that was
+drawn.
+
+### Golden Gate
+
+Every part is cut with the design's one Type IIS enzyme, as it would be in
+the pot. A piece that still contains the recognition site is a backbone
+piece and is discarded; the rest are the inserts. Inserts join where one's
+3' overhang is the partner of another's 5' overhang, so the engine builds a
+graph of compatible ends and walks it for circular products (Golden Gate
+produces circular products), deduplicating rotations. The expected product
+is a circle using every insert exactly once. Overhangs that read the same
+on both strands, or appear on more than one fragment end, are warned
+about, since the first will ligate to itself and the second makes the order
+ambiguous, and ends that match nothing are listed.
+
+### Overhang fidelity
+
+A Golden Gate reaction is only as specific as its overhangs. T4 ligase will
+join a pair that does not quite match, and when two overhangs in the set
+are similar enough the reaction quietly assembles parts in the wrong order.
+The published ligase fidelity work (Potapov et al. 2018, Pryor et al. 2020)
+measured this: mismatches near the middle of a 4-base overhang are far
+more disruptive than at the ends, and G:T wobbles are tolerated best of
+all. SeqNexus uses a model of that behaviour rather than the measured
+matrix, which is a few hundred thousand numbers; it reproduces what the
+matrix is used for, which is ranking candidate sets, flagging the pairs
+that will cross-react, and picking a set that will not.
+
+- **Mispairs.** How readily each mispair forms, relative to a correct pair:
+  G:T and T:G 0.30 (by far the most common off-target ligation); A:C 0.08;
+  A:G 0.06; C:T 0.05; A:A and T:T 0.03; C:C and G:G 0.02. Two mismatches
+  essentially never ligate, whatever they are.
+- **Position.** A mismatch costs most where the duplex is held together:
+  the weights across the four positions, from the ligated end inwards, are
+  0.55, 0.12, 0.12, 0.55 (so a mismatch at the very end of the duplex barely
+  registers and one in the middle stops the join).
+- **Pairs and sets.** Every overhang is present at two ends in the
+  reaction, so there are two ways a pair can go wrong (one overhang against
+  the other, and one against the other's partner), and a pair's risk is
+  the worse of them. The fidelity of a set is the share of ligation events
+  that join the intended partners: correct joins over all the joins that
+  could happen. Above about 0.95 a set assembles cleanly. The score, the
+  riskiest pairs and plain-language notes are shown with the design.
+- **Choosing a set.** When a design needs new overhangs, they are chosen
+  greedily: start from whatever the design already fixes, then keep adding
+  the candidate that cross-reacts least with everything chosen so far,
+  within 25-75% GC, without three or four of the same base, and never the
+  complement of a chosen overhang (that is the partner it is meant to meet).
+  That is how the published high-fidelity sets were derived, and for the
+  handful of overhangs a real assembly needs it gets within a hair of the
+  best possible.
+
+### Gateway
+
+Three reactions: BP (attB x attP gives an entry clone with attL sites and
+a byproduct with attR), LR (attL x attR gives an expression clone with attB
+and a byproduct with attP) and MultiSite (two or three entry clones and a
+destination vector). att sites are found by matching the roughly 25 bp
+core recognition sequences of attB, attP, attL and attR, numbered 1 to 4
+for MultiSite (from the Invitrogen Gateway manual and Hartley et al.
+2000), on both strands with up to two mismatches, exact matches preferred
+and overlapping matches of the same type deduplicated. In a real
+recombination the full sites include flanking arms; the core is enough to
+identify them.
+
+The product's att sites are taken from the site table (attL is what attB x
+attP leaves behind), since the arms that actually cross over lie outside
+the cores stored here; the flanks on either side are the real parents'
+sequence. The byproduct carries off the cassette the donor or destination
+vector gave up, the ccdB counter-selection marker, which is why only the
+product grows. Sites may sit on the bottom strand (an entry clone's sites
+are often cloned in reverse, so the cassette is read backwards and goes in
+reverse complemented, with its features turned round) and the cassette or
+the backbone may run across the origin of a circular source; both are
+handled. Two sites recombine as a pair only when they sit on the same
+strand. For MultiSite, each entry clone must have exactly two attL sites
+(when similar sites overlap, the two most separated with the fewest
+mismatches are taken), and the sites must chain: attR1 to the first
+entry's left site, each entry's right site to the next entry's left, and
+the last to attR2.
+
+### TOPO
+
+Three variants: TOPO-TA (3' A overhangs on the PCR product, as Taq leaves
+them), TOPO-Blunt (proofreading polymerases) and Directional TOPO (a 5'
+CACC clamp on the insert enforces the forward orientation). Commercial TOPO
+vectors are supplied linearised with topoisomerase I covalently bound at a
+single CCCTT site, so the insertion point is found by that motif: a linear
+vector is taken to be cut at its ends (with the motif expected within 30 bp
+of one of them), and a circular one is scanned for CCCTT, preferring a site
+near an annotated MCS, lacZ or other cloning feature when there are
+several. For Directional TOPO the site whose next bases are the clamp's
+partner is preferred.
+
+The insert's ends are checked for the variant. A-overhangs are added by Taq
+during PCR and are typically not in the designed sequence, so for TA they
+are informational; a blunt insert that looks TA-compatible gets a warning;
+a directional insert without CACC is reported. TA and blunt inserts go in
+either way round, so both products are reported, forward first; the
+directional product is forward only. In the directional product the
+insert's CACC and the vector's four-base overhang are two strands of the
+same four base pairs, not two stretches to be put end to end, so those
+bases appear once: the clamp is kept, since it is part of the finished
+construct and the translation context downstream of it depends on it, and
+the vector's matching bases are consumed. A circular vector is opened at
+the site, takes the insert and closes again with its origin kept at base
+1.
+
+### Methylation
+
+dam puts N6-methyladenine on the A of GATC and dcm 5-methylcytosine on the
+inner C of CCWGG; both motifs are palindromic, so each is methylated on
+both strands. A methyl group only gets in an enzyme's way where it sits on
+a base the enzyme reads, so a site is dropped only when a methylated base
+of an overlapping motif lies inside its recognition sequence; a motif
+merely nearby changes nothing. The sites so blocked are still drawn on the
+part's map, faded, so the reason a site cannot be used is visible. The
+same rule serves the cloning digest and the virtual gel, so the two always
+agree, and a product inherits its backbone's methylation status, since it
+is grown in the same strain.
+
+### What the reaction gives
+
+Every method reports the same thing, a list of products best first, so the
+workspace shows a product the same way whichever reaction made it. The
+intended construct is the circular product that uses every part once and
+that the enzymes leave alone; it comes first, as one card that says what
+it is. Everything else a real tube would also contain is folded away
+beneath it, each named for what it is ("pUC19 closed on itself") rather
+than by a second copy of the same name: knowing the vector will mostly
+religate is worth something, but it should not crowd out the construct.
+With "purified" on, only the chosen fragment of each digest is in the tube;
+otherwise everything the digests produced is, which is what shows the
+off-target products.
+
+When the construct does not form, the panel says why and offers up to
+three single changes that would make it form, tried in order of how small
+a change they are: another fragment of the same digest, or a different
+digest (the enzymes people clone with, pairs preferred since two enzymes
+clone directionally, or a Type IIS enzyme for Golden Gate). Every fix
+offered has been tried: the design is re-run with it, and only changes
+that give the construct are suggested.
+
+### Junctions
+
+The seam is where cloning goes wrong quietly: a frame slips by one base, a
+site survives that should have been cut away, an overhang is a base short.
+None of that shows in a product's length, so the junction inspector draws
+the bases either side of each junction on both strands, marks which part
+each came from, and says whether the reading frame carries across. A
+junction records how it was joined, by annealed ends or by a shared
+stretch (with its melting temperature), so the product can be read
+whichever reaction made it.
+
+### Oligos to order
+
+For the methods whose parts are amplified, the Oligos tab lists the primer
+pair for each part: a binding half sized by the app's own primer designer,
+so these oligos melt where the rest of its primers do (see
+[Primers](#primers)), and a 5' tail carrying what the method needs.
+
+- **Seamless assembly.** Each part's forward primer carries the tail end of
+  the part before it, and its reverse primer the start of the part after
+  it, reverse complemented since a reverse primer is written along the
+  bottom strand. Together that gives every junction one shared stretch,
+  contributed half by each neighbour. The length is the kit's ideal
+  overlap, or its longer target when the design has many fragments.
+- **Golden Gate.** Each primer's tail is the recognition site pointing into
+  the part, a spacer so the enzyme cuts where it should, and the four-base
+  overhang that decides where the part goes. The sites end up outside the
+  product and are lost with the cut, which is why the assembly is seamless
+  and one-pot.
+
+Nothing here changes the design: it says what to order to build it. The
+recombination methods join sequences you already have and need no oligos.
+
+### Verifying the construct
+
+A clone is confirmed at its junctions: the rest of it came from sequences
+that were already known, but the seams are where a reaction goes wrong. So
+the verification plan is one sequencing primer per junction, reading across
+it, looked for in a window that ends a lead distance before the seam, so
+the seam lands in the clean middle of the trace rather than in the first
+fifty bases, which are never readable. Among the candidates, the one whose
+read covers the seam with the most to spare either side wins. Near the end
+of a linear product there may be no room upstream, and a junction with no
+usable primer is reported rather than quietly skipped: it is the one place
+you most need to see. The primers are the ones the primer designer would
+make for sequencing (see [Primers](#primers)).
+
+### Libraries
+
+A library is the same design with alternatives at one or more positions.
+Each position is a bin (a vector, a promoter, a set of coding sequences),
+and every way of taking one part from each bin is a combination that goes
+through the ordinary engines; a vector against a list of inserts is the
+two-bin case of the same thing. Combinations are run one at a time in the
+cloning worker rather than all at once, so a long run reports progress and
+can be stopped: a few hundred constructs is normal, and each one is a full
+assembly. A rough estimate of the work warns before a big run.
+
+Parts can be read from a spreadsheet, since a library is usually already
+written down as one: a CSV or TSV with a `sequence` column and a `bin`
+column saying which position each part belongs to. Bins come out in the
+order they first appear, so the file's own order decides the order of the
+assembly, and a row with no bin goes into one named after itself, which is
+what a plain list of inserts should do. The product names follow a
+template. What comes out is a table with a row per construct and a column
+per position (did it form, is it ambiguous, its size), exported as CSV, and
+the constructs themselves as multi-FASTA for ordering or handing on.
+
+### Limits
+
+- Seamless assembly leaves two circular parts alone, since there is no
+  fixed end between them, and searches overlaps only up to the kit's
+  maximum.
+- Gateway matches the att cores only, so a site whose core carries more
+  than two mismatches is not found.
+- TOPO relies on the CCCTT motif; a vector whose topoisomerase site is
+  elsewhere needs the insertion point chosen by hand.
+- The ligase fidelity score is a model of the published matrix, not the
+  matrix itself, and a set it calls clean is a prediction, not a
+  measurement.
 
 ---
 
@@ -1098,6 +3665,16 @@ throughout.
   `wasm/`. Double-click `serve.bat` in the SeqNexus folder (PowerShell's
   built-in web server, nothing to install) and open
   http://localhost:8080/app.html instead.
+
+---
+
+## NGS Mapping and Assembly
+
+A read set is mapped to a reference, or assembled de novo and the reads
+mapped back to the contigs; either way the result is an assembly (see
+[Assemblies and contigs](#assemblies-and-contigs)) that holds the mapping,
+and everything below (viewing, variants, samples, figures, SAM and BAM)
+works on that.
 
 ### Mapping to a reference
 
@@ -2112,709 +4689,33 @@ never one string.
 
 ---
 
-## Melting Temperature (Tm)
-
-Tm appears in the selection tooltip (for selections of 4-200 bp), the primer
-hover card and menu, and the primer design tool.
-
-### Selection tooltip
-
-- **≤ 14 bp**: Wallace rule - `Tm = 2×(A+T) + 4×(G+C)`. Simple base-counting
-  formula for very short oligos.
-- **15-200 bp**: nearest-neighbor method (see below).
-- **> 200 bp or < 4 bp**: Tm is not shown.
-
-Default conditions: 250 nM oligo, 50 mM Na⁺. These are not user-configurable
-for the selection tooltip - they use the same defaults as the primer design tool.
-
-### Nearest-neighbor method
-
-Uses the **SantaLucia (1998) unified nearest-neighbor model** for DNA/DNA
-duplexes.
-
-#### Parameters
-
-Enthalpy (ΔH) and entropy (ΔS) are computed by summing contributions from
-each adjacent dinucleotide step plus initiation parameters based on terminal
-base pairs:
-
-| Terminal base | ΔH_init (cal/mol) | ΔS_init (cal/mol·K) |
-|---------------|------------------:|---------------------:|
-| G or C        |               100 |               −2.8   |
-| A or T        |              2300 |                4.1   |
-
-The 10 unique nearest-neighbor parameters (with symmetry equivalents):
-
-| Pair  | ΔH (cal/mol) | ΔS (cal/mol·K) |
-|-------|-------------:|----------------:|
-| AA/TT |        −7900 |          −22.2  |
-| AT    |        −7200 |          −20.4  |
-| TA    |        −7200 |          −21.3  |
-| CA/TG |        −8500 |          −22.7  |
-| GT/AC |        −8400 |          −22.4  |
-| CT/AG |        −7800 |          −21.0  |
-| GA/TC |        −8200 |          −22.2  |
-| CG    |       −10600 |          −27.2  |
-| GC    |        −9800 |          −24.4  |
-| GG/CC |        −8000 |          −19.9  |
-
-#### Tm calculation
-
-```
-Tm(1M) = ΔH / (ΔS + R × ln(Ct/4)) − 273.15
-```
-
-where R = 1.987 cal/(mol·K) and Ct is the total primer concentration in M.
-The Ct/4 term assumes non-self-complementary oligonucleotides.
-
-#### Salt correction
-
-The Tm at the actual salt concentration uses the **Owczarzy et al. (2004)
-monovalent cation correction**:
-
-```
-1/Tm(Na) = 1/Tm(1M) + (4.29e-5 × f_GC − 3.95e-5) × ln([Na⁺])
-                     + 9.40e-6 × (ln([Na⁺]))²
-```
-
-When Mg²⁺ is provided (primer design only), the **Owczarzy (2008) divalent
-correction** is used instead, with free Mg²⁺ = Mg²⁺ − dNTPs (1:1 chelation).
-
-### Hairpin and self-dimer Tm
-
-The primer hover card and the design workbench show the Tm of each oligo's
-strongest hairpin and self-dimer (`app/src/primers/secondary.ts`). This is a
-**simplified nearest-neighbor model**, not Primer3's full thermodynamic
-alignment, so the numbers are shown as estimates (≈). They are calculated
-for the whole oligo, tails included, under the design tool's default buffer.
-
-What is simplified: only ungapped helices count. A hairpin stem must pair
-perfectly. A dimer may contain single internal mismatches. Neither may
-contain bulges or internal loops. Hairpins get no special triloop or
-tetraloop bonuses.
-
-#### Self-dimer
-
-1. Slide the oligo antiparallel along a second copy of itself. At every
-   offset, find the most stable ungapped paired stretch (ΔG37 from the NN
-   tables, including single internal mismatches). Keep the stretch with the
-   lowest ΔG37 overall (`bestDimer` in `structure.ts`).
-2. Score that stretch as a duplex: ΔH and ΔS from the unified NN parameters,
-   the internal-mismatch parameters (Allawi & SantaLucia 1997-98, Peyret
-   1999) and the initiation terms, as in the duplex Tm above.
-3. Both strands are the same molecule. At the Tm half of all strands are
-   paired, so the equilibrium constant is 1/Ct instead of the 4/Ct used for
-   two different strands:
-
-   ```
-   Tm(1M) = ΔH / (ΔS + R × ln(Ct))
-   ```
-
-4. Apply the Owczarzy (2008) salt correction to the stretch's own GC
-   fraction and length.
-
-Because the dimer is bimolecular, its Tm rises with oligo concentration.
-
-#### Hairpin
-
-1. Try every loop of 3 or more bases. For each one, zip the stem outward
-   from the loop for as long as the bases pair perfectly (at least 3 bp).
-2. Score each fold:
-
-   ```
-   ΔH = Σ ΔH(stem NN pairs) + ΔH(terminal mismatch)
-   ΔS = Σ ΔS(stem NN pairs) + ΔS(terminal mismatch) − ΔG37(loop) / 310.15 K
-   ```
-
-   - **Stem pairs** use the same unified NN table as duplexes. There is no
-     initiation term, because the fold is unimolecular.
-   - **Terminal mismatch:** the first and last loop bases face each other
-     across the closing base pair. They are scored with the terminal-mismatch
-     table, for loops longer than 3 bases.
-   - **Loop penalty** is treated as purely entropic, using the hairpin-loop
-     ΔG37 of SantaLucia & Hicks (2004):
-
-     | Loop (nt) | 3   | 4   | 5   | 6   | 7   | 8   | 9   | 10  | 12  | 14  | 16  | 18  | 20  | 25  | 30  |
-     |-----------|-----|-----|-----|-----|-----|-----|-----|-----|-----|-----|-----|-----|-----|-----|-----|
-     | ΔG37 (kcal/mol) | 3.5 | 3.5 | 3.3 | 4.0 | 4.2 | 4.3 | 4.5 | 4.6 | 5.0 | 5.1 | 5.3 | 5.5 | 5.7 | 6.1 | 6.3 |
-
-     Lengths between entries are interpolated linearly. Beyond 30 nt, the
-     penalty grows as ΔG(30) + 2.44 × R × T × ln(n / 30).
-
-3. A hairpin melts where ΔG = 0, independent of concentration:
-
-   ```
-   Tm(1M) = ΔH / ΔS
-   ```
-
-   It is then salt-corrected with the Owczarzy (2008) formula, using the
-   stem as the helix. That formula was fitted on duplexes, so this step is
-   an approximation.
-
-4. The fold with the highest Tm is reported.
-
-#### Grading
-
-A structure is graded against the Tm at which the primer itself anneals
-(the annealed-part Tm for a tailed primer):
-
-| Grade | Structure Tm |
-|-------|--------------|
-| good (green) | ≤ annealing Tm − 15 °C, or no structure |
-| ok (amber)   | between annealing Tm − 15 °C and − 5 °C |
-| poor (red)   | > annealing Tm − 5 °C |
-
-A structure that pairs the oligo's 3' end is graded one step worse, because
-a polymerase can extend it into primer-dimer or self-primed product.
-
-For probes, the card also checks the TaqMan rules:
-- **5' base:** a G at the 5' end quenches the reporter dye.
-- **Tm margin:** the probe's Tm minus the higher Tm of the nearest flanking
-  primer pair (within 2 kb). ≥ 6 °C is good, 3-6 °C is ok, less is poor.
-
----
-
-## Restriction Enzyme Database
-
-The enzyme database is auto-generated from **REBASE** (Roberts et al.) using
-`scripts/build-enzyme-db.ts`. The current build contains 546 enzymes with:
-
-- Recognition sequences (IUPAC ambiguity codes)
-- Cut positions on both strands
-- Overhang type (blunt, 5' overhang, 3' overhang)
-- Commercial supplier availability (NEB, Thermo, etc.)
-- Isoschizomer grouping
-- Methylation sensitivity (dam, dcm, CpG)
-- Optimal temperature and heat inactivation data
-
-The enzyme finder runs in a Web Worker. It expands IUPAC ambiguity codes into
-all possible concrete sequences and scans both strands of the target sequence.
-Results are grouped by isoschizomer family on the plasmid map to reduce visual
-clutter.
-
-### How sites are drawn in the sequence view
-
-- **Names** sit above the ruler at their cut, each in the lowest row where it
-  clears the name before it. A line gets only the rows its own names need (up
-  to five), so a line with no site carries no space for them. Names that fit
-  in none of those rows become a "+N" chip in a row above, which lists them on
-  hover and selects the stretch they cover on click. Earlier, every line had
-  three rows and the overflow was drawn into the top one over its neighbours.
-- **A bar per site** marks its recognition sequence between the ruler and the
-  bases, in lanes so sites that overlap or merely touch stay apart. This
-  replaced a tint on the bases themselves, which merged adjacent sites (the
-  usual case in a multiple cloning site) into one block. There are no bars at
-  the most zoomed-out levels, where a six-base site is under a pixel.
-- **The cut** is a step through both strands: down through the top strand at
-  its cut, across between the strands, down through the bottom strand at its
-  cut. The step's width is the overhang, so a sticky end, a blunt end and
-  which strand protrudes read at a glance. With only one strand shown, it is
-  the top-strand cut alone.
-- **Hovering** a name, a bar or a chip ties a site together: its name, its
-  line to the ruler, its bar, a tint over its bases and its cut light up, and
-  every other site fades. Names are the reliable target in a crowded stretch,
-  since they are the one part already spread out.
-
-### Saved enzyme sets
-
-The Restriction Analysis panel runs a subset of the database: one of the
-built-in groups (common 6-cutters, Type IIS, blunt cutters and so on), or a
-set of the user's own. A set is made from what the panel lists: narrow the
-enzymes down with the subset, the search and the cut filters, and save the
-list under a name. A saved set can be renamed, have its enzymes edited as a
-list of names, or be deleted (with Undo). Geneious enzyme sets come in as
-saved sets too (see [Geneious files](#geneious-files)). The codon
-optimizer's restriction sites to avoid can be a saved set as well as a
-built-in group; a set deleted since leaves it avoiding none.
-
-A set holds enzyme names, spelt as the database spells them and matched
-without regard to case, not the enzymes themselves, so it keeps working
-when the database is rebuilt. A name the database does not know is left
-out and said so: the database is REBASE's commercially available enzymes,
-and a set from elsewhere can name others. Sets are saved with the session
-and travel in session files; a merged session adds its sets beside the ones
-already saved, skipping any with the same name and enzymes.
-
----
-
-## Restriction Cloning
-
-A cloning design shows each part as the same plasmid map the sequence view
-draws: one tab per part, plus one for the product, modelled on SnapGene's
-Insert Fragment dialog. On a part's map you click the sites to cut at; the
-product tab draws what comes out.
-
-### Each part is cut on its own
-
-Every part carries its own enzymes, chosen by clicking its sites. A part with
-none of its own is cut with the design's enzymes, so the common case (cut
-vector and insert with the same pair) is still one list. Cutting per part is
-what makes compatible-end cloning possible: a vector opened with BamHI takes
-an insert cut with BglII, because the two leave the same four-base 5'
-protrusion, and a vector cut with EagI takes a NotI fragment for the same
-reason. One shared list cannot express that, since BglII would then also be
-used on the vector.
-
-The first click cuts at a site, a second cuts at another as well (two cuts
-take out the piece between them), and a third starts again from the site just
-clicked. Shift+click adds a site regardless, for a three-enzyme digest.
-Clicking a chosen site stops cutting there.
-
-A site stands for its enzyme, not for one position: a digest cuts everywhere
-that enzyme binds, so choosing one site marks every site of that enzyme as
-chosen, which is what will happen in the tube.
-
-### Which sites a map offers
-
-The map shows every enzyme that cuts that part exactly once, which is the set
-someone deciding where to open a vector looks at first, plus every enzyme the
-design names, wherever and however often it cuts. The single cutters are the
-commercially available enzymes with a recognition site of six bases or more
-that cut inside or beside it, one name per specificity, preferring the name
-people clone with: Type IIS enzymes are left out, because they cut away from
-their site and are chosen deliberately for Golden Gate rather than found by
-browsing. Neoschizomers stay separate, since enzymes that read the same site
-but cut it differently leave different ends. A site the host's methylation
-blocks is still drawn, faded, so the reason it cannot be used is visible
-rather than the site simply being absent.
-
-### Which piece goes into the reaction
-
-Clicking the molecule away from a site chooses which piece of the digest is
-used. Without a choice it follows from what the part is for: a vector gives
-its longest piece (cut twice, that is the backbone, and the short piece is
-what the insert replaces), an insert being taken out of a donor plasmid gives
-its shortest (the long piece is the donor's own backbone, which is discarded),
-and a linear insert gives its longest, since its ends are only the few bases
-outside the sites.
-
-### The reaction strip
-
-Under the maps, each piece is drawn with both strands written out at each end,
-as on a bench sheet, then the product. An end is green when it pairs with an
-end of another piece, amber when it pairs only with its own piece's other end
-(so that piece will close on itself) and red when it pairs with nothing, which
-is usually the whole explanation for why a design gives no product.
-
-### The product keeps the vector's numbering
-
-A circular product of a cut-and-ligate reaction is rotated so that the
-vector's first base is the product's first base, which is what SnapGene does
-and what makes the coordinates upstream of the insertion unchanged. The
-rotation moves bases, features, part spans and junctions together; a feature
-that now runs across the origin ends below its start, as elsewhere in the app.
-It is skipped when the vector's own first base was cut away or the vector went
-in reversed, since then there is no base 1 to keep.
-
----
-
-## CRISPR Guide Design
-
-Guides are found, scored and kept the way restriction sites are found and
-cloning parts are kept: a scan over the open sequence, an overlay that draws
-what it found, and a conversion into features for the ones worth keeping. The
-Guides tab in the right sidebar holds the whole of it, and there is no Run
-button: the settings are the scan.
-
-### Nucleases are data
-
-A nuclease is a record, like a restriction enzyme in `enzymes/db.ts`. It
-carries its PAM as an IUPAC pattern, which side of the protospacer the PAM
-sits on, the spacer lengths it accepts, where it cuts and whether it cuts at
-all. Adding one is a row in `crispr/nucleases.ts`, and the same record can be
-built from what a user types, so a PAM that was published this month can be
-scanned today. The shipped set covers the SpCas9 family and its PAM variants,
-the D10A nickase and a catalytically dead version for interference and
-activation, SaCas9 and its KKH variant, St1, Nme and Cj Cas9, and the Cas12a
-proteins with their 5' PAM and staggered cut.
-
-Both cut offsets are stored as distances in bases from the PAM edge of the
-protospacer, counted into the protospacer and onward, so they do not change
-when the spacer length does:
-
-| Nuclease | PAM | Spacer | Cut offsets | End |
-|----------|-----|--------|-------------|-----|
-| SpCas9 | NGG, after | 20 | 3 and 3 | blunt |
-| SaCas9 | NNGRRT, after | 21 | 3 and 3 | blunt |
-| Cas12a | TTTV, before | 23 | 18 and 23 | 5' overhang |
-
-`cut.site` is the cut on the strand the protospacer is written on and
-`cut.opposite` the cut on the other; the finder turns both into sense-strand
-coordinates, reported as `cutTop` and `cutBottom` the way the enzyme finder
-reports `fwdCut` and `revCut`. Anything that draws a break or measures a
-fragment can then treat a nuclease and an enzyme alike.
-
-A nuclease the user describes may leave both cut positions empty. That is not
-a missing field but a claim withheld: the row finds sites and scores them, and
-reports no cut, so nothing downstream pretends to know where the break is.
-
-### Finding sites
-
-The PAM is matched as an IUPAC pattern on both strands and the spacer is taken
-from the side the nuclease expects it, which makes the scan linear in the
-sequence length. A circular molecule is searched across its origin, so a site
-spanning the origin is found once and its coordinates are wrapped back into
-the sequence, with an end below its start as elsewhere in the app. On a linear
-molecule a PAM with no room for its spacer is not a site and is left out,
-while a site whose cut falls off the end is reported and flagged: the
-recognition is real, nothing is cut.
-
-A spacer holding anything other than A, C, G or T is not returned. It could
-not be ordered and its scores would be meaningless, so the scan counts those
-instead and the panel says how many, which is what makes an unfinished contig
-explain itself rather than look empty.
-
-A two-base PAM on a long sequence is effectively unbounded, so the scan stops
-at a site cap and says that it did. The panel then suggests narrowing the scan
-to the selection, which is the setting it already offers.
-
-### Scoring, in three separate columns
-
-A single figure of merit would hide which property a guide fails on, so three
-kinds of claim are kept apart and sorted one at a time.
-
-**The activity model.** What ships is a transparent heuristic over sequence
-properties that are consistently reported to track SpCas9 activity: GC content
-against an optimum of 55%, T at the four bases next to the PAM, which base sits
-against the PAM, the first base of an NGG PAM, and penalties for a terminator
-run, a long homopolymer and self-folding. It is not one of the published fitted
-models. Those are regressions over thousands of measured guides with a fixed
-window of flanking sequence, and their coefficients belong in a data file; the
-model registry in `crispr/score/ontarget.ts` exists so such a table can be
-added as data and selected per nuclease without touching the finder or the
-panel. Because the number is a heuristic, every term is returned with its
-contribution and the inspector shows the arithmetic.
-
-Only the SpCas9 family carries a model. Every other nuclease reports no score
-rather than borrowing one fitted for a different protein, which would read as
-information while being noise.
-
-**The repair outlook.** End joining often uses a short identical stretch on
-either side of the break, deleting what lies between the two copies and keeping
-one. Which deletions are available is a property of the sequence, so it can be
-predicted, and the share of them that shift the reading frame is the most
-useful single number when the goal is to knock a gene out. Following Bae and
-colleagues, every pair of identical stretches flanking the cut within a
-40-base window is enumerated and scored
-
-```
-pattern = 100 * exp(-deletionLength / 20) * (length + gcCount)
-```
-
-so short deletions and GC-rich microhomologies dominate, and the out-of-frame
-score is the share of the total carried by deletions whose length is not a
-multiple of three. Pairs are enumerated once per deletion length by walking the
-diagonals of the comparison, which counts each maximal microhomology a single
-time rather than once per nested copy of it. The formula is implemented as
-published; the tests check its invariants, not numeric agreement with the
-authors' own tool. A cut too close to the end of a linear molecule returns
-nothing rather than a number from a short window, and above a cap of 2000 sites
-the prediction is left out of the batch and made for the selected site alone.
-
-**The flags.** Properties of the sequence that hold whatever the nuclease, each
-reported as a named chip with a sentence of detail: GC outside 35% to 75% (and
-badly outside 25% to 85%), four or more T in a row, which reads as a terminator
-and cuts a transcribed guide short, a homopolymer of five or more, a
-self-folding stem of seven bases or more, and the promoter's start base, where
-U6 transcribes best from a G and T7 from two. The last is a note rather than a
-fault: the usual answer is to order the guide with the extra base added.
-
-### Off-target search
-
-A guide is only as good as the places it does not bind, so the panel can take
-a finished spacer and look for near copies of it next to a usable PAM. The
-search is the site finder run the other way round: PAM positions first, which
-is cheap, then the spacer compared from its PAM-proximal end outward so a
-site that cannot qualify is abandoned after a few bases.
-
-**What is searched is always named.** The app ships no genome. Pretending
-otherwise would be the worst thing this feature could do, because a
-specificity score from a 5 kb plasmid reads exactly like one from a
-chromosome. The scope is the first control in the section, not a buried
-setting, and every result carries the names and the total size of what was
-read back to the panel, which prints them under the count. Three scopes: the
-open sequence, every open sequence, or a FASTA file (one record or many)
-loaded for the purpose, up to a size the page can hold.
-
-**Mismatches and unpaired bases.** The budget is up to six mismatches.
-Bulges, meaning one unpaired base in the target or in the guide, are off by
-default because they multiply the work, not because they do not happen; with
-them on, each PAM position also gets a comparison at one base longer and one
-base shorter, with the gap position enumerated so the result stays exact
-rather than heuristic. Weaker PAMs are a separate switch: the SpCas9 rows
-carry NAG as an alternative, which is searched only when asked and scored
-down when found.
-
-**Scoring is a heuristic, for the same reason the activity model is.** A
-mismatch leaves most of the site's activity when it falls at the far end of
-the spacer and almost none when it falls against the PAM, so each mismatch
-multiplies the site's score by a factor interpolated between the two:
-
-| Where the mismatch falls | Factor |
-|--------------------------|--------|
-| against the PAM | 0.08 |
-| at the far end of the spacer | 0.85 |
-| an alternative PAM, whatever the mismatches | 0.2 |
-| an unpaired base | 0.25 |
-
-The line between the two ends is deliberately straight. The real profile is
-bumpy and sequence-dependent, and smoothing it is more honest than inventing
-the bumps. A fitted table belongs in a data file beside the model, exactly as
-for the activity model.
-
-The aggregate takes the shape the field uses: a guide with nothing else to
-bind scores 100, and the score falls as credible hits accumulate.
-
-```
-specificity = 100 / (1 + sum of hit scores)
-```
-
-**The guide's own site is not one of its off-targets**, so it is excluded and
-counted separately. A second perfect match elsewhere is reported, and marked:
-a spacer that matches two places exactly cannot tell them apart.
-
-**What a hit lands in matters as much as how many bases differ.** When the
-target is a document with features, the smallest feature covering the hit is
-named on the row, and one in a coding feature is marked. Each hit is drawn as
-two lines, the spacer and the site under it with matching bases as dots, so
-the mismatches are the only letters there are to read.
-
-The search runs in the worker, reports progress target by target, and can
-cover several guides in one pass, since the targets are read once either way.
-
-### What the views draw
-
-In the sequence view a guide is a stand-in annotation in the feature lanes,
-the way a primer binding site is, so it rides the existing stacking, hover and
-hit-testing. Its footprint is the protospacer plus the PAM, so the PAM has room
-in the lane rather than being drawn over its neighbour. Within that footprint
-three things are drawn in order of prominence: the protospacer as a bar with
-its arrowhead at the 3' end, the PAM as a solid block in its own shade, and the
-cut as a tick through the bar. A staggered cutter gets two ticks joined across
-the middle, which is what makes an overhang visible without reading a number.
-Picked guides are outlined in the accent colour, as picked ORFs and motifs are.
-
-On the plasmid map only the cut is drawn, as a tick outside the backbone with a
-dot at its end and a shorter companion tick for the second cut of a staggered
-pair. A 20-base arc on a plasmid-wide circle is a smudge; the cut is what a map
-is read for, and the protospacer is there in the rings once it is a feature.
-Clicking a tick selects its protospacer.
-
-Above the candidate list is a strip dividing the sequence into as many buckets
-as the strip is wide, each drawing its best candidate, coloured by the worst
-flag that candidate carries. A table of a thousand rows hides whether the
-candidates cluster and where the gaps are, which is the one thing the eye is
-good at.
-
-The colours are theme tokens (`--canvas-guide`, `--canvas-guide-pam`,
-`--canvas-guide-cut`), defined for all ten themes and read through
-`readSequenceColors`, so the print palette picks them up as it does the rest.
-
-### Designing for a goal
-
-Finding sites is the start of the job, not the job. The panel's tasks each
-take the same scan and turn it into the answer to one question, so switching
-between them costs nothing and nothing is scanned twice.
-
-**Knock out.** A cut anywhere in a gene is not equally useful. Too near the
-start codon and translation can restart past the damage; too near the stop and
-a frameshifted protein keeps almost all of itself. So guides are ranked by
-where they cut along the coding sequence, measured by walking the exons in
-translation order rather than by subtracting coordinates, and each row says
-which codon it cuts in and how much of the gene lies behind it. The ranking is
-lexicographic, not a weighted sum, for the same reason the score columns stay
-apart:
-
-1. cuts inside the preferred stretch, 5% to 65% of the gene by default
-2. no disqualifying flag
-3. the out-of-frame share, when it is known
-4. the activity score, when the nuclease has a model
-5. earlier in the gene
-
-**Delete.** Two cuts, one each side of a region, and the ends join. A pair is
-judged on what it costs beyond the region asked for, so the overshoot on each
-side is the first number on the row and the junction the join would leave is
-next to it. Opening the result builds a real document: the bases with the span
-gone, every feature moved, features wholly inside the deletion dropped, ones
-that straddle it kept and marked truncated as elsewhere in the app, and a mark
-at the join.
-
-**Knock in.** A donor is the payload with a slice of the original sequence on
-either side, which is not the interesting part. The interesting part is
-whether the nuclease can still find its site once the repair is done. So the
-donor is built, then scanned, and only then edited:
-
-- if the payload broke the site, nothing is changed and the panel says so
-- otherwise one base is changed to stop the repaired copy being cut again,
-  preferring the PAM over the seed, since breaking the PAM stops the nuclease
-  binding at all
-- inside a coding sequence a change that leaves the protein alone is preferred,
-  and when none exists the panel names the codon that changes
-- the edited donor is scanned again, so the claim that it cannot be cut is
-  checked rather than asserted
-
-Arms default to 40 bases either side and can be made asymmetric, which doubles
-the arm on the far side from the PAM.
-
-**Base edit.** A base editor changes every base of its kind inside a short
-stretch of the protospacer, so the bystanders are the whole difficulty and
-they are listed, not summarised. Positions are counted the way the literature
-counts them, from the end of the protospacer away from the PAM. Four editors
-ship, two cytosine and two adenine, with their usual windows; the window is
-editable, since a construct in hand may differ. When the chosen target base
-falls in a gene, every edit in the window is given its codon consequence,
-marked silent, missense or nonsense, and guides are ordered by how few
-bystanders they bring.
-
-**Tile.** A greedy pick down the quality order with a spacing rule, which is
-what gives even coverage instead of the cluster you get by taking the best few
-guides in a region. The gaps are reported as plainly as the picks, since a gap
-is what a tiling set is judged on, and the set copies out as a table or
-becomes features in one step.
-
-Every task works from the selection or from a feature of the document, chosen
-the same way, and the inspector and the off-target search stay available
-throughout.
-
-### Prime editing
-
-A pegRNA is an ordinary guide with a tail: after the scaffold comes a template
-for the edit, then a short stretch that pairs with the nicked strand and
-primes the copying. The tail reads as the reverse complement of the strand
-that will be made, which is the part that is easy to get backwards, so it is
-built once and shown in its three pieces.
-
-In the protospacer strand's own frame:
-
-| Piece | What it is |
-|-------|------------|
-| nick | where the nickase cuts, three bases in from the PAM for SpCas9 |
-| primer site | the bases just before the nick, reverse complemented |
-| template | the edited sequence from the nick onwards, reverse complemented |
-| pegRNA | spacer, then scaffold, then template, then primer site |
-
-The edit is given as a span to replace and what to put there, which covers a
-substitution, an insertion and a deletion without three cases. An edit behind
-the nick is refused rather than fudged: the template is copied forwards, so a
-change behind it cannot be written, and the panel says which way round the
-guide needs to be.
-
-The second nick of the paired strategy is offered from the same scan,
-filtered to guides that nick the other strand within a band of distances,
-which is a rule of thumb and therefore a setting.
-
-### Ordering
-
-Four shapes, because that is how guides are made: two annealed oligos into a
-cut vector, a template to transcribe, a synthetic RNA, or a pegRNA's own
-longer oligo. Every base the app adds is shown as an addition rather than
-folded into the sequence, since the additions are where mistakes live: the G
-a U6 promoter wants and only when the spacer does not already start with one,
-the overhangs the vector wants, the promoter in front of a template.
-
-**The scaffold is a vector's property, not a target's.** It is chosen in the
-library view, where opening one shows its sequence and its length, since the
-section asks you to check it against the plasmid on your bench and that
-cannot be done without reading it. What ships is deliberately short: a scaffold is a long constant that is easy to print
-wrongly and impossible to notice wrongly, so only the near-universal ones are
-shipped, each saying what it is, and for anything else the panel asks for the
-sequence from the plasmid in hand and keeps it. A scaffold that was never
-typed is better than one that is almost right. The same reasoning applies to
-the vector overhangs, which are presets that can be read and changed rather
-than something guessed from a vector name.
-
-### Screening
-
-Decided with the order, not after it, because a guide that cannot be screened
-cheaply is worth knowing about before the oligos are bought.
-
-- **An amplicon across the cut**, designed through the ordinary primer
-  designer, with the cut kept well away from both primers so a trace can be
-  read through it and a small indel still shows.
-- **A restriction site the cut sits inside.** An edit at the break disturbs
-  the site, so the amplicon from an edited copy is no longer cut and two bands
-  become one. The site has to be unique in the amplicon or an uncut band means
-  nothing, so enzymes cutting it more than once are left out, and the ones
-  whose site the cut falls nearest the middle of come first.
-
-When no enzyme qualifies, the panel says so: that guide needs sequencing
-rather than a gel.
-
-### Reading the result
-
-The last question is whether it worked, and it is answered from whichever
-evidence came back from the bench. Two routes, one result.
-
-**From two chromatograms.** An edited pool is a mixture: most molecules carry
-one of a handful of small insertions or deletions and the rest are untouched,
-so downstream of the break the trace is the same sequence read at several
-offsets at once. That looks like noise and is not. Given the same amplicon
-from an unedited control it can be taken apart:
-
-1. The two traces are lined up on their base calls before the cut, where they
-   should be identical, and the agreement is reported. If they disagree the
-   comparison is not valid, and the panel says so rather than fitting anyway.
-2. Over a window after the cut, one column is built per candidate offset from
-   the control, and the edited signal is fitted as a non-negative mixture of
-   them. Non-negativity is not a refinement here but the thing that makes the
-   answer mean anything: a mixture cannot have negative parts, and an
-   ordinary least-squares fit happily returns them. The solver is the
-   active-set method of Lawson and Hanson.
-3. The mixture is reported as a spectrum of length changes with their shares,
-   the share that shifts the reading frame, and the quality of both fits.
-
-What it cannot do is separate two different edits of the same length, or say
-which allele is which. It reports lengths and shares, which is what a trace
-can support.
-
-**From amplicon reads.** Each read is aligned to the amplicon and judged on a
-window around the break: the reference, an insertion, a deletion, a
-substitution, or the donor that was supplied. Reads that agree are one
-allele, and the table of alleles with their shares is the result, alongside
-the spectrum and, for a base editing run, how often each position in the
-window reads as something else.
-
-Two decisions are worth stating. The window is narrow and centred on the cut,
-because a change at the far end of an amplicon is a sequencing error or a
-polymorphism rather than an edit, and counting it as one inflates every
-number. And a read that does not span the whole window is not counted at all
-rather than counted as unmodified, since a read that stops inside the window
-cannot speak for the rest of it. Both counts of discarded reads are reported.
-
-Alignment is accurate and not cheap, so a run takes a sample of a large read
-set rather than the lot, and says how many reads it looked at and how many
-the set holds.
-
-### The guide library
-
-Guides you keep, like the oligo library and in the same shape. A guide saved
-once is yours across every document, and the useful question about it later
-is not what it scored when you designed it but whether it binds the sequence
-in front of you now, so each row says where it binds here, or that it does
-not. Scores are shown as what they were when the guide was kept, because a
-number recorded in March is not a measurement made today.
-
-### Keeping a guide
-
-A converted guide becomes a `misc_binding` feature over the protospacer alone,
-not the PAM: the spacer is the part you order and the part that binds, while
-the PAM belongs to the target, so a feature over it would claim the nuclease
-recognises DNA it only reads from. The PAM and both cut positions go in the
-note, which is what a GenBank round trip keeps. The inspector copies the
-spacer without the PAM for the same reason.
-
-### Limits
-
-The off-target search reads what you give it and nothing else, and both the
-activity model and the mismatch model are stated heuristics rather than fitted
-tables. The knock-in donor changes one base at most to stop re-cutting; a site
-that survives every single change is reported rather than worked around.
-Scaffolds and vector overhangs are shipped only where they are near-universal,
-and are otherwise asked for. Reading a result back decomposes a trace or
-counts reads; it does not genotype a plate of clones well by well, and an
-analysis is held for the session rather than kept as its own item, so it is
-copied out as a table rather than saved. Trace decomposition cannot tell two
-edits of the same length apart.
+## Fetching from NCBI and UniProt
+
+Import by Accession (in the File group) downloads a record straight into the
+session: NCBI Nucleotide and NCBI Protein (as GenPept) through the Entrez
+E-utilities, and UniProtKB through its REST service. The source is guessed
+from the shape of the accession as it is typed and can be overridden: RefSeq
+proteins (NP_, XP_, WP_, YP_, AP_), GenBank proteins (three letters and five
+or seven digits) and PDB chains (1ABC_A) read as proteins; everything else
+is taken for a nucleotide.
+
+An NCBI record's length and title are fetched first from its summary,
+without downloading it, because typing a chromosome accession would
+otherwise pull hundreds of megabytes: a record over 10 Mb is confirmed
+before it is downloaded, and an accession NCBI does not know is reported as
+such. The GenBank or GenPept text then goes through the same reader as a
+file, so the gene and source conventions under
+[Annotations](#annotations) apply. A UniProt entry arrives as JSON with its
+features in one request; whether it is reviewed (Swiss-Prot) or automatic
+(TrEMBL) is noted, and its cross-references to PDB and AlphaFold are kept
+in the document's metadata for the structure viewer (see
+[3D structure](#3d-structure)).
+
+Addgene and SnapGene were offered as sources too, but neither site lets
+another website download its files (no CORS headers), so those buttons
+failed every time; the dialog now says how to get their files in instead.
+Genome links listed by an imported Geneious file open this dialog with the
+accession filled in (see [Geneious files](#geneious-files)).
 
 ---
 
@@ -2955,800 +4856,6 @@ downloaded is a run of `?`), NGS read sets and assemblies (their reads are in
 Geneious's binary side files, partly as Java serialization), and documents
 of any other class. History records and assembly reports are skipped
 silently.
-
----
-
-## Proteins
-
-A protein is the same document as a DNA sequence: the same piece table, the
-same annotations and interval tree, the same undo history, explorer row,
-folders, tags and session storage. The only difference in the model is the
-alphabet the Sequence carries (`dna` or `protein`), which every edit and
-snapshot keeps. A protein is always linear; a snapshot without an alphabet
-is DNA.
-
-### Alphabet
-
-A protein may hold the twenty standard amino acids, selenocysteine (U) and
-pyrrolysine (O), the ambiguity codes B (D or N), Z (E or Q), J (I or L) and
-X (any residue), and the stop (`*`). Typing and pasting check against this
-set the way DNA is checked against the IUPAC codes, and refuse anything else
-with the offending characters named.
-
-A pasted or imported record is sorted into DNA or protein by its letters: a
-letter that only a protein can hold (E, F, I, J, L, O, P, Q, X, Z or a stop)
-settles it; otherwise at least nine letters in ten have to be A, C, G, T, U
-or N for the record to be DNA. The rule errs towards protein for short
-stretches written only in IUPAC letters (ACDGHKMNRSTVWY are all codes), which
-is the safer mistake: a peptide opened as DNA would be reverse-complemented
-and translated, a short DNA fragment opened as a protein is only coloured
-oddly. The New Sequence dialog follows the same guess until the molecule is
-chosen by hand.
-
-### What a protein does not have
-
-Everything that needs bases is left out of a protein's view rather than
-offered and refused: the complement strand, the translation rows, restriction
-enzymes, ORFs, primers, the plasmid map and split view, GC content, Tm and
-codon usage, methylation and cloning. The panel bar shows Features, Motifs,
-Auto and Display; the toolbar buttons for the DNA tools are disabled with a
-note saying why, and the ORF finder's slot holds the motif finder. The feature type list offers
-protein feature keys (Region, Domain, Site, Chain, sig_peptide, transmembrane,
-disulfide and so on, the GenPept keys and the UniProt categories spelt as one
-word so they survive export) instead of promoters and terminators.
-
-In the explorer a protein is its own kind, with its own icon, group and
-filter, so a workspace of plasmids and the proteins they encode reads at a
-glance. A protein row says its length in residues (`245 aa`) and omits the
-topology word.
-
-### Import and export
-
-- **FASTA.** Each record is sorted by the rule above. A `.faa` file is read
-  as protein throughout.
-- **GenPept.** A GenBank-format record whose LOCUS line counts `aa` is a
-  protein. Features sit on residues; a Region is named by its
-  `/region_name`, a Site by its `/note`. The writer produces the same layout
-  (`LOCUS name 142 aa linear date`, no molecule type, residues in lowercase
-  blocks of ten), so a protein exported as "GenBank" is a GenPept file that
-  NCBI's own tools read.
-- **Plain text and the clipboard** go through the FASTA reader.
-- **Export:** GenPept, FASTA, GFF3 and the feature CSV, and the PDF of the
-  sequence view. SnapGene's `.dna` is a DNA format and is not offered for a
-  protein; in a bulk export it falls back to GenPept.
-
-### Residue colours
-
-A protein document has its own colour preference, separate from the base
-colour scheme, since a nucleotide palette says nothing about residues. The
-schemes are the ones the translation strip under a DNA sequence already
-offers, plus the two alignment conventions that colour a residue on its own
-rather than by its column:
-
-| Scheme | What it shows | Source |
-|--------|---------------|--------|
-| Hydrophobicity | Kyte-Doolittle hydropathy, blue (polar) to orange (hydrophobic) | Kyte and Doolittle (1982) |
-| Polarity (default) | Acidic, basic, polar and non-polar groups, as textbooks colour them | |
-| RasMol | The RasMol amino acid palette | |
-| Clustal | Clustal X residue colours | Thompson et al. (1997) |
-| MacClade | MacClade residue colours | |
-| Taylor | One hue per residue, neighbours in the wheel are chemically similar | Taylor (1997) |
-| Zappo | Physicochemical groups, as Jalview draws them | Waterhouse et al. (2009) |
-
-As for bases, a scheme tints the letters or fills the cell behind each
-residue, with the glyph drawn in whatever contrasts. The composition in the
-statistics popover uses the same colours. Three-letter spelling is not drawn
-on a protein's canvas: a residue is one cell wide there, where a codon in
-the translation strip is three.
-
-### Find
-
-On a protein the query is searched as residues, on the one strand there is,
-so the DNA/Protein and both-strands controls are not shown. The ambiguity
-codes read as sets (X any residue but a stop, B D or N, Z E or Q, J I or L),
-mismatches are allowed and counted in residues, and a regular expression
-works as it does on DNA. A replacement is residues, checked against the same
-alphabet.
-
-### Numbering
-
-A protein can be numbered from any residue, so a mature chain can count from
-1 after its signal peptide, or a fragment can keep the numbering of the
-record it came from. The start is set in the properties dialog and applies
-to the ruler, the selection readout, feature positions and the find list.
-It is stored as a negative display origin: the field that rotates a circular
-sequence's numbering shifts a linear one's instead (`-24` shows the first
-residue as 25). One field, two meanings told apart by sign, so every place
-that already formats a position through `displayPosition` handles both.
-
-### Properties
-
-The Stats button of a protein opens its properties, computed from the
-residues on every render (the maths is O(n) and a protein is short). With a
-selection the numbers are of the selected residues, and a switch goes back
-to the whole protein; the selection readout in the status bar and the drag
-pill show the mass of a selection as well. The constants follow ExPASy
-ProtParam, which the tests check against for a published 121-residue report
-(mass, formula, charged residues, pI, GRAVY, aliphatic and instability
-index all agree; the instability index to within 0.02).
-
-- **Mass.** The sum of the average residue masses plus one water, and the
-  monoisotopic mass. Selenocysteine and pyrrolysine have their own masses;
-  B, Z and J take the mean of what they stand for, X the mean of the
-  twenty; stops and gaps weigh nothing. The elemental formula leaves the
-  ambiguity codes out.
-- **Charge and pI.** Net charge by Henderson-Hasselbalch over the N
-  terminus, Lys, Arg, His (positive) and the C terminus, Asp, Glu, Cys,
-  Tyr (negative). The pI is where it crosses zero, found by bisection to
-  0.001 pH. Four pKa sets are offered, since the set is most of why two
-  calculators disagree: EMBOSS (the default, what the `iep` program
-  reports), Bjellqvist (the ExPASy values, with their residue-specific
-  terminal pKa), Lehninger (free amino acids) and Grimsley (averages
-  measured in folded proteins). A slider gives the charge at any pH, and a
-  titration curve shows it from 0 to 14 with the pI marked.
-- **Absorbance at 280 nm.** Pace et al. (1995): 5500 per Trp, 1490 per
-  Tyr, 125 per cystine. Three values: every Cys reduced, every pair of Cys
-  as a cystine, and the disulfides the document annotates (`disulfide`
-  features). A280 of a 1 mg/mL solution is ε over the average mass.
-- **Indices.** GRAVY (the mean Kyte-Doolittle hydropathy), the aliphatic
-  index of Ikai (1980), the instability index of Guruprasad et al. (1990)
-  with its 40 threshold, and aromaticity (the fraction of Phe, Trp and Tyr).
-- **Composition** with the residue colours of the view.
-
-### DNA and protein
-
-A coding feature, or a selection, is translated into a protein document of
-its own from the context menu (the selection is read in frame from its
-first base, in the direction it was dragged). The protein remembers its
-source: the document, the feature, the coding span and strand, the exons
-of a spliced feature, the `/codon_start` offset and the genetic code. A
-single trailing stop is dropped; internal stops are kept so a nonsense
-mutation shows. Features inside the coding region come along at residue
-resolution, the coding feature itself excepted.
-
-In the protein, a chip beside the name says where it came from and selects
-the codons of the current residue selection in the DNA (or the whole coding
-region). The context menu adds "Show codons in …", and "Add features to …",
-which puts the protein's features on the DNA at the codons they cover,
-skipping any the DNA already has, as one undo step on the DNA. The mapping
-walks exons, so a feature across an intron becomes a joined feature. In the
-explorer a translated protein nests under its DNA.
-
-"Find in DNA" takes a selected peptide to any open DNA document and
-searches its six frames, through the protein search that already exists.
-
-### Back-translation
-
-For a protein the codon optimizer becomes a back-translator: every residue
-gets the codon the chosen host uses most (B, Z and J as Asp, Glu and Ile;
-X, U and O have no codon and are reported), and that DNA is then optimized
-with the same settings and constraints as any coding sequence, so a motif
-to avoid is avoided here too. "Open as DNA" opens the result with the
-protein as its one coding feature. There is nothing to apply in place.
-
-### Auto-annotation
-
-A protein is scanned against a protein library instead of the DNA
-databases: a curated list of epitope and purification tags (His6, FLAG,
-HA, Myc, V5, Strep, Avi, ALFA, HiBiT, Spy and Snoop tags and others),
-protease sites (TEV, thrombin, HRV 3C, enterokinase, Factor Xa), linkers,
-localization signals (NLS, NES, KDEL, HDEL, SKL) and 2A peptides; a
-second list of protein parts with the fusion partners (GST, MBP, SUMO,
-thioredoxin, SNAP, CLIP, HaloTag, Fc, DHFR, KSI, the TAP tag, cellulose-
-and chitin-binding domains), more epitope tags (AU1, AU5, Ty1, KT3, OLLAS, NE, E2, HSV, Protein C and
-others), the TVMV site, near-infrared and blue reporters, and activation
-domains; and the coding entries of the DNA library translated with the
-standard code, so the same GFP or kanR is found on a plasmid and on its
-protein. Versions of one entry (the three TAP tags, the two E2 tags) form
-a group, as in the DNA library. Parts shorter than six residues are left
-out of that list (the four-residue C-tag, polyArg, polyAsp, the PKA
-site): a natural protein contains them by chance, so a hit would mean
-nothing. The scan is
-the DNA matcher on residues, with a 3-mer seed and one strand. Peptides
-shorter than ten residues are matched exactly, since a six-residue tag with
-one mismatch is not that tag; longer entries take the similarity threshold.
-Proposals, picks and conversion work as for DNA.
-
-### Alignment, BLAST and find
-
-Protein documents appear in the alignment dialog, which already recognised
-protein letters and switches to BLOSUM62 and the protein colour schemes.
-BLAST offers blastp and tblastn for a protein query and swaps its saved
-program when the open document changes kind; hits of a protein search link
-to NCBI's protein records.
-
-### Graph tracks
-
-A protein can carry one graph track under its feature lanes, drawn as a
-filled curve on every row of the sequence view, along the minimap, and in
-the PDF. The curve is the mean of a per-residue scale over a window centred
-on each residue; the window is cut short at the two ends so every residue
-has a value (ProtScale leaves the first and last half-windows blank), and
-residues the scale does not know (X, B, Z, a stop) are left out of the mean
-rather than counted as zero. Two prefix sums make the profile O(n) whatever
-the window. The scales, their default windows and their sources:
-
-| Scale | Window | Guide | Source |
-|-------|--------|-------|--------|
-| Hydropathy | 9 | 0; above is hydrophobic | Kyte and Doolittle (1982) |
-| Hydrophilicity | 7 | 0; peaks are exposed, likely antigenic | Hopp and Woods (1981) |
-| Hydrophobicity | 9 | 0 | Eisenberg et al. (1984), the consensus scale |
-| Charge at pH 7 | 9 | 0 | Side-chain charge by Henderson-Hasselbalch with the EMBOSS pKa values; Lys, Arg, His positive, Asp, Glu, Cys, Tyr negative, the rest zero |
-| Flexibility | 9 | 1 | Vihinen et al. (1994) normalized B-factors |
-
-The windows are ProtScale's defaults, and any odd window from 1 to 21 can
-be chosen instead. The minimap's copy of the track is the same values
-averaged into one bin per pixel, with the value under the pointer in the
-hover readout.
-
-### Motifs and sites
-
-The motif finder sits where the ORF finder sits for DNA and answers the same
-question for residues: where are the things worth a feature. It scans the
-protein against a short library of patterns written in PROSITE notation
-(`N-{P}-[ST]-{P}`: elements separated by hyphens, `x` any residue, `[..]`
-one of, `{..}` none of, `(n)` or `(n,m)` repeats, `<` and `>` the ends),
-which a small parser turns into a regular expression. Every occurrence is
-reported, overlaps included, by matching in a lookahead at each position.
-
-The library is deliberately short. PROSITE's full set of patterns finds a
-site every few residues of any protein, which is why its own tools hide the
-frequent patterns by default; what is kept here is what a lab checks a
-construct for. The categories: modification sites (the N-glycosylation
-sequon, kinase and myristoylation sites, amidation, sumoylation, the CAAX
-box), processing sites (furin, caspase-3, the acid-labile Asp-Pro bond),
-targeting signals (mono- and bipartite nuclear localization signals, ER
-retention, PTS1, RGD), binding and catalytic signatures (the P-loop,
-EF-hand, C2H2 zinc finger, the serine and cysteine protease active sites),
-the leucine zipper, and the sequence liabilities a developability review
-flags (deamidation, Asp isomerization, oxidation-prone and glycation-prone
-pairs). Each entry names its PROSITE accession or the paper it comes from;
-the panel shows the pattern beside the hits. A pattern this short also
-matches by chance, so a hit is a place to look, not a finding, and the panel
-says so.
-
-Membrane spans ride the same overlay as one more category, from the rule of
-Kyte and Doolittle (1982): a 19-residue window whose mean hydropathy
-exceeds 1.6. Each residue whose window passes marks a candidate; runs of
-them, widened to the window they were judged by and merged where they
-touch, are the segments, and segments shorter than 15 residues are dropped.
-Only whole windows count, so the ends of a protein do not pass on half a
-window of leucines. The rule finds hydrophobic stretches, not whether the
-protein is in a membrane at all, which is why its hits are provisional
-features until converted.
-
-Hits are drawn as an overlay like ORFs, in the colour of their category:
-Ctrl-click picks one, the panel bar converts the picked ones (or all of
-them) into features of the type the pattern names (`glycosylation`,
-`modified_residue`, `Site`, `Motif`, `active_site`, `transmembrane`) as one
-undo step. A hit the document already has a feature for, by name and
-residues, is not added twice. Categories can be switched off in the panel
-and the overlay follows. The scan is a regular-expression pass over a short
-protein and runs on the residues themselves, so a substitution moves a site
-at once.
-
-### UniProt and NCBI protein import
-
-"Import by Accession" takes a UniProt accession or entry name (`P69905`,
-`HBA_HUMAN`), an NCBI protein accession (`NP_000509.1`, GenPept from the
-`protein` database) or a nucleotide accession, guessing the source from the
-accession's shape: UniProt accessions follow a fixed pattern (a letter, a
-digit, then letters and digits in the published arrangement), RefSeq
-proteins start `NP_`, `XP_`, `WP_`, `YP_` or `AP_`, GenBank proteins are
-three letters and five or seven digits. The guess can be overridden.
-
-A UniProt entry comes through the REST service's JSON, which the server
-sends with CORS headers so the page can ask for it directly. The document
-is named after the gene (or the entry name), described by the recommended
-protein name and organism, and carries the entry's features as annotations
-on their residues: chains, peptides, signal and transit peptides, domains
-(zinc fingers and DNA-binding regions among them), regions (coiled coils,
-compositional bias, topological domains), motifs, repeats, membrane
-segments, active and binding sites, modified residues (lipidation and
-cross-links among them), glycosylation, disulfide bonds and natural and
-mutagenesis variants. A natural variant is named in the short HGVS form
-(`p.D7G`) with the original and the alternative residues as qualifiers.
-Secondary structure (helix, turn, strand), sequence conflicts, the initiator
-methionine and features without a fixed position are left out: they are
-about the record, not the protein. The entry's PDB identifiers and whether
-AlphaFold has a model are kept in the document's metadata for the 3D
-viewer.
-
-### Disulfide bonds
-
-A disulfide is a feature of type `disulfide` with two one-residue segments,
-one per cysteine, so the feature model that already carries exons carries
-bonds. It is drawn as an arc from one cysteine to the other over the feature
-lane rather than as a bar with a line across; the properties panel counts
-it for the extinction coefficient. Two cysteines selected together (Ctrl-
-click) offer "Add Disulfide Bond" in the context menu. In GenPept the bond
-is written as `bond(48,52)`, which is the format's own notation and what
-the reader already accepted.
-
-### Variants
-
-A protein in a lab is usually a variant of something, so an edit to a
-protein is written down. Replacing selected residues (typing over a
-selection, pasting, or "Mutate to" in the context menu, which lists the
-twenty residues and a stop for a single selected residue) and deleting
-residues create a `variant` feature on the residues the edit left behind,
-named in the one-letter HGVS short form the literature uses (`p.K27M`,
-`p.K27del`, `p.K27_L29del`, `p.K27_L28insAG`, `p.K27_V28delinsRST`,
-`p.K27*`), with the recommended three-letter name (`p.Lys27Met`) in the
-note and the original residues, the replacement and the position as
-qualifiers. Positions follow the displayed numbering. The feature and the
-edit are one undo step. A deletion that meets one already recorded extends
-it, so Backspace held down is one deletion and not five. Inserting at the
-caret is not recorded: a protein typed in from scratch is not a variant of
-its first residue. The feature list, grouped by type, is the mutation list;
-"Add features to" carries variants to the DNA with everything else. The
-record can be switched off in the display settings.
-
-### Domain map
-
-A protein's Map view is a linear domain map: the chain as a bar with a
-residue ruler, its features in lanes above it as bars in their colours
-(the name inside when it fits, beside it otherwise), one-residue features
-as lollipops with the name above, and disulfide bonds as brackets under
-the chain joining their cysteines. Split stacks the map over the sequence
-at the map's own height. Hovering a feature shows its card, clicking it
-selects its residues, and the current selection is a band on the map.
-
-The map is built as the same backend-neutral display list the plasmid map
-uses (rectangles, lines, dots and text with a halo), so one canvas
-renderer, one SVG emitter and one image export draw it, and the exported
-PNG or SVG is the figure on screen. The plasmid map's style setting applies
-(Publication draws black on white and ignores the theme) and so does its
-palette. Features are laid out greedily into lanes, widest first, with a
-site's label counted as its width so names do not collide; the map is as
-tall as the lanes need. The scene gained a height beside its size for this,
-which the renderers honour and the square plasmid map leaves unset.
-
-### Proteolysis
-
-The Digest button (the restriction enzymes' slot on a protein) cuts the
-protein with one or more proteases. The rules follow ExPASy PeptideCutter
-where it states a simple rule: a residue before the bond, and a residue
-after it (proline, usually) that blocks the cut. Trypsin after Lys or Arg
-not before Pro; chymotrypsin after Phe, Tyr, Trp (high specificity) or
-also Leu and Met (low); Lys-C after Lys; Arg-C after Arg; Glu-C after Glu
-(bicarbonate) or Glu and Asp (phosphate); Asp-N before Asp; pepsin at pH
-1.3 after Phe or Leu, not before Pro nor after a Pro at P2; cyanogen
-bromide after Met. PeptideCutter's longer exception lists (trypsin's CKD,
-DKD, CKH, CKY, RRH, RRR and the WKP and MRP exceptions to the proline rule)
-are not applied: they fine-tune a minority of sites, and the simple rule is
-what every other tool uses. The engineered proteases cut at their
-recognition sequence only: TEV at ENLYFQ before Gly or Ser, thrombin at
-LVPR before Gly or Ser, Factor Xa after IEGR or IDGR, enterokinase after
-DDDDK, HRV 3C at LEVLFQ before Gly. Several proteases pool their sites.
-
-With missed cleavages, every run of up to n+1 consecutive fragments is a
-peptide too, listed beside the complete digest and marked partial. Each
-peptide carries its position in the displayed numbering, monoisotopic and
-average mass (the ProtParam residue masses plus one water), m/z at charges
-1 to 3 from the monoisotopic mass and the proton's mass (1.007276 Da), pI
-with the EMBOSS pKa set, and GRAVY. The header gives the number of
-peptides, the sequence coverage of the complete digest and the largest
-peptide. A peptide clicked is selected on the sequence; "Show on sequence"
-draws the peptides as bars over the protein (alternating colours, partials
-grey), the table exports as CSV, and "Run on gel" opens an SDS-PAGE gel
-with the protein intact beside the digest.
-
-### SDS-PAGE
-
-The virtual gel has a kind: agarose for DNA, SDS-PAGE for proteins. A gel
-started from a protein is poured as 12% acrylamide with a protein ladder,
-the protein intact and a tryptic digest; the kind can be switched in the
-gel's settings, which then offer the acrylamide percentage instead of
-agarose and buffer, protein ladders instead of DNA ladders, and protein
-lanes (a protein document, intact or cut with the proteases above, with
-missed cleavages) instead of sequence and PCR lanes. Every label, the size
-cursor, the inspector, the CSV and the PDF print kilodaltons.
-
-The migration model is the agarose model's sigmoid in log size with the
-protein's mass as the size. SDS gives every chain the same charge per
-mass, so mobility is set by size alone and the distance run is linear in
-log mass across the gel's useful window, which is the Ferguson relation a
-standard curve is drawn on. Each acrylamide percentage is given the
-window it is recommended for (6%: 60 to 250 kDa, 8%: 40 to 180, 10%: 25 to
-120, 12%: 15 to 80, 15%: 8 to 50); the characteristic mass is the window's
-geometric centre and the steepness puts the window's ends near 15% and 95%
-of the run. Bromophenol blue runs with the ion front in SDS-PAGE, so the
-run slider is the front of the run. Band spread, merging, brightness and
-the detection threshold are the agarose model's. The species' size field
-holds base pairs on a DNA gel and daltons on a protein gel, so the band,
-label and layout code is written once. A digest lane shares the load among
-the complete digest's peptides by mass, with each missed cleavage leaving a
-partial a fifth of its share; a peptide can be selected in the protein or
-opened as a protein of its own, numbered as in the chain it came from.
-
-The ladders are representative of the common prestained 10 to 250 kDa and
-dual-colour sets, an unstained broad-range set (6.5 to 200 kDa) and a
-low-range peptide marker (1.4 to 26.6 kDa), equal mass per band with the
-coloured reference bands heavier, about 2.5 µg in a well. Gradient gels
-are not modelled.
-
-### Secondary structure
-
-Chou and Fasman's conformational parameters (1978) are three more graph
-tracks (helix, strand and turn propensity, windows 7, 5 and 5), and their
-nucleate-and-extend rule predicts helices and strands that ride the motif
-overlay as a Structural category beside the membrane spans. A helix is
-nucleated where four of six residues have P(alpha) above 1.03 and
-extended both ways while the mean over four residues stays at or above
-1.00; a strand where three of five residues have P(beta) above 1.05, with
-the same extension; a segment is kept when it is at least six (helix) or
-five (strand) residues long and its own propensity beats the other's, and
-where a helix and a strand overlap the one with the higher mean keeps the
-residues. Turns are not predicted (the tetrapeptide probabilities are
-left out). The method is about 55 to 60% accurate per residue and is kept
-for its transparency: the propensity table says why a helix is predicted
-where it is. The segments are provisional until converted, like every
-other hit on the overlay. GOR IV and COILS are not included: GOR IV's
-parameter tables are too large to embed faithfully and COILS's scoring
-matrix is not reproduced here; a structure from PDB or AlphaFold (the 3D
-view below) is the better answer for both.
-
-### 3D structure
-
-A protein's 3D view puts its structure beside its sequence. The structure
-comes from one of three places: an experimental entry from the RCSB PDB by
-PDB id (the entry's mmCIF, since large entries have no PDB-format file), the
-AlphaFold database's model for a UniProt accession (the prediction API names
-the current model file, fetched in PDB format), or a PDB or mmCIF file
-opened from disk. A protein imported from UniProt offers the PDB entries
-and the AlphaFold model its record names as one click. Opening a structure
-file directly opens each distinct protein chain as a protein of its own
-(the copies of a homodimer are one protein), with the structure attached.
-
-The document keeps a reference only: the source, the id, the chain and the
-key the coordinates are cached under. The coordinates themselves are kept
-in the browser's IndexedDB, so a structure opens again offline; a fetched
-one is fetched again when the cache is gone. A file's coordinates cannot be
-fetched, so on another computer the panel asks for the file again (the
-cache key is a hash of the file's text, so the same file reattaches). Only
-the id goes to RCSB or the AlphaFold database, never the sequence.
-
-**Lining up the residues.** A structure's residue numbers rarely match a
-sequence's positions: the construct carries a tag the crystal lost, the
-structure starts at the mature chain, disordered loops are missing, or the
-depositors numbered from the native protein. So the protein is aligned to
-each chain (Needleman-Wunsch, BLOSUM62, gap open -10 and extend -0.5, the
-alignment tool's protein defaults) and the alignment gives the residue map;
-chains with the same sequence are aligned once and the chain with the most
-identical residues is chosen. The footer says how many residues aligned and
-how identical they are, and a warning appears below 30% identity. The
-alignment is redone after every edit, so a mutation or deletion moves the
-map with it. The chain can be changed by hand.
-
-Reading the file: residues of the first model with an alpha carbon and a
-residue name the code table knows (the twenty, selenocysteine and
-pyrrolysine, and the modified residues structures use for standard ones,
-such as selenomethionine, phosphoserine and pyroglutamate, read as their
-parent), numbered by the author numbering; waters, ligands and nucleic
-acids drop out without a list of them. Each residue's B-factor is the mean
-over its atoms; in an AlphaFold model that column holds the pLDDT.
-
-**The view.** The viewer is 3Dmol.js (Rego and Koes 2015), loaded on first
-use from a script beside app.html, so it costs nothing until a structure is
-shown and works when the app is opened from disk. The matched chain is drawn
-as cartoon, sticks or a surface; other chains are faint cartoons, ligands
-sticks, water hidden. Colouring:
-
-| Colour | What it shows |
-|--------|---------------|
-| Features | Each residue in the colour of the smallest visible feature covering it, so a site inside a domain shows the site |
-| Residue scheme | The protein colour scheme of the sequence view |
-| N to C | Blue at the N terminus to red at the C terminus, to read a fold's topology |
-| Chain | One colour per chain |
-| Confidence | AlphaFold's pLDDT in the AlphaFold database's four bands and colours: very high above 90, confident 70 to 90, low 50 to 70, very low below 50 |
-
-A surface is built per colour as patches shaped by the whole chain (3Dmol's
-per-vertex colour callback does not reach every vertex of a surface), and
-the N-to-C spectrum is cut to 20 steps on a surface to keep the patches
-few.
-
-**Linked to the sequence.** Residues selected in the sequence are drawn as
-sticks in the accent colour; a feature hovered in the sequence lights up its
-residues; a residue clicked in 3D is selected (and scrolled to) in the
-sequence; hovering a residue names it, its chain, its position in the
-protein and, for an AlphaFold model, its pLDDT. The view exports as PNG.
-
-### Limits
-
-The three-letter spelling is not drawn on a protein's canvas.
-The motif library is a curated subset of PROSITE, not the database; a
-pattern file cannot yet be imported. The domain map is not placed in the
-PDF export, which draws the sequence view; export it as SVG or PNG. SDS-PAGE
-gradient gels and glycosylated or otherwise anomalous migration are not
-modelled. The structure view shows structures; it does not predict them,
-and it does not edit coordinates. Residues are matched to the structure by
-author number, so a structure using insertion codes (27, 27A) maps the
-first of each number only. Only the first model of an NMR ensemble is read.
-
----
-
-## Primers
-
-### Primers as oligos
-
-A primer is stored as the oligo you would order: its full 5'→3' sequence,
-tails included (`app/src/primers/oligo.ts`). Where it binds is never stored.
-It is recomputed from the sequence (`binding.ts`): 10-mer seeds find candidate
-diagonals on both strands in one pass over the template, and the best-scoring
-run of paired bases along each diagonal is the annealed part. Whatever lies
-outside that run is a tail, so overhangs (restriction sites, homology arms,
-promoters) need no special handling. Mismatches inside the run are allowed;
-a primer only counts as bound where its 3' end pairs, a probe anywhere.
-
-Tailed primers have two Tms, both shown: the annealed part (first cycles)
-and the whole oligo (once the tail is copied into the product). SnapGene
-files keep the full sequence; GenBank writes one `primer_bind` feature per
-binding site with the oligo in `/primer_sequence`.
-
-Hovering a primer or probe on the sequence or map shows its Tm, GC, length,
-hairpin and self-dimer Tm with a traffic-light grade (see "Hairpin and
-self-dimer Tm" above), the restriction sites in its 5' tail and, for probes,
-the TaqMan checks. Tap Shift while any hover card is open to pin it, so its
-text can be selected; Esc or a click elsewhere unpins it. Right-clicking
-opens a compact menu (summary line, then actions, with Copy, New Primer and
-Origin in submenus). It works with the arrow keys and scrolls on short
-screens.
-
-### Design workbench
-
-The Design view of the sidebar's Primers tab, with five tasks:
-
-- **PCR / qPCR** - a pair (and optionally a TaqMan probe) around a target
-- **Cloning** - binding parts that start exactly at the insert's ends, behind
-  restriction-site tails (with padding, and a warning if the enzyme also cuts
-  the insert) or homology arms read off a vector (Gibson / In-Fusion)
-- **Mutagenesis** - substitutions, insertions and deletions, back-to-back
-  (Q5 SDM style) or overlapping (QuikChange rule, Tm ≥ 78 °C); the mutant
-  can be opened as a new sequence
-- **Sequencing** - primers tiled so reads overlap across a region, each
-  binding the template exactly once
-- **Check a primer** - where an oligo binds in every open sequence
-
-Any forward/reverse pick can be run as an in-silico PCR (`primers/pcr.ts`):
-the product opens as a new sequence with both 5' tails built in and the
-template's features carried over, ready for the cloning dialog.
-
-### Primer library
-
-Oligos you keep across sequences, listed in the explorer's **Oligos** group
-(folders, tags, notes, stars and search as for any item). A library oligo
-that binds the open sequence carries a badge; opening one shows where it
-binds in every open sequence. When you open a sequence that library primers
-bind, a notice offers them, and the Primers tab lists them with Add buttons.
-Library oligos are copied onto a sequence, not linked, so editing one leaves
-the other alone.
-
-Oligos come in by paste or file (CSV/TSV with Name and Sequence columns,
-"name sequence" lines, bare sequences or FASTA; unreadable lines are
-listed) and go out as CSV, FASTA or a tab-separated order sheet (Name,
-Sequence, Scale, Purification, as vendor bulk-entry forms take them). The
-library is saved with the session and included in session export.
-
-In the PCR task the target follows the selection; regions can be excluded. Each run returns the best pairs and the
-whole candidate landscape (best candidate per 3' end), drawn as a track so
-either side can be picked on its own. Picks are oligo sequences: they can be
-trimmed or extended along the template, are drawn on the sequence and map as
-dashed previews, and are re-scored as a pair live. Presets set the ranges;
-buffer presets set the salt and oligo concentrations for the Tm model.
-
-### Overview of the search
-
-1. **Enumerate candidates** - slide windows of varying length upstream (forward)
-   and downstream (reverse) of the target region, skipping excluded regions
-2. **Score each candidate** - evaluate against thermodynamic and structural
-   criteria, producing a weighted penalty with a per-term breakdown
-3. **Pair candidates** - combine the best 200 of each side, filter by product
-   size, and add pair-level penalties (Tm matching, cross-dimer)
-4. **Rank and return** - sort pairs by total penalty; return the top pairs and
-   the thinned candidate lists
-
-A target longer than the maximum product is reported, not worked around by
-changing the settings.
-
-### Individual Primer Scoring
-
-Each candidate primer is evaluated on multiple criteria. Hard constraints
-reject the primer entirely; soft penalties contribute to a weighted score.
-
-#### Hard Constraints (reject if violated)
-
-| Criterion | Default range |
-|-----------|---------------|
-| Tm | 57-63 °C |
-| GC content | 40-60% |
-| Homopolymer run | ≤ 4 bases |
-
-#### Soft Penalties (weighted score)
-
-| Criterion | Weight | Description |
-|-----------|--------|-------------|
-| Tm deviation | 1.0 per °C | Distance from optimal Tm (default 60°C) |
-| Length deviation | 0.5 per base | Distance from optimal length (default 20 bp) |
-| GC deviation | 0.1 per % | Distance from 50% GC |
-| No GC clamp | +1.0 | No G or C in the last 2 bases at the 3' end |
-| 3' stability (too stable) | +2.0 | ΔG₃₇ of last 5 bases < −9.0 kcal/mol |
-| 3' stability (too weak) | +1.0 | ΔG₃₇ of last 5 bases > −5.0 kcal/mol |
-| Self-complementarity ≥ 8 bp | +3.0 | Significant self-dimer potential |
-| Self-complementarity ≥ 5 bp | +1.0 | Moderate self-dimer potential |
-| 3' end self-dimer ≥ 4 bp | +4.0 | 3' end can pair with itself (blocks extension) |
-| 3' end self-dimer ≥ 3 bp | +1.5 | Moderate 3' dimer risk |
-| Hairpin stem ≥ 4 bp | +2.0 | Can fold into a hairpin |
-| Hairpin stem ≥ 3 bp | +0.5 | Weak hairpin potential |
-| Homopolymer run ≥ 3 | +0.5 per extra base | Soft penalty for long runs |
-
-### Pair Scoring
-
-```
-pair_penalty = fwd_penalty + rev_penalty
-             + |Tm_fwd − Tm_rev| × 1.0        (Tm matching)
-             + |product_size − optimal| × 0.01  (product size)
-             + cross_dimer_penalty               (3' cross-dimer)
-```
-
-### Thermodynamics
-
-Tm uses the unified nearest-neighbour parameters with the Owczarzy (2008)
-salt correction (monovalent and Mg²⁺, with Mg²⁺ bound by dNTPs), and is
-validated against Biopython's `Tm_NN` reference values. A primer's Tm at a
-binding site is taken against the template bases it faces: internal
-mismatches use the Allawi & SantaLucia / Peyret tables and the first tail
-base the terminal-mismatch table (tables from Biopython, BSD 3-Clause; see
-`primers/thermo/tables.ts`). Dimer ΔG allows single internal mismatches;
-loops and bulges are not modelled. An off-target scan reports weaker sites
-where a primer's last 8 bases pair perfectly.
-
-The cross-dimer check considers the 3' end of both primers. (Before the
-workbench it checked the second primer's 5' end by mistake, so a dimer on the
-reverse primer's 3' end went unpenalised.)
-
-### User-Configurable Parameters
-
-| Parameter | Default | Description |
-|-----------|---------|-------------|
-| Tm range | 57-63 °C | Min/max acceptable Tm |
-| Optimal Tm | 60 °C | Target Tm for penalty calculation |
-| Primer length | 18-25 bp | Min/max primer length |
-| Product size | 150-1000 bp | Min/max amplicon size |
-| GC content | 40-60% | Min/max GC of each primer |
-| Na⁺ concentration | 50 mM | Monovalent cation concentration for Tm calculation |
-| Mg²⁺ / dNTPs | 1.5 / 0.8 mM | Divalent correction, free Mg²⁺ = Mg²⁺ − dNTPs |
-| Primer concentration | 250 nM | Oligo concentration for Tm calculation |
-
-Presets: Standard PCR, GC-rich template, Long amplicon (1-5 kb) and qPCR with
-probe (70-150 bp, probe Tm 68-72 °C).
-
----
-
-## Codon Optimization
-
-Rewrites a coding region for expression in another host: pick the codons the
-host translates well, keep the restriction sites your cloning strategy needs
-free, and stay inside what a synthesis vendor will accept.
-
-The protein is the invariant. Whatever the settings, the optimizer re-translates
-its own output and throws if it does not match the input protein, rather than
-returning a sequence that codes for something else.
-
-### Targets
-
-| Target | What it optimizes |
-|--------|-------------------|
-| Selection | The selected bases, read in frame from the first one |
-| Coding features | Every CDS-like feature, individually checkable |
-| Whole sequence | Frame 1 from position 0 |
-
-A feature on the minus strand is read and written back in its own orientation,
-`/codon_start` is honoured, and an origin-spanning feature on a circular
-sequence is followed round the join. Each region is reduced to a coding-strand
-string plus a map from every base back to its genomic index, so those three
-cases share one code path rather than three.
-
-Two CDSs that share bases cannot both be optimized: rewriting one changes the
-other's reading frame. The first wins and the overlap is reported.
-
-### Genetic codes
-
-19 NCBI translation tables (1-6, 9-14, 16, 21-26), stored as diffs against the
-standard code. This decides which codons are synonymous, so a mitochondrial
-gene is not truncated at a TGA that codes for tryptophan in its own code.
-`utils/codon.ts` re-exports table 1, so the app has one copy of the standard
-code rather than two that can drift.
-
-### Codon usage tables
-
-| Source | Notes |
-|--------|-------|
-| Built-in | E. coli K-12, B. subtilis, S. cerevisiae, P. pastoris, H. sapiens, CHO, Sf9, A. thaliana |
-| Imported | EMBOSS cusp (.cusp) and GCG CodonFrequency (.cod). Persisted in IndexedDB. |
-
-The built-in tables are written from published genome-wide averages and are
-flagged `approximate` in the data and in the UI: the rankings and rare-codon
-calls are right, the low-order digits may differ from a particular reference.
-Import a table when the exact figures matter.
-
-Both formats are whitespace-aligned tables with a header naming their columns,
-and they order those columns differently:
-
-```
-cusp    #Codon AA Fraction Frequency Number
-GCG      AmAcid Codon Number /1000 Fraction ..
-```
-
-So the header is read and the columns taken by name, preferring Fraction, then
-the per-thousand frequency, then the raw count. Within a family all three are
-proportional, so the choice is about robustness rather than correctness: some
-GCG tables ship with the count column zeroed. Anything else with one codon and
-one number per line is still accepted as a plain list, which covers a Kazusa
-block or a quick paste.
-
-A family with no usage stays at zero rather than being spread evenly, so
-`unusableResidues` can report an amino acid the table cannot encode instead of
-the optimizer silently inventing a preference.
-
-### What gets changed
-
-- **Every codon**, choosing either the most frequent synonym or one sampled
-  from the host distribution. Sampling is seeded, so a run reproduces exactly,
-  and it avoids the long identical runs that "most frequent" produces.
-- **Rare codons only**, above a configurable within-family threshold.
-
-### Constraints
-
-| Constraint | Detail |
-|------------|--------|
-| Forbidden motifs | Enzyme groups (built in, or a saved enzyme set), individual enzymes, custom IUPAC motifs, and presets for Type IIS sites, internal Shine-Dalgarno, polyA signals, cryptic splice sites and E. coli promoter boxes. Checked on both strands. |
-| Homopolymers | Separate limits for A/T and G/C runs |
-| GC content | Global bounds plus a sliding local window |
-| Repeats | Direct repeats over N bp |
-| Hairpins | Inverted repeats with a stem over N bp within a loop distance |
-| CpG | Avoided when asked, for mammalian constructs |
-| Locked codons | Start, stop, the first N codons, and anything under a protected non-coding feature |
-
-Constraints are checked across the region boundary into the untouched flanks,
-so a site that would straddle the edge is still avoided.
-
-### Algorithm
-
-Greedy left to right with bounded backtracking. Each codon takes the best
-synonym that leaves the window it can affect free of violations; when nothing
-fits, the walk steps back and tries the previous codon's next choice. Past the
-step budget it keeps the best remaining option and reports the violation rather
-than failing the whole run.
-
-A full dynamic program is not an option here: the state would have to be the
-last K bases, where K is the longest constraint window, so the table is 4^K
-wide.
-
-Direct repeats are the one constraint that is not local, since the other copy
-can be anywhere. They are tracked in an index built as the walk proceeds and
-rolled back on backtracking, which keeps the run linear where re-scanning per
-codon would make it quadratic.
-
-Optimization runs on the main thread. A few thousand codons take milliseconds,
-and the dialog previews on a 200 ms debounce; past 60 kb of target it waits for
-an explicit run instead.
-
-### Metrics
-
-CAI, GC, GC3, rare codon count and the longest A/T and G/C runs, before and
-after. CAI is the geometric mean of relative adaptiveness over the region,
-skipping single-codon families (Met, Trp), which carry no information about
-adaptation and would only drag every score toward 1.
-
-### Applying
-
-Applying is an equal-length substitution through `substituteBasesInPlace`: one
-undo entry, and no annotation moves, because no coordinate changes. This is why
-it does not reuse `replaceBases`, which deletes then inserts, and would drop
-the very CDS being optimized (an annotation fully inside a deleted range is
-removed). The result can also be opened as a new sequence, leaving the original
-untouched.
 
 ---
 
@@ -4216,6 +5323,74 @@ print colours on white, whatever the app's theme.
 
 - Le Cam L (1960) "An approximation theorem for the Poisson binomial
   distribution." *Pacific Journal of Mathematics* 10:1181-1197.
+
+- Gibson DG, Young L, Chuang RY, Venter JC, Hutchison CA, Smith HO (2009)
+  "Enzymatic assembly of DNA molecules up to several hundred kilobases."
+  *Nat Methods* 6:343-345.
+
+- Li MZ, Elledge SJ (2007) "Harnessing homologous recombination in vitro to
+  generate recombinant DNA via SLIC." *Nat Methods* 4:251-256.
+
+- Engler C, Kandzia R, Marillonnet S (2008) "A one pot, one step, precision
+  cloning method with high throughput capability." *PLoS ONE* 3:e3647.
+
+- Potapov V, Ong JL, Kucera RB, et al. (2018) "Comprehensive profiling of
+  four base overhang ligation fidelity by T4 DNA ligase and application to
+  DNA assembly." *ACS Synth Biol* 7:2665-2674.
+
+- Pryor JM, Potapov V, Kucera RB, Bilotti K, Cantor EJ, Lohman GJS (2020)
+  "Enabling one-pot Golden Gate assemblies of unprecedented complexity
+  using data-optimized assembly design." *PLoS ONE* 15:e0238592.
+
+- Hartley JL, Temple GF, Brasch MA (2000) "DNA cloning using in vitro
+  site-specific recombination." *Genome Res* 10:1788-1795.
+
+- Shuman S (1994) "Novel approach to molecular cloning and polynucleotide
+  synthesis using vaccinia DNA topoisomerase." *J Biol Chem*
+  269:32678-32684.
+
+- Clark JM (1988) "Novel non-templated nucleotide addition reactions
+  catalyzed by procaryotic and eucaryotic DNA polymerases." *Nucleic Acids
+  Res* 16:9677-9686. (The 3' A overhang TOPO-TA relies on.)
+
+- Marinus MG, Løbner-Olesen A (2014) "DNA methylation." *EcoSal Plus* 6(1).
+  (Dam and Dcm.)
+
+- Stellwagen NC (2009) "Electrophoresis of DNA in agarose gels,
+  polyacrylamide gels and in free solution." *Electrophoresis* 30
+  Suppl 1:S188-S195. (The sigmoid in log size and the reptation limit the
+  gel model follows.)
+
+- Ferguson KA (1964) "Starch-gel electrophoresis: application to the
+  classification of pituitary proteins and polypeptides." *Metabolism*
+  13:985-1002. (Log mass against distance on SDS-PAGE.)
+
+- Katoh K, Standley DM (2013) "MAFFT multiple sequence alignment software
+  version 7: improvements in performance and usability." *Mol Biol Evol*
+  30:772-780.
+
+- Edgar RC (2022) "Muscle5: high-accuracy alignment ensembles enable
+  unbiased assessments of sequence homology and phylogeny." *Nat Commun*
+  13:6968.
+
+- Lassmann T (2020) "Kalign 3: multiple sequence alignment of large data
+  sets." *Bioinformatics* 36:1928-1929.
+
+- Gotoh O (1982) "An improved algorithm for matching biological
+  sequences." *J Mol Biol* 162:705-708. (Affine gaps in the profile
+  aligner.)
+
+- Altschul SF, Gish W, Miller W, Myers EW, Lipman DJ (1990) "Basic local
+  alignment search tool." *J Mol Biol* 215:403-410.
+
+- NCBI. "BLAST URL API."
+  https://blast.ncbi.nlm.nih.gov/doc/blast-help/urlapi.html
+
+- NCBI. "Entrez Programming Utilities Help."
+  https://www.ncbi.nlm.nih.gov/books/NBK25499/
+
+- Thermo Fisher Scientific. "Gateway Technology" manual (att site
+  sequences).
 
 ## License
 
