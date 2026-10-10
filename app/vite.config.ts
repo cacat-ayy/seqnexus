@@ -2,7 +2,7 @@
 import { defineConfig, type Plugin } from 'vite'
 import react from '@vitejs/plugin-react'
 import { viteSingleFile } from 'vite-plugin-singlefile'
-import { existsSync, readFileSync, readdirSync, rmSync, statSync } from 'node:fs'
+import { copyFileSync, existsSync, readFileSync, readdirSync, rmSync, statSync } from 'node:fs'
 import { dirname, extname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
@@ -27,7 +27,7 @@ const MIME: Record<string, string> = {
  * Serve the hand-written landing page and its assets from the repo root during
  * dev, so the dev server mirrors production: / is the landing page, /app.html
  * is the editor. Registered as post-middleware, so Vite still owns /app.html
- * and /src/* — only paths Vite does not handle fall through to here.
+ * and /src/*: only paths Vite does not handle fall through to here.
  */
 function serveSiteRoot(): Plugin {
   return {
@@ -43,7 +43,7 @@ function serveSiteRoot(): Plugin {
           // but delivered HTML where an image was expected.
           const raw = (req as { originalUrl?: string }).originalUrl ?? req.url ?? '/'
           const url = raw.split('?')[0]
-          // Never shadow the app itself — Vite builds that from source.
+          // Never shadow the app itself: Vite builds that from source.
           if (url === '/app.html') return next()
           const rel = url === '/' ? 'index.html' : decodeURIComponent(url).replace(/^\/+/, '')
           const file = resolve(siteRoot, rel)
@@ -76,6 +76,46 @@ function cleanStaleWorkers(): Plugin {
 }
 
 /**
+ * Third-party browser builds that ship beside app.html as plain scripts,
+ * loaded on demand with a script tag (see src/structure/load3dmol.ts). Not
+ * imported as modules: they are large, used by few, and module chunks do
+ * not load over file://. The published name carries the version, so a
+ * cached copy is never mistaken for a newer one.
+ */
+const THREEDMOL_VERSION = '2.5.5'
+const THREEDMOL_FILE = `3Dmol-${THREEDMOL_VERSION}.min.js`
+const VENDOR_FILES: [from: string, to: string][] = [
+  ['vendor/3dmol/3Dmol-min.js', THREEDMOL_FILE],
+  ['vendor/3dmol/LICENSE', `3Dmol-${THREEDMOL_VERSION}.LICENSE.txt`],
+]
+
+function vendorScripts(): Plugin {
+  return {
+    name: 'vendor-scripts',
+    // Dev: serve them from app/vendor under their published names.
+    configureServer(server) {
+      server.middlewares.use((req, res, next) => {
+        const url = (req.url ?? '').split('?')[0].replace(/^\/+/, '')
+        const hit = VENDOR_FILES.find(([, to]) => to === url)
+        if (!hit) return next()
+        res.setHeader('Content-Type', url.endsWith('.js') ? 'text/javascript' : 'text/plain')
+        res.end(readFileSync(resolve(appDir, hit[0])))
+      })
+    },
+    // Build: copy them into the web root beside app.html, removing any other
+    // version's copy so the repo root holds only the one in use.
+    writeBundle() {
+      for (const f of readdirSync(siteRoot)) {
+        if (/^3Dmol-[\d.]+\.(min\.js|LICENSE\.txt)$/.test(f) && !VENDOR_FILES.some(([, to]) => to === f)) {
+          rmSync(resolve(siteRoot, f))
+        }
+      }
+      for (const [from, to] of VENDOR_FILES) copyFileSync(resolve(appDir, from), resolve(siteRoot, to))
+    },
+  }
+}
+
+/**
  * app.html carries a developer-facing comment explaining that it is the Vite
  * entry rather than a copy of the built ../app.html. Strip HTML comments from
  * the built output so that note is not shipped to every visitor.
@@ -98,6 +138,7 @@ export default defineConfig({
     serveSiteRoot(),
     cleanStaleWorkers(),
     stripEntryComments(),
+    vendorScripts(),
   ],
   server: {
     host: '0.0.0.0',
@@ -113,7 +154,7 @@ export default defineConfig({
     minify: 'esbuild',
     // Publish in place: app.html and its worker chunks land in the web root.
     outDir: siteRoot,
-    // Must stay false — emptying outDir here would delete the whole repo.
+    // Must stay false: emptying outDir here would delete the whole repo.
     emptyOutDir: false,
     rollupOptions: {
       input: resolve(appDir, 'app.html'),
@@ -127,6 +168,7 @@ export default defineConfig({
   // could only ever name the commit before its own.
   define: {
     __BUILD_DATE__: JSON.stringify(new Date().toISOString().slice(0, 10)),
+    __THREEDMOL_FILE__: JSON.stringify(THREEDMOL_FILE),
   },
   test: {
     globals: true,

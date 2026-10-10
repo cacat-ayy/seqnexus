@@ -63,6 +63,7 @@ import { matchKey, proposalsFrom } from './utils/auto-annotations'
 import { orfKey, convertibleOrfs, orfToAnnotationData } from './utils/orf-features'
 import { motifKey, convertibleMotifs, motifToAnnotationData } from './utils/motif-features'
 import type { MotifHit } from './protein/motifs'
+import type { StructureRef } from './structure/model'
 
 /** A digest's peptides drawn over the protein they came from. */
 export interface PeptideOverlay {
@@ -116,7 +117,12 @@ export interface SearchState {
   searchedBases?: string
 }
 
-export type ViewMode = 'linear' | 'circular' | 'split'
+/**
+ * linear: the sequence. circular: the map (a plasmid's circle, a protein's
+ * domain map). split: map beside or above the sequence. structure: a
+ * protein's 3D structure beside its sequence.
+ */
+export type ViewMode = 'linear' | 'circular' | 'split' | 'structure'
 
 /** Per-document state including undo stacks and selection. */
 export interface DocumentTab {
@@ -749,6 +755,8 @@ interface EditorStore {
    * new tab's id, or null when there is nothing to translate.
    */
   translateToProtein: (req: TranslationRequest) => string | null
+  /** Attach a 3D structure to the open protein, or remove it with null; one undo step. */
+  setStructure: (ref: StructureRef | null) => void
   /**
    * From a translated protein, open the DNA it came from and select the
    * codons of the current residue selection (or of the whole protein).
@@ -2317,6 +2325,17 @@ export const useEditorStore = create<EditorStore>((set, get) => {
       return tab.id
     },
 
+    setStructure(ref) {
+      const label = ref ? `Attach structure ${ref.source === 'file' ? ref.id : `${ref.id} chain ${ref.chain}`}` : 'Remove structure'
+      transact(doc => {
+        const meta = { ...(doc.metadata ?? {}) }
+        if (ref) meta.structure = ref
+        else if (meta.structure) delete meta.structure
+        else return doc
+        return { ...doc, metadata: meta }
+      }, { label })
+    },
+
     translateToProtein(req) {
       const tab = getActiveTab()
       if (!tab || tab.doc.sequence.alphabet === 'protein') return null
@@ -2932,7 +2951,9 @@ export const useEditorStore = create<EditorStore>((set, get) => {
       // Auto-switch view mode on topology change
       if (props.topology === 'circular' && tab.viewMode === 'linear') {
         patch.viewMode = 'split'
-      } else if (props.topology === 'linear' && tab.viewMode !== 'linear') {
+      } else if (props.topology === 'linear' && tab.doc.sequence.topology === 'circular' && tab.viewMode !== 'linear') {
+        // Only on an actual change: a protein's properties always say linear,
+        // and its Map or 3D view must survive an edit of its name.
         patch.viewMode = 'linear'
       }
       updateActiveTab(patch)

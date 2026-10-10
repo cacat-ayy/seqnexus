@@ -11,6 +11,7 @@ import MotifPanel from './components/MotifPanel'
 import type { GelKind } from './gel/model'
 import DigestDialog from './components/DigestDialog'
 import DomainMap from './components/DomainMap'
+import StructurePanel from './components/StructurePanel'
 import FeatureSidebar from './components/FeatureSidebar'
 import EmptyState from './components/EmptyState'
 import DisplayPopover from './components/DisplayPopover'
@@ -116,7 +117,7 @@ import { useFileImport, SUPPORTED_EXTENSIONS, errorDetail, reportFastaSkips, rep
  * second.
  */
 /** Everything the Open dialog offers: sequences, reads and alignments. */
-const OPEN_ACCEPT = ['.gb', '.gbk', '.genbank', '.gp', '.gpt', '.genpept', '.fasta', '.fa', '.fna', '.faa', '.fastq', '.fq', '.gz', '.seq', '.txt', '.dna', '.geneious', '.ab1', '.abi', '.abif', '.scf', '.bam', '.sam', ...ALN_EXTENSIONS].join(',')
+const OPEN_ACCEPT = ['.gb', '.gbk', '.genbank', '.gp', '.gpt', '.genpept', '.fasta', '.fa', '.fna', '.faa', '.fastq', '.fq', '.gz', '.seq', '.txt', '.dna', '.geneious', '.ab1', '.abi', '.abif', '.scf', '.bam', '.sam', '.pdb', '.ent', '.cif', '.mmcif', ...ALN_EXTENSIONS].join(',')
 
 /** Export dialog format ids to alignment writers. */
 const ALN_EXPORT_FORMAT: Partial<Record<string, AlnFormatId>> = {
@@ -1338,6 +1339,7 @@ export default function App() {
     { id: 'orfs', label: 'Find ORFs', group: 'Analyse', icon: Dna, keywords: 'open reading frame', disabled: noDna, run: () => setOrfModalOpen(true) },
     { id: 'motifs', label: 'Find Motifs and Sites', group: 'Analyse', icon: Atom, keywords: 'prosite glycosylation phosphorylation liability transmembrane protein', disabled: noDoc || !isProtein, run: () => setMotifPanelOpen(true) },
     { id: 'enzymes', label: 'Restriction Enzymes', group: 'Analyse', icon: Scissors, keywords: 'digest cut sites', disabled: noDna, run: () => setEnzymeModalOpen(true) },
+    { id: 'structure', label: 'Show 3D Structure', group: 'View', icon: Atom, keywords: 'pdb alphafold 3d structure fold model mmcif', disabled: noDoc || !isProtein, run: () => setViewMode('structure') },
     { id: 'digest', label: 'Proteolytic Digest', group: 'Analyse', icon: Scissors, keywords: 'trypsin protease peptide mass spectrometry coverage', disabled: noDoc || !isProtein, run: () => setDigestOpen(true) },
     { id: 'primers', label: 'Design Primers', group: 'Analyse', icon: FlaskConical, keywords: 'pcr tm oligo', disabled: noDna, run: openPrimerDesign },
     { id: 'blast', label: 'BLAST Search', group: 'Analyse', icon: Globe, keywords: 'ncbi homology', disabled: noDoc, run: () => setBlastModalOpen(true) },
@@ -1374,7 +1376,7 @@ export default function App() {
     { id: 'about', label: 'About SeqNexus', group: 'View', icon: Info, keywords: 'help version', run: () => setInfoOpen(true) },
   ], [
     mod, redoKey, noDoc, noDna, isProtein, sequenceShown, openPdfExport, undoDisabled, redoDisabled, handleOpenFind, handleNewSequence, handleNewFolder, openGel, openCloning, runUndo, runRedo,
-    handleImportClipboard, toggleOrfs, toggleMotifs, toggleEnzymes, openSidebar, openPrimerDesign, toggleAutoAnnotations,
+    handleImportClipboard, toggleOrfs, toggleMotifs, toggleEnzymes, setViewMode, openSidebar, openPrimerDesign, toggleAutoAnnotations,
     viewMode,
   ])
 
@@ -1845,10 +1847,10 @@ export default function App() {
               <div className="info-row"><span className="info-label">Source</span><span><a href="https://github.com/cacat-ayy/seqnexus" target="_blank" rel="noopener noreferrer">github.com/cacat-ayy/seqnexus</a></span></div>
               <hr />
               {/* The two questions users actually have. Only BLAST sends a
-                  sequence anywhere (blast/client.ts); NCBI fetch only sends
-                  an accession. Keep this true if that changes. */}
+                  sequence anywhere (blast/client.ts); NCBI, UniProt, RCSB and
+                  AlphaFold fetches only send an id. Keep this true if that changes. */}
               <div className="info-notice">
-                <p><strong>Your data stays here.</strong> Sequences are kept in this browser and never uploaded, except to NCBI when you run a BLAST search.</p>
+                <p><strong>Your data stays here.</strong> Sequences are kept in this browser and never uploaded, except to NCBI when you run a BLAST search. Fetching a record or a structure sends only its id.</p>
                 <p>Figures you make may be used freely in publications, theses and commercial work.</p>
               </div>
               <hr />
@@ -2011,6 +2013,13 @@ export default function App() {
                       onClick={() => setViewMode('split')}
                     >
                       Split
+                    </button>
+                    <button
+                      className={`view-tab ${viewMode === 'structure' ? 'active' : ''}`}
+                      onClick={() => setViewMode('structure')}
+                      title={doc.metadata?.structure ? `3D structure: ${doc.metadata.structure.id}` : 'Show a 3D structure beside the sequence'}
+                    >
+                      3D
                     </button>
                   </>
                 ) : (
@@ -2277,7 +2286,23 @@ export default function App() {
                         </div>
                       </div>
                     )}
-                    {viewMode === 'linear' && <SequenceView onFindRequest={handleOpenFind} onFindClose={handleCloseFind} onAnnotateRequest={handleAnnotateRequest} onEditFeature={handleOpenFeaturesPanel} onFindInDna={handleFindInDna} />}
+                    {(viewMode === 'linear' || (viewMode === 'structure' && !isProtein)) && <SequenceView onFindRequest={handleOpenFind} onFindClose={handleCloseFind} onAnnotateRequest={handleAnnotateRequest} onEditFeature={handleOpenFeaturesPanel} onFindInDna={handleFindInDna} />}
+                    {viewMode === 'structure' && isProtein && (
+                      <div
+                        ref={splitContainerRef}
+                        className="split-container"
+                        onPointerMove={handleSplitPointerMove}
+                        onPointerUp={handleSplitPointerUp}
+                      >
+                        <div className="split-pane" style={{ flex: `0 0 ${splitFraction * 100}%` }}>
+                          <StructurePanel onExportPrompt={handleFilenamePrompt} />
+                        </div>
+                        <div className="split-divider" onPointerDown={handleSplitPointerDown} />
+                        <div className="split-pane" style={{ flex: 1 }}>
+                          <SequenceView onFindRequest={handleOpenFind} onFindClose={handleCloseFind} onAnnotateRequest={handleAnnotateRequest} onEditFeature={handleOpenFeaturesPanel} onFindInDna={handleFindInDna} />
+                        </div>
+                      </div>
+                    )}
                     {viewMode === 'circular' && isProtein && <DomainMap onExportPrompt={handleFilenamePrompt} fill />}
                     {viewMode === 'split' && isProtein && (
                       <div className="split-stack">

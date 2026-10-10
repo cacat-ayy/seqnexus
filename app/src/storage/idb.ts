@@ -9,7 +9,7 @@
 import { openDB, type IDBPDatabase } from 'idb'
 
 const DB_NAME = 'seqnexus'
-const DB_VERSION = 7
+const DB_VERSION = 8
 const STORE_NAME = 'sequences'
 const TRACE_STORE = 'traces'
 const ALIGN_STORE = 'alignments'
@@ -18,6 +18,8 @@ const FEATURE_SOURCE_STORE = 'featureSources'
 const USAGE_TABLE_STORE = 'codonUsageTables'
 /** NGS reads in compressed chunks, keyed "<read set id>:<chunk number>" (see ngs/codec.ts). */
 const READ_CHUNK_STORE = 'readChunks'
+/** Structure coordinates (PDB or mmCIF text), keyed by StructureRef.key (see structure/model.ts). */
+const STRUCTURE_STORE = 'structures'
 
 let _db: IDBPDatabase | null = null
 
@@ -45,6 +47,9 @@ async function getDB(): Promise<IDBPDatabase> {
       }
       if (!db.objectStoreNames.contains(READ_CHUNK_STORE)) {
         db.createObjectStore(READ_CHUNK_STORE)
+      }
+      if (!db.objectStoreNames.contains(STRUCTURE_STORE)) {
+        db.createObjectStore(STRUCTURE_STORE)
       }
     },
   })
@@ -368,4 +373,23 @@ export async function estimateStorage(): Promise<{
     }
   }
   return null
+}
+
+// ---- Structure coordinates ----
+//
+// The text of a PDB or mmCIF file, keyed by its source and id ("pdb:1A3N",
+// "afdb:P69905", "file:<hash>"). A cache, not a document: a fetched
+// structure can be fetched again, so a failure to store is not an error.
+// A dropped file is the one thing that cannot be re-fetched, which is why
+// it is kept here under the hash of its text rather than in memory.
+
+export async function saveStructure(key: string, text: string): Promise<void> {
+  const db = await getDB()
+  await db.put(STRUCTURE_STORE, text, key)
+}
+
+export async function loadStructure(key: string): Promise<string | undefined> {
+  const db = await getDB()
+  if (!db.objectStoreNames.contains(STRUCTURE_STORE)) return undefined
+  return db.get(STRUCTURE_STORE, key)
 }

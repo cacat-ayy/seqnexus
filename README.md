@@ -13,11 +13,13 @@ self-contained HTML file.
 ├── index.html               landing page (hand-written, not built)
 ├── app.html                 the built editor (generated, commit it)
 ├── *.worker-<hash>.js       the editor's Web Workers (generated, commit them)
+├── 3Dmol-<version>.min.js   the structure viewer, copied from app/vendor by the build (commit it)
 ├── impressum.html / datenschutz.html
 ├── assets/                  favicons, screenshots
 ├── wasm/                    MAFFT, MUSCLE and Kalign (biowasm), run by the alignment tool
 └── app/                     Vite + React source for the editor
     ├── app.html                 Vite entry, builds to ../app.html
+    ├── vendor/3dmol/            3Dmol.js browser build and its license (see its README)
     └── src/
 ```
 
@@ -2486,7 +2488,7 @@ mutagenesis variants. A natural variant is named in the short HGVS form
 Secondary structure (helix, turn, strand), sequence conflicts, the initiator
 methionine and features without a fixed position are left out: they are
 about the record, not the protein. The entry's PDB identifiers and whether
-AlphaFold has a model are kept in the document's metadata for the structure
+AlphaFold has a model are kept in the document's metadata for the 3D
 viewer.
 
 ### Disulfide bonds
@@ -2621,18 +2623,85 @@ for its transparency: the propensity table says why a helix is predicted
 where it is. The segments are provisional until converted, like every
 other hit on the overlay. GOR IV and COILS are not included: GOR IV's
 parameter tables are too large to embed faithfully and COILS's scoring
-matrix is not reproduced here; a structure from PDB or AlphaFold (the next
-phase) is the better answer for both.
+matrix is not reproduced here; a structure from PDB or AlphaFold (the 3D
+view below) is the better answer for both.
+
+### 3D structure
+
+A protein's 3D view puts its structure beside its sequence. The structure
+comes from one of three places: an experimental entry from the RCSB PDB by
+PDB id (the entry's mmCIF, since large entries have no PDB-format file), the
+AlphaFold database's model for a UniProt accession (the prediction API names
+the current model file, fetched in PDB format), or a PDB or mmCIF file
+opened from disk. A protein imported from UniProt offers the PDB entries
+and the AlphaFold model its record names as one click. Opening a structure
+file directly opens each distinct protein chain as a protein of its own
+(the copies of a homodimer are one protein), with the structure attached.
+
+The document keeps a reference only: the source, the id, the chain and the
+key the coordinates are cached under. The coordinates themselves are kept
+in the browser's IndexedDB, so a structure opens again offline; a fetched
+one is fetched again when the cache is gone. A file's coordinates cannot be
+fetched, so on another computer the panel asks for the file again (the
+cache key is a hash of the file's text, so the same file reattaches). Only
+the id goes to RCSB or the AlphaFold database, never the sequence.
+
+**Lining up the residues.** A structure's residue numbers rarely match a
+sequence's positions: the construct carries a tag the crystal lost, the
+structure starts at the mature chain, disordered loops are missing, or the
+depositors numbered from the native protein. So the protein is aligned to
+each chain (Needleman-Wunsch, BLOSUM62, gap open -10 and extend -0.5, the
+alignment tool's protein defaults) and the alignment gives the residue map;
+chains with the same sequence are aligned once and the chain with the most
+identical residues is chosen. The footer says how many residues aligned and
+how identical they are, and a warning appears below 30% identity. The
+alignment is redone after every edit, so a mutation or deletion moves the
+map with it. The chain can be changed by hand.
+
+Reading the file: residues of the first model with an alpha carbon and a
+residue name the code table knows (the twenty, selenocysteine and
+pyrrolysine, and the modified residues structures use for standard ones,
+such as selenomethionine, phosphoserine and pyroglutamate, read as their
+parent), numbered by the author numbering; waters, ligands and nucleic
+acids drop out without a list of them. Each residue's B-factor is the mean
+over its atoms; in an AlphaFold model that column holds the pLDDT.
+
+**The view.** The viewer is 3Dmol.js (Rego and Koes 2015), loaded on first
+use from a script beside app.html, so it costs nothing until a structure is
+shown and works when the app is opened from disk. The matched chain is drawn
+as cartoon, sticks or a surface; other chains are faint cartoons, ligands
+sticks, water hidden. Colouring:
+
+| Colour | What it shows |
+|--------|---------------|
+| Features | Each residue in the colour of the smallest visible feature covering it, so a site inside a domain shows the site |
+| Residue scheme | The protein colour scheme of the sequence view |
+| N to C | Blue at the N terminus to red at the C terminus, to read a fold's topology |
+| Chain | One colour per chain |
+| Confidence | AlphaFold's pLDDT in the AlphaFold database's four bands and colours: very high above 90, confident 70 to 90, low 50 to 70, very low below 50 |
+
+A surface is built per colour as patches shaped by the whole chain (3Dmol's
+per-vertex colour callback does not reach every vertex of a surface), and
+the N-to-C spectrum is cut to 20 steps on a surface to keep the patches
+few.
+
+**Linked to the sequence.** Residues selected in the sequence are drawn as
+sticks in the accent colour; a feature hovered in the sequence lights up its
+residues; a residue clicked in 3D is selected (and scrolled to) in the
+sequence; hovering a residue names it, its chain, its position in the
+protein and, for an AlphaFold model, its pLDDT. The view exports as PNG.
 
 ### Limits
 
-The structure panel is the last phase of the protein work and is not in
-this version. The three-letter spelling is not drawn on a protein's canvas.
+The three-letter spelling is not drawn on a protein's canvas.
 The motif library is a curated subset of PROSITE, not the database; a
 pattern file cannot yet be imported. The domain map is not placed in the
 PDF export, which draws the sequence view; export it as SVG or PNG. SDS-PAGE
 gradient gels and glycosylated or otherwise anomalous migration are not
-modelled.
+modelled. The structure view shows structures; it does not predict them,
+and it does not edit coordinates. Residues are matched to the structure by
+author number, so a structure using insertion codes (27, 27A) maps the
+first of each number only. Only the first model of an NMR ensemble is read.
 
 ---
 
@@ -3101,6 +3170,23 @@ print colours on white, whatever the app's theme.
 - The UniProt Consortium (2023) "UniProt: the Universal Protein
   Knowledgebase in 2023." *Nucleic Acids Res* 51:D523-D531.
 
+- Rego N, Koes D (2015) "3Dmol.js: molecular visualization with WebGL."
+  *Bioinformatics* 31:1322-1324. (The structure viewer.)
+
+- Jumper J, Evans R, Pritzel A, et al. (2021) "Highly accurate protein
+  structure prediction with AlphaFold." *Nature* 596:583-589.
+
+- Varadi M, Anyango S, Deshpande M, et al. (2022) "AlphaFold Protein
+  Structure Database: massively expanding the structural coverage of
+  protein-sequence space with high-accuracy models." *Nucleic Acids Res*
+  50:D439-D444. (The models and their pLDDT bands.)
+
+- Burley SK, Bhikadiya C, Bi C, et al. (2021) "RCSB Protein Data Bank:
+  powerful new tools for exploring 3D structures of biological
+  macromolecules for basic and applied research and education in
+  fundamental biology, biomedicine, biotechnology, bioengineering and
+  energy sciences." *Nucleic Acids Res* 49:D437-D451.
+
 - Chou PY, Fasman GD (1978) "Prediction of the secondary structure of
   proteins from their amino acid sequence." *Adv Enzymol Relat Areas Mol
   Biol* 47:45-148. (The propensities and the nucleation rule.)
@@ -3337,3 +3423,8 @@ theses and commercial work.
 
 SeqNexus is distributed WITHOUT ANY WARRANTY; without even the implied warranty
 of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+
+Third-party code shipped with the editor: 3Dmol.js (BSD-3-Clause, which
+includes code from GLmol, Three.js and jQuery), published beside app.html
+with its license as `3Dmol-<version>.LICENSE.txt`; the source copy and its
+provenance are in `app/vendor/3dmol/`.

@@ -17,19 +17,21 @@ import { parseGeneious } from '../io/geneious'
 import { importTraceFiles, isTraceFile } from '../sanger/import'
 import { parseFastq, meanQuality } from '../io/fastq'
 import { countRecords, isNgsByName, NGS_FEW_RECORDS } from '../ngs/peek'
+import { structureFromFile } from '../structure/sources'
+import { proteinsFromStructure } from '../structure/attach'
 import { isReadFile } from '../ngs/detect'
 import { importSessionFromJson, type RestoredSession } from '../persistence'
 import { ALIGNMENT_ONLY_EXTENSIONS, detectFormat, fastaLooksAligned, readAlignment } from '../msa/formats'
 import { notify } from '../toast'
 
 /** Every file extension the drop zone and the Open dialog accept. */
-export const SUPPORTED_EXTENSIONS = /\.(gb|gbk|genbank|gp|gpt|genpept|dna|geneious|fasta|fa|fas|fna|faa|fastq|fq|seq|txt|ab1|abi|abif|scf|json|aln|clustal|clw|phy|phylip|ph|nex|nexus|nxs|meg|mega|sto|stk|stockholm|pir|nbrf|ali|msf|afa|a2m|mfa)$/i
+export const SUPPORTED_EXTENSIONS = /\.(gb|gbk|genbank|gp|gpt|genpept|pdb|ent|cif|mmcif|dna|geneious|fasta|fa|fas|fna|faa|fastq|fq|seq|txt|ab1|abi|abif|scf|json|aln|clustal|clw|phy|phylip|ph|nex|nexus|nxs|meg|mega|sto|stk|stockholm|pir|nbrf|ali|msf|afa|a2m|mfa)$/i
 /** What a plain-text file has to look like to be read as bases or residues. */
 const SEQUENCE_CHARS = /^[A-Za-z*\s\n\r>;.\-\d]+$/
 
 export const SUPPORTED_FORMATS_HINT =
   'Supported: GenBank (.gb), GenPept (.gp), SnapGene (.dna), Geneious (.geneious), FASTA (.fasta, .fa, .faa), '
-  + 'FASTQ (.fastq, .fq), AB1 (.ab1), SCF (.scf), plain text (.txt), read alignments (.bam, .sam), and alignments in '
+  + 'FASTQ (.fastq, .fq), AB1 (.ab1), SCF (.scf), plain text (.txt), structures (.pdb, .cif), read alignments (.bam, .sam), and alignments in '
   + 'Clustal (.aln), PHYLIP (.phy), NEXUS (.nex), MEGA (.meg), Stockholm (.sto), PIR (.pir) and MSF (.msf).'
 
 /**
@@ -148,6 +150,26 @@ export function useFileImport(h: FileImportHandlers) {
         } else {
           notify.error(`"${file.name}" is not a SeqNexus session file`)
         }
+      }
+      reader.readAsText(file)
+      return
+    }
+
+    if (file.name.match(/\.(pdb|ent|cif|mmcif)$/i)) {
+      // A structure: each distinct protein chain opens as a protein with
+      // the structure attached, shown in the 3D view.
+      const reader = new FileReader()
+      reader.onload = () => {
+        const base = file.name.replace(/\.[^.]+$/, '')
+        structureFromFile(file.name, String(reader.result)).then(fetched => {
+          const docs = proteinsFromStructure(fetched, base)
+          if (docs.length === 0) {
+            notify.error(`"${file.name}" has no protein chains`, { detail: 'Nucleic acids, ligands and waters are not opened as sequences.' })
+            return
+          }
+          openDocsInFolder(docs, file.name, base, 'proteins')
+          useEditorStore.getState().setViewMode('structure')
+        }).catch(err => notify.error(`Could not read "${file.name}"`, { detail: errorDetail(err) }))
       }
       reader.readAsText(file)
       return

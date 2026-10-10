@@ -15,6 +15,7 @@ import type { Alphabet, PieceTableSnapshot } from './Sequence'
 import { Annotation, AnnotationData, adjustAnnotation } from './Annotation'
 import type { PrimerData } from '../primers/oligo'
 import type { UniProtReference } from '../fetch/uniprot'
+import type { StructureRef } from '../structure/model'
 
 export type Strandedness = 'single' | 'double'
 
@@ -81,6 +82,8 @@ export interface SequenceMetadata {
   translatedFrom?: TranslationSource
   /** Protein only: the UniProt entry it was fetched from, with where its structures are. */
   uniprot?: UniProtReference
+  /** Protein only: the 3D structure shown beside it (coordinates are cached, not stored here). */
+  structure?: StructureRef
 }
 
 export interface DocumentState {
