@@ -112,6 +112,13 @@ export interface TranslationIssues {
   leftover: number
   /** The first codon, when it is not a start codon (ATG, GTG, TTG, or those of the feature's /transl_table). */
   badStart: string | null
+  /**
+   * In frame, but the last codon is not a stop. A GenBank CDS includes its
+   * stop codon, so this is a feature that ends early or one whose 3′ end is
+   * partial. Not reported for a feature cut short at a cloning junction,
+   * which is partial by construction.
+   */
+  missingStop: boolean
 }
 
 /**
@@ -120,7 +127,9 @@ export interface TranslationIssues {
  * that is not a CDS (a `gene` may include UTRs; an ORF is right by
  * construction) and for a CDS with nothing to report. The start codon is
  * only checked when `/codon_start` is 1, since a feature that starts
- * mid-codon is partial by declaration.
+ * mid-codon is partial by declaration. The stop is only checked when the
+ * feature is a whole number of codons: out of frame, the last codon read is
+ * not the one the feature ends on.
  */
 export function translationIssues(ann: Annotation, sequence: Sequence): TranslationIssues | null {
   if (ann.type !== 'CDS' || ann.id.startsWith('_orf_')) return null
@@ -133,8 +142,36 @@ export function translationIssues(ann: Annotation, sequence: Sequence): Translat
   const code = annotationCode(ann)
   const starts = code ? new Set(code.starts) : START_CODONS
   const badStart = codonStartOffset(ann) === 0 && !starts.has(first) ? first : null
-  if (internalStops === 0 && leftover === 0 && !badStart) return null
-  return { internalStops, leftover, badStart }
+  const missingStop = leftover === 0 && !ann.truncated && !protein.endsWith('*')
+  if (internalStops === 0 && leftover === 0 && !badStart && !missingStop) return null
+  return { internalStops, leftover, badStart, missingStop }
+}
+
+export interface IssueMessage {
+  text: string
+  /** A warning says the feature is probably drawn wrong; a note may be intended. */
+  severity: 'warning' | 'note'
+}
+
+/**
+ * The issues in words, worst first, as every view shows them. A wrong start
+ * or a missing stop is a note: a partial CDS or an alternative start is
+ * common and correct.
+ */
+export function issueMessages(issues: TranslationIssues | null): IssueMessage[] {
+  if (!issues) return []
+  const out: IssueMessage[] = []
+  if (issues.internalStops > 0) {
+    const n = issues.internalStops
+    out.push({ severity: 'warning', text: `${n} internal stop codon${n === 1 ? '' : 's'}: wrong frame or boundaries?` })
+  }
+  if (issues.leftover > 0) {
+    const n = issues.leftover
+    out.push({ severity: 'warning', text: `Not a whole number of codons (${n} base${n === 1 ? '' : 's'} left over)` })
+  }
+  if (issues.badStart) out.push({ severity: 'note', text: `Starts with ${issues.badStart}, not a start codon` })
+  if (issues.missingStop) out.push({ severity: 'note', text: 'Does not end on a stop codon: partial, or ends early?' })
+  return out
 }
 
 /**

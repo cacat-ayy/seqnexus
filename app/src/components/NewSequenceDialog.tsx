@@ -4,6 +4,7 @@ import { X } from 'lucide-react'
 import { useExitAnimation } from '../hooks/useExitAnimation'
 import { useFocusTrap } from '../hooks/useFocusTrap'
 import { guessAlphabet, invalidCharacters, type Alphabet } from '../models/alphabet'
+import { useBackdropDismiss } from '../hooks/useBackdropDismiss'
 
 export interface NewSequenceResult {
   name: string
@@ -79,9 +80,7 @@ export default function NewSequenceDialog({ open, onClose, onSubmit }: Props) {
     }
   }, [onClose, handleSubmit])
 
-  const handleBackdropClick = useCallback((e: React.MouseEvent) => {
-    if (e.target === backdropRef.current) onClose()
-  }, [onClose])
+  const { onMouseDown: handleBackdropClickDown, onClick: handleBackdropClick } = useBackdropDismiss(onClose)
 
   const { visible, closing, onAnimationEnd } = useExitAnimation(open)
   if (!visible) return null
@@ -89,7 +88,7 @@ export default function NewSequenceDialog({ open, onClose, onSubmit }: Props) {
   const count = cleaned.length
 
   return (
-    <div className={closing ? 'modal-backdrop closing' : 'modal-backdrop'} onAnimationEnd={onAnimationEnd} ref={backdropRef} onClick={handleBackdropClick} onKeyDown={handleKeyDown} tabIndex={-1}>
+    <div className={closing ? 'modal-backdrop closing' : 'modal-backdrop'} onAnimationEnd={onAnimationEnd} ref={backdropRef} onMouseDown={handleBackdropClickDown} onClick={handleBackdropClick} onKeyDown={handleKeyDown} tabIndex={-1}>
       <div className="modal-dialog nsm-dialog" role="dialog" aria-modal="true" aria-labelledby="new-sequence-modal-title">
         <div className="modal-header">
           <h3 className="modal-title" id="new-sequence-modal-title">New Sequence</h3>

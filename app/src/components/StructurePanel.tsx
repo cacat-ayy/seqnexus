@@ -27,6 +27,8 @@ import { downloadBlob } from '../utils/download'
 import { notify } from '../toast'
 import StructurePicker from './StructurePicker'
 import { useExitAnimation } from '../hooks/useExitAnimation'
+import { useFocusTrap } from '../hooks/useFocusTrap'
+import { useBackdropDismiss } from '../hooks/useBackdropDismiss'
 
 type DrawStyle = 'cartoon' | 'sticks' | 'surface'
 
@@ -396,10 +398,13 @@ export default function StructurePanel({ onExportPrompt }: {
 function ChangeDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
   const { visible, closing, onAnimationEnd } = useExitAnimation(open)
   const close = onClose
+  const backdropRef = useRef<HTMLDivElement>(null)
+  useFocusTrap(backdropRef, open)
+  const backdrop = useBackdropDismiss(close)
   if (!visible) return null
   return (
-    <div className={closing ? 'modal-backdrop closing' : 'modal-backdrop'} onAnimationEnd={onAnimationEnd}
-      onClick={e => { if (e.target === e.currentTarget) close() }} onKeyDown={e => { if (e.key === 'Escape') close() }} tabIndex={-1}>
+    <div ref={backdropRef} className={closing ? 'modal-backdrop closing' : 'modal-backdrop'} onAnimationEnd={onAnimationEnd}
+      {...backdrop} onKeyDown={e => { if (e.key === 'Escape') close() }} tabIndex={-1}>
       <div className="modal-dialog sp-dialog" role="dialog" aria-modal="true" aria-labelledby="sp-change-title">
         <div className="modal-header">
           <h3 className="modal-title" id="sp-change-title">Show Another Structure</h3>

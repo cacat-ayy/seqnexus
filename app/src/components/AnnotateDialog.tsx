@@ -25,6 +25,7 @@ import type { AnnotationMatch } from '../workers/annotate-list'
 
 import { useExitAnimation } from '../hooks/useExitAnimation'
 import { useFocusTrap } from '../hooks/useFocusTrap'
+import { useBackdropDismiss } from '../hooks/useBackdropDismiss'
 
 interface Props {
   open: boolean
@@ -175,9 +176,7 @@ export default function AnnotateDialog({ open, onClose }: Props) {
   // Backdrop / Escape
   const backdropRef = useRef<HTMLDivElement>(null)
   useFocusTrap(backdropRef, open)
-  const handleBackdrop = useCallback((e: React.MouseEvent) => {
-    if (e.target === backdropRef.current) onClose()
-  }, [onClose])
+  const { onMouseDown: handleBackdropDown, onClick: handleBackdrop } = useBackdropDismiss(onClose)
   const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
     if (e.key === 'Escape') onClose()
   }, [onClose])
@@ -186,7 +185,7 @@ export default function AnnotateDialog({ open, onClose }: Props) {
   if (!visible) return null
 
   return (
-    <div className={closing ? 'modal-backdrop closing' : 'modal-backdrop'} onAnimationEnd={onAnimationEnd} ref={backdropRef} onClick={handleBackdrop} onKeyDown={handleKeyDown} tabIndex={-1}>
+    <div className={closing ? 'modal-backdrop closing' : 'modal-backdrop'} onAnimationEnd={onAnimationEnd} ref={backdropRef} onMouseDown={handleBackdropDown} onClick={handleBackdrop} onKeyDown={handleKeyDown} tabIndex={-1}>
       <div className="modal-dialog ann-modal" role="dialog" aria-modal="true" aria-labelledby="annotate-modal-title">
         <div className="modal-header">
           <h3 className="modal-title" id="annotate-modal-title">Annotate</h3>

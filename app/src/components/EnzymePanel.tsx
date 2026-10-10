@@ -14,6 +14,7 @@ import { findEnzymeSitesAsync } from '../workers/enzyme-finder'
 import { useExitAnimation } from '../hooks/useExitAnimation'
 import { useFocusTrap } from '../hooks/useFocusTrap'
 import { digestWorkspace } from '../gel/workspace'
+import { useBackdropDismiss } from '../hooks/useBackdropDismiss'
 
 type SubsetKey = 'all' | 'common6' | 'rare8' | 'freq4' | 'goldengate' | 'all6' | 'all4' | 'all8plus' | 'blunt' | 'overhang5' | 'overhang3' | 'typeIIS'
 
@@ -227,9 +228,7 @@ export default function EnzymePanel({ open, onClose }: Props) {
   // Backdrop click / Escape
   const backdropRef = useRef<HTMLDivElement>(null)
   useFocusTrap(backdropRef, open)
-  const handleBackdrop = useCallback((e: React.MouseEvent) => {
-    if (e.target === backdropRef.current) onClose()
-  }, [onClose])
+  const { onMouseDown: handleBackdropDown, onClick: handleBackdrop } = useBackdropDismiss(onClose)
   const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
     if (e.key === 'Escape') onClose()
   }, [onClose])
@@ -246,7 +245,7 @@ export default function EnzymePanel({ open, onClose }: Props) {
   if (!visible) return null
 
   return (
-    <div className={closing ? 'modal-backdrop closing' : 'modal-backdrop'} onAnimationEnd={onAnimationEnd} ref={backdropRef} onClick={handleBackdrop} onKeyDown={handleKeyDown} tabIndex={-1}>
+    <div className={closing ? 'modal-backdrop closing' : 'modal-backdrop'} onAnimationEnd={onAnimationEnd} ref={backdropRef} onMouseDown={handleBackdropDown} onClick={handleBackdrop} onKeyDown={handleKeyDown} tabIndex={-1}>
       <div className="modal-dialog enzyme-modal" role="dialog" aria-modal="true" aria-labelledby="enzyme-panel-title">
         <div className="modal-header">
           <h3 className="modal-title" id="enzyme-panel-title">Restriction Analysis</h3>

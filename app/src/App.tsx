@@ -546,6 +546,12 @@ export default function App() {
     if (sidebarRequest > 0) setFeaturesPanelOpen(true)
   }, [sidebarRequest])
 
+  // BLAST a feature from the feature panel: it selects the feature and asks.
+  const blastSelectionRequest = useEditorStore(s => s.blastSelectionRequest)
+  useEffect(() => {
+    if (blastSelectionRequest > 0) setBlastModalOpen(true)
+  }, [blastSelectionRequest])
+
   // A sequence the user just opened: say if primers in the library bind it,
   // with a way to add them. Session restores do not set lastOpenedTabId, so
   // reloading the page stays quiet.
@@ -2569,6 +2575,7 @@ export default function App() {
         open={blastModalOpen}
         onClose={() => setBlastModalOpen(false)}
         onPhaseChange={setBlastPhase}
+        selectionRequest={blastSelectionRequest}
       />
       <AlignmentDialog
         open={alignModalOpen}

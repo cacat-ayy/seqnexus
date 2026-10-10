@@ -556,9 +556,11 @@
   margin-left: auto;
   display: flex;
   gap: var(--space-0-5);
+  flex-shrink: 0;
 }
 
 .fs-icon-btn {
+  flex-shrink: 0;
   width: 22px;
   height: 22px;
   border: none;
@@ -571,9 +573,18 @@
   justify-content: center;
   transition: opacity var(--dur-fast) var(--ease-out), background-color var(--dur-fast) var(--ease-out), color var(--dur-fast) var(--ease-out);
 }
-.fs-icon-btn:hover {
+.fs-icon-btn:hover:not(:disabled) {
   background: var(--bg-hover);
   color: var(--text);
+}
+/* The add button while its form is open: it now reads as Cancel. */
+.fs-icon-btn.active {
+  background: var(--accent-bg);
+  color: var(--accent);
+}
+.fs-icon-btn:disabled {
+  opacity: 0.4;
+  cursor: default;
 }
 
 /* Search: height matches .panel-bar so the border-bottom aligns */
@@ -652,27 +663,20 @@
   background: var(--bg-sidebar);
 }
 
-/* Group color swatch */
-.fs-group-color-wrap {
-  display: flex;
-  align-items: center;
-  cursor: pointer;
-  flex-shrink: 0;
-  position: relative;
-}
+/* Group color swatch: shows the group's colours; recolouring is in the
+   group's menu. The colour input the menu opens sits under the swatch, so
+   the browser's picker opens there. */
 .fs-group-swatch {
   width: 12px;
   height: 12px;
+  flex-shrink: 0;
   border-radius: var(--radius-xs);
   border: 1px solid color-mix(in srgb, var(--text-muted) 30%, transparent);
-  transition: transform var(--dur-fast);
-}
-.fs-group-color-wrap:hover .fs-group-swatch {
-  transform: scale(1.15);
-  border-color: var(--text-muted);
 }
 .fs-group-color-input {
   position: absolute;
+  left: var(--space-1);
+  top: 50%;
   width: 0;
   height: 0;
   opacity: 0;
@@ -808,4 +812,291 @@
 
 .fs-item.picked .ft-name {
   font-weight: 600;
+}
+
+/* ===== Feature list: rows, keyboard, selection ===== */
+
+/* The tabs' header holds the hidden copy that measures them. */
+.fs-header {
+  position: relative;
+}
+
+/* Two lines on the right of a row: the range, and its length under it. */
+.ft-pos {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  flex-shrink: 0;
+  line-height: 1.2;
+}
+
+.ft-len {
+  font-size: var(--text-2xs);
+  font-family: var(--font-mono);
+  color: var(--text-faint);
+}
+
+.ft-issue-icon {
+  display: inline-flex;
+  flex-shrink: 0;
+}
+.ft-issue-icon.warning { color: var(--warning); }
+.ft-issue-icon.note { color: var(--text-muted); }
+
+/* A feature under the caret or the selection: half the picked row's bar. */
+.fs-item.here:not(.picked) > .ft-summary {
+  box-shadow: inset 2px 0 0 0 color-mix(in srgb, var(--accent) 45%, transparent);
+}
+
+/* Hovered here, or on the map or in the sequence. */
+.fs-item.hovered > .ft-summary {
+  background: var(--accent-bg);
+}
+
+/* The list takes focus as a whole; the keyboard's row shows a ring once a
+   key has moved it (not after a click, which marks the row already). */
+.fs-list:focus,
+.fs-list:focus-visible {
+  outline: none;
+}
+.fs-list.kbd:focus .fs-item.active > .ft-summary {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
+/* Where a feature sits along the sequence, in the by-position list. */
+.fs-item.with-loc > .ft-summary {
+  position: relative;
+  padding-bottom: var(--space-1-5);
+}
+.ft-loc {
+  position: absolute;
+  left: var(--space-1);
+  right: var(--space-1);
+  bottom: var(--space-0-5);
+  height: 2px;
+  background: var(--border-light);
+  border-radius: var(--radius-pill);
+  overflow: hidden;
+  pointer-events: none;
+}
+.ft-loc-fill {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  border-radius: var(--radius-pill);
+}
+
+/* A group's menu button, shown on hover like the row eyes. */
+.fs-eye-btn.fs-group-more {
+  opacity: 0;
+}
+.fs-group-header:hover .fs-group-more {
+  opacity: 0.6;
+}
+.fs-eye-btn.fs-group-more:hover {
+  opacity: 1;
+}
+
+/* ===== Feature editor additions ===== */
+
+/* A fieldset, so read-only disables every field at once. */
+fieldset.ft-editor {
+  border: none;
+  margin: 0;
+  min-width: 0;
+}
+
+.ft-row-top {
+  align-items: flex-start;
+}
+.ft-row-top > label {
+  padding-top: var(--space-1);
+}
+
+.ft-qual-key-input {
+  flex: 1;
+}
+
+.ft-loc-error {
+  margin-left: calc(40px + var(--space-1-5));
+  font-size: var(--text-xs);
+  color: var(--danger);
+}
+.ft-parts .ft-loc-error {
+  margin-left: 0;
+}
+
+.ft-parts {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  flex: 1;
+  min-width: 0;
+}
+.ft-part-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  font-size: var(--text-sm);
+  color: var(--text-muted);
+}
+.ft-part-row .ft-num {
+  flex: 1 1 0;
+  width: auto;
+  min-width: 0;
+}
+.ft-part-idx {
+  width: 12px;
+  flex-shrink: 0;
+  text-align: right;
+  font-size: var(--text-2xs);
+  color: var(--text-faint);
+}
+.btn.ft-parts-merge {
+  align-self: flex-start;
+}
+
+.ft-protein {
+  margin-top: var(--space-1);
+  padding-top: var(--space-1);
+  border-top: 1px solid var(--border);
+}
+.ft-protein-head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  margin-bottom: var(--space-1);
+}
+.ft-protein-title {
+  font-size: var(--text-xs);
+  font-weight: 500;
+  color: var(--text-muted);
+}
+.ft-protein-len {
+  margin-right: auto;
+  font-size: var(--text-2xs);
+  color: var(--text-faint);
+}
+.ft-protein-seq {
+  max-height: 88px;
+  overflow-y: auto;
+  padding: var(--space-1) var(--space-1-5);
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--accent) 6%, transparent);
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  line-height: 1.4;
+  color: var(--text-secondary);
+  word-break: break-all;
+  user-select: text;
+}
+.ft-issues {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-0-5);
+  margin-bottom: var(--space-1);
+}
+.ft-issue {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-1);
+  font-size: var(--text-xs);
+  line-height: 1.35;
+}
+.ft-issue svg {
+  flex-shrink: 0;
+  margin-top: 1px;
+}
+.ft-issue.warning { color: var(--warning); }
+.ft-issue.note { color: var(--text-muted); }
+
+/* ===== Filter options ===== */
+
+.fs-search {
+  position: relative;
+}
+
+/* The options button carries a dot while the list is not the default one. */
+.fs-icon-btn.flagged {
+  position: relative;
+}
+.fs-icon-btn.flagged::after {
+  content: '';
+  position: absolute;
+  top: 3px;
+  right: 3px;
+  width: 5px;
+  height: 5px;
+  border-radius: var(--radius-pill);
+  background: var(--accent);
+}
+
+.fs-options {
+  position: absolute;
+  top: calc(100% + var(--space-1));
+  right: var(--space-2);
+  z-index: var(--z-popover);
+  width: min(260px, calc(100% - 16px));
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1-5);
+  padding: var(--space-2);
+  background: var(--bg-alt);
+  border: 1px solid var(--border-hover);
+  border-radius: var(--radius-popover);
+  box-shadow: var(--shadow-popover);
+}
+.fs-options-label {
+  font-size: var(--text-2xs);
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-muted);
+}
+.fs-options .fs-segmented {
+  margin: 0;
+}
+.fs-options-check {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1-5);
+  font-size: var(--text-xs);
+  color: var(--text);
+  cursor: pointer;
+}
+.fs-options-terms {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-0-5);
+}
+.fs-options-term {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2);
+  padding: var(--space-1);
+  border: none;
+  border-radius: var(--radius-sm);
+  background: none;
+  font: inherit;
+  font-size: var(--text-xs);
+  color: var(--text-secondary);
+  text-align: left;
+  cursor: pointer;
+}
+.fs-options-term:hover {
+  background: var(--bg-hover);
+  color: var(--text);
+}
+.fs-options-term code {
+  min-width: 72px;
+  flex-shrink: 0;
+  font-family: var(--font-mono);
+  color: var(--accent);
+}
+.fs-options-hint {
+  margin: 0;
+  font-size: var(--text-2xs);
+  line-height: 1.4;
+  color: var(--text-muted);
 }

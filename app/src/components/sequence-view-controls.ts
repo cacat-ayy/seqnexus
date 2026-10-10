@@ -66,3 +66,22 @@ export function publishVisibleRange(range: { start: number; end: number } | null
 export function getVisibleRange(): { start: number; end: number } | null {
   return visibleRange
 }
+
+let zoomToHandler: ((start: number, end: number) => void) | null = null
+
+/** The mounted sequence view offers its zoom to a range; returns the unregister. */
+export function registerSequenceViewZoomTo(fn: (start: number, end: number) => void): () => void {
+  zoomToHandler = fn
+  return () => { if (zoomToHandler === fn) zoomToHandler = null }
+}
+
+/**
+ * Zoom the sequence view in as far as the range [start, end) still fits, and
+ * centre it. A range across the origin is given with start > end. False when
+ * no sequence view is mounted (the map alone is showing).
+ */
+export function zoomSequenceViewTo(start: number, end: number): boolean {
+  if (!zoomToHandler) return false
+  zoomToHandler(start, end)
+  return true
+}

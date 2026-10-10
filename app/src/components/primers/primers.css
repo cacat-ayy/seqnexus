@@ -228,11 +228,41 @@
 }
 
 /* Features / Primers tabs in the sidebar header */
+/* The tabs take the room the close button leaves. When their words do not
+   fit (measured from the hidden copy, .fs-tabs-measure) they become icons;
+   a title still ellipsizes as a last resort, before the button is pushed
+   out. */
 .fs-tabs {
   display: flex;
+  flex: 1 1 auto;
   align-items: center;
   gap: var(--space-0-5);
   height: 100%;
+  min-width: 0;
+}
+
+.fs-tabs-measure {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: max-content;
+  visibility: hidden;
+  pointer-events: none;
+}
+
+.fs-tab-icon {
+  flex-shrink: 0;
+  color: var(--text-muted);
+  transition: color var(--dur-fast) var(--ease-out);
+}
+
+.fs-tab:hover .fs-tab-icon,
+.fs-tab.active .fs-tab-icon {
+  color: var(--text);
+}
+
+.fs-tabs.compact .fs-tab {
+  padding: 0 var(--space-1-5);
 }
 
 .fs-tab {
@@ -240,6 +270,7 @@
   align-items: center;
   gap: var(--space-1);
   height: 100%;
+  min-width: 0;
   padding: 0 var(--space-1);
   border: none;
   border-bottom: 2px solid transparent;
@@ -249,7 +280,15 @@
 }
 
 .fs-tab .fs-title {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   transition: color var(--dur-fast) var(--ease-out);
+}
+
+.fs-tab .fs-count {
+  flex-shrink: 0;
 }
 
 .fs-tab:hover .fs-title,

@@ -18,6 +18,7 @@ import {
   annotationProtein,
   canTranslateAnnotation,
   headTail,
+  issueMessages,
   translationIssues,
 } from '../utils/annotation-sequence'
 
@@ -36,7 +37,7 @@ export function AnnotationTooltipContent({ ann, sequence }: { ann: Annotation; s
   const bases = annotationBases(ann, sequence)
   const translatable = canTranslateAnnotation(ann, sequence)
   const protein = translatable ? annotationProtein(ann, sequence) : ''
-  const issues = translationIssues(ann, sequence)
+  const issues = issueMessages(translationIssues(ann, sequence))
 
   return (
     <>
@@ -65,26 +66,14 @@ export function AnnotationTooltipContent({ ann, sequence }: { ann: Annotation; s
           <Abbreviated text={protein} /> ({protein.length} aa)
         </div>
       )}
-      {issues && (
+      {issues.length > 0 && (
         <div className="hc-issues">
-          {issues.internalStops > 0 && (
-            <div className="hc-issue">
-              <TriangleAlert size={11} />
-              {issues.internalStops} internal stop codon{issues.internalStops === 1 ? '' : 's'}: wrong frame or boundaries?
+          {issues.map(m => (
+            <div key={m.text} className={m.severity === 'note' ? 'hc-issue hc-note' : 'hc-issue'}>
+              {m.severity === 'note' ? <Info size={11} /> : <TriangleAlert size={11} />}
+              {m.text}
             </div>
-          )}
-          {issues.leftover > 0 && (
-            <div className="hc-issue">
-              <TriangleAlert size={11} />
-              Not a whole number of codons ({issues.leftover} base{issues.leftover === 1 ? '' : 's'} left over)
-            </div>
-          )}
-          {issues.badStart && (
-            <div className="hc-issue hc-note">
-              <Info size={11} />
-              Starts with {issues.badStart}, not a start codon
-            </div>
-          )}
+          ))}
         </div>
       )}
     </>

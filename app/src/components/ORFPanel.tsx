@@ -13,6 +13,7 @@ import type { ORFResult, ORFOptions } from '../workers/orf-finder'
 import { orfKey, convertibleOrfs } from '../utils/orf-features'
 import { useExitAnimation } from '../hooks/useExitAnimation'
 import { useFocusTrap } from '../hooks/useFocusTrap'
+import { useBackdropDismiss } from '../hooks/useBackdropDismiss'
 
 const FRAME_LABELS: Record<string, string> = {
   '1_0': '+1',
@@ -151,9 +152,7 @@ export default function ORFPanel({ open, onClose }: Props) {
   // Backdrop click / Escape
   const backdropRef = useRef<HTMLDivElement>(null)
   useFocusTrap(backdropRef, open)
-  const handleBackdrop = useCallback((e: React.MouseEvent) => {
-    if (e.target === backdropRef.current) onClose()
-  }, [onClose])
+  const { onMouseDown: handleBackdropDown, onClick: handleBackdrop } = useBackdropDismiss(onClose)
   const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
     if (e.key === 'Escape') onClose()
   }, [onClose])
@@ -162,7 +161,7 @@ export default function ORFPanel({ open, onClose }: Props) {
   if (!visible) return null
 
   return (
-    <div className={closing ? 'modal-backdrop closing' : 'modal-backdrop'} onAnimationEnd={onAnimationEnd} ref={backdropRef} onClick={handleBackdrop} onKeyDown={handleKeyDown} tabIndex={-1}>
+    <div className={closing ? 'modal-backdrop closing' : 'modal-backdrop'} onAnimationEnd={onAnimationEnd} ref={backdropRef} onMouseDown={handleBackdropDown} onClick={handleBackdrop} onKeyDown={handleKeyDown} tabIndex={-1}>
       <div className="modal-dialog orf-modal" role="dialog" aria-modal="true" aria-labelledby="orf-panel-title">
         <div className="modal-header">
           <h3 className="modal-title" id="orf-panel-title">ORF Finder</h3>

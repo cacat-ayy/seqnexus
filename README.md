@@ -79,7 +79,10 @@ of each build.
 - **GenBank import/export** with streaming parser for large files (>1MB)
 - **FASTA, SnapGene (.dna), Geneious (.geneious), GFF3 import/export**
 - **Sanger chromatogram viewer** (AB1, SCF) with quality scores and base editing
-- **Annotation editing** - inline feature table, context menu, drag-and-drop
+- **Annotation editing** - a feature panel grouped by type or sorted by
+  position, with a filter that takes `type:`, `len>` and `strand:` terms, run
+  from the keyboard, following the selection, and checking every CDS for its
+  frame, start and stop; see [Feature Panel](#feature-panel)
 - **Several ranges at once** - Ctrl+drag or Ctrl+click on features, in the
   sequence view and on the map; touching ranges merge; copied, deleted,
   translated and annotated joined, as exons are
@@ -307,6 +310,86 @@ The extra ranges are tied to the tab and to the sequence's edit count. Any
 change to the bases, including undo and redo, drops them. Base edits rewrite
 the sequence in place, so ranges kept across an edit could point at the
 wrong bases.
+
+---
+
+## Feature Panel
+
+The Features tab of the right sidebar lists the document's features, either
+grouped by type (larger groups first, each in sequence order) or as one list
+sorted by position, where a hairline under each row shows where the feature
+sits along the sequence. Each row gives the range and, under it, the length.
+
+### Filter
+
+Plain words match a feature's name, type and qualifier values, and every word
+must match; a quoted phrase is one word. Terms narrow further:
+
+| Term | Keeps |
+|------|-------|
+| `type:CDS`, `t:cds` | features whose key contains the text; several `type:` terms keep any of them |
+| `len>500`, `len<=1.5k`, `len=300` | spans compared in bases (residues on a protein); `k` is a thousand |
+| `len:100-1k` | spans in the range, both ends included |
+| `strand:+`, `strand:-`, `strand:none` | one strand (also `fwd`, `rev`, `0`) |
+
+A feature across the origin is measured by its wrapped span. A term that does
+not parse (`len>abc`) is kept as a plain word, so a typo empties the list
+instead of being ignored. "Only features where the selection is" keeps the
+features that share a base with any selected range, or the base after the
+caret when nothing is selected.
+
+### Following the sequence
+
+Rows of features under the selection carry a thin bar. Clicking a feature on
+the map or in the sequence selects exactly its span; the panel then scrolls
+to that row and makes it the keyboard's row. Hovering a row highlights the
+feature in the sequence and on the map, as hovering there does.
+
+### Keyboard
+
+The list is one focusable listbox. The sequence editor ignores keys aimed at
+a listbox (and at text fields, menus and dialogs), so nothing typed here
+edits or moves through the sequence. Up and Down move through the rows and
+select each feature's span (Shift extends the multi-selection, Space toggles
+a row), Enter opens the editor, F2 opens it on the name, Delete removes the
+feature (several at once after a confirmation), Escape closes the editor or
+clears the multi-selection, Ctrl+C copies the feature's bases, Ctrl+Z and
+Ctrl+Y undo and redo, and any letter goes to the filter.
+
+### Editing
+
+Each field is one undo step. Name and qualifier text writes through as it is
+typed and is folded into one step per visit to the field; positions are
+drafts committed on Enter or when the field loses focus, after a check that
+the feature is not empty, not past the end and, on a linear sequence, not
+backwards. A joined feature is edited part by part: start and end follow the
+first and last parts, and parts that would overlap or run backwards are
+refused with the reason. Editing the overall range of a joined feature used to
+drop its parts without a word (the model keeps parts only while they agree
+with the span); the parts editor, and an explicit Make One Span, replace it.
+
+### CDS checks
+
+Every CDS is read in its declared frame (from `/codon_start`, with its
+`/transl_table`) and the row is flagged when:
+
+- **a stop codon comes before the last codon** (a warning): the boundaries
+  or the frame are wrong;
+- **the length is not a whole number of codons** (a warning);
+- **the first codon is not a start codon** (a note): checked only when
+  `/codon_start` is 1, since a feature declared to start mid-codon is partial;
+  the starts are those of the feature's genetic code, or ATG, GTG and TTG
+  without one;
+- **the last codon is not a stop** (a note): a GenBank CDS includes its stop
+  codon, so the feature ends early or its 3′ end is partial. It is only
+  checked in frame (out of frame the last codon read is not the one the
+  feature ends on) and not for a feature cut short at a cloning junction.
+
+The two notes are often correct (alternative starts, partial genes from a
+larger record), so they are drawn quieter than the warnings. Partial
+locations (`<1..300`) are not kept on import, so a partial CDS read from a
+GenBank file is noted as missing its stop. The editor of a CDS shows its
+translation with the same messages, a Copy button and Open as Protein.
 
 ---
 

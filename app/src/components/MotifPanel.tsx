@@ -16,6 +16,7 @@ import { motifKey, convertibleMotifs } from '../utils/motif-features'
 import { useExitAnimation } from '../hooks/useExitAnimation'
 import { useFocusTrap } from '../hooks/useFocusTrap'
 import { displayPosition } from '../models/Document'
+import { useBackdropDismiss } from '../hooks/useBackdropDismiss'
 
 interface Props {
   open: boolean
@@ -78,9 +79,7 @@ export default function MotifPanel({ open, onClose }: Props) {
 
   const backdropRef = useRef<HTMLDivElement>(null)
   useFocusTrap(backdropRef, open)
-  const handleBackdrop = useCallback((e: React.MouseEvent) => {
-    if (e.target === backdropRef.current) onClose()
-  }, [onClose])
+  const { onMouseDown: handleBackdropDown, onClick: handleBackdrop } = useBackdropDismiss(onClose)
   const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
     if (e.key === 'Escape') onClose()
   }, [onClose])
@@ -91,7 +90,7 @@ export default function MotifPanel({ open, onClose }: Props) {
   const countIn = (category: string) => hits.reduce((n, h) => n + (h.category === category ? 1 : 0), 0)
 
   return (
-    <div className={closing ? 'modal-backdrop closing' : 'modal-backdrop'} onAnimationEnd={onAnimationEnd} ref={backdropRef} onClick={handleBackdrop} onKeyDown={handleKeyDown} tabIndex={-1}>
+    <div className={closing ? 'modal-backdrop closing' : 'modal-backdrop'} onAnimationEnd={onAnimationEnd} ref={backdropRef} onMouseDown={handleBackdropDown} onClick={handleBackdrop} onKeyDown={handleKeyDown} tabIndex={-1}>
       <div className="modal-dialog orf-modal" role="dialog" aria-modal="true" aria-labelledby="motif-panel-title">
         <div className="modal-header">
           <h3 className="modal-title" id="motif-panel-title">Motifs and Sites</h3>

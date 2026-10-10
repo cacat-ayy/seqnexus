@@ -11,6 +11,7 @@ import { Search } from 'lucide-react'
 import { searchCommands, type Command, type ScoredCommand } from '../commands'
 import { useExitAnimation } from '../hooks/useExitAnimation'
 import { useFocusTrap } from '../hooks/useFocusTrap'
+import { useBackdropDismiss } from '../hooks/useBackdropDismiss'
 import './CommandPalette.css'
 
 interface Props {
@@ -128,9 +129,7 @@ export default function CommandPalette({ open, onClose, commands }: Props) {
     }
   }, [onClose, move, runCommand, results, activeIndex])
 
-  const handleBackdrop = useCallback((e: React.MouseEvent) => {
-    if (e.target === e.currentTarget) onClose()
-  }, [onClose])
+  const { onMouseDown: handleBackdropDown, onClick: handleBackdrop } = useBackdropDismiss(onClose)
 
   if (!visible) return null
 
@@ -143,7 +142,7 @@ export default function CommandPalette({ open, onClose, commands }: Props) {
       ref={backdropRef}
       className={closing ? 'modal-backdrop cp-backdrop closing' : 'modal-backdrop cp-backdrop'}
       onAnimationEnd={onAnimationEnd}
-      onClick={handleBackdrop}
+      onMouseDown={handleBackdropDown} onClick={handleBackdrop}
       onKeyDown={handleKeyDown}
       tabIndex={-1}
     >

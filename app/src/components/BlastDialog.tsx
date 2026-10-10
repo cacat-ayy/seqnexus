@@ -17,11 +17,17 @@ import { useExitAnimation } from '../hooks/useExitAnimation'
 import { useFocusTrap } from '../hooks/useFocusTrap'
 import { copyText } from '../utils/clipboard'
 import { STORAGE_KEYS } from '../storage/keys'
+import { useBackdropDismiss } from '../hooks/useBackdropDismiss'
 
 interface Props {
   open: boolean
   onClose: () => void
   onPhaseChange?: (phase: Phase) => void
+  /**
+   * Bumped to start a new search on the selection (a feature BLASTed from
+   * the feature panel), rather than reopening on the last results.
+   */
+  selectionRequest?: number
 }
 
 type Phase = 'input' | 'polling' | 'results'
@@ -113,7 +119,7 @@ function ncbiAccessionUrl(accession: string, program: string): string {
   return `https://www.ncbi.nlm.nih.gov/nuccore/${encodeURIComponent(accession)}`
 }
 
-export default function BlastDialog({ open, onClose, onPhaseChange }: Props) {
+export default function BlastDialog({ open, onClose, onPhaseChange, selectionRequest = 0 }: Props) {
   // --- Store ---
   const doc = useEditorStore(s => s.doc)
   const selection = useEditorStore(s => s.selection)
@@ -350,6 +356,17 @@ export default function BlastDialog({ open, onClose, onPhaseChange }: Props) {
     setSortDir('asc')
   }, [setPhaseAndNotify])
 
+  // A request to BLAST the selection opens a fresh search on it. A search
+  // still running is left alone: it would be lost, and its results asked for.
+  const handledRequest = useRef(0)
+  useEffect(() => {
+    if (selectionRequest === handledRequest.current) return
+    handledRequest.current = selectionRequest
+    if (phase === 'polling') return
+    handleNewSearch()
+    setQuerySource('selection')
+  }, [selectionRequest, phase, handleNewSearch])
+
   const handleSelectHistory = useCallback((idx: number) => {
     const entry = history[idx]
     if (!entry) return
@@ -471,16 +488,14 @@ export default function BlastDialog({ open, onClose, onPhaseChange }: Props) {
     if (e.key === 'Escape') onClose()
   }, [onClose])
 
-  const handleBackdropClick = useCallback((e: React.MouseEvent) => {
-    if (e.target === backdropRef.current) onClose()
-  }, [onClose])
+  const { onMouseDown: handleBackdropClickDown, onClick: handleBackdropClick } = useBackdropDismiss(onClose)
 
   // Keep component mounted so polling survives close - just hide the modal
   const { visible, closing, onAnimationEnd } = useExitAnimation(open)
   if (!visible) return <></>
 
   return (
-    <div className={closing ? 'modal-backdrop closing' : 'modal-backdrop'} onAnimationEnd={onAnimationEnd} ref={backdropRef} onClick={handleBackdropClick} onKeyDown={handleKeyDown} tabIndex={-1}>
+    <div className={closing ? 'modal-backdrop closing' : 'modal-backdrop'} onAnimationEnd={onAnimationEnd} ref={backdropRef} onMouseDown={handleBackdropClickDown} onClick={handleBackdropClick} onKeyDown={handleKeyDown} tabIndex={-1}>
       <div className="modal-dialog blast-modal" role="dialog" aria-modal="true" aria-labelledby="blast-modal-title">
         {/* Header */}
         <div className="modal-header">

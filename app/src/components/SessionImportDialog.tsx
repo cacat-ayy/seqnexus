@@ -8,6 +8,7 @@ import { useRef, useCallback, useEffect } from 'react'
 import { X, Replace, Merge } from 'lucide-react'
 import { useExitAnimation } from '../hooks/useExitAnimation'
 import { useFocusTrap } from '../hooks/useFocusTrap'
+import { useBackdropDismiss } from '../hooks/useBackdropDismiss'
 import './SessionDialog.css'
 
 interface Props {
@@ -25,9 +26,7 @@ export default function SessionImportDialog({ open, filename, tabCount, readCoun
   const { visible, closing, onAnimationEnd } = useExitAnimation(open)
   const backdropRef = useRef<HTMLDivElement>(null)
   useFocusTrap(backdropRef, open)
-  const handleBackdropClick = useCallback((e: React.MouseEvent) => {
-    if (e.target === backdropRef.current) onClose()
-  }, [onClose])
+  const { onMouseDown: handleBackdropClickDown, onClick: handleBackdropClick } = useBackdropDismiss(onClose)
 
   const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
     if (e.key === 'Escape') onClose()
@@ -43,7 +42,7 @@ export default function SessionImportDialog({ open, filename, tabCount, readCoun
   if (!visible) return null
 
   return (
-    <div className={closing ? 'modal-backdrop closing' : 'modal-backdrop'} onAnimationEnd={onAnimationEnd} ref={backdropRef} onClick={handleBackdropClick} onKeyDown={handleKeyDown} tabIndex={-1}>
+    <div className={closing ? 'modal-backdrop closing' : 'modal-backdrop'} onAnimationEnd={onAnimationEnd} ref={backdropRef} onMouseDown={handleBackdropClickDown} onClick={handleBackdropClick} onKeyDown={handleKeyDown} tabIndex={-1}>
       <div className="modal-dialog session-dialog" role="dialog" aria-modal="true" aria-labelledby="session-import-modal-title">
         <div className="modal-header">
           <h3 className="modal-title" id="session-import-modal-title">Import Session</h3>

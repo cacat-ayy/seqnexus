@@ -6,11 +6,12 @@
  * exists alongside the drop targets rather than instead of them.
  */
 
-import { useCallback, useRef } from 'react'
+import { useRef } from 'react'
 import { X, Folder, FolderMinus } from 'lucide-react'
 import { useExitAnimation } from '../../hooks/useExitAnimation'
 import { useFocusTrap } from '../../hooks/useFocusTrap'
 import type { ExplorerFolder } from '../../store'
+import { useBackdropDismiss } from '../../hooks/useBackdropDismiss'
 
 interface Props {
   open: boolean
@@ -37,9 +38,7 @@ export default function ExplorerFolderPicker({ open, count, folders, onPick, onC
   const backdropRef = useRef<HTMLDivElement>(null)
   useFocusTrap(backdropRef, open)
 
-  const handleBackdrop = useCallback((e: React.MouseEvent) => {
-    if (e.target === backdropRef.current) onCancel()
-  }, [onCancel])
+  const { onMouseDown: handleBackdropDown, onClick: handleBackdrop } = useBackdropDismiss(onCancel)
 
   const { visible, closing, onAnimationEnd } = useExitAnimation(open)
   if (!visible) return null
@@ -51,7 +50,7 @@ export default function ExplorerFolderPicker({ open, count, folders, onPick, onC
       ref={backdropRef}
       className={closing ? 'modal-backdrop closing' : 'modal-backdrop'}
       onAnimationEnd={onAnimationEnd}
-      onClick={handleBackdrop}
+      onMouseDown={handleBackdropDown} onClick={handleBackdrop}
       onKeyDown={e => { if (e.key === 'Escape') onCancel() }}
       tabIndex={-1}
     >

@@ -14,6 +14,7 @@ import { X } from 'lucide-react'
 import { useEditorStore } from '../../store'
 import { useExitAnimation } from '../../hooks/useExitAnimation'
 import { useFocusTrap } from '../../hooks/useFocusTrap'
+import { useBackdropDismiss } from '../../hooks/useBackdropDismiss'
 import {
   checkCustomNuclease,
   customNuclease,
@@ -42,6 +43,7 @@ export default function NucleaseDialog({ open, onClose, onSaved }: Props) {
 
   const backdropRef = useRef<HTMLDivElement>(null)
   useFocusTrap(backdropRef, open)
+  const backdrop = useBackdropDismiss(onClose)
   const { visible, closing, onAnimationEnd } = useExitAnimation(open)
 
   const num = (s: string) => (s.trim() === '' ? undefined : Number(s))
@@ -72,7 +74,7 @@ export default function NucleaseDialog({ open, onClose, onSaved }: Props) {
       className={closing ? 'modal-backdrop closing' : 'modal-backdrop'}
       onAnimationEnd={onAnimationEnd}
       ref={backdropRef}
-      onClick={e => { if (e.target === backdropRef.current) onClose() }}
+      {...backdrop}
       onKeyDown={e => { if (e.key === 'Escape') onClose() }}
       tabIndex={-1}
     >

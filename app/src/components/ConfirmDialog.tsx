@@ -3,6 +3,7 @@ import { useCallback, useRef } from 'react'
 import { X } from 'lucide-react'
 import { useExitAnimation } from '../hooks/useExitAnimation'
 import { useFocusTrap } from '../hooks/useFocusTrap'
+import { useBackdropDismiss } from '../hooks/useBackdropDismiss'
 
 export interface ConfirmButton {
   label: string
@@ -27,9 +28,8 @@ export default function ConfirmDialog({ open, title, message, buttons, onResult 
   const backdropRef = useRef<HTMLDivElement>(null)
   useFocusTrap(backdropRef, open)
 
-  const handleBackdrop = useCallback((e: React.MouseEvent) => {
-    if (e.target === backdropRef.current) onResult(null)
-  }, [onResult])
+  const dismissBackdrop = useCallback(() => onResult(null), [onResult])
+  const { onMouseDown: handleBackdropDown, onClick: handleBackdrop } = useBackdropDismiss(dismissBackdrop)
 
   const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
     if (e.key === 'Escape') onResult(null)
@@ -39,7 +39,7 @@ export default function ConfirmDialog({ open, title, message, buttons, onResult 
   if (!visible) return null
 
   return (
-    <div className={closing ? 'modal-backdrop closing' : 'modal-backdrop'} onAnimationEnd={onAnimationEnd} ref={backdropRef} onClick={handleBackdrop} onKeyDown={handleKeyDown} tabIndex={-1}>
+    <div className={closing ? 'modal-backdrop closing' : 'modal-backdrop'} onAnimationEnd={onAnimationEnd} ref={backdropRef} onMouseDown={handleBackdropDown} onClick={handleBackdrop} onKeyDown={handleKeyDown} tabIndex={-1}>
       <div className="modal-dialog confirm-dialog" role="dialog" aria-modal="true" aria-labelledby="confirm-dialog-title">
         <div className="modal-header">
           <h3 className="modal-title" id="confirm-dialog-title">{title}</h3>

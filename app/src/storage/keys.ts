@@ -12,6 +12,8 @@ export const STORAGE_KEYS = {
   splitFraction: 'seqnexus_split_fraction',
   featureSidebarWidth: 'seqnexus_feature_sidebar_width',
   featureSidebarTab: 'seqnexus_feature_sidebar_tab',
+  /** The feature list grouped by type or sorted by position. */
+  featureSidebarView: 'seqnexus:feature-sidebar-view',
   /** Followed by the kind of view whose minimap is collapsed. */
   minimapCollapsedPrefix: 'seqnexus_minimap_collapsed_',
   blastSettings: 'seqnexus:blast-settings',

@@ -1,4 +1,4 @@
-import { useEffect } from 'react'
+import { useEffect, useLayoutEffect, useState } from 'react'
 
 /**
  * Confines keyboard focus to an open dialog and restores it on close.
@@ -51,8 +51,22 @@ export function useFocusTrap(
   containerRef: React.RefObject<HTMLElement | null>,
   active: boolean,
 ): void {
+  // The element, followed render by render. A dialog that keeps itself
+  // mounted through its exit animation (useExitAnimation) renders its
+  // backdrop one render after `active` turns true, so the ref is still empty
+  // when `active` changes; keyed on the ref alone, the trap never started,
+  // focus stayed on the button that opened the dialog, and Escape and Tab
+  // never reached it.
+  const [container, setContainer] = useState<HTMLElement | null>(null)
+  // No dependency list on purpose: a ref changing re-renders nothing, so
+  // this checks after every render of the dialog. It only sets state when
+  // the element changed, so it settles at once.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useLayoutEffect(() => {
+    if (containerRef.current !== container) setContainer(containerRef.current)
+  })
+
   useEffect(() => {
-    const container = containerRef.current
     if (!active || !container) return
 
     // Remember where focus came from so it can be handed back on close. Losing
@@ -116,5 +130,5 @@ export function useFocusTrap(
         previouslyFocused.focus({ preventScroll: true })
       }
     }
-  }, [containerRef, active])
+  }, [container, active])
 }

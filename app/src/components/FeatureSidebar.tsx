@@ -1,15 +1,20 @@
 /**
- * Right sidebar for annotation/feature management.
+ * Right sidebar: the document's features, primers and CRISPR guides.
  *
- * Groups annotations by type, supports visibility toggling (eye icons),
- * and includes a search/filter input.
+ * The Features tab lists features grouped by type or sorted by position,
+ * filtered by words and `key:value` terms (see utils/feature-filter.ts). The
+ * list is a listbox the keyboard can run: the sequence editor leaves keys
+ * aimed at it alone (utils/key-target.ts), so arrows, Delete and typing
+ * here never reach the sequence. It follows the sequence too: rows under
+ * the selection are marked, a feature clicked on the map or sequence is
+ * scrolled into view, and hovering a row highlights the feature there.
  */
 
-import { useState, useCallback, useRef, useEffect, useMemo, memo } from 'react'
-import { useEditorStore, allSelectionsOf, joinedSegments } from '../store'
-import { notify } from '../toast'
-import type { Annotation } from '../models/Annotation'
-import type { Strand } from '../models/Annotation'
+import { useState, useCallback, useRef, useEffect, useLayoutEffect, useMemo, memo } from 'react'
+import {
+  useEditorStore, allSelectionsOf, joinedSegments, extraSelectionsOf, selectionSegments,
+} from '../store'
+import type { Annotation, Strand } from '../models/Annotation'
 import { defaultColorForType } from '../models/Annotation'
 import AnnotationTooltip from './AnnotationTooltip'
 import FeatureBulkBar from './FeatureBulkBar'
@@ -17,12 +22,23 @@ import PrimerList from './primers/PrimerList'
 import GuidePanel from './crispr/GuidePanel'
 import PrimerWorkbench from './primers/PrimerWorkbench'
 import ConfirmDialog from './ConfirmDialog'
+import FeatureEditor from './features/FeatureEditor'
+import FeatureRow from './features/FeatureRow'
+import FeatureListOptions, { type FeatureListView } from './features/FeatureListOptions'
+import { FeatureContextMenu, GroupContextMenu } from './features/FeatureMenus'
+import { deleteFeaturesWithUndo, rowDomId, selectFeature } from './features/feature-actions'
 import { useListMultiSelect } from '../hooks/useListMultiSelect'
-import { Plus, X, ChevronRight, ChevronDown, Eye, EyeOff, Search, PanelRightClose, ChevronsDownUp, ChevronsUpDown } from 'lucide-react'
+import {
+  Plus, X, ChevronRight, ChevronDown, Eye, EyeOff, Search, PanelRightClose, ChevronsDownUp, ChevronsUpDown,
+  SlidersHorizontal, MoreHorizontal, List, FlaskConical, Crosshair,
+} from 'lucide-react'
 import './FeatureSidebar.css'
-import './ContextMenuPopup.css'
 
 import { defaultFeatureType, featureTypesFor, PRESET_COLORS } from '../utils/annotation-constants'
+import { annotationBases, issueMessages, translationIssues, type IssueMessage } from '../utils/annotation-sequence'
+import { isEmptyQuery, matchesFeatureQuery, parseFeatureQuery } from '../utils/feature-filter'
+import { featureOverlaps } from '../utils/feature-location'
+import { copyText } from '../utils/clipboard'
 import { STORAGE_KEYS } from '../storage/keys'
 
 const SIDEBAR_MIN = 200
@@ -30,142 +46,55 @@ const SIDEBAR_MAX = 500
 const SIDEBAR_DEFAULT = 280
 const STORAGE_KEY_WIDTH = STORAGE_KEYS.featureSidebarWidth
 
-// --- Qualifiers sub-editor ---
-
-const COMMON_QUALIFIERS = [
-  'note', 'product', 'gene', 'locus_tag', 'label',
-  'translation', 'codon_start', 'transl_table',
-  'db_xref', 'protein_id', 'organism', 'mol_type',
-]
-
-function QualifiersEditor({
-  annotation,
-  updateAnnotation,
-}: {
-  annotation: Annotation
-  updateAnnotation: (id: string, patch: Partial<Omit<import('../models/Annotation').AnnotationData, 'id'>>) => void
-}) {
-  const [open, setOpen] = useState(false)
-  const [addingKey, setAddingKey] = useState('')
-  const [addingVal, setAddingVal] = useState('')
-  const [showAddForm, setShowAddForm] = useState(false)
-
-  const quals = annotation.qualifiers
-  const entries = Object.entries(quals)
-  const hasQualifiers = entries.length > 0
-
-  const setQualifier = useCallback((key: string, values: string[]) => {
-    const newQuals = { ...annotation.qualifiers }
-    if (values.length === 0) {
-      delete newQuals[key]
-    } else {
-      newQuals[key] = values
-    }
-    updateAnnotation(annotation.id, { qualifiers: newQuals })
-  }, [annotation, updateAnnotation])
-
-  const handleAdd = useCallback(() => {
-    const key = addingKey.trim().replace(/^\//, '')
-    const val = addingVal.trim()
-    if (!key) return
-    const existing = annotation.qualifiers[key] || []
-    setQualifier(key, [...existing, val])
-    setAddingKey('')
-    setAddingVal('')
-    setShowAddForm(false)
-  }, [addingKey, addingVal, annotation.qualifiers, setQualifier])
-
-  return (
-    <div className="ft-quals" onClick={e => e.stopPropagation()}>
-      <button className="ft-quals-toggle" onClick={() => setOpen(v => !v)}>
-        {open ? <ChevronDown size={11} /> : <ChevronRight size={11} />}
-        <span>Qualifiers</span>
-        {hasQualifiers && <span className="ft-quals-count">{entries.reduce((n, [, v]) => n + v.length, 0)}</span>}
-      </button>
-
-      {open && (
-        <div className="ft-quals-body">
-          {entries.length === 0 && !showAddForm && (
-            <div className="ft-quals-empty">No qualifiers</div>
-          )}
-
-          {entries.map(([key, values]) => (
-            <div key={key} className="ft-qual-group">
-              <div className="ft-qual-key">/{key}</div>
-              {values.map((val, vi) => (
-                <div key={vi} className="ft-qual-val-row">
-                  <input
-                    className="input ft-input ft-qual-val-input"
-                    value={val}
-                    onChange={e => {
-                      const newVals = [...values]
-                      newVals[vi] = e.target.value
-                      setQualifier(key, newVals)
-                    }}
-                    spellCheck={false}
-                  />
-                  <button
-                    className="ft-qual-del"
-                    title="Remove value"
-                    onClick={() => {
-                      const newVals = values.filter((_, i) => i !== vi)
-                      setQualifier(key, newVals)
-                    }}
-                  >
-                    <X size={11} />
-                  </button>
-                </div>
-              ))}
-            </div>
-          ))}
-
-          {showAddForm ? (
-            <div className="ft-qual-add-form">
-              <div className="ft-qual-add-row">
-                <select
-                  className="select ft-select ft-qual-key-select"
-                  value={addingKey}
-                  onChange={e => setAddingKey(e.target.value)}
-                >
-                  <option value="">Key…</option>
-                  {COMMON_QUALIFIERS.filter(q => !quals[q]).map(q => (
-                    <option key={q} value={q}>{q}</option>
-                  ))}
-                </select>
-                <input
-                  className="input ft-input"
-                  placeholder="or type key"
-                  value={addingKey}
-                  onChange={e => setAddingKey(e.target.value)}
-                  spellCheck={false}
-                  style={{ flex: 1 }}
-                />
-              </div>
-              <input
-                className="input ft-input"
-                placeholder="Value"
-                value={addingVal}
-                onChange={e => setAddingVal(e.target.value)}
-                onKeyDown={e => { if (e.key === 'Enter') handleAdd() }}
-                spellCheck={false}
-              />
-              <div className="ft-qual-add-actions">
-                <button className="btn btn-sm btn-primary" onClick={handleAdd} disabled={!addingKey.trim()}>Add</button>
-                <button className="btn btn-sm" onClick={() => { setShowAddForm(false); setAddingKey(''); setAddingVal('') }}>Cancel</button>
-              </div>
-            </div>
-          ) : (
-            <button className="ft-qual-add-btn" onClick={() => setShowAddForm(true)}>
-              <Plus size={11} /> Add qualifier
-            </button>
-          )}
-        </div>
-      )}
-    </div>
-  )
+function loadView(): FeatureListView {
+  try {
+    return localStorage.getItem(STORAGE_KEYS.featureSidebarView) === 'position' ? 'position' : 'type'
+  } catch {
+    return 'type'
+  }
 }
 
-// --- Main sidebar component ---
+/** Position order: by start, the longer of two that start together first. */
+function byPosition(a: Annotation, b: Annotation): number {
+  return a.start - b.start || (b.end - b.start) - (a.end - a.start) || a.name.localeCompare(b.name)
+}
+
+/**
+ * The swatch of a type group: its one colour, or up to four of its colours
+ * in slices when the features differ (the group used to show only its first
+ * feature's colour, which said nothing about the rest).
+ */
+function groupSwatch(anns: readonly Annotation[]): React.CSSProperties {
+  const colors = [...new Set(anns.map(a => a.color.toLowerCase()))].slice(0, 4)
+  if (colors.length <= 1) return { backgroundColor: colors[0] }
+  const step = 100 / colors.length
+  return { background: `conic-gradient(${colors.map((c, i) => `${c} ${i * step}% ${(i + 1) * step}%`).join(', ')})` }
+}
+
+/**
+ * Whether the tabs, at their natural width, overflow the header: if so they
+ * show icons. Measured from a hidden copy laid out at full width, because
+ * the real tabs, once they are icons, no longer say how wide the words were.
+ */
+function useCompactTabs(
+  tabsRef: React.RefObject<HTMLElement | null>,
+  measureRef: React.RefObject<HTMLElement | null>,
+  contentKey: string,
+): boolean {
+  const [compact, setCompact] = useState(false)
+  useLayoutEffect(() => {
+    const tabs = tabsRef.current
+    const measure = measureRef.current
+    if (!tabs || !measure) return
+    const check = () => setCompact(measure.scrollWidth > tabs.clientWidth + 1)
+    check()
+    if (typeof ResizeObserver === 'undefined') return
+    const ro = new ResizeObserver(check)
+    ro.observe(tabs)
+    return () => ro.disconnect()
+  }, [tabsRef, measureRef, contentKey])
+  return compact
+}
 
 interface FeatureSidebarProps {
   open: boolean
@@ -173,24 +102,49 @@ interface FeatureSidebarProps {
 }
 
 function FeatureSidebar({ open, onClose }: FeatureSidebarProps) {
-  const annotations = useEditorStore(s => s.doc.annotations)
-  const sequence = useEditorStore(s => s.doc.sequence)
-  const seqLength = sequence.length
-  const setSelection = useEditorStore(s => s.setSelection)
-  const removeAnnotation = useEditorStore(s => s.removeAnnotation)
-  const updateAnnotation = useEditorStore(s => s.updateAnnotation)
+  const doc = useEditorStore(s => s.doc)
+  const annotations = doc.annotations
+  const sequence = doc.sequence
+  const seqLen = sequence.length
+  const alphabet = sequence.alphabet
+  const readOnly = useEditorStore(s => s.readOnly)
+  const selection = useEditorStore(s => s.selection)
+  const extraSelections = useEditorStore(extraSelectionsOf)
   const updateAnnotations = useEditorStore(s => s.updateAnnotations)
-  const removeAnnotations = useEditorStore(s => s.removeAnnotations)
   const addAnnotation = useEditorStore(s => s.addAnnotation)
   const editAnnotationId = useEditorStore(s => s.editAnnotationId)
   const setEditAnnotation = useEditorStore(s => s.setEditAnnotation)
   const hiddenAnnotationIds = useEditorStore(s => s.hiddenAnnotationIds)
   const toggleAnnotationVisibility = useEditorStore(s => s.toggleAnnotationVisibility)
   const setTypeVisibility = useEditorStore(s => s.setTypeVisibility)
+  const hoveredAnnotationId = useEditorStore(s => s.hoveredAnnotationId)
+  const setHoveredAnnotation = useEditorStore(s => s.setHoveredAnnotation)
 
   const [expandedId, setExpandedId] = useState<string | null>(null)
+  /** A rename asked for (F2, the menu): the editor opens with its name selected. */
+  const [renameRequest, setRenameRequest] = useState<{ id: string; n: number } | null>(null)
+  const openEditor = useCallback((id: string | null, rename = false) => {
+    setExpandedId(id)
+    setRenameRequest(id && rename ? { id, n: Date.now() } : null)
+  }, [])
+
   const [filter, setFilter] = useState('')
   const [collapsedTypes, setCollapsedTypes] = useState<Set<string>>(new Set())
+  const [view, setViewState] = useState<FeatureListView>(loadView)
+  const setView = useCallback((v: FeatureListView) => {
+    setViewState(v)
+    try { localStorage.setItem(STORAGE_KEYS.featureSidebarView, v) } catch { /* private mode */ }
+  }, [])
+  const [inSelection, setInSelection] = useState(false)
+  const [optionsOpen, setOptionsOpen] = useState(false)
+  const optionsBtnRef = useRef<HTMLButtonElement>(null)
+  const filterRef = useRef<HTMLInputElement>(null)
+  const listRef = useRef<HTMLDivElement>(null)
+
+  /** The keyboard's row in the list. */
+  const [activeId, setActiveId] = useState<string | null>(null)
+  /** The last move was a key, so the active row shows its ring. */
+  const [kbd, setKbd] = useState(false)
 
   /**
    * Coalescing key for the group colour pickers.
@@ -203,6 +157,7 @@ function FeatureSidebar({ open, onClose }: FeatureSidebarProps) {
   const beginColorDrag = useCallback((scope: string) => {
     colorDragKey.current = `color:${scope}:${Date.now()}`
   }, [])
+  const groupColorInputs = useRef(new Map<string, HTMLInputElement>())
 
   // Sidebar width with persistence
   const [width, setWidth] = useState(() => {
@@ -240,8 +195,8 @@ function FeatureSidebar({ open, onClose }: FeatureSidebarProps) {
     localStorage.setItem(STORAGE_KEY_WIDTH, String(finalWidth))
   }, [])
 
-  // Features and Primers share the sidebar as two tabs; the Primers tab has
-  // a list view and the design workbench. Both live in the store so the
+  // Features, Primers and Guides share the sidebar as tabs; the Primers tab
+  // has a list view and the design workbench. Both live in the store so the
   // toolbar, panel bar and canvas can send the user to either.
   const tab = useEditorStore(s => s.sidebarTab)
   const switchTab = useEditorStore(s => s.setSidebarTab)
@@ -249,7 +204,7 @@ function FeatureSidebar({ open, onClose }: FeatureSidebarProps) {
   const setPrimerView = useEditorStore(s => s.setPrimerView)
   const [addingPrimer, setAddingPrimer] = useState(false)
   const primerCount = useEditorStore(s => s.doc.primers?.length ?? 0)
-  const isProteinDoc = useEditorStore(s => s.doc.sequence.alphabet === 'protein')
+  const isProteinDoc = alphabet === 'protein'
   const guideCount = useEditorStore(s => s.guideResults.length)
   const activeTabId = useEditorStore(s => s.activeTabId)
 
@@ -257,27 +212,34 @@ function FeatureSidebar({ open, onClose }: FeatureSidebarProps) {
   useEffect(() => {
     if (editAnnotationId) {
       switchTab('features')
-      setExpandedId(editAnnotationId)
+      openEditor(editAnnotationId)
+      setActiveId(editAnnotationId)
       setEditAnnotation(null)
+      requestAnimationFrame(() => document.getElementById(rowDomId(editAnnotationId))?.scrollIntoView?.({ block: 'nearest' }))
     }
-  }, [editAnnotationId, setEditAnnotation, switchTab])
+  }, [editAnnotationId, setEditAnnotation, switchTab, openEditor])
 
   // Tooltip state
   const [tooltip, setTooltip] = useState<{ ann: Annotation; x: number; y: number } | null>(null)
   const tooltipTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
-  const handleMouseEnter = useCallback((e: React.MouseEvent, ann: Annotation) => {
-    if (tooltipTimer.current) clearTimeout(tooltipTimer.current)
+  /** Hovering a row shows its card here and highlights it on the map and sequence. */
+  const handleHover = useCallback((e: React.MouseEvent | null, ann: Annotation | null) => {
+    if (tooltipTimer.current) { clearTimeout(tooltipTimer.current); tooltipTimer.current = null }
+    setHoveredAnnotation(ann?.id ?? null)
+    if (!e || !ann) { setTooltip(null); return }
     const rect = (e.currentTarget as HTMLElement).getBoundingClientRect()
     tooltipTimer.current = setTimeout(() => {
       setTooltip({ ann, x: rect.left, y: rect.bottom + 4 })
     }, 400)
-  }, [])
-
-  const handleMouseLeave = useCallback(() => {
-    if (tooltipTimer.current) { clearTimeout(tooltipTimer.current); tooltipTimer.current = null }
+  }, [setHoveredAnnotation])
+  // Leave nothing highlighted on the canvas when the sidebar goes away.
+  useEffect(() => {
+    if (open) return
+    if (tooltipTimer.current) clearTimeout(tooltipTimer.current)
     setTooltip(null)
-  }, [])
+    if (useEditorStore.getState().hoveredAnnotationId) setHoveredAnnotation(null)
+  }, [open, setHoveredAnnotation])
 
   // Add new annotation state
   const [adding, setAdding] = useState(false)
@@ -293,7 +255,6 @@ function FeatureSidebar({ open, onClose }: FeatureSidebarProps) {
   // The types on offer follow the document: a protein's features are regions
   // and sites, not promoters. The form's type follows along when the open
   // document changes alphabet, so a DNA type is never offered on a protein.
-  const alphabet = sequence.alphabet
   const FEATURE_TYPES = featureTypesFor(alphabet)
   useEffect(() => {
     if (!FEATURE_TYPES.includes(newType)) {
@@ -339,36 +300,21 @@ function FeatureSidebar({ open, onClose }: FeatureSidebarProps) {
     }
   }, [requestAddAnnotation, open, setRequestAddAnnotation, switchTab])
 
-  const handleToggle = useCallback((id: string) => {
-    setExpandedId(prev => prev === id ? null : id)
-  }, [])
-
-  const handleSelect = useCallback((start: number, end: number) => {
-    useEditorStore.getState().smoothScrollRequested = true
-    setSelection({ anchor: start, caret: end })
-  }, [setSelection])
-
-  // Context menu state
+  // Menus
   const [ctxMenu, setCtxMenu] = useState<{ x: number; y: number; ann: Annotation } | null>(null)
+  const [groupMenu, setGroupMenu] = useState<{ x: number; y: number; type: string } | null>(null)
 
   const handleContextMenu = useCallback((e: React.MouseEvent, ann: Annotation) => {
     e.preventDefault()
     e.stopPropagation()
+    setActiveId(ann.id)
     setCtxMenu({ x: e.clientX, y: e.clientY, ann })
   }, [])
 
-  // Close context menu on outside click
-  useEffect(() => {
-    if (!ctxMenu) return
-    const close = () => setCtxMenu(null)
-    window.addEventListener('mousedown', close)
-    return () => window.removeEventListener('mousedown', close)
-  }, [ctxMenu])
-
   const handleAdd = useCallback(() => {
     const id = `ann_${Date.now()}`
-    const start = newParts ? newParts[0][0] : Math.max(0, Math.min(newStart - 1, seqLength - 1))
-    const end = newParts ? newParts[newParts.length - 1][1] : Math.max(1, Math.min(newEnd, seqLength))
+    const start = newParts ? newParts[0][0] : Math.max(0, Math.min(newStart - 1, seqLen - 1))
+    const end = newParts ? newParts[newParts.length - 1][1] : Math.max(1, Math.min(newEnd, seqLen))
     addAnnotation({
       id,
       name: newName.trim() || 'Untitled',
@@ -382,8 +328,9 @@ function FeatureSidebar({ open, onClose }: FeatureSidebarProps) {
     setAdding(false)
     setNewParts(null)
     setColorManuallySet(false)
-    setExpandedId(id)
-  }, [newName, newType, newStart, newEnd, newParts, newStrand, newColor, seqLength, addAnnotation])
+    openEditor(id)
+    setActiveId(id)
+  }, [newName, newType, newStart, newEnd, newParts, newStrand, newColor, seqLen, addAnnotation, openEditor])
 
   const toggleTypeCollapse = useCallback((type: string) => {
     setCollapsedTypes(prev => {
@@ -394,26 +341,44 @@ function FeatureSidebar({ open, onClose }: FeatureSidebarProps) {
     })
   }, [])
 
-  // Filter annotations (exclude ORF and primer display pseudo-annotations)
+  // Features of the document (not ORF or primer display overlays)
   const userAnnotations = useMemo(() =>
     annotations.filter(a => !a.id.startsWith('_orf_')),
     [annotations]
   )
 
-  // Apply search filter
-  const filteredAnnotations = useMemo(() => {
-    if (!filter.trim()) return userAnnotations
-    const q = filter.toLowerCase()
-    return userAnnotations.filter(a =>
-      a.name.toLowerCase().includes(q) ||
-      a.type.toLowerCase().includes(q) ||
-      Object.values(a.qualifiers).some(vals =>
-        vals.some(v => v.toLowerCase().includes(q))
-      )
-    )
-  }, [userAnnotations, filter])
+  // What the selection covers: its ranges, or the base after the caret.
+  const hereRanges = useMemo(() => {
+    const ranges = [selection, ...extraSelections].flatMap(s => selectionSegments(s, sequence.topology, seqLen))
+    if (ranges.length > 0 || seqLen === 0) return ranges
+    const c = Math.min(selection.caret, seqLen - 1)
+    return [[c, c + 1] as [number, number]]
+  }, [selection, extraSelections, sequence.topology, seqLen])
+  const hereIds = useMemo(
+    () => new Set(userAnnotations.filter(a => featureOverlaps(a, hereRanges, seqLen)).map(a => a.id)),
+    [userAnnotations, hereRanges, seqLen],
+  )
 
-  // Group by type, sorted by type name with counts
+  // What a CDS gets wrong, for the warning on its row. Keyed on the document:
+  // base edits change the sequence in place.
+  const issuesById = useMemo(() => {
+    const map = new Map<string, IssueMessage[]>()
+    if (alphabet === 'protein') return map
+    for (const a of userAnnotations) {
+      if (a.type !== 'CDS') continue
+      const msgs = issueMessages(translationIssues(a, doc.sequence))
+      if (msgs.length > 0) map.set(a.id, msgs)
+    }
+    return map
+  }, [userAnnotations, doc, alphabet])
+
+  const query = useMemo(() => parseFeatureQuery(filter), [filter])
+  const filteredAnnotations = useMemo(() => {
+    const all = isEmptyQuery(query) ? userAnnotations : userAnnotations.filter(a => matchesFeatureQuery(a, query, seqLen))
+    return inSelection ? all.filter(a => hereIds.has(a.id)) : all
+  }, [userAnnotations, query, seqLen, inSelection, hereIds])
+
+  // Group by type: larger groups first, then by name; within a group by position.
   const grouped = useMemo(() => {
     const map = new Map<string, Annotation[]>()
     for (const a of filteredAnnotations) {
@@ -421,50 +386,216 @@ function FeatureSidebar({ open, onClose }: FeatureSidebarProps) {
       if (list) list.push(a)
       else map.set(a.type, [a])
     }
-    // Sort groups: types with more annotations first, then alphabetically
+    for (const list of map.values()) list.sort(byPosition)
     return [...map.entries()].sort((a, b) => b[1].length - a[1].length || a[0].localeCompare(b[0]))
   }, [filteredAnnotations])
+
+  const sorted = useMemo(() => [...filteredAnnotations].sort(byPosition), [filteredAnnotations])
+
+  const allCollapsed = grouped.length > 0 && grouped.every(([t]) => collapsedTypes.has(t))
 
   const hiddenSet = useMemo(() => new Set(hiddenAnnotationIds), [hiddenAnnotationIds])
 
   // Multi-selection. The order given to the hook must match the rendered order,
   // or Shift-ranges would select a different run than the one highlighted.
   const orderedIds = useMemo(
-    () => grouped.flatMap(([, anns]) => anns.map(a => a.id)),
-    [grouped],
+    () => (view === 'position' ? sorted.map(a => a.id) : grouped.flatMap(([, anns]) => anns.map(a => a.id))),
+    [view, sorted, grouped],
   )
-  const { selectedIds, handleItemClick, clear: clearSelection } =
+  /** The rows on screen, in order: what the arrow keys walk. */
+  const visibleAnns = useMemo(
+    () => (view === 'position' ? sorted : grouped.flatMap(([type, anns]) => (collapsedTypes.has(type) ? [] : anns))),
+    [view, sorted, grouped, collapsedTypes],
+  )
+  const { selectedIds, handleItemClick, clear: clearSelection, selectAll } =
     useListMultiSelect(orderedIds)
 
   const selectedAnnotations = useMemo(
-    () => grouped.flatMap(([, anns]) => anns.filter(a => selectedIds.has(a.id))),
-    [grouped, selectedIds],
+    () => filteredAnnotations.filter(a => selectedIds.has(a.id)),
+    [filteredAnnotations, selectedIds],
   )
 
-  const [bulkDeleteOpen, setBulkDeleteOpen] = useState(false)
-  const handleBulkDelete = useCallback(() => {
-    const n = selectedAnnotations.length
-    removeAnnotations(selectedAnnotations.map(a => a.id))
+  /** Features waiting for the confirm dialog before they are deleted. */
+  const [pendingDelete, setPendingDelete] = useState<Annotation[] | null>(null)
+
+  const deleteNow = useCallback((anns: Annotation[]) => {
+    if (anns.length === 0) return
+    // Keep the keyboard on the row after the last one deleted.
+    const gone = new Set(anns.map(a => a.id))
+    if (activeId && gone.has(activeId)) {
+      const idx = visibleAnns.findIndex(a => a.id === activeId)
+      const next = visibleAnns.slice(idx + 1).find(a => !gone.has(a.id))
+        ?? visibleAnns.slice(0, idx).reverse().find(a => !gone.has(a.id))
+      setActiveId(next?.id ?? null)
+    }
+    if (expandedId && gone.has(expandedId)) openEditor(null)
+    deleteFeaturesWithUndo(anns)
     clearSelection()
-    setBulkDeleteOpen(false)
-    // The confirm dialog already promises "This can be undone". Deletion is
-    // one entry on the active tab's undo stack, so make good on it here
-    // rather than leaving the user to find Ctrl+Z.
-    const tabId = useEditorStore.getState().activeTabId
-    notify.success(`Deleted ${n} feature${n === 1 ? '' : 's'}`, {
-      action: {
-        label: 'Undo',
-        onClick: () => {
-          const store = useEditorStore.getState()
-          // Undo is per document. If the user has since switched tabs, this
-          // would pop a different sequence's history, so do nothing.
-          if (store.activeTabId === tabId) store.undo()
-        },
-      },
-    })
-  }, [selectedAnnotations, removeAnnotations, clearSelection])
+  }, [activeId, visibleAnns, expandedId, openEditor, clearSelection])
+
+  const scrollToRow = useCallback((id: string) => {
+    requestAnimationFrame(() => document.getElementById(rowDomId(id))?.scrollIntoView?.({ block: 'nearest' }))
+  }, [])
+
+  // A feature clicked on the map or in the sequence selects exactly its span:
+  // bring its row into view and make it the keyboard's row.
+  useEffect(() => {
+    if (selection.anchor === selection.caret) return
+    const lo = Math.min(selection.anchor, selection.caret)
+    const hi = Math.max(selection.anchor, selection.caret)
+    const match = useEditorStore.getState().doc.annotations.find(a => !a.id.startsWith('_') && (
+      a.start <= a.end ? a.start === lo && a.end === hi : a.start === selection.anchor && a.end === selection.caret
+    ))
+    if (!match) return
+    setActiveId(match.id)
+    scrollToRow(match.id)
+  }, [selection, scrollToRow])
+
+  const handleRowClick = useCallback((e: React.MouseEvent, ann: Annotation) => {
+    setActiveId(ann.id)
+    setKbd(false)
+    handleItemClick(e, ann.id, () => selectFeature(ann))
+  }, [handleItemClick])
+
+  const handleRowDoubleClick = useCallback((ann: Annotation) => {
+    setExpandedId(prev => (prev === ann.id ? null : ann.id))
+    setRenameRequest(null)
+  }, [])
+
+  const handleToggleHidden = useCallback((ann: Annotation) => toggleAnnotationVisibility(ann.id), [toggleAnnotationVisibility])
+
+  /** Open the context menu of the keyboard's row, beside it. */
+  const openMenuForActive = useCallback((ann: Annotation) => {
+    const el = document.getElementById(rowDomId(ann.id))
+    const rect = el?.getBoundingClientRect()
+    setCtxMenu({ x: rect ? rect.left + 24 : 0, y: rect ? rect.bottom : 0, ann })
+  }, [])
+
+  // --- Keyboard ---
+  const handleListKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
+    const target = e.target as HTMLElement
+    // Inside an open editor the fields keep their keys. Escape (and Enter in
+    // the name) closes it and hands the keyboard back to the list.
+    if (target.closest('.ft-editor')) {
+      const commitOnEnter = e.key === 'Enter' && target.dataset.commitOnEnter !== undefined
+      if (e.key === 'Escape' || commitOnEnter) {
+        e.preventDefault()
+        e.stopPropagation()
+        openEditor(null)
+        listRef.current?.focus()
+      }
+      return
+    }
+    // A button in a row or group header runs its own Enter and Space.
+    if (target !== e.currentTarget && (e.key === 'Enter' || e.key === ' ')) return
+
+    const ctrl = e.ctrlKey || e.metaKey
+    const ids = visibleAnns.map(a => a.id)
+    const idx = activeId ? ids.indexOf(activeId) : -1
+    const active = idx >= 0 ? visibleAnns[idx] : null
+    const store = useEditorStore.getState()
+
+    const moveTo = (i: number) => {
+      if (ids.length === 0) return
+      const next = visibleAnns[Math.max(0, Math.min(ids.length - 1, i))]
+      setActiveId(next.id)
+      if (e.shiftKey) handleItemClick({ ctrlKey: false, metaKey: false, shiftKey: true }, next.id)
+      else handleItemClick({ ctrlKey: false, metaKey: false, shiftKey: false }, next.id, () => selectFeature(next))
+      scrollToRow(next.id)
+    }
+
+    let handled = true
+    if (e.key === 'ArrowDown' && !ctrl) moveTo(idx < 0 ? 0 : idx + 1)
+    else if (e.key === 'ArrowUp' && !ctrl) moveTo(idx < 0 ? 0 : idx - 1)
+    else if (e.key === 'PageDown') moveTo(idx + 10)
+    else if (e.key === 'PageUp') moveTo(idx - 10)
+    else if (e.key === 'Home') moveTo(0)
+    else if (e.key === 'End') moveTo(ids.length - 1)
+    else if (e.key === 'Enter' && active) openEditor(expandedId === active.id ? null : active.id)
+    else if (e.key === 'F2' && active && !readOnly) openEditor(active.id, true)
+    else if ((e.key === 'Delete' || e.key === 'Backspace') && !readOnly) {
+      const targets = selectedAnnotations.length > 0 ? selectedAnnotations : active ? [active] : []
+      if (targets.length > 1) setPendingDelete(targets)
+      else deleteNow(targets)
+    } else if (e.key === 'Escape') {
+      if (expandedId) openEditor(null)
+      else if (selectedIds.size > 0) clearSelection()
+      else handled = false
+    } else if (e.key === ' ' && active) {
+      handleItemClick({ ctrlKey: true, metaKey: false, shiftKey: false }, active.id)
+    } else if (ctrl && (e.key === 'a' || e.key === 'A')) {
+      selectAll()
+    } else if (ctrl && (e.key === 'c' || e.key === 'C') && active) {
+      const b = annotationBases(active, store.doc.sequence)
+      copyText(b, `Copied ${b.length} ${isProteinDoc ? 'aa' : 'bp'} from "${active.name}"`)
+    } else if (ctrl && !e.shiftKey && (e.key === 'z' || e.key === 'Z')) {
+      store.undo()
+    } else if (ctrl && ((e.shiftKey && (e.key === 'z' || e.key === 'Z')) || e.key === 'y' || e.key === 'Y')) {
+      store.redo()
+    } else if ((e.key === 'ContextMenu' || (e.shiftKey && e.key === 'F10')) && active) {
+      openMenuForActive(active)
+    } else if (e.key.length === 1 && !ctrl && !e.altKey && e.key !== ' ') {
+      // Typing in the list types into the filter.
+      filterRef.current?.focus()
+      setFilter(f => f + e.key)
+    } else {
+      handled = false
+    }
+    if (handled) {
+      e.preventDefault()
+      e.stopPropagation()
+      setKbd(true)
+    }
+  }
+
+  // --- Header tabs: words while they fit, icons when they do not ---
+  const tabsRef = useRef<HTMLDivElement>(null)
+  const measureRef = useRef<HTMLDivElement>(null)
+  const tabDefs = [
+    { id: 'features' as const, label: 'Features', Icon: List, count: userAnnotations.length as number | null },
+    { id: 'primers' as const, label: 'Primers', Icon: FlaskConical, count: primerCount as number | null },
+    ...(isProteinDoc ? [] : [{ id: 'guides' as const, label: 'Guides', Icon: Crosshair, count: guideCount > 0 ? guideCount : null }]),
+  ]
+  const compactTabs = useCompactTabs(tabsRef, measureRef, tabDefs.map(t => `${t.label}${t.count}`).join('|') + `|${width}`)
 
   if (!open) return null
+
+  const featureIssues = (id: string) => issuesById.get(id)
+  const groupMenuAnns = groupMenu ? grouped.find(([t]) => t === groupMenu.type)?.[1] ?? [] : []
+  const nonDefaultOptions = view !== 'type' || inSelection
+
+  const renderRow = (a: Annotation) => (
+    <FeatureRow
+      key={a.id}
+      ann={a}
+      seqLen={seqLen}
+      alphabet={alphabet}
+      issues={featureIssues(a.id)}
+      expanded={expandedId === a.id}
+      hidden={hiddenSet.has(a.id)}
+      picked={selectedIds.has(a.id)}
+      active={activeId === a.id}
+      here={hereIds.has(a.id)}
+      hovered={hoveredAnnotationId === a.id}
+      showLocation={view === 'position'}
+      onClick={handleRowClick}
+      onDoubleClick={handleRowDoubleClick}
+      onContextMenu={handleContextMenu}
+      onToggleHidden={handleToggleHidden}
+      onHover={handleHover}
+    >
+      {expandedId === a.id && (
+        <FeatureEditor
+          annotation={a}
+          featureTypes={FEATURE_TYPES}
+          readOnly={readOnly}
+          focusName={renameRequest?.id === a.id ? renameRequest.n : 0}
+          onDone={() => { openEditor(null); listRef.current?.focus() }}
+          onDelete={() => deleteNow([a])}
+        />
+      )}
+    </FeatureRow>
+  )
 
   return (
     <>
@@ -478,72 +609,36 @@ function FeatureSidebar({ open, onClose }: FeatureSidebarProps) {
       <aside className="feature-sidebar" style={{ width }}>
         {/* Header */}
         <div className="fs-header">
-          <div className="fs-tabs" role="tablist" aria-label="Sidebar">
-            <button
-              className={`fs-tab ${tab === 'features' ? 'active' : ''}`}
-              role="tab"
-              aria-selected={tab === 'features'}
-              onClick={() => switchTab('features')}
-            >
-              <span className="fs-title">Features</span>
-              <span className="fs-count">{userAnnotations.length}</span>
-            </button>
-            <button
-              className={`fs-tab ${tab === 'primers' ? 'active' : ''}`}
-              role="tab"
-              aria-selected={tab === 'primers'}
-              onClick={() => switchTab('primers')}
-            >
-              <span className="fs-title">Primers</span>
-              <span className="fs-count">{primerCount}</span>
-            </button>
-            {!isProteinDoc && (
+          <div ref={tabsRef} className={`fs-tabs ${compactTabs ? 'compact' : ''}`} role="tablist" aria-label="Sidebar">
+            {tabDefs.map(({ id, label, Icon, count }) => (
               <button
-                className={`fs-tab ${tab === 'guides' ? 'active' : ''}`}
+                key={id}
+                className={`fs-tab ${tab === id ? 'active' : ''}`}
                 role="tab"
-                aria-selected={tab === 'guides'}
-                onClick={() => switchTab('guides')}
+                aria-selected={tab === id}
+                aria-label={compactTabs ? label : undefined}
+                title={compactTabs ? label : undefined}
+                onClick={() => switchTab(id)}
               >
-                <span className="fs-title">Guides</span>
-                {guideCount > 0 && <span className="fs-count">{guideCount}</span>}
+                {compactTabs && <Icon size={14} className="fs-tab-icon" />}
+                {!compactTabs && <span className="fs-title">{label}</span>}
+                {count !== null && <span className="fs-count">{count}</span>}
               </button>
-            )}
+            ))}
           </div>
+          {/* The tabs as words, laid out unseen, to know whether they fit. */}
+          <div ref={measureRef} className="fs-tabs fs-tabs-measure" aria-hidden>
+            {tabDefs.map(({ id, label, count }) => (
+              <span key={id} className="fs-tab">
+                <span className="fs-title">{label}</span>
+                {count !== null && <span className="fs-count">{count}</span>}
+              </span>
+            ))}
+          </div>
+          {/* Only the close button lives up here. Each tab's own actions sit
+              in that tab's filter row, so three tabs and their counts never
+              push a button off the edge of a narrow sidebar. */}
           <div className="fs-header-actions">
-            {tab === 'guides' ? null : tab === 'primers' ? (
-              primerView === 'list' && (
-                <button
-                  className="fs-icon-btn"
-                  onClick={() => setAddingPrimer(v => !v)}
-                  title={addingPrimer ? 'Cancel' : 'Add primer'}
-                >
-                  {addingPrimer ? <X size={14} /> : <Plus size={14} />}
-                </button>
-              )
-            ) : (
-              <>
-            <button
-              className="fs-icon-btn"
-              onClick={() => {
-                const allTypes = grouped.map(([type]) => type)
-                const allCollapsed = allTypes.length > 0 && allTypes.every(t => collapsedTypes.has(t))
-                setCollapsedTypes(allCollapsed ? new Set() : new Set(allTypes))
-              }}
-              title={grouped.length > 0 && grouped.every(([t]) => collapsedTypes.has(t)) ? 'Expand all groups' : 'Collapse all groups'}
-            >
-              {grouped.length > 0 && grouped.every(([t]) => collapsedTypes.has(t))
-                ? <ChevronsUpDown size={14} />
-                : <ChevronsDownUp size={14} />}
-            </button>
-            <button
-              className="fs-icon-btn"
-              onClick={() => { setNewParts(null); setAdding(v => !v) }}
-              title={adding ? 'Cancel' : 'Add feature'}
-            >
-              {adding ? <X size={14} /> : <Plus size={14} />}
-            </button>
-              </>
-            )}
             <button
               className="fs-icon-btn"
               onClick={onClose}
@@ -588,38 +683,91 @@ function FeatureSidebar({ open, onClose }: FeatureSidebarProps) {
           <FeatureBulkBar
             selected={selectedAnnotations}
             onClear={clearSelection}
-            onRequestDelete={() => setBulkDeleteOpen(true)}
+            onRequestDelete={() => setPendingDelete(selectedAnnotations)}
           />
         )}
 
         <ConfirmDialog
-          open={bulkDeleteOpen}
+          open={pendingDelete !== null}
           title="Delete features"
-          message={`Delete ${selectedAnnotations.length} selected feature${selectedAnnotations.length === 1 ? '' : 's'}? This can be undone.`}
+          message={`Delete ${pendingDelete?.length ?? 0} feature${pendingDelete?.length === 1 ? '' : 's'}? This can be undone.`}
           buttons={[
             { label: 'Cancel', value: 'cancel' },
             { label: 'Delete', value: 'delete', variant: 'danger' },
           ]}
           onResult={value => {
-            if (value === 'delete') handleBulkDelete()
-            else setBulkDeleteOpen(false)
+            if (value === 'delete' && pendingDelete) deleteNow(pendingDelete)
+            setPendingDelete(null)
           }}
         />
 
-        {/* Search */}
+        {/* Filter, and this tab's actions */}
         <div className="fs-search">
           <Search size={12} className="fs-search-icon" />
           <input
+            ref={filterRef}
             className="fs-search-input"
             placeholder="Filter features…"
+            aria-label="Filter features"
             value={filter}
             onChange={e => setFilter(e.target.value)}
+            onKeyDown={e => {
+              // Down or Enter goes on into the list; Escape empties the filter.
+              if ((e.key === 'ArrowDown' || e.key === 'Enter') && visibleAnns.length > 0) {
+                e.preventDefault()
+                if (!activeId || !visibleAnns.some(a => a.id === activeId)) setActiveId(visibleAnns[0].id)
+                setKbd(true)
+                listRef.current?.focus()
+              } else if (e.key === 'Escape' && filter) {
+                e.preventDefault()
+                setFilter('')
+              }
+            }}
             spellCheck={false}
           />
           {filter && (
-            <button className="fs-search-clear" onClick={() => setFilter('')}>
+            <button className="fs-search-clear" onClick={() => setFilter('')} title="Clear filter">
               <X size={11} />
             </button>
+          )}
+          <button
+            ref={optionsBtnRef}
+            className={`fs-icon-btn ${optionsOpen ? 'active' : ''} ${nonDefaultOptions ? 'flagged' : ''}`}
+            onClick={() => setOptionsOpen(v => !v)}
+            title="Layout and filter options"
+            aria-expanded={optionsOpen}
+            aria-haspopup="dialog"
+          >
+            <SlidersHorizontal size={13} />
+          </button>
+          {view === 'type' && (
+            <button
+              className="fs-icon-btn"
+              onClick={() => setCollapsedTypes(allCollapsed ? new Set() : new Set(grouped.map(([type]) => type)))}
+              title={allCollapsed ? 'Expand all groups' : 'Collapse all groups'}
+              disabled={grouped.length === 0}
+            >
+              {allCollapsed ? <ChevronsUpDown size={14} /> : <ChevronsDownUp size={14} />}
+            </button>
+          )}
+          <button
+            className={`fs-icon-btn ${adding ? 'active' : ''}`}
+            onClick={() => { setNewParts(null); setAdding(v => !v) }}
+            title={adding ? 'Cancel new feature' : 'Add feature'}
+            disabled={readOnly}
+          >
+            {adding ? <X size={14} /> : <Plus size={14} />}
+          </button>
+          {optionsOpen && (
+            <FeatureListOptions
+              view={view}
+              onViewChange={setView}
+              inSelection={inSelection}
+              onInSelectionChange={setInSelection}
+              onInsertTerm={term => setFilter(f => (f.trim() ? `${f.trim()} ${term}` : term))}
+              onClose={() => setOptionsOpen(false)}
+              triggerRef={optionsBtnRef}
+            />
           )}
         </div>
 
@@ -664,7 +812,7 @@ function FeatureSidebar({ open, onClose }: FeatureSidebarProps) {
                   className="input ft-input ft-num"
                   type="number"
                   min={1}
-                  max={seqLength}
+                  max={seqLen}
                   value={newStart}
                   onChange={e => setNewStart(parseInt(e.target.value) || 1)}
                 />
@@ -673,7 +821,7 @@ function FeatureSidebar({ open, onClose }: FeatureSidebarProps) {
                   className="input ft-input ft-num"
                   type="number"
                   min={1}
-                  max={seqLength}
+                  max={seqLen}
                   value={newEnd}
                   onChange={e => setNewEnd(parseInt(e.target.value) || 1)}
                 />
@@ -721,50 +869,81 @@ function FeatureSidebar({ open, onClose }: FeatureSidebarProps) {
           </div>
         )}
 
-        {/* Grouped annotation list */}
-        <div className="fs-list">
-          {grouped.map(([type, anns]) => {
+        {/* The list */}
+        <div
+          ref={listRef}
+          className={`fs-list ${kbd ? 'kbd' : ''}`}
+          role="listbox"
+          aria-label="Features"
+          aria-multiselectable
+          tabIndex={0}
+          aria-activedescendant={activeId && visibleAnns.some(a => a.id === activeId) ? rowDomId(activeId) : undefined}
+          onKeyDown={handleListKeyDown}
+          onMouseDown={() => setKbd(false)}
+        >
+          {view === 'position' ? sorted.map(renderRow) : grouped.map(([type, anns]) => {
             const isCollapsed = collapsedTypes.has(type)
             const allHidden = anns.every(a => hiddenSet.has(a.id))
             const someHidden = anns.some(a => hiddenSet.has(a.id))
-
-            // Representative color for the group (use first annotation's color)
-            const groupColor = anns[0]?.color ?? '#adb5bd'
+            const groupColor = anns[0]?.color ?? defaultColorForType(type)
 
             return (
-              <div key={type} className="fs-group">
-                {/* Group header */}
-                <div className="fs-group-header">
-                  <label className="fs-group-color-wrap" title={`Change color for all ${type} features`}>
-                    <span className="fs-group-swatch" style={{ backgroundColor: groupColor }} />
-                    <input
-                      type="color"
-                      className="fs-group-color-input"
-                      value={groupColor}
-                      // A colour input fires onChange on every frame of a drag.
-                      // The key is minted once per interaction, so the whole
-                      // drag writes through live but collapses to one undo entry.
-                      onPointerDown={() => beginColorDrag(type)}
-                      onFocus={() => beginColorDrag(type)}
-                      onChange={e => {
-                        updateAnnotations(
-                          anns.map(a => a.id),
-                          { color: e.target.value },
-                          { coalesceKey: colorDragKey.current ?? undefined },
-                        )
-                      }}
-                    />
-                  </label>
+              <div key={type} className="fs-group" role="group" aria-label={type}>
+                <div
+                  className="fs-group-header"
+                  onContextMenu={e => {
+                    e.preventDefault()
+                    setGroupMenu({ x: e.clientX, y: e.clientY, type })
+                  }}
+                >
+                  <span className="fs-group-swatch" style={groupSwatch(anns)} aria-hidden />
+                  {/* Opened from the group's menu ("Recolor All"). A colour
+                      input fires on every frame of a drag; the key minted per
+                      interaction makes the whole drag one undo step. */}
+                  <input
+                    type="color"
+                    className="fs-group-color-input"
+                    tabIndex={-1}
+                    aria-label={`Color for all ${type}`}
+                    ref={el => {
+                      if (el) groupColorInputs.current.set(type, el)
+                      else groupColorInputs.current.delete(type)
+                    }}
+                    value={groupColor}
+                    onFocus={() => beginColorDrag(type)}
+                    onChange={e => {
+                      updateAnnotations(
+                        anns.map(a => a.id),
+                        { color: e.target.value },
+                        { coalesceKey: colorDragKey.current ?? undefined },
+                      )
+                    }}
+                  />
                   <button
                     className="fs-group-toggle"
+                    tabIndex={-1}
                     onClick={() => toggleTypeCollapse(type)}
+                    aria-expanded={!isCollapsed}
                   >
                     {isCollapsed ? <ChevronRight size={12} /> : <ChevronDown size={12} />}
                     <span className="fs-group-name">{type}</span>
                     <span className="fs-group-count">{anns.length}</span>
                   </button>
                   <button
+                    className="fs-eye-btn fs-group-more"
+                    tabIndex={-1}
+                    title={`Actions for all ${type}`}
+                    aria-haspopup="menu"
+                    onClick={e => {
+                      const r = e.currentTarget.getBoundingClientRect()
+                      setGroupMenu({ x: r.left, y: r.bottom + 2, type })
+                    }}
+                  >
+                    <MoreHorizontal size={13} />
+                  </button>
+                  <button
                     className={`fs-eye-btn ${allHidden ? 'hidden' : someHidden ? 'partial' : ''}`}
+                    tabIndex={-1}
                     onClick={() => setTypeVisibility(type, allHidden)}
                     title={allHidden ? `Show all ${type}` : `Hide all ${type}`}
                   >
@@ -772,161 +951,18 @@ function FeatureSidebar({ open, onClose }: FeatureSidebarProps) {
                   </button>
                 </div>
 
-                {/* Annotation rows */}
-                {!isCollapsed && anns.map(a => {
-                  const isExpanded = expandedId === a.id
-                  const isHidden = hiddenSet.has(a.id)
-
-                  const isPicked = selectedIds.has(a.id)
-
-                  return (
-                    <div key={a.id} className={`fs-item ${isExpanded ? 'expanded' : ''} ${isHidden ? 'dimmed' : ''} ${isPicked ? 'picked' : ''}`}>
-                      {/* Summary row */}
-                      <div
-                        className="ft-summary"
-                        aria-selected={isPicked}
-                        // Ctrl/Shift extend the multi-selection; a plain click
-                        // keeps the old behaviour of selecting the region.
-                        onClick={e => handleItemClick(e, a.id, () => handleSelect(a.start, a.end))}
-                        onDoubleClick={() => handleToggle(a.id)}
-                        onContextMenu={e => handleContextMenu(e, a)}
-                        onMouseEnter={e => handleMouseEnter(e, a)}
-                        onMouseLeave={handleMouseLeave}
-                      >
-                        <span className="ann-swatch" style={{ backgroundColor: a.color }} />
-                        <span className="ft-name">{a.name}</span>
-                        {a.truncated && <span className="ft-truncated" title="Cut short at a cloning junction">truncated</span>}
-                        <span className="ann-range">{a.start + 1}..{a.end}</span>
-                        <span className="ft-strand-badge">
-                          {a.strand === 1 ? '→' : a.strand === -1 ? '←' : '·'}
-                        </span>
-                        <button
-                          className={`fs-eye-btn fs-eye-inline ${isHidden ? 'hidden' : ''}`}
-                          onClick={e => { e.stopPropagation(); toggleAnnotationVisibility(a.id) }}
-                          title={isHidden ? 'Show annotation' : 'Hide annotation'}
-                        >
-                          {isHidden ? <EyeOff size={12} /> : <Eye size={12} />}
-                        </button>
-                      </div>
-
-                      {/* Expanded editor */}
-                      {isExpanded && (
-                        <div className="ft-editor">
-                          <div className="ft-row">
-                            <label>Name</label>
-                            <input
-                              className="input ft-input"
-                              value={a.name}
-                              onChange={e => updateAnnotation(a.id, { name: e.target.value })}
-                              onClick={e => e.stopPropagation()}
-                            />
-                          </div>
-                          <div className="ft-row">
-                            <label>Type</label>
-                            <select
-                              className="select ft-select"
-                              value={a.type}
-                              onChange={e => updateAnnotation(a.id, { type: e.target.value })}
-                              onClick={e => e.stopPropagation()}
-                            >
-                              {FEATURE_TYPES.includes(a.type) ? null : (
-                                <option value={a.type}>{a.type}</option>
-                              )}
-                              {FEATURE_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
-                            </select>
-                          </div>
-                          <div className="ft-row">
-                            <label>Range</label>
-                            <div className="ft-range-inputs">
-                              <input
-                                className="input ft-input ft-num"
-                                type="number"
-                                min={0}
-                                max={seqLength}
-                                value={a.start + 1}
-                                onChange={e => {
-                                  const v = Math.max(0, (parseInt(e.target.value) || 1) - 1)
-                                  updateAnnotation(a.id, { start: v })
-                                }}
-                                onClick={e => e.stopPropagation()}
-                              />
-                              <span>..</span>
-                              <input
-                                className="input ft-input ft-num"
-                                type="number"
-                                min={1}
-                                max={seqLength}
-                                value={a.end}
-                                onChange={e => {
-                                  const v = Math.max(1, parseInt(e.target.value) || 1)
-                                  updateAnnotation(a.id, { end: v })
-                                }}
-                                onClick={e => e.stopPropagation()}
-                              />
-                            </div>
-                          </div>
-                          <div className="ft-row">
-                            <label>Strand</label>
-                            <select
-                              className="select ft-select"
-                              value={a.strand}
-                              onChange={e => updateAnnotation(a.id, { strand: parseInt(e.target.value) as Strand })}
-                              onClick={e => e.stopPropagation()}
-                            >
-                              <option value={1}>Forward (+)</option>
-                              <option value={-1}>Reverse (−)</option>
-                              <option value={0}>None</option>
-                            </select>
-                          </div>
-                          <div className="ft-row">
-                            <label>Color</label>
-                            <div className="ft-color-row">
-                              <div className="ft-color-presets">
-                                {PRESET_COLORS.map(c => (
-                                  <button
-                                    key={c}
-                                    className={`ft-color-dot ${c === a.color ? 'active' : ''}`}
-                                    style={{ backgroundColor: c }}
-                                    onClick={e => { e.stopPropagation(); updateAnnotation(a.id, { color: c }) }}
-                                  />
-                                ))}
-                                <label className="ft-color-dot ft-color-custom" style={{ backgroundColor: a.color }} title="Custom color" onClick={e => e.stopPropagation()}>
-                                  <input
-                                    type="color"
-                                    value={a.color}
-                                    onChange={e => updateAnnotation(a.id, { color: e.target.value })}
-                                  />
-                                </label>
-                              </div>
-                            </div>
-                          </div>
-                          <QualifiersEditor annotation={a} updateAnnotation={updateAnnotation} />
-                          <div className="ft-actions">
-                            <button
-                              className="btn btn-sm"
-                              onClick={e => { e.stopPropagation(); setExpandedId(null) }}
-                            >
-                              Done
-                            </button>
-                            <button
-                              className="btn btn-sm ft-del-btn"
-                              onClick={e => { e.stopPropagation(); removeAnnotation(a.id); setExpandedId(null) }}
-                            >
-                              Delete
-                            </button>
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                  )
-                })}
+                {!isCollapsed && anns.map(renderRow)}
               </div>
             )
           })}
 
           {filteredAnnotations.length === 0 && !adding && (
             <div className="ft-empty">
-              {filter ? 'No matching features.' : 'No features. Click + to add one.'}
+              {userAnnotations.length === 0
+                ? 'No features yet. Click + above to add one.'
+                : inSelection && isEmptyQuery(query)
+                  ? 'No features where the selection is.'
+                  : 'No matching features.'}
             </div>
           )}
         </div>
@@ -943,24 +979,43 @@ function FeatureSidebar({ open, onClose }: FeatureSidebarProps) {
           />
         )}
 
-        {/* Context menu */}
         {ctxMenu && (
-          <div
-            className="ctx-menu"
-            style={{ left: ctxMenu.x, top: ctxMenu.y, position: 'fixed' }}
-            onMouseDown={e => e.stopPropagation()}
-          >
-            <button className="ctx-menu-item" onClick={() => { handleToggle(ctxMenu.ann.id); handleSelect(ctxMenu.ann.start, ctxMenu.ann.end); setCtxMenu(null) }}>
-              Edit
-            </button>
-            <button className="ctx-menu-item" onClick={() => { navigator.clipboard.writeText(ctxMenu.ann.name); setCtxMenu(null) }}>
-              Copy Name
-            </button>
-            <div className="ctx-menu-sep" />
-            <button className="ctx-menu-item ctx-menu-danger" onClick={() => { removeAnnotation(ctxMenu.ann.id); setCtxMenu(null) }}>
-              Delete
-            </button>
-          </div>
+          <FeatureContextMenu
+            x={ctxMenu.x}
+            y={ctxMenu.y}
+            ann={ctxMenu.ann}
+            hidden={hiddenSet.has(ctxMenu.ann.id)}
+            readOnly={readOnly}
+            onClose={() => setCtxMenu(null)}
+            onEdit={() => openEditor(ctxMenu.ann.id)}
+            onRename={() => openEditor(ctxMenu.ann.id, true)}
+            onDelete={() => deleteNow([ctxMenu.ann])}
+            onDuplicated={id => { setActiveId(id); scrollToRow(id) }}
+          />
+        )}
+
+        {groupMenu && (
+          <GroupContextMenu
+            x={groupMenu.x}
+            y={groupMenu.y}
+            type={groupMenu.type}
+            anns={groupMenuAnns}
+            allHidden={groupMenuAnns.length > 0 && groupMenuAnns.every(a => hiddenSet.has(a.id))}
+            readOnly={readOnly}
+            onClose={() => setGroupMenu(null)}
+            onRecolor={() => {
+              const input = groupColorInputs.current.get(groupMenu.type)
+              if (!input) return
+              beginColorDrag(groupMenu.type)
+              try { input.showPicker() } catch { input.click() }
+            }}
+            onPickAll={() => {
+              for (const a of groupMenuAnns) {
+                if (!selectedIds.has(a.id)) handleItemClick({ ctrlKey: true, metaKey: false, shiftKey: false }, a.id)
+              }
+            }}
+            onDeleteAll={() => setPendingDelete([...groupMenuAnns])}
+          />
         )}
       </aside>
     </>

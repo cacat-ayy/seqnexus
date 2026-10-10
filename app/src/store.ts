@@ -789,6 +789,13 @@ interface EditorStore {
   sidebarRequest: number
   /** Show a sidebar tab (and, for Primers, a view), opening the sidebar. */
   openSidebar: (tab: SidebarTab, view?: PrimerView) => void
+  /**
+   * Bumped to BLAST the current selection: App opens the BLAST dialog, which
+   * starts a new search on the selection. The feature panel uses it after
+   * selecting a feature.
+   */
+  blastSelectionRequest: number
+  requestBlastSelection: () => void
 
   // --- Auto-annotation (cross-view) ---
   // Proposals, not features: they are drawn on the sequence and only enter the
@@ -932,7 +939,8 @@ interface EditorStore {
   removeAnnotation: (id: string) => void
   /** Delete many annotations as a single undoable action. */
   removeAnnotations: (ids: Iterable<string>) => void
-  updateAnnotation: (id: string, patch: Partial<Omit<AnnotationData, 'id'>>) => void
+  /** Pass a `coalesceKey` minted per focus to fold typing into one undo step. */
+  updateAnnotation: (id: string, patch: Partial<Omit<AnnotationData, 'id'>>, opts?: { coalesceKey?: string }) => void
   /**
    * Patch many annotations as a single undoable action.
    *
@@ -1976,6 +1984,8 @@ export const useEditorStore = create<EditorStore>((set, get) => {
       get().setSidebarTab(tab)
       set(s => ({ sidebarRequest: s.sidebarRequest + 1, ...(view ? { primerView: view } : {}) }))
     },
+    blastSelectionRequest: 0,
+    requestBlastSelection: () => set(s => ({ blastSelectionRequest: s.blastSelectionRequest + 1 })),
 
     // Auto-annotation proposals
     autoAnnotations: [],
@@ -3305,8 +3315,11 @@ export const useEditorStore = create<EditorStore>((set, get) => {
       transact(doc => removeAnnotations(doc, ids), { label: `Delete ${describeItems('feature', annotationNames(ids))}` })
     },
 
-    updateAnnotation(id, patch) {
-      transact(doc => updateAnnotation(doc, id, patch), { label: `Edit ${describeItems('feature', annotationNames([id]))}` })
+    updateAnnotation(id, patch, opts) {
+      transact(doc => updateAnnotation(doc, id, patch), {
+        ...opts,
+        label: `Edit ${describeItems('feature', annotationNames([id]))}`,
+      })
     },
 
     updateAnnotations(ids, patch, opts) {

@@ -6,10 +6,11 @@
  * be readable where it is read.
  */
 
-import { useCallback, useRef, useState } from 'react'
+import { useRef, useState } from 'react'
 import { X } from 'lucide-react'
 import { useExitAnimation } from '../../hooks/useExitAnimation'
 import { useFocusTrap } from '../../hooks/useFocusTrap'
+import { useBackdropDismiss } from '../../hooks/useBackdropDismiss'
 
 interface Props {
   open: boolean
@@ -24,9 +25,7 @@ export default function ExplorerNoteDialog({ open, itemName, initialNote, onSave
   const [text, setText] = useState(initialNote)
   useFocusTrap(backdropRef, open)
 
-  const handleBackdrop = useCallback((e: React.MouseEvent) => {
-    if (e.target === backdropRef.current) onCancel()
-  }, [onCancel])
+  const { onMouseDown: handleBackdropDown, onClick: handleBackdrop } = useBackdropDismiss(onCancel)
 
   const { visible, closing, onAnimationEnd } = useExitAnimation(open)
   if (!visible) return null
@@ -36,7 +35,7 @@ export default function ExplorerNoteDialog({ open, itemName, initialNote, onSave
       ref={backdropRef}
       className={closing ? 'modal-backdrop closing' : 'modal-backdrop'}
       onAnimationEnd={onAnimationEnd}
-      onClick={handleBackdrop}
+      onMouseDown={handleBackdropDown} onClick={handleBackdrop}
       onKeyDown={e => { if (e.key === 'Escape') onCancel() }}
       tabIndex={-1}
     >

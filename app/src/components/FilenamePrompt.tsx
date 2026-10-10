@@ -4,6 +4,7 @@ import './FilenamePrompt.css'
  */
 
 import { useState, useRef, useEffect, useCallback } from 'react'
+import { useBackdropDismiss } from '../hooks/useBackdropDismiss'
 
 interface Props {
   /** Default filename (pre-filled, editable). */
@@ -46,12 +47,10 @@ export default function FilenamePrompt({ defaultName, onConfirm, onCancel }: Pro
     }
   }, [handleConfirm, onCancel])
 
-  const handleBackdropClick = useCallback((e: React.MouseEvent) => {
-    if (e.target === e.currentTarget) onCancel()
-  }, [onCancel])
+  const { onMouseDown: handleBackdropClickDown, onClick: handleBackdropClick } = useBackdropDismiss(onCancel)
 
   return (
-    <div className="export-dialog-backdrop" onClick={handleBackdropClick}>
+    <div className="export-dialog-backdrop" onMouseDown={handleBackdropClickDown} onClick={handleBackdropClick}>
       <div className="export-dialog" onKeyDown={handleKeyDown}>
         <div className="export-dialog-title">Export filename</div>
         <input

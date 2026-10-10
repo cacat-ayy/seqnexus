@@ -1,8 +1,8 @@
 import { describe, it, expect } from 'vitest'
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { useFocusTrap } from './useFocusTrap'
+import { useFocusTrap, isFocusTrapActive } from './useFocusTrap'
 
 function Dialog({ open, children }: { open: boolean; children?: React.ReactNode }) {
   const ref = useRef<HTMLDivElement>(null)
@@ -165,5 +165,38 @@ describe('useFocusTrap', () => {
     await user.tab()
     // Cycles within the inner dialog, not out to outer-btn.
     expect(screen.getByText('inner-a')).toHaveFocus()
+  })
+})
+
+/** Mounts its panel one render after `open`, as useExitAnimation does. */
+function LateDialog({ open }: { open: boolean }) {
+  const ref = useRef<HTMLDivElement>(null)
+  useFocusTrap(ref, open)
+  const [visible, setVisible] = useState(false)
+  useEffect(() => { setVisible(open) }, [open])
+  if (!visible) return null
+  return (
+    <div ref={ref} tabIndex={-1} data-testid="late-dialog">
+      <button>inside</button>
+    </div>
+  )
+}
+
+describe('useFocusTrap with a dialog that mounts late', () => {
+  it('starts the trap once the dialog is there', async () => {
+    const user = userEvent.setup()
+    function LateHarness() {
+      const [open, setOpen] = useState(false)
+      return (
+        <>
+          <button onClick={() => setOpen(true)}>opener</button>
+          <LateDialog open={open} />
+        </>
+      )
+    }
+    render(<LateHarness />)
+    await user.click(screen.getByText('opener'))
+    expect(document.activeElement).toBe(screen.getByTestId('late-dialog'))
+    expect(isFocusTrapActive()).toBe(true)
   })
 })

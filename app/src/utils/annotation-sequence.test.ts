@@ -167,20 +167,28 @@ describe('translationIssues', () => {
 
   it('counts stops before the last codon, but not the last one', () => {
     const seq = new Sequence('ATGTAAAAATGATAA', 'linear')
-    expect(translationIssues(ann({ start: 0, end: 15 }), seq)).toEqual({ internalStops: 2, leftover: 0, badStart: null })
+    expect(translationIssues(ann({ start: 0, end: 15 }), seq)).toEqual({ internalStops: 2, leftover: 0, badStart: null, missingStop: false })
   })
 
   it('reports leftover bases and a codon that cannot start translation', () => {
     const seq = new Sequence('ACCATGATTACGC', 'linear')
-    expect(translationIssues(ann({ start: 0, end: 13 }), seq)).toEqual({ internalStops: 0, leftover: 1, badStart: 'ACC' })
+    expect(translationIssues(ann({ start: 0, end: 13 }), seq)).toEqual({ internalStops: 0, leftover: 1, badStart: 'ACC', missingStop: false })
   })
 
   it('accepts GTG and TTG as starts, and skips the start check for a declared offset', () => {
-    expect(translationIssues(ann({ start: 0, end: 6 }), new Sequence('GTGAAA', 'linear'))).toBeNull()
+    expect(translationIssues(ann({ start: 0, end: 9 }), new Sequence('GTGAAATAA', 'linear'))).toBeNull()
     expect(translationIssues(
       ann({ start: 0, end: 7, qualifiers: { codon_start: ['2'] } }),
-      new Sequence('CACCAAA', 'linear'),
+      new Sequence('CACCTAA', 'linear'),
     )).toBeNull()
+  })
+
+  it('reports a CDS in frame that does not end on a stop, unless it was cut short', () => {
+    const seq = new Sequence('ATGAAATTT', 'linear')
+    expect(translationIssues(ann({ start: 0, end: 9 }), seq)).toEqual({ internalStops: 0, leftover: 0, badStart: null, missingStop: true })
+    expect(translationIssues(ann({ start: 0, end: 9, truncated: true }), seq)).toBeNull()
+    // Out of frame the last codon read is not the feature's end: no claim.
+    expect(translationIssues(ann({ start: 0, end: 8 }), seq)?.missingStop).toBe(false)
   })
 
   it('leaves genes and ORFs alone', () => {

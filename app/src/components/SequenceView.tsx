@@ -40,7 +40,7 @@ import { proteinMass, formatMass } from '../protein/properties'
 import SequenceMinimap from './minimap/SequenceMinimap'
 import { createViewportSource } from './minimap/viewport'
 
-import { publishBasesPerRow, publishVisibleRange, registerSequenceViewFit } from './sequence-view-controls'
+import { publishBasesPerRow, publishVisibleRange, registerSequenceViewFit, registerSequenceViewZoomTo } from './sequence-view-controls'
 
 const MINIMAP_SEQ_THRESHOLD = 1_000 // show minimap for sequences >= 1 kb
 const MAX_ZOOM = 20
@@ -1843,6 +1843,60 @@ function SequenceView({ onFindRequest, onFindClose, onAnnotateRequest, onEditFea
   }, [])
 
   useEffect(() => registerSequenceViewFit(fitToView), [fitToView])
+
+  /**
+   * Zoom in as far as the bases [start, end) still fit the view, and centre
+   * them. Laid out level by level for the same reason as fitToView. A range
+   * across the origin is two stretches at opposite ends of the view, which no
+   * zoom shows together, so it fits the whole sequence instead.
+   */
+  const zoomToRange = useCallback((start: number, end: number) => {
+    const container = containerRef.current
+    const seqLen = docRef.current.sequence.length
+    if (!container || seqLen === 0) return
+    if (start > end) { fitToView(); return }
+    const width = container.clientWidth
+    const viewH = container.clientHeight
+    const showEnzymesNow = showEnzymesRef.current && enzymeCutSitesRef.current.length > 0
+    const perRowTranslations = translationFramesRef.current.length === 0
+    const doc = docRef.current
+    const sites = showEnzymesNow
+      ? groupCutSites(enzymeCutSitesRef.current, doc.metadata?.damMethylated || false, doc.metadata?.dcmMethylated || false)
+      : NO_SITES
+    // Rows above and below, so the range is not flush with the edges.
+    const MARGIN = 24
+    let best: { z: number; top: number; span: number; rowStart: number } | null = null
+    for (let z = 0; z <= MAX_ZOOM; z++) {
+      const L = getLayout(z, width, showEnzymesNow, seqLen, {
+        showComplement: showComplementRef.current,
+        showAnnotations: showAnnotationTracksRef.current,
+        translationRows: translationRowsRef.current,
+        graphHeight: graphRef.current ? GRAPH_TRACK_H : 0,
+      })
+      const rl = buildRowLayout(L, annTreeRef.current, seqLen, sites, perRowTranslations)
+      const first = Math.floor(start / L.basesPerRow)
+      const last = Math.floor(Math.max(start, end - 1) / L.basesPerRow)
+      const top = rl.rowY(first)
+      const span = rl.rowY(last + 1) - top
+      if (best && span + 2 * MARGIN > viewH) break
+      best = { z, top, span, rowStart: first * L.basesPerRow }
+    }
+    if (!best) return
+    const offsetY = Math.max(MARGIN, (viewH - best.span) / 2)
+    const store = useEditorStore.getState()
+    if (best.z === store.zoomLevel) {
+      // After the frame in which the new selection's follow-the-caret
+      // scroll runs; otherwise that scroll, which only brings the caret
+      // into view, lands last and leaves the range at the bottom edge.
+      const top = Math.max(0, best.top - offsetY)
+      requestAnimationFrame(() => requestAnimationFrame(() => container.scrollTo({ top, behavior: 'smooth' })))
+      return
+    }
+    zoomAnchorRef.current = { base: best.rowStart, offsetY }
+    store.setZoom(best.z)
+  }, [fitToView])
+
+  useEffect(() => registerSequenceViewZoomTo(zoomToRange), [zoomToRange])
   useEffect(() => () => publishVisibleRange(null), [])
 
   // Attach event listeners once (all callbacks are stable via refs)

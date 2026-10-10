@@ -8,7 +8,7 @@
  */
 
 import { useEffect, useMemo, useState } from 'react'
-import { Copy, AlertTriangle } from 'lucide-react'
+import { Copy, AlertTriangle, Plus, X, Search } from 'lucide-react'
 import { useEditorStore } from '../../store'
 import { usePrimerSites } from '../../primers/usePrimerSites'
 import { findBindingSites, type BindingSite } from '../../primers/binding'
@@ -104,12 +104,22 @@ export default function PrimerList({ adding, onAddingChange }: {
   return (
     <>
       <div className="fs-search">
+        <Search size={12} className="fs-search-icon" />
         <input
           className="fs-search-input"
           placeholder="Filter primers…"
           value={filter}
           onChange={e => setFilter(e.target.value)}
         />
+        {!readOnly && (
+          <button
+            className={`fs-icon-btn ${adding ? 'active' : ''}`}
+            onClick={() => onAddingChange(!adding)}
+            title={adding ? 'Cancel new primer' : 'New primer'}
+          >
+            {adding ? <X size={14} /> : <Plus size={14} />}
+          </button>
+        )}
       </div>
 
       <div className="pl-toolbar">

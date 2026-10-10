@@ -11,6 +11,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { X } from 'lucide-react'
 import { useExitAnimation } from '../../hooks/useExitAnimation'
 import { useFocusTrap } from '../../hooks/useFocusTrap'
+import { useBackdropDismiss } from '../../hooks/useBackdropDismiss'
 import {
   parseOligoList, toCsv, toFasta, toOrderSheet, DEFAULT_ORDER,
   type ExportableOligo, type ParsedOligo,
@@ -27,6 +28,7 @@ function Modal({ open, title, onClose, children, footer }: {
 }) {
   const backdropRef = useRef<HTMLDivElement>(null)
   useFocusTrap(backdropRef, open)
+  const backdrop = useBackdropDismiss(onClose)
   const { visible, closing, onAnimationEnd } = useExitAnimation(open)
   if (!visible) return null
   return (
@@ -34,7 +36,7 @@ function Modal({ open, title, onClose, children, footer }: {
       className={closing ? 'modal-backdrop closing' : 'modal-backdrop'}
       onAnimationEnd={onAnimationEnd}
       ref={backdropRef}
-      onClick={e => { if (e.target === backdropRef.current) onClose() }}
+      {...backdrop}
       onKeyDown={e => { if (e.key === 'Escape') onClose() }}
       tabIndex={-1}
     >
