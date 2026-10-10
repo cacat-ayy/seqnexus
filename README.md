@@ -91,8 +91,10 @@ of each build.
   describe yourself, scored for activity, for the repair the break is likely to
   get and against the rules a spacer has to pass, drawn on the sequence with
   the PAM and the cut; off-target search with mismatches and bulges over any
-  sequence you name, which the result always names back; see
-  [CRISPR Guide Design](#crispr-guide-design)
+  sequence you name, which the result always names back; tasks for knocking a
+  gene out, deleting a region, knocking a payload in with a donor that will not
+  be re-cut, base editing with its bystanders spelt out, and tiling a region;
+  see [CRISPR Guide Design](#crispr-guide-design)
 - **Restriction enzyme analysis** - 546 enzymes from REBASE, gel simulation
 - **Primers** - primers and probes as oligos with 5'/3' overhangs and
   mismatches, binding sites found automatically; a docked design workbench
@@ -2387,6 +2389,72 @@ The colours are theme tokens (`--canvas-guide`, `--canvas-guide-pam`,
 `--canvas-guide-cut`), defined for all ten themes and read through
 `readSequenceColors`, so the print palette picks them up as it does the rest.
 
+### Designing for a goal
+
+Finding sites is the start of the job, not the job. The panel's tasks each
+take the same scan and turn it into the answer to one question, so switching
+between them costs nothing and nothing is scanned twice.
+
+**Knock out.** A cut anywhere in a gene is not equally useful. Too near the
+start codon and translation can restart past the damage; too near the stop and
+a frameshifted protein keeps almost all of itself. So guides are ranked by
+where they cut along the coding sequence, measured by walking the exons in
+translation order rather than by subtracting coordinates, and each row says
+which codon it cuts in and how much of the gene lies behind it. The ranking is
+lexicographic, not a weighted sum, for the same reason the score columns stay
+apart:
+
+1. cuts inside the preferred stretch, 5% to 65% of the gene by default
+2. no disqualifying flag
+3. the out-of-frame share, when it is known
+4. the activity score, when the nuclease has a model
+5. earlier in the gene
+
+**Delete.** Two cuts, one each side of a region, and the ends join. A pair is
+judged on what it costs beyond the region asked for, so the overshoot on each
+side is the first number on the row and the junction the join would leave is
+next to it. Opening the result builds a real document: the bases with the span
+gone, every feature moved, features wholly inside the deletion dropped, ones
+that straddle it kept and marked truncated as elsewhere in the app, and a mark
+at the join.
+
+**Knock in.** A donor is the payload with a slice of the original sequence on
+either side, which is not the interesting part. The interesting part is
+whether the nuclease can still find its site once the repair is done. So the
+donor is built, then scanned, and only then edited:
+
+- if the payload broke the site, nothing is changed and the panel says so
+- otherwise one base is changed to stop the repaired copy being cut again,
+  preferring the PAM over the seed, since breaking the PAM stops the nuclease
+  binding at all
+- inside a coding sequence a change that leaves the protein alone is preferred,
+  and when none exists the panel names the codon that changes
+- the edited donor is scanned again, so the claim that it cannot be cut is
+  checked rather than asserted
+
+Arms default to 40 bases either side and can be made asymmetric, which doubles
+the arm on the far side from the PAM.
+
+**Base edit.** A base editor changes every base of its kind inside a short
+stretch of the protospacer, so the bystanders are the whole difficulty and
+they are listed, not summarised. Positions are counted the way the literature
+counts them, from the end of the protospacer away from the PAM. Four editors
+ship, two cytosine and two adenine, with their usual windows; the window is
+editable, since a construct in hand may differ. When the chosen target base
+falls in a gene, every edit in the window is given its codon consequence,
+marked silent, missense or nonsense, and guides are ordered by how few
+bystanders they bring.
+
+**Tile.** A greedy pick down the quality order with a spacing rule, which is
+what gives even coverage instead of the cluster you get by taking the best few
+guides in a region. The gaps are reported as plainly as the picks, since a gap
+is what a tiling set is judged on, and the set copies out as a table or
+becomes features in one step.
+
+Every task works from the selection or from a feature of the document, chosen
+the same way, and the inspector and the off-target search stay available
+throughout.
+
 ### Keeping a guide
 
 A converted guide becomes a `misc_binding` feature over the protospacer alone,
@@ -2399,13 +2467,14 @@ spacer without the PAM for the same reason.
 ### Limits
 
 The off-target search reads what you give it and nothing else, and both the
-activity model and the mismatch model are stated heuristics rather than
-fitted tables. Strategy-led design (knockout, deletion, knock-in, base and
-prime editing), scaffold and construct output, screening design and the
-analysis of editing outcomes are later phases. What is here finds sites, says
-what is wrong with them, predicts what their break is likely to become, says
-where else each one could bind in the sequence you name, and keeps the ones
-worth keeping.
+activity model and the mismatch model are stated heuristics rather than fitted
+tables. The knock-in donor changes one base at most to stop re-cutting; a site
+that survives every single change is reported rather than worked around. Prime
+editing, scaffold and construct output, screening design and the analysis of
+editing outcomes are later phases. What is here finds sites, says what is wrong
+with them, predicts what their break is likely to become, says where else each
+one could bind in the sequence you name, designs for a goal rather than a
+position, and keeps the ones worth keeping.
 
 ---
 

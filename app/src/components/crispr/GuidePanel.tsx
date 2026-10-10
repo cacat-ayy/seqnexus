@@ -26,7 +26,22 @@ import GuideLandscape from './GuideLandscape'
 import GuideInspector from './GuideInspector'
 import NucleaseDialog from './NucleaseDialog'
 import OffTargetSection from './OffTargetSection'
-import type { GuideCandidate, GuideDrawScope } from '../../crispr/types'
+import GuideRow from './GuideRow'
+import KnockoutTask from './tasks/KnockoutTask'
+import DeletionTask from './tasks/DeletionTask'
+import KnockinTask from './tasks/KnockinTask'
+import BaseEditTask from './tasks/BaseEditTask'
+import TileTask from './tasks/TileTask'
+import type { CrisprTask, GuideCandidate, GuideDrawScope } from '../../crispr/types'
+
+const TASKS: { id: CrisprTask; label: string; hint: string }[] = [
+  { id: 'find', label: 'Find', hint: 'Every site, scored' },
+  { id: 'knockout', label: 'Knock out', hint: 'Guides ranked by where they cut in a gene' },
+  { id: 'deletion', label: 'Delete', hint: 'Pairs that take a region out' },
+  { id: 'knockin', label: 'Knock in', hint: 'A donor for the selected guide' },
+  { id: 'baseedit', label: 'Base edit', hint: 'Guides whose editing window reaches a base' },
+  { id: 'tile', label: 'Tile', hint: 'A spaced set across a region' },
+]
 
 type Sort = 'position' | 'score' | 'frame' | 'gc'
 
@@ -63,6 +78,8 @@ export default function GuidePanel() {
   const isProtein = useEditorStore(s => s.doc.sequence.alphabet === 'protein')
   const readOnly = useEditorStore(s => s.readOnly)
   const offTargetReports = useEditorStore(s => s.offTargetReports)
+  const task = useEditorStore(s => s.crisprTask)
+  const setTask = useEditorStore(s => s.setCrisprTask)
 
   const [sort, setSort] = useState<Sort>('position')
   const [dialogOpen, setDialogOpen] = useState(false)
@@ -112,6 +129,21 @@ export default function GuidePanel() {
 
   return (
     <div className="gp">
+      <div className="gp-tasks" role="tablist" aria-label="What to design">
+        {TASKS.map(t => (
+          <button
+            key={t.id}
+            role="tab"
+            aria-selected={task === t.id}
+            className={task === t.id ? 'active' : ''}
+            onClick={() => setTask(t.id)}
+            title={t.hint}
+          >
+            {t.label}
+          </button>
+        ))}
+      </div>
+
       <div className="gp-settings">
         <div className="gp-field gp-field-wide">
           <label htmlFor="gp-nuclease">Nuclease</label>
@@ -191,6 +223,14 @@ export default function GuidePanel() {
         />
       )}
 
+      {task === 'knockout' && <KnockoutTask candidates={candidates} nuclease={nuclease!} onSelect={handleRow} />}
+      {task === 'deletion' && <DeletionTask candidates={candidates} nuclease={nuclease!} />}
+      {task === 'knockin' && <KnockinTask candidates={candidates} nuclease={nuclease!} />}
+      {task === 'baseedit' && <BaseEditTask candidates={candidates} nuclease={nuclease!} onSelect={handleRow} />}
+      {task === 'tile' && <TileTask candidates={candidates} nuclease={nuclease!} onSelect={handleRow} />}
+
+      {task === 'find' && (
+        <>
       <div className="gp-status">
         <span className="gp-status-count">
           {info.running
@@ -243,61 +283,16 @@ export default function GuidePanel() {
         {shown.map(candidate => {
           const key = guideKey(candidate.site)
           return (
-            <li
+            <GuideRow
               key={key}
-              className={`gp-row${key === selectedKey ? ' sel' : ''}${picks.has(key) ? ' picked' : ''}`}
-              onClick={e => handleRow(candidate, e)}
-              title="Click to select it in the sequence, Ctrl-click to pick it for conversion"
-            >
-              <div className="gp-row-main">
-                <span className="gp-pos">{at(candidate.site.start)}{candidate.site.strand === 1 ? '+' : '-'}</span>
-                <span className="gp-seq">
-                  {nuclease?.pamSide === 'threePrime' ? (
-                    <>
-                      <span className="gp-spacer-seq">{candidate.site.spacer}</span>
-                      <span className="gp-pam">{candidate.site.pam}</span>
-                    </>
-                  ) : (
-                    <>
-                      <span className="gp-pam">{candidate.site.pam}</span>
-                      <span className="gp-spacer-seq">{candidate.site.spacer}</span>
-                    </>
-                  )}
-                </span>
-              </div>
-              <div className="gp-scores">
-                {offTargetReports[key] && (
-                  <span
-                    className={offTargetReports[key].specificity < 50 ? 'gp-spec-low' : 'gp-spec'}
-                    title={`Specificity in what was searched: ${offTargetReports[key].hits.length} other site${offTargetReports[key].hits.length === 1 ? '' : 's'} found`}
-                  >
-                    S {offTargetReports[key].specificity}
-                  </span>
-                )}
-                {candidate.scores.onTarget !== null && (
-                  <span className="gp-score-strong">{candidate.scores.onTarget}</span>
-                )}
-                {candidate.scores.outOfFrame !== null && (
-                  <span title="Share of the predicted deletions that shift the frame">
-                    {Math.round(candidate.scores.outOfFrame)}% oof
-                  </span>
-                )}
-                <span title="GC content of the spacer">{Math.round(candidate.scores.gc * 100)}%</span>
-              </div>
-              {candidate.scores.flags.length > 0 && (
-                <div className="gp-chips">
-                  {candidate.scores.flags.map(flag => (
-                    <span
-                      key={flag.id}
-                      className={`gp-chip${flag.severity === 'bad' ? ' bad' : ''}`}
-                      title={flag.detail}
-                    >
-                      {flag.label}
-                    </span>
-                  ))}
-                </div>
-              )}
-            </li>
+              candidate={candidate}
+              nuclease={nuclease!}
+              at={at}
+              selected={key === selectedKey}
+              picked={picks.has(key)}
+              specificity={offTargetReports[key]?.specificity}
+              onClick={handleRow}
+            />
           )
         })}
         {sorted.length > shown.length && (
@@ -315,8 +310,11 @@ export default function GuidePanel() {
           </li>
         )}
       </ul>
+        </>
+      )}
 
-      {selected && nuclease && (
+      {/* The inspector belongs to whichever task picks one guide at a time. */}
+      {selected && nuclease && task !== 'deletion' && task !== 'knockin' && (
         <GuideInspector
           key={guideKey(selected.site)}
           candidate={selected}

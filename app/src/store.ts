@@ -63,7 +63,7 @@ import { matchKey, proposalsFrom } from './utils/auto-annotations'
 import { orfKey, convertibleOrfs, orfToAnnotationData } from './utils/orf-features'
 import { motifKey, convertibleMotifs, motifToAnnotationData } from './utils/motif-features'
 import type { MotifHit } from './protein/motifs'
-import type { GuideCandidate, GuideDrawScope, GuideScanInfo, Nuclease } from './crispr/types'
+import type { CrisprTask, GuideCandidate, GuideDrawScope, GuideScanInfo, Nuclease } from './crispr/types'
 
 /** How far an off-target search has got, for the progress line. */
 export interface OffTargetRun {
@@ -668,6 +668,9 @@ interface EditorStore {
   setSelectedGuideKey: (key: string | null) => void
   /** Turn the picked guides (or all of them) into features, in one undo step. */
   applyGuides: (keys?: Iterable<string>) => number
+  /** What the panel is being used for; the scan is the same for all of them. */
+  crisprTask: CrisprTask
+  setCrisprTask: (task: CrisprTask) => void
   /** Which nuclease the scan uses, and how it is run. Persisted. */
   crisprNucleaseId: string
   /** 0 means the nuclease's own default spacer length. */
@@ -1181,6 +1184,17 @@ const emptyDoc: DocumentState = {
   name: 'Untitled',
   sequence: new Sequence(''),
   annotations: [],
+}
+
+const CRISPR_TASKS: CrisprTask[] = ['find', 'knockout', 'deletion', 'knockin', 'baseedit', 'tile']
+
+function loadCrisprTask(): CrisprTask {
+  try {
+    const saved = localStorage.getItem(STORAGE_KEYS.crisprTask) as CrisprTask | null
+    return saved && CRISPR_TASKS.includes(saved) ? saved : 'find'
+  } catch {
+    return 'find'
+  }
 }
 
 const SIDEBAR_TAB_KEY = STORAGE_KEYS.featureSidebarTab
@@ -2169,6 +2183,11 @@ export const useEditorStore = create<EditorStore>((set, get) => {
       get().addAnnotations(toAdd.map(site => guideToAnnotationData(site, nuclease)))
       set({ guidePicks: new Set() })
       return toAdd.length
+    },
+    crisprTask: loadCrisprTask(),
+    setCrisprTask: (crisprTask) => {
+      set({ crisprTask })
+      try { localStorage.setItem(STORAGE_KEYS.crisprTask, crisprTask) } catch { /* private mode */ }
     },
     crisprNucleaseId: DEFAULT_NUCLEASE_ID,
     crisprSpacerLength: 0,

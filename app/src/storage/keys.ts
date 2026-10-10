@@ -17,6 +17,7 @@ export const STORAGE_KEYS = {
   blastSettings: 'seqnexus:blast-settings',
   blastHistory: 'seqnexus:blast-history',
   primerTask: 'seqnexus:primer-task',
+  crisprTask: 'seqnexus:crispr-task',
   primerDesign: 'seqnexus:primer-design',
   gelRecentEnzymes: 'seqnexus_gel_recent_enzymes',
   trimSettings: 'seqnexus_trim_settings',

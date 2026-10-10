@@ -599,3 +599,112 @@
 .gi-ot-ask .gi-caveat {
   margin: 0;
 }
+
+/* --- Task tabs --- */
+
+.gp-tasks {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-0-5);
+  padding: var(--space-1-5) var(--space-2) var(--space-1);
+  border-bottom: 1px solid var(--border-light);
+}
+
+.gp-tasks button {
+  font-size: var(--text-xs);
+  padding: var(--space-1) var(--space-1-5);
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  background: none;
+  color: var(--text-secondary);
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.gp-tasks button:hover {
+  background: var(--bg-hover);
+  color: var(--text);
+}
+
+.gp-tasks button.active {
+  background: var(--accent-bg);
+  border-color: var(--accent-ring);
+  color: var(--accent);
+  font-weight: 600;
+}
+
+/* --- What a task says about a row --- */
+
+.gp-why {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-0-5) var(--space-2);
+  font-size: var(--text-2xs);
+  color: var(--text-muted);
+}
+
+.gp-why-good {
+  color: var(--success);
+}
+
+.gp-why-plain {
+  color: var(--text-secondary);
+}
+
+.gp-why-warn {
+  color: var(--warning);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 100%;
+}
+
+.gp-faint {
+  color: var(--text-faint);
+}
+
+.gp-range-pair {
+  display: flex;
+  gap: var(--space-1);
+}
+
+.gp-range-pair input {
+  flex: 1;
+  min-width: 0;
+}
+
+.gp-payload {
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  resize: vertical;
+  width: 100%;
+}
+
+.gp-pair .gp-seq {
+  color: var(--text-secondary);
+}
+
+.gp-pair-actions {
+  grid-column: 1 / -1;
+  display: flex;
+  gap: var(--space-1);
+  padding-top: var(--space-1);
+}
+
+/* --- Donor --- */
+
+.gi-donor {
+  word-break: break-all;
+}
+
+.gi-arm {
+  color: var(--text-muted);
+}
+
+.gi-insert {
+  background: color-mix(in srgb, var(--accent) 18%, transparent);
+  color: var(--text);
+  border-radius: var(--radius-xs);
+  font-weight: 700;
+}

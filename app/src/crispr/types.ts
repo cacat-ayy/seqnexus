@@ -129,6 +129,12 @@ export interface GuideCandidate {
   scores: GuideScores
 }
 
+/**
+ * What the panel is being used for. Every task works from the same scan; they
+ * differ in what they do with it, so switching one is free.
+ */
+export type CrisprTask = 'find' | 'knockout' | 'deletion' | 'knockin' | 'baseedit' | 'tile'
+
 /** Which of the sites the overlay draws. */
 export type GuideDrawScope = 'all' | 'picked' | 'selected'
 

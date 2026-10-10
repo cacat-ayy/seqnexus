@@ -37,6 +37,7 @@ export type DocumentOrigin =
   | 'consensus'  // called from a chromatogram or contig
   | 'translation' // a protein translated from a coding feature or selection
   | 'uniprot'    // fetched from UniProtKB
+  | 'edited'     // the result of an edit designed in the app, such as a guide's deletion
   | 'paste'      // pasted sequence text
   | 'new'        // created empty
 
