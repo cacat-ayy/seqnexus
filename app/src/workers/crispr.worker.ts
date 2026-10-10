@@ -18,6 +18,7 @@
 import { findGuideSites, type GuideScanOptions } from '../crispr/finder'
 import { scoreSites } from '../crispr/score/guide'
 import { findOffTargets, type OffTargetReport, type OffTargetSettings, type SearchTarget } from '../crispr/offtarget'
+import { callAlleles, conversionByPosition, type AlleleSettings, type AlleleTable } from '../crispr/analysis/alleles'
 import type { GuideCandidate, Nuclease, PromoterId } from '../crispr/types'
 
 export interface CrisprScanRequest {
@@ -42,7 +43,18 @@ export interface OffTargetRequest {
   excludes?: Record<string, { targetId: string; start: number; strand: 1 | -1 }>
 }
 
-export type CrisprRequest = CrisprScanRequest | OffTargetRequest
+export interface AlleleRequest {
+  kind: 'alleles'
+  reads: string[]
+  amplicon: string
+  cut: number
+  settings: AlleleSettings
+  donor?: string
+  /** Also work out how often each base in the window reads as something else. */
+  conversion?: boolean
+}
+
+export type CrisprRequest = CrisprScanRequest | OffTargetRequest | AlleleRequest
 
 export interface CrisprScanResponse {
   kind: 'scan'
@@ -67,7 +79,13 @@ export interface CrisprProgress {
   targetName: string
 }
 
-export type CrisprResponse = CrisprScanResponse | OffTargetResponse
+export interface AlleleResponse {
+  kind: 'alleles'
+  table: AlleleTable
+  conversion: ReturnType<typeof conversionByPosition> | null
+}
+
+export type CrisprResponse = CrisprScanResponse | OffTargetResponse | AlleleResponse
 
 export function runScan(request: CrisprScanRequest): CrisprScanResponse {
   const { bases, nuclease, topology, options, promoter, repair } = request
@@ -102,11 +120,22 @@ export function runOffTarget(
   return { kind: 'offtarget', reports }
 }
 
+export function runAlleles(request: AlleleRequest): AlleleResponse {
+  const { reads, amplicon, cut, settings, donor, conversion } = request
+  return {
+    kind: 'alleles',
+    table: callAlleles(reads, amplicon, cut, settings, donor),
+    conversion: conversion ? conversionByPosition(reads, amplicon, cut, settings) : null,
+  }
+}
+
 export function runRequest(
   request: CrisprRequest,
   onProgress?: (progress: CrisprProgress) => void,
 ): CrisprResponse {
-  return request.kind === 'scan' ? runScan(request) : runOffTarget(request, onProgress)
+  if (request.kind === 'scan') return runScan(request)
+  if (request.kind === 'alleles') return runAlleles(request)
+  return runOffTarget(request, onProgress)
 }
 
 self.onmessage = (e: MessageEvent<CrisprRequest>) => {

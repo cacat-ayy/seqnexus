@@ -76,7 +76,7 @@ export default function NucleaseDialog({ open, onClose, onSaved }: Props) {
       onKeyDown={e => { if (e.key === 'Escape') onClose() }}
       tabIndex={-1}
     >
-      <div className="modal-dialog" role="dialog" aria-modal="true" aria-labelledby="nuclease-dialog-title">
+      <div className="modal-dialog nd-dialog" role="dialog" aria-modal="true" aria-labelledby="nuclease-dialog-title">
         <div className="modal-header">
           <h3 className="modal-title" id="nuclease-dialog-title">Describe a nuclease</h3>
           <button className="modal-close" onClick={onClose} aria-label="Close">
@@ -103,12 +103,11 @@ export default function NucleaseDialog({ open, onClose, onSaved }: Props) {
               <label htmlFor="nd-pam">PAM</label>
               <input
                 id="nd-pam"
-                className="input"
+                className="input nd-pam"
                 value={pam}
                 onChange={e => setPam(e.target.value.toUpperCase())}
                 maxLength={MAX_PAM}
                 spellCheck={false}
-                style={{ width: '9ch' }}
               />
             </div>
 
@@ -124,13 +123,12 @@ export default function NucleaseDialog({ open, onClose, onSaved }: Props) {
               <label htmlFor="nd-spacer">Spacer</label>
               <input
                 id="nd-spacer"
-                className="input"
+                className="input nd-number"
                 type="number"
                 min={MIN_SPACER}
                 max={MAX_SPACER}
                 value={spacerLength}
                 onChange={e => setSpacerLength(e.target.value)}
-                style={{ width: '7ch' }}
               />
             </div>
 
@@ -138,11 +136,10 @@ export default function NucleaseDialog({ open, onClose, onSaved }: Props) {
               <label htmlFor="nd-cut1">Cut, spacer strand</label>
               <input
                 id="nd-cut1"
-                className="input"
+                className="input nd-number"
                 type="number"
                 value={cutSite}
                 onChange={e => setCutSite(e.target.value)}
-                style={{ width: '7ch' }}
               />
             </div>
 
@@ -150,11 +147,10 @@ export default function NucleaseDialog({ open, onClose, onSaved }: Props) {
               <label htmlFor="nd-cut2">Cut, other strand</label>
               <input
                 id="nd-cut2"
-                className="input"
+                className="input nd-number"
                 type="number"
                 value={cutOpposite}
                 onChange={e => setCutOpposite(e.target.value)}
-                style={{ width: '7ch' }}
               />
             </div>
 

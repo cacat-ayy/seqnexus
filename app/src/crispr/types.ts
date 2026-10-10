@@ -133,7 +133,7 @@ export interface GuideCandidate {
  * What the panel is being used for. Every task works from the same scan; they
  * differ in what they do with it, so switching one is free.
  */
-export type CrisprTask = 'find' | 'knockout' | 'deletion' | 'knockin' | 'baseedit' | 'primeedit' | 'tile' | 'order'
+export type CrisprTask = 'find' | 'knockout' | 'deletion' | 'knockin' | 'baseedit' | 'primeedit' | 'tile' | 'order' | 'analyse'
 
 /** The Guides tab shows either the design tasks or what you have kept. */
 export type CrisprView = 'design' | 'library'

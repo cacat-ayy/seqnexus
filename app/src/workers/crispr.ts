@@ -10,6 +10,8 @@
  */
 
 import type {
+  AlleleRequest,
+  AlleleResponse,
   CrisprProgress,
   CrisprRequest,
   CrisprResponse,
@@ -66,6 +68,10 @@ function run(
 
 export function scanGuidesAsync(request: Omit<CrisprScanRequest, 'kind'>): Promise<CrisprScanResponse> {
   return run({ ...request, kind: 'scan' }) as Promise<CrisprScanResponse>
+}
+
+export function callAllelesAsync(request: Omit<AlleleRequest, 'kind'>): Promise<AlleleResponse> {
+  return run({ ...request, kind: 'alleles' }) as Promise<AlleleResponse>
 }
 
 export function findOffTargetsAsync(

@@ -830,3 +830,110 @@
   gap: var(--space-2);
   margin-bottom: var(--space-1);
 }
+
+/* --- An editing analysis --- */
+
+.ca-numbers {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+  margin-bottom: var(--space-2);
+}
+
+.ca-number {
+  display: flex;
+  flex-direction: column;
+}
+
+.ca-number-value {
+  font-size: var(--text-lg);
+  font-variant-numeric: tabular-nums;
+  color: var(--text);
+}
+
+.ca-number-label {
+  font-size: var(--text-2xs);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-muted);
+}
+
+.ca-chart {
+  margin-bottom: var(--space-2);
+}
+
+.ca-chart svg {
+  display: block;
+  width: 100%;
+  height: 70px;
+}
+
+.ca-bar {
+  fill: var(--accent);
+  opacity: 0.75;
+}
+
+.ca-bar.zero {
+  fill: var(--text-muted);
+  opacity: 0.5;
+}
+
+.ca-bar.shift {
+  fill: var(--warning);
+}
+
+.ca-axis {
+  display: flex;
+  justify-content: space-between;
+  font-size: var(--text-2xs);
+  color: var(--text-faint);
+  font-variant-numeric: tabular-nums;
+}
+
+.ca-tick {
+  flex: 1;
+  text-align: center;
+  overflow: hidden;
+}
+
+.ca-tick.zero {
+  color: var(--text-secondary);
+  font-weight: 600;
+}
+
+.ca-legend {
+  font-size: var(--text-2xs);
+  color: var(--text-muted);
+  margin-top: var(--space-0-5);
+}
+
+.ca-window {
+  max-width: 24ch;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* The nuclease form is a handful of short fields, so it gets a width of its
+   own like every other dialog; .modal-dialog on its own has none and
+   stretches to the whole window. */
+
+.modal-dialog.nd-dialog {
+  width: 460px;
+  max-width: 92vw;
+}
+
+.nd-dialog .gp-settings {
+  border-bottom: none;
+}
+
+/* A number input keeps its spinner whatever the width, so these need room
+   for the value as well. */
+
+.nd-dialog .nd-number {
+  width: 9ch;
+}
+
+.nd-dialog .nd-pam {
+  width: 11ch;
+}

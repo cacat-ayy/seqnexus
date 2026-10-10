@@ -34,6 +34,7 @@ import BaseEditTask from './tasks/BaseEditTask'
 import TileTask from './tasks/TileTask'
 import PrimeEditTask from './tasks/PrimeEditTask'
 import OrderTask from './tasks/OrderTask'
+import AnalyseTask from './tasks/AnalyseTask'
 import GuideLibrary from './GuideLibrary'
 import type { CrisprTask, GuideCandidate, GuideDrawScope } from '../../crispr/types'
 
@@ -46,6 +47,7 @@ const TASKS: { id: CrisprTask; label: string; hint: string }[] = [
   { id: 'primeedit', label: 'Prime edit', hint: 'A pegRNA that writes an edit in' },
   { id: 'tile', label: 'Tile', hint: 'A spaced set across a region' },
   { id: 'order', label: 'Order', hint: 'The oligos to buy, and how to screen afterwards' },
+  { id: 'analyse', label: 'Analyse', hint: 'What the experiment actually did, from traces or reads' },
 ]
 
 type Sort = 'position' | 'score' | 'frame' | 'gc'
@@ -254,6 +256,7 @@ export default function GuidePanel() {
       {task === 'primeedit' && <PrimeEditTask candidates={candidates} nuclease={nuclease!} />}
       {task === 'tile' && <TileTask candidates={candidates} nuclease={nuclease!} onSelect={handleRow} />}
       {task === 'order' && <OrderTask candidates={candidates} nuclease={nuclease!} />}
+      {task === 'analyse' && <AnalyseTask candidates={candidates} nuclease={nuclease!} />}
 
       {task === 'find' && (
         <>
@@ -340,7 +343,7 @@ export default function GuidePanel() {
       )}
 
       {/* The inspector belongs to whichever task picks one guide at a time. */}
-      {selected && nuclease && task !== 'deletion' && task !== 'knockin' && task !== 'primeedit' && task !== 'order' && (
+      {selected && nuclease && task !== 'deletion' && task !== 'knockin' && task !== 'primeedit' && task !== 'order' && task !== 'analyse' && (
         <GuideInspector
           key={guideKey(selected.site)}
           candidate={selected}

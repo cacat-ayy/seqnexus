@@ -96,7 +96,9 @@ of each build.
   be re-cut, base editing with its bystanders spelt out, prime editing with the
   pegRNA built in its pieces, and tiling a region; the oligos to order with
   every added base marked, a screening amplicon and the enzyme that reads it
-  out, and a library of the guides you keep;
+  out, and a library of the guides you keep; and the result read back
+  afterwards, either by taking an edited chromatogram apart against its
+  control or by counting alleles in amplicon reads;
   see [CRISPR Guide Design](#crispr-guide-design)
 - **Restriction enzyme analysis** - 546 enzymes from REBASE, gel simulation
 - **Primers** - primers and probes as oligos with 5'/3' overhangs and
@@ -2522,6 +2524,51 @@ cheaply is worth knowing about before the oligos are bought.
 When no enzyme qualifies, the panel says so: that guide needs sequencing
 rather than a gel.
 
+### Reading the result
+
+The last question is whether it worked, and it is answered from whichever
+evidence came back from the bench. Two routes, one result.
+
+**From two chromatograms.** An edited pool is a mixture: most molecules carry
+one of a handful of small insertions or deletions and the rest are untouched,
+so downstream of the break the trace is the same sequence read at several
+offsets at once. That looks like noise and is not. Given the same amplicon
+from an unedited control it can be taken apart:
+
+1. The two traces are lined up on their base calls before the cut, where they
+   should be identical, and the agreement is reported. If they disagree the
+   comparison is not valid, and the panel says so rather than fitting anyway.
+2. Over a window after the cut, one column is built per candidate offset from
+   the control, and the edited signal is fitted as a non-negative mixture of
+   them. Non-negativity is not a refinement here but the thing that makes the
+   answer mean anything: a mixture cannot have negative parts, and an
+   ordinary least-squares fit happily returns them. The solver is the
+   active-set method of Lawson and Hanson.
+3. The mixture is reported as a spectrum of length changes with their shares,
+   the share that shifts the reading frame, and the quality of both fits.
+
+What it cannot do is separate two different edits of the same length, or say
+which allele is which. It reports lengths and shares, which is what a trace
+can support.
+
+**From amplicon reads.** Each read is aligned to the amplicon and judged on a
+window around the break: the reference, an insertion, a deletion, a
+substitution, or the donor that was supplied. Reads that agree are one
+allele, and the table of alleles with their shares is the result, alongside
+the spectrum and, for a base editing run, how often each position in the
+window reads as something else.
+
+Two decisions are worth stating. The window is narrow and centred on the cut,
+because a change at the far end of an amplicon is a sequencing error or a
+polymorphism rather than an edit, and counting it as one inflates every
+number. And a read that does not span the whole window is not counted at all
+rather than counted as unmodified, since a read that stops inside the window
+cannot speak for the rest of it. Both counts of discarded reads are reported.
+
+Alignment is accurate and not cheap, so a run takes a sample of a large read
+set rather than the lot, and says how many reads it looked at and how many
+the set holds.
+
 ### The guide library
 
 Guides you keep, like the oligo library and in the same shape. A guide saved
@@ -2547,13 +2594,11 @@ activity model and the mismatch model are stated heuristics rather than fitted
 tables. The knock-in donor changes one base at most to stop re-cutting; a site
 that survives every single change is reported rather than worked around.
 Scaffolds and vector overhangs are shipped only where they are near-universal,
-and are otherwise asked for. The analysis of editing outcomes, from traces,
-amplicon reads or plates, is the one phase still to come. What is here finds
-sites, says what is wrong with them, predicts what their break is likely to
-become, says where else each one could bind in the sequence you name, designs
-for a goal rather than a position, writes the pegRNA for an edit, produces the
-oligos to order with every added base accounted for, says how you will tell
-afterwards whether it worked, and keeps what you want to use again.
+and are otherwise asked for. Reading a result back decomposes a trace or
+counts reads; it does not genotype a plate of clones well by well, and an
+analysis is held for the session rather than kept as its own item, so it is
+copied out as a table rather than saved. Trace decomposition cannot tell two
+edits of the same length apart.
 
 ---
 
@@ -3547,6 +3592,19 @@ print colours on white, whatever the app's theme.
   that searches for potential off-target sites of Cas9 RNA-guided
   endonucleases." *Bioinformatics* 30:1473-1475. (Searching with mismatches
   and with unpaired bases on either side.)
+
+- Brinkman EK, Chen T, Amendola M, van Steensel B (2014) "Easy quantitative
+  assessment of genome editing by sequence trace decomposition." *Nucleic
+  Acids Res* 42:e168. (Taking an edited chromatogram apart against its
+  control, which the trace route follows.)
+
+- Lawson CL, Hanson RJ (1974) *Solving Least Squares Problems*.
+  Prentice-Hall. (The active-set method the decomposition fits with.)
+
+- Clement K, Rees H, Canver MC, Gehrke JM, Farouni R, Hsu JY, Cole MA, Liu DR,
+  Joung JK, Bauer DE, Pinello L (2019) "CRISPResso2 provides accurate and
+  rapid genome editing sequence analysis." *Nature Biotechnology* 37:224-226.
+  (Counting alleles in a window around the cut, which the read route follows.)
 
 - Doench JG, Fusi N, Sullender M, Hegde M, Vaimberg EW, Donovan KF, Smith I,
   Tothova Z, Wilen C, Orchard R, Virgin HW, Listgarten J, Root DE (2016)

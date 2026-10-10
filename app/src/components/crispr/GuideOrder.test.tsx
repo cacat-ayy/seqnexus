@@ -2,7 +2,7 @@
  * Ordering, prime editing and the library: what the panel does once a guide
  * has been chosen.
  */
-import { render, screen, act, cleanup, fireEvent } from '@testing-library/react'
+import { render, screen, act, cleanup, fireEvent, waitFor } from '@testing-library/react'
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 import GuidePanel from './GuidePanel'
 import { useEditorStore } from '../../store'
@@ -235,5 +235,136 @@ describe('the library view', () => {
     render(<GuidePanel />)
     act(() => { screen.getByRole('tab', { name: 'Design' }).click() })
     expect(store().crisprView).toBe('design')
+  })
+})
+
+describe('the analyse task', () => {
+  // One sample per base is unrealistic for a real trace, so these fixtures
+  // space the peaks out the way the sequencer does.
+  const SPACING = 12
+  const CHANNELS = ['A', 'C', 'G', 'T'] as const
+  function trace(name: string, bases: string, mix?: { cut: number; parts: { size: number; fraction: number }[] }) {
+    const samples = bases.length * SPACING
+    const traces = {
+      A: new Array<number>(samples).fill(0),
+      C: new Array<number>(samples).fill(0),
+      G: new Array<number>(samples).fill(0),
+      T: new Array<number>(samples).fill(0),
+    }
+    const peakLocations: number[] = []
+    for (let i = 0; i < bases.length; i++) {
+      const at = i * SPACING + SPACING / 2
+      peakLocations.push(at)
+      const add = (base: string, height: number) => {
+        const ch = CHANNELS.find(c => c === base)
+        if (!ch) return
+        traces[ch][at] += height
+        traces[ch][at - 1] += height * 0.6
+        traces[ch][at + 1] += height * 0.6
+      }
+      if (!mix || i < mix.cut) add(bases[i], 1000)
+      else for (const part of mix.parts) {
+        const j = i + part.size
+        if (j >= 0 && j < bases.length) add(bases[j], 1000 * part.fraction)
+      }
+    }
+    return {
+      name,
+      bases,
+      peakLocations,
+      qualityScores: Array.from({ length: bases.length }, () => 40),
+      traces,
+      metadata: { averageSpacing: SPACING },
+    } as never
+  }
+
+  const AMPLICON = (() => {
+    let x = 99
+    let out = ''
+    while (out.length < 400) { x = (x * 1103515245 + 12345) >>> 0; out += 'ACGT'[(x >>> 16) % 4] }
+    return out
+  })()
+  const CUT = 200
+
+  beforeEach(() => {
+    for (const tab of store().tabs) store().closeTab(tab.id)
+    store().openDocument('amplicon', AMPLICON)
+    store().clearGuides()
+    store().setCrisprAnalysis(null)
+    store().setCrisprTask('analyse')
+    store().setCrisprView('design')
+    store().setSelection({ anchor: CUT, caret: CUT })
+  })
+  afterEach(cleanup)
+
+  it('asks for traces when there are none', () => {
+    render(<GuidePanel />)
+    expect(screen.getByText(/No chromatograms are open/)).toBeTruthy()
+    expect((screen.getByRole('button', { name: /Analyse/ }) as HTMLButtonElement).disabled).toBe(true)
+  })
+
+  it('takes an edited trace apart against its control', () => {
+    act(() => {
+      store().addSequencingReads([
+        { data: trace('control', AMPLICON), trimStart: 0, trimEnd: 0 },
+        {
+          data: trace('edited', AMPLICON, { cut: CUT, parts: [{ size: 0, fraction: 0.5 }, { size: -1, fraction: 0.5 }] }),
+          trimStart: 0,
+          trimEnd: 0,
+        },
+      ])
+    })
+    const ids = store().sequencingReads.map(r => r.id)
+    render(<GuidePanel />)
+    fireEvent.change(screen.getByLabelText('Control'), { target: { value: ids[0] } })
+    fireEvent.change(screen.getByLabelText('Edited'), { target: { value: ids[1] } })
+    act(() => { screen.getByRole('button', { name: /Analyse/ }).click() })
+
+    const analysis = store().crisprAnalysis
+    expect(analysis?.kind).toBe('traces')
+    if (analysis?.kind !== 'traces') return
+    expect(analysis.result.edited).toBeCloseTo(0.5, 1)
+    expect(analysis.result.spectrum.find(x => x.size === -1)?.fraction).toBeCloseTo(0.5, 1)
+    expect(screen.getByText(/From the traces/)).toBeTruthy()
+    // The headline numbers are on screen, not only in the store.
+    expect(document.querySelectorAll('.ca-number').length).toBeGreaterThan(2)
+    expect(document.querySelectorAll('.ca-bar').length).toBeGreaterThan(0)
+  })
+
+  it('groups pasted reads into alleles', async () => {
+    const deleted = AMPLICON.slice(0, CUT) + AMPLICON.slice(CUT + 1)
+    const pasted = [...Array(6).fill(AMPLICON), ...Array(4).fill(deleted)]
+      .map((r, i) => `>r${i}\n${r}`).join('\n')
+    render(<GuidePanel />)
+    fireEvent.change(screen.getByLabelText('Evidence'), { target: { value: 'reads' } })
+    fireEvent.change(screen.getByLabelText(/Or paste reads/), { target: { value: pasted } })
+    await act(async () => { screen.getByRole('button', { name: /Analyse/ }).click() })
+    await waitFor(() => expect(store().crisprAnalysis).not.toBeNull())
+
+    const analysis = store().crisprAnalysis
+    expect(analysis?.kind).toBe('reads')
+    if (analysis?.kind !== 'reads') return
+    expect(analysis.table.counted).toBe(10)
+    expect(analysis.table.edited).toBeCloseTo(0.4, 2)
+    expect(analysis.table.frameshift).toBeCloseTo(0.4, 2)
+    expect(screen.getByText('Alleles')).toBeTruthy()
+  })
+
+  it('clears a reading', () => {
+    act(() => {
+      store().setCrisprAnalysis({
+        kind: 'reads',
+        source: { description: 'test', cut: CUT, when: Date.now() },
+        table: {
+          counted: 1, skipped: { tooShort: 0, unaligned: 0 }, alleles: [], edited: 0, frameshift: 0,
+          donor: 0, spectrum: [], window: { start: 0, end: 10 },
+        },
+        conversion: null,
+        sample: { used: 1, available: 1, sampled: false },
+      })
+    })
+    render(<GuidePanel />)
+    act(() => { screen.getByRole('button', { name: 'Clear' }).click() })
+    expect(store().crisprAnalysis).toBeNull()
   })
 })

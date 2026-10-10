@@ -65,6 +65,7 @@ import { motifKey, convertibleMotifs, motifToAnnotationData } from './utils/moti
 import type { MotifHit } from './protein/motifs'
 import type { CrisprTask, CrisprView, GuideCandidate, GuideDrawScope, GuideRecord, GuideScanInfo, Nuclease } from './crispr/types'
 import type { Scaffold } from './crispr/scaffolds'
+import type { EditingAnalysis } from './crispr/analysis/types'
 import type { OrderFormat } from './crispr/order'
 import { freeName } from './crispr/library'
 
@@ -690,6 +691,13 @@ interface EditorStore {
   customScaffolds: Scaffold[]
   addCustomScaffold: (scaffold: Scaffold) => void
   removeCustomScaffold: (id: string) => void
+  /**
+   * The last editing analysis, from traces or from reads. One at a time: it
+   * is a reading of an experiment, and the panel shows the reading it was
+   * just asked for.
+   */
+  crisprAnalysis: EditingAnalysis | null
+  setCrisprAnalysis: (analysis: EditingAnalysis | null) => void
   /** What an order is made of, remembered between guides. */
   crisprScaffoldId: string | null
   crisprOrderFormat: OrderFormat
@@ -1211,7 +1219,7 @@ const emptyDoc: DocumentState = {
   annotations: [],
 }
 
-const CRISPR_TASKS: CrisprTask[] = ['find', 'knockout', 'deletion', 'knockin', 'baseedit', 'primeedit', 'tile', 'order']
+const CRISPR_TASKS: CrisprTask[] = ['find', 'knockout', 'deletion', 'knockin', 'baseedit', 'primeedit', 'tile', 'order', 'analyse']
 
 const newGuideId = makeIdGenerator('guide')
 
@@ -2242,6 +2250,8 @@ export const useEditorStore = create<EditorStore>((set, get) => {
       customScaffolds: s2.customScaffolds.filter(x => x.id !== id),
       ...(s2.crisprScaffoldId === id ? { crisprScaffoldId: null } : {}),
     })),
+    crisprAnalysis: null,
+    setCrisprAnalysis: (crisprAnalysis) => set({ crisprAnalysis }),
     crisprScaffoldId: null,
     crisprOrderFormat: 'annealed',
     crisprVectorId: 'bbsi-cacc',
