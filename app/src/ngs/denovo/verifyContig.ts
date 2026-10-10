@@ -38,7 +38,7 @@ export function verifyContig(o: {
       type: d.type, pos: d.pos, ref: d.ref, alt: d.alt,
       coverage, count: coverage, pValue: 0,
       forward: { ref: 0, alt: 0 }, reverse: { ref: 0, alt: 0 }, meanQuality: -1,
-    }, { refSeq, features: o.features, againstConsensus: false })
+    }, { refSeq, features: o.features, againstConsensus: false, circular: o.expected.circular })
   })
   const depth = new Uint32Array(L)
   for (let e = 0; e < L; e++) depth[e] = depthAt(cmp.toContig[e])

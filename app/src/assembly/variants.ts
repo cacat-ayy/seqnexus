@@ -16,7 +16,7 @@
  *
  * Neighbouring gap columns carried by the same reads merge into one
  * insertion or deletion. Inside a coding feature of the reference a variant
- * gets its codon and protein change; inside a short tandem repeat it is
+ * gets its codon and protein change (effects.ts); inside a short tandem repeat it is
  * flagged, since polymerase slippage there mimics indels, and an indel in a
  * run of one base (a homopolymer) is flagged with the run's length, since
  * that is where Nanopore reads miscount bases.
@@ -30,10 +30,9 @@
  */
 
 import { baseBits } from '../msa/iupac'
-import { complementBase } from '../models/complement'
-import { geneticCode, translateCodonWith } from '../codon/genetic-codes'
 import type { ContigDoc } from './types'
 import { findTandemRepeats, type TandemRepeat } from './repeats'
+import { codingChanges, codingSummary, type CodingChange } from './effects'
 
 export interface RefFeature {
   id: string
@@ -47,6 +46,8 @@ export interface RefFeature {
   code?: number
   /** Bases before the first codon (/codon_start minus 1). */
   frame?: number
+  /** Exons of a spliced feature in sequence order, as in Annotation.segments. */
+  segments?: [number, number][]
 }
 
 export interface VariantSettings {
@@ -106,21 +107,6 @@ export const VARIANT_PRESETS: Record<VariantPreset, VariantSettings> = {
 
 export type VariantType = 'SNP' | 'Insertion' | 'Deletion'
 
-export type Effect =
-  | 'Synonymous' | 'Missense' | 'Nonsense' | 'Stop lost' | 'Start lost'
-  | 'Frameshift' | 'In-frame insertion' | 'In-frame deletion'
-
-export interface CodingChange {
-  feature: string
-  /** e.g. "c.134A>G" in the feature's own coordinates. */
-  cdna: string
-  /** e.g. "K45E", "K45fs", "K45_L46insQ". */
-  protein: string
-  effect: Effect
-  codonFrom?: string
-  codonTo?: string
-}
-
 export interface Variant {
   /** Columns spanned, half-open. */
   c0: number
@@ -140,7 +126,10 @@ export interface Variant {
   reverse: { ref: number; alt: number }
   meanQuality: number
   features: string[]
+  /** What it does to the coding feature it hurts most (effects.ts). */
   coding: CodingChange | null
+  /** What it does to any other coding features it is in (overlapping genes, a CDS and an ORF), most severe first. */
+  otherCoding: CodingChange[]
   /** The tandem repeat it falls in, e.g. "(CA)7". */
   repeat: string | null
   /** An insertion or deletion of one base kind next to or inside a run of it: the run's length in the reference. */
@@ -185,6 +174,8 @@ export interface VariantContext {
   refSeq: string
   features: readonly RefFeature[]
   againstConsensus: boolean
+  /** A circular reference: a coding feature reads on across its origin. */
+  circular?: boolean
 }
 
 const PLAIN = ['A', 'C', 'G', 'T'] as const
@@ -221,7 +212,7 @@ export function evaluateVariants(
   if (doc.reference) posOf.set(refIdx)
   else { let n = 0; for (let c = 0; c < W; c++) if (consensus[c] !== '-' && consensus[c] !== ' ') posOf[c] = n++ }
 
-  const ctx: VariantContext = { refSeq, features, againstConsensus }
+  const ctx: VariantContext = { refSeq, features, againstConsensus, circular: doc.reference?.circular ?? false }
 
   // Per-column candidate (one alt allele per column: the strongest).
   interface Cand { col: number; ref: string; alt: string; allele: Allele; coverage: number; refAllele: Allele | null }
@@ -326,9 +317,16 @@ export function describeVariant(ev: VariantEvidence, ctx: VariantContext): Varia
   const refSeq = ctx.refSeq
   const L = refSeq.length
   const refStart = type === 'Insertion' ? p + 1 : p
-  // Not the whole-sequence source feature, nor variation features (variants saved to the reference earlier).
-  const feats = ctx.features.filter(f => f.type !== 'source' && f.type !== 'variation' && (type === 'Insertion' ? inFeature(f, Math.max(0, p), L) && inFeature(f, Math.min(L - 1, p + 1), L) : inFeature(f, p, L)))
-  const coding = !ctx.againstConsensus ? codingChange(type, refStart, ref, alt, feats, refSeq) : null
+  // Not the whole-sequence source feature, nor variation features (variants
+  // saved to the reference earlier). A deletion is in every feature it
+  // touches, so one that takes out a start codon from before it counts.
+  const touches = (f: RefFeature) => {
+    if (type === 'Insertion') return inFeature(f, Math.max(0, p), L) && inFeature(f, Math.min(L - 1, p + 1), L)
+    for (let k = 0; k < Math.max(1, ref.length); k++) if (inFeature(f, ctx.circular ? (p + k) % L : p + k, L)) return true
+    return false
+  }
+  const feats = ctx.features.filter(f => f.type !== 'source' && f.type !== 'variation' && touches(f))
+  const [coding = null, ...otherCoding] = ctx.againstConsensus ? [] : codingChanges(type, refStart, ref, alt, feats, refSeq, ctx.circular)
   const rp = repeatAround(refSeq, Math.max(0, type === 'Insertion' ? p : refStart)) ?? (type === 'Insertion' ? repeatAround(refSeq, p + 1) : null)
   return {
     c0: ev.c0, c1: ev.c1, type,
@@ -340,6 +338,7 @@ export function describeVariant(ev: VariantEvidence, ctx: VariantContext): Varia
     meanQuality: ev.meanQuality,
     features: feats.map(f => f.name),
     coding,
+    otherCoding,
     repeat: rp ? `(${rp.unit})${rp.copies}` : null,
     homopolymer: type === 'SNP' ? null : homopolymerRun(refSeq, type, p, type === 'Insertion' ? alt : ref),
     againstConsensus: ctx.againstConsensus,
@@ -449,76 +448,6 @@ export function inFeature(f: RefFeature, p: number, L: number): boolean {
   return f.start <= f.end ? p >= f.start && p < f.end : p >= f.start || p < f.end
 }
 
-export const CODING = new Set(['CDS', 'ORF'])
-
-function featureLength(f: RefFeature, L: number): number {
-  return f.start <= f.end ? f.end - f.start : L - f.start + f.end
-}
-
-/** The codon and protein change of a variant inside a coding feature. */
-export function codingChange(type: VariantType, refStart: number, ref: string, alt: string, feats: readonly RefFeature[], refSeq: string): CodingChange | null {
-  const f = feats.find(x => CODING.has(x.type) && x.strand !== 0)
-  if (!f || refStart < 0) return null
-  const L = refSeq.length
-  // The feature's own code (/transl_table) and frame (/codon_start); offsets
-  // below count from its first whole codon.
-  const code = geneticCode(f.code ?? 1)
-  const frame = f.frame ?? 0
-  const len = featureLength(f, L) - frame
-  const at = (i: number) => refSeq[((i % L) + L) % L]
-  // Offset of the variant within the coding sequence, 5'→3' on the feature's strand.
-  const offsetOf = (p: number) => (f.strand === 1 ? ((p - f.start) % L + L) % L : ((f.end - 1 - p) % L + L) % L) - frame
-  // The feature's coding sequence, 5'→3'.
-  const cds = (i: number) => (f.strand === 1 ? at(f.start + frame + i) : complementBase(at(f.end - 1 - frame - i)))
-  const aaAt = (codon: number) => translateCodonWith(code, cds(codon * 3) + cds(codon * 3 + 1) + cds(codon * 3 + 2))
-  const strandBase = (b: string) => (f.strand === 1 ? b : complementBase(b))
-
-  if (type === 'SNP') {
-    const off = offsetOf(refStart)
-    if (off < 0 || off >= len) return null
-    const codon = Math.floor(off / 3)
-    const j = off % 3
-    const from = cds(codon * 3) + cds(codon * 3 + 1) + cds(codon * 3 + 2)
-    const to = from.slice(0, j) + strandBase(alt) + from.slice(j + 1)
-    // The first codon of a CDS that starts whole is read as methionine when
-    // it is one of its code's start codons (GTG and TTG in bacteria, ATA in
-    // vertebrate mitochondria), so a change between two starts keeps it.
-    // Without a /transl_table only ATG is taken as the start.
-    const first = codon === 0 && frame === 0
-    const starts = f.code ? code.starts : ['ATG']
-    const aaFrom = first && starts.includes(from.toUpperCase()) ? 'M' : translateCodonWith(code, from)
-    const aaTo = first && aaFrom === 'M' && starts.includes(to.toUpperCase()) ? 'M' : translateCodonWith(code, to)
-    const effect: Effect = aaFrom === aaTo ? 'Synonymous'
-      : aaTo === '*' ? 'Nonsense'
-      : aaFrom === '*' ? 'Stop lost'
-      : codon === 0 && aaFrom === 'M' ? 'Start lost'
-      : 'Missense'
-    return {
-      feature: f.name,
-      cdna: `c.${off + 1}${strandBase(ref)}>${strandBase(alt)}`,
-      protein: `${aaFrom}${codon + 1}${aaTo}`,
-      effect, codonFrom: from, codonTo: to,
-    }
-  }
-  // Indels: the codon where the change starts.
-  const n = type === 'Insertion' ? alt.length : ref.length
-  const startOff = type === 'Insertion'
-    ? (f.strand === 1 ? offsetOf(refStart - 1) + 1 : offsetOf(refStart))
-    : (f.strand === 1 ? offsetOf(refStart) : offsetOf(refStart + n - 1))
-  if (startOff < 0 || startOff > len) return null
-  const codon = Math.floor(startOff / 3)
-  const aa = codon * 3 + 2 < len ? aaAt(codon) : '?'
-  const shifts = n % 3 !== 0
-  const effect: Effect = shifts ? 'Frameshift' : type === 'Insertion' ? 'In-frame insertion' : 'In-frame deletion'
-  const seq = type === 'Insertion' ? (f.strand === 1 ? alt : [...alt].reverse().map(complementBase).join('')) : ''
-  return {
-    feature: f.name,
-    cdna: type === 'Insertion' ? `c.${startOff}_${startOff + 1}ins${seq}` : `c.${startOff + 1}${n > 1 ? `_${startOff + n}` : ''}del`,
-    protein: shifts ? `${aa}${codon + 1}fs` : type === 'Insertion' ? `${aa}${codon + 1}ins${n / 3}` : `${aa}${codon + 1}del${n / 3}`,
-    effect,
-  }
-}
-
 /** P(at least k of the events happen) for independent events with probabilities p. */
 export function poissonBinomialTail(p: readonly number[], k: number): number {
   if (k <= 0) return 1
@@ -586,12 +515,14 @@ export function fisherExact(a: number, b: number, c: number, d: number): number 
 
 /** Variants as CSV, one row each. */
 export function variantsCsv(vs: readonly Variant[]): string {
-  const head = ['Position', 'Type', 'Substitution', 'Reference', 'Variant', 'Frequency', 'Reference frequency', 'Coverage', 'Reads with variant', 'P-value', 'Strand bias P', 'Forward ref/alt', 'Reverse ref/alt', 'Mean quality', 'Features', 'cDNA change', 'Protein change', 'Effect', 'Tandem repeat', 'Homopolymer']
+  const head = ['Position', 'Type', 'Substitution', 'Reference', 'Variant', 'Frequency', 'Reference frequency', 'Coverage', 'Reads with variant', 'P-value', 'Strand bias P', 'Forward ref/alt', 'Reverse ref/alt', 'Mean quality', 'Features', 'Coding feature', 'cDNA change', 'Protein change', 'HGVS protein', 'Effect', 'Other coding changes', 'Tandem repeat', 'Homopolymer']
   const q = (s: string) => (/[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s)
   const rows = vs.map(v => [
     String(v.position), v.type, substitutionKind(v) ?? '', v.ref || '-', v.alt || '-', v.frequency.toFixed(3), referenceFrequency(v).toFixed(3), String(v.coverage), v.count.toFixed(1).replace(/\.0$/, ''),
     v.pValue.toExponential(2), v.strandBiasP.toPrecision(3), `${v.forward.ref}/${v.forward.alt}`, `${v.reverse.ref}/${v.reverse.alt}`,
-    v.meanQuality.toFixed(1), v.features.join('; '), v.coding?.cdna ?? '', v.coding?.protein ?? '', v.coding?.effect ?? '', v.repeat ?? '', v.homopolymer ? String(v.homopolymer) : '',
+    v.meanQuality.toFixed(1), v.features.join('; '),
+    v.coding?.feature ?? '', v.coding?.cdna ?? '', v.coding?.protein ?? '', v.coding?.hgvsp ?? '', v.coding?.effect ?? '', v.otherCoding.map(codingSummary).join('; '),
+    v.repeat ?? '', v.homopolymer ? String(v.homopolymer) : '',
   ].map(q).join(','))
   return [head.join(','), ...rows].join('\n') + '\n'
 }

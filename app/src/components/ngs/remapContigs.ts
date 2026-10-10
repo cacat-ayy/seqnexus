@@ -12,6 +12,7 @@ import { denovoPreset } from '../../ngs/denovo/run'
 import type { DeNovoReport } from '../../ngs/denovo/types'
 import { deleteMappingStorage, getReadChunk, putReadChunk } from '../../storage/idb'
 import { startCallVariants, startMap, wasmBase } from '../../workers/readset'
+import type { RefFeature } from '../../assembly/variants'
 
 export interface NewContig {
   name: string
@@ -19,6 +20,8 @@ export interface NewContig {
   circular: boolean
   /** An open sequence the contig is (to show its features over the reads), or null. */
   tabId: string | null
+  /** Its features, when it has any in the same coordinates (see ReferenceReport). */
+  features?: RefFeature[]
 }
 
 /** Map the reads to `contigs` and swap them in; returns the Undo, or null if the assembly is gone. */

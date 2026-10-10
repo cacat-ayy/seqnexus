@@ -8,6 +8,7 @@
 import { writeReportPdf, type ReportBlock } from '../../pdf/report-pdf'
 import { failedFeatures, lowestDepth, plateCounts, type CloneResult, type PlateVerifySettings } from '../../assembly/plate'
 import { describeChange, STATUS_LABEL } from '../../assembly/verify'
+import { codingLabel } from '../../assembly/effects'
 import { describeGrouping, type NameGrouping } from '../../assembly/groups'
 
 const nf = new Intl.NumberFormat()
@@ -58,7 +59,7 @@ export function plateReportPdf(o: {
         columns: [{ label: 'Clone' }, { label: 'Position', numeric: true }, { label: 'Change' }, { label: 'Reads', numeric: true }, { label: 'Feature' }, { label: 'Protein' }],
         rows: diffs.map(({ r, d }) => [
           r.name, nf.format(d.position), describeChange(d), `${Math.round(d.frequency * 100)}% of ${d.coverage}`,
-          d.features.join(', '), d.coding ? `${d.coding.protein} (${d.coding.effect.toLowerCase()})` : '',
+          d.features.join(', '), d.coding ? codingLabel(d.coding) : '',
         ]),
       },
     )

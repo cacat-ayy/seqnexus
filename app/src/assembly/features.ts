@@ -10,6 +10,7 @@ import { codeFromTranslTable } from '../codon/genetic-codes'
 import type { ContigDoc } from './types'
 import type { RefFeature, Variant } from './variants'
 import type { TandemRepeat } from './repeats'
+import { allCoding, codingSummary } from './effects'
 
 /** Features of a sequence, as the variant caller and verification want them. */
 export function refFeatures(annotations: readonly AnnotationData[]): RefFeature[] {
@@ -24,8 +25,46 @@ export function refFeatures(annotations: readonly AnnotationData[]): RefFeature[
     if (code) f.code = code.id
     const start = parseInt(a.qualifiers?.codon_start?.[0] ?? '', 10)
     if (start === 2 || start === 3) f.frame = start - 1
+    // A spliced CDS is read through its exons only.
+    if (a.segments) f.segments = a.segments.map(([s, e]): [number, number] => [s, e])
     return f
   })
+}
+
+/** What tabReference reads of an open sequence. */
+export interface ReferenceTab {
+  id: string
+  doc: {
+    name: string
+    sequence: { bases: string; topology: string }
+    annotations: readonly { toData(): AnnotationData }[]
+  }
+}
+
+/**
+ * An open sequence as a reference to map reads to: its bases, topology and
+ * features. The features go with the mapping, so its variants keep their
+ * codon and protein changes after the sequence is closed.
+ */
+export function tabReference(t: ReferenceTab): { name: string; tabId: string; bases: string; circular: boolean; features: RefFeature[] } {
+  return {
+    name: t.doc.name, tabId: t.id, bases: t.doc.sequence.bases, circular: t.doc.sequence.topology === 'circular',
+    features: refFeatures(t.doc.annotations.map(a => a.toData())),
+  }
+}
+
+/**
+ * The features of a reference reads were mapped to: its open sequence's
+ * (they may have been edited since) while it is open and still the length
+ * mapped to, otherwise the copy kept when the reads were mapped.
+ */
+export function mappedFeatures(
+  ref: { tabId: string | null; length: number; features?: RefFeature[] },
+  tabs: readonly ReferenceTab[],
+): RefFeature[] {
+  const t = ref.tabId ? tabs.find(x => x.id === ref.tabId) : undefined
+  if (t && t.doc.sequence.bases.length === ref.length) return refFeatures(t.doc.annotations.map(a => a.toData()))
+  return ref.features ?? []
 }
 
 export interface ColumnFeature {
@@ -73,12 +112,12 @@ export function variantAnnotations(vs: readonly Variant[], refLength: number): A
     // An insertion sits between two bases: the feature covers both.
     const start = v.type === 'Insertion' ? Math.max(0, p) : p
     const end = Math.min(refLength, v.type === 'Insertion' ? p + 2 : p + Math.max(1, v.ref.length))
-    const label = v.coding?.protein ?? (v.type === 'SNP' ? `${v.ref}${v.position}${v.alt}` : v.type === 'Insertion' ? `ins${v.alt}` : `del${v.ref}`)
+    const label = v.coding?.protein || (v.type === 'SNP' ? `${v.ref}${v.position}${v.alt}` : v.type === 'Insertion' ? `ins${v.alt}` : `del${v.ref}`)
     const note = [
       `${v.type} ${v.ref || '-'}>${v.alt || '-'}`,
       `${Math.round(v.frequency * 100)}% of ${v.coverage} reads`,
       `P-value ${v.pValue.toExponential(1)}`,
-      ...(v.coding ? [`${v.coding.cdna} ${v.coding.protein} (${v.coding.effect})`] : []),
+      ...allCoding(v).map(codingSummary),
       ...(v.repeat ? [`in tandem repeat ${v.repeat}`] : []),
     ]
     return {

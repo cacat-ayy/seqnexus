@@ -18,7 +18,7 @@ import { displayPosition, type DocumentState } from '../models/Document'
 import { baseX, type ZoomLayout } from './zoom-layout'
 import type { GroupedCutSite } from '../enzymes/grouping'
 import { visibleStroke, contrastText } from '../utils/color'
-import type { GeneticCode } from '../codon/genetic-codes'
+import { translateCodonWith, type GeneticCode } from '../codon/genetic-codes'
 import {
   aminoAcidFill, aminoAcidLabel, selectionCodonsInRow, trimReadingStart, type AminoAcidStyleId, type SelectionCodon,
 } from '../codon/translation-display'
@@ -1438,7 +1438,7 @@ export function paintSequenceRows(
           const bases = doc.sequence.basesIn(pos, Math.min(pos + 3, seqLen)).toUpperCase()
           if (bases.length < 3) break
           const codon = frame.strand === 1 ? bases : reverseComplementStr(bases)
-          const aa = code.table[codon] ?? '?'
+          const aa = translateCodonWith(code, codon)
           const codonIdx = Math.floor((pos - anchor) / 3)
 
           // A block behind each codon, alternating in strength, the same cue
@@ -1527,7 +1527,7 @@ export function paintSequenceRows(
           // complement: the reverse complement of the reversed string.
           const top = bases.map(p => doc.sequence.basesIn(p, p + 1)).join('').toUpperCase()
           const codon = reverse ? reverseComplementStr([...top].reverse().join('')) : top
-          const aa = code.table[codon] ?? '?'
+          const aa = translateCodonWith(code, codon)
           const fill = fillFor(aa)
           blocks(cy, L.translationRowH, fill ?? COLORS.codon, fill !== null || index % 2 === 0)
           const middle = bases[1]
@@ -1663,7 +1663,7 @@ export function paintSequenceRows(
           if (lOffset < 0 || lOffset + 3 > seqForTranslation.length) continue
           const codonIdx = Math.floor(fOffset / 3)
           const codon = seqForTranslation.slice(lOffset, lOffset + 3)
-          const fill = fillFor(code.table[codon.toUpperCase()] ?? '?')
+          const fill = fillFor(translateCodonWith(code, codon))
           const firstBase = ann.strand === 1 ? pos : pos - 2
           const lastBase = ann.strand === 1 ? pos + 2 : pos
           const clampedFirst = Math.max(firstBase, rowStart)
@@ -1686,7 +1686,7 @@ export function paintSequenceRows(
           const lOffset = localOffset(ann, pos, data)
           if (lOffset < 0 || lOffset + 3 > seqForTranslation.length) continue
           const codon = seqForTranslation.slice(lOffset, lOffset + 3)
-          const aa = code.table[codon.toUpperCase()] ?? '?'
+          const aa = translateCodonWith(code, codon)
           let middleBase: number
           if (ann.strand === 1) {
             middleBase = pos + 1

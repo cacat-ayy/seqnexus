@@ -277,8 +277,8 @@ export async function callMapping(o: {
 const PLAIN = new Set(['A', 'C', 'G', 'T'])
 
 /** Every candidate variant at the recounted sites of one reference. */
-export function siteVariants(calls: readonly SiteCall[], refSeq: string, features: readonly RefFeature[], technology: Technology): Variant[] {
-  const ctx = { refSeq, features, againstConsensus: false }
+export function siteVariants(calls: readonly SiteCall[], refSeq: string, features: readonly RefFeature[], technology: Technology, circular = false): Variant[] {
+  const ctx = { refSeq, features, againstConsensus: false, circular }
   const out: Variant[] = []
   const indelRate = INDEL_ERROR[technology]
   for (const site of calls) {

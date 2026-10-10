@@ -70,7 +70,7 @@ describe('verifying a plate', () => {
     expect(csv[3]).toMatch(/^Clone,Reference,Verdict/)
     // Bases 41 to 280 of 300 covered; 51 to 260 by both reads.
     expect(csv[4]).toBe('A01,pGFP,Verified,2,80.0%,70.0%,2,,')
-    expect(csv[5]).toBe('A02,pGFP,Differences found,1,73.3%,0%,1,gfp (differences found),"151 G>A (A31T, missense)"')
+    expect(csv[5]).toBe('A02,pGFP,Differences found,1,73.3%,0%,1,gfp (differences found),151 G>A: A31T (missense)')
     const fasta = plateFasta([full])
     expect(fasta.split('\n')[0]).toBe('>A01 mapped to pGFP, verified')
     expect(fasta.replace(/^>.*\n/, '').replace(/\n/g, '')).toBe(REF.slice(40, 280))

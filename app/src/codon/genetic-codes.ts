@@ -10,9 +10,11 @@
  * documents them and how they are easiest to check: the only lines here are
  * the ones that actually differ.
  *
- * Only the optimizer reads these today. The rest of the app still translates
- * with the standard code through utils/codon.ts, which now sources its table
- * from table 1 below so the two can never drift apart.
+ * Every translation in the app goes through translateCodonWith or
+ * translateWith here (utils/codon.ts is the same for the standard code), so
+ * ambiguous bases are read the same way everywhere. `table` itself holds
+ * plain codons only: the optimizer and codon usage counts read it directly,
+ * since an ambiguous codon is not a codon they can count or replace.
  */
 
 export type GeneticCodeId = number
@@ -147,17 +149,52 @@ export function codeFromTranslTable(qualifiers: Record<string, string[]> | undef
 /** The standard code's table, for callers that have no code selection. */
 export const STANDARD_CODE_TABLE: Record<string, string> = geneticCode(1).table
 
-/** Translate one codon. Anything not a plain ACGT triplet reads as unknown. */
-export function translateCodonWith(code: GeneticCode, codon: string): string {
-  return code.table[codon.toUpperCase()] ?? '?'
+/** The plain bases each IUPAC letter stands for; U reads as T. */
+const IUPAC_BASES: Record<string, string> = {
+  A: 'A', C: 'C', G: 'G', T: 'T', U: 'T',
+  R: 'AG', Y: 'CT', S: 'CG', W: 'AT', K: 'GT', M: 'AC',
+  B: 'CGT', D: 'AGT', H: 'ACT', V: 'ACG', N: 'ACGT',
 }
 
-/** Translate a DNA string. A trailing partial codon is dropped. */
+const RESOLVED = new WeakMap<GeneticCode, Map<string, string>>()
+
+/**
+ * A codon with ambiguous bases: the amino acid when every plain codon it
+ * stands for gives the same one (GCN is Ala, TAR a stop, YTR Leu), else X.
+ * Anything else (a gap, a partial codon) is X too.
+ */
+function resolveCodon(code: GeneticCode, codon: string): string {
+  let cache = RESOLVED.get(code)
+  if (!cache) { cache = new Map(); RESOLVED.set(code, cache) }
+  const hit = cache.get(codon)
+  if (hit) return hit
+  let aa = 'X'
+  const [a, b, c] = [...codon].map(ch => IUPAC_BASES[ch])
+  if (codon.length === 3 && a && b && c) {
+    const seen = new Set<string>()
+    for (const x of a) for (const y of b) for (const z of c) seen.add(code.table[x + y + z])
+    if (seen.size === 1) aa = [...seen][0]
+  }
+  cache.set(codon, aa)
+  return aa
+}
+
+/**
+ * Translate one codon. A codon with IUPAC ambiguity codes (or U for T) is
+ * read as the amino acid all its readings share, or X when they differ.
+ */
+export function translateCodonWith(code: GeneticCode, codon: string): string {
+  const upper = codon.toUpperCase()
+  return code.table[upper] ?? resolveCodon(code, upper)
+}
+
+/** Translate a DNA string, ambiguous codons as translateCodonWith reads them. A trailing partial codon is dropped. */
 export function translateWith(code: GeneticCode, dna: string): string {
   const upper = dna.toUpperCase()
   const out: string[] = []
   for (let i = 0; i + 2 < upper.length; i += 3) {
-    out.push(code.table[upper.slice(i, i + 3)] ?? '?')
+    const codon = upper.slice(i, i + 3)
+    out.push(code.table[codon] ?? resolveCodon(code, codon))
   }
   return out.join('')
 }

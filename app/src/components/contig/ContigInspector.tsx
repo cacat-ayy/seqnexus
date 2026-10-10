@@ -17,6 +17,7 @@ import { readQc, VERDICT_LABEL } from '../../sanger/qc'
 import { peakTable } from '../../sanger/peaks'
 import type { ContigSelection } from './paint'
 import { variantLabel, type Variant, type VariantSettings } from '../../assembly/variants'
+import { allCoding, codingSummary, effectSeverity } from '../../assembly/effects'
 
 export interface ContigActions {
   openConsensus: () => void
@@ -284,7 +285,7 @@ function VariantsPanel({ doc, view, variants, canAnnotate, repeatCount, onView, 
               <span className="cw-variant-pos">{nf.format(v.position)}</span>
               <span className="cw-variant-change">{variantLabel(v)}</span>
               <span className="cw-variant-freq">{Math.round(v.frequency * 100)}%</span>
-              <span className={`cw-variant-effect ${effectClass(v)}`}>{v.coding ? `${v.coding.protein} · ${v.coding.effect}` : v.features[0] ?? ''}{v.repeat ? ` · ${v.repeat}` : ''}{v.homopolymer ? ` · run of ${v.homopolymer}` : ''}</span>
+              <span className={`cw-variant-effect ${effectClass(v)}`}>{v.coding ? [v.coding.protein, v.coding.effect].filter(Boolean).join(' · ') : v.features[0] ?? ''}{v.otherCoding.length ? ` · +${v.otherCoding.length}` : ''}{v.repeat ? ` · ${v.repeat}` : ''}{v.homopolymer ? ` · run of ${v.homopolymer}` : ''}</span>
             </button>
           ))}
         </div>
@@ -312,7 +313,7 @@ function variantTitle(v: Variant): string {
     `${v.count} of ${v.coverage} reads (${Math.round(v.frequency * 100)}%), mean Q${Math.round(v.meanQuality)}`,
     `P-value ${v.pValue.toExponential(1)} · strand bias p ${v.strandBiasP.toPrecision(2)}`,
     `Forward ${v.forward.ref}/${v.forward.alt} · reverse ${v.reverse.ref}/${v.reverse.alt} (reference/variant)`,
-    ...(v.coding ? [`${v.coding.feature}: ${v.coding.cdna}, ${v.coding.protein} (${v.coding.effect})`] : []),
+    ...allCoding(v).map(codingSummary),
     ...(v.features.length ? [`In ${v.features.join(', ')}`] : []),
     ...(v.repeat ? [`Inside tandem repeat ${v.repeat}`] : []),
     ...(v.homopolymer ? [`In a run of ${v.homopolymer} of the same base`] : []),
@@ -320,11 +321,7 @@ function variantTitle(v: Variant): string {
 }
 
 function effectClass(v: Variant): string {
-  const e = v.coding?.effect
-  if (!e) return ''
-  if (e === 'Synonymous') return 'mild'
-  if (e === 'Missense' || e.startsWith('In-frame')) return 'moderate'
-  return 'severe'
+  return v.coding ? effectSeverity(v.coding.effect) : ''
 }
 
 function Stat({ label, value, hint, strong }: { label: string; value: string; hint?: string; strong?: boolean }) {

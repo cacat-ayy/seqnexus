@@ -27,6 +27,7 @@ import { NEEDS_WEB, openedAsFile } from '../../ngs/jobs'
 import { readReferenceBases } from '../../ngs/sam'
 import { startMap, CancelledError, wasmBase, type JobHandle } from '../../workers/readset'
 import { deleteMappingStorage, getReadChunk } from '../../storage/idb'
+import { tabReference } from '../../assembly/features'
 
 interface Props {
   readSet: ReadSet
@@ -72,7 +73,7 @@ export default function MapReadsDialog({ readSet: rs, rerun, onClose }: Props) {
     let live = true
     Promise.all(missing.map(async ({ r, i }) => ({
       key: `kept:${i}`,
-      ref: { name: r.name, tabId: null, circular: r.circular, bases: await readReferenceBases({ get: getReadChunk }, ngs.storageId, i) },
+      ref: { name: r.name, tabId: null, circular: r.circular, bases: await readReferenceBases({ get: getReadChunk }, ngs.storageId, i), features: r.features },
     }))).then(choices => {
       if (!live) return
       setKept(choices)
@@ -91,12 +92,17 @@ export default function MapReadsDialog({ readSet: rs, rerun, onClose }: Props) {
     ...kept,
   ]
   const pickedKey = [...picked].sort().join('|') + '|' + kept.length
-  const pickedRefs = useMemo(() => choices.filter(c => picked.has(c.key)).map(c => c.ref), [pickedKey]) // eslint-disable-line react-hooks/exhaustive-deps
+  // An open sequence's features are read only once it is picked.
+  const refOf = (c: Choice): MapReference => {
+    const t = tabs.find(x => x.id === c.key)
+    return t ? tabReference(t) : c.ref
+  }
+  const pickedRefs = useMemo(() => choices.filter(c => picked.has(c.key)).map(refOf), [pickedKey]) // eslint-disable-line react-hooks/exhaustive-deps
   const clip = usePrimerClip(pickedRefs)
 
   const run = () => {
     const store = useEditorStore.getState()
-    const refs = choices.filter(c => picked.has(c.key)).map(c => c.ref)
+    const refs = choices.filter(c => picked.has(c.key)).map(refOf)
     if (refs.length === 0) { notify.info('Choose a reference sequence, or open one first'); return }
     const assemblyId = rerun?.assembly.id ?? store.newAssemblyId()
     // A run again is stored apart until it is done, so the old mapping stays whole if it fails.

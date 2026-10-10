@@ -23,6 +23,7 @@ import type { MappingReport } from '../../ngs/builder'
 import { formatBytes } from '../../utils/format'
 import { startImportAlignments, CancelledError, type JobHandle } from '../../workers/readset'
 import { deleteMappingStorage } from '../../storage/idb'
+import { tabReference } from '../../assembly/features'
 
 interface Props {
   file: File
@@ -71,7 +72,7 @@ export default function ImportAlignmentsDialog({ file, onClose }: Props) {
     const store = useEditorStore.getState()
     const refs = header.refs.map((_, i) => {
       const t = tabById.get(chosen[i])
-      return t ? { name: t.doc.name, tabId: t.id, bases: t.doc.sequence.bases, circular: t.doc.sequence.topology === 'circular' } : null
+      return t ? tabReference(t) : null
     })
     const first = refs.find(r => r !== null)
     if (!first) { notify.info('Choose an open sequence for at least one reference'); return }

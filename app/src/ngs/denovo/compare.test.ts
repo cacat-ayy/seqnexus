@@ -117,6 +117,6 @@ describe('lining contigs up as they are assembled', () => {
     expect(r.contigs[1]).toMatchObject({ bases: del, tabId: null })
     expect(r.contigs[2]).toBe(contigs[2])
     expect(r.matched.map(m => [m.contig, m.expected, m.reversed, m.linked])).toEqual([[0, 'pA', true, true], [1, 'pA', false, false]])
-    expect(lineUpTargets([{ id: 't', doc: { name: 'x', sequence: { bases: 'A'.repeat(50), topology: 'linear', length: 50 } } }], 'auto')).toEqual([])
+    expect(lineUpTargets([{ id: 't', doc: { name: 'x', sequence: { bases: 'A'.repeat(50), topology: 'linear', length: 50 }, annotations: [] } }], 'auto')).toEqual([])
   })
 })

@@ -2096,6 +2096,23 @@ gene is not truncated at a TGA that codes for tryptophan in its own code.
 `utils/codon.ts` re-exports table 1, so the app has one copy of the standard
 code rather than two that can drift.
 
+Every translation in the app (the sequence view, feature translations, the
+alignment viewer, Sanger reads and contigs, NGS mappings, variant effects,
+the ORF finder, CRISPR, Find) reads a codon through one function, which also
+handles ambiguous bases (the IUPAC codes, Cornish-Bowden 1985) and U for T.
+A codon with ambiguity codes is expanded into every plain codon it stands for
+(at most 64) and read as the amino acid they all share: GCN is Ala, YTR Leu,
+TAR a stop, in whichever code applies (TGR is Trp in the vertebrate
+mitochondrial code, ambiguous in the standard one). When the readings
+differ, or the codon holds a gap or an unknown letter, it is X (Xaa in
+three-letter form), as NCBI and EMBOSS `transeq` translate it. B, Z and J
+(Asx, Glx, Xle, which Biopython gives for RAY and the like) are not used:
+they would be the one place a translation shows a residue that is two at
+once, and protein properties, colours and scales read X already. The ORF
+finder ends an ORF at an ambiguous codon only when every reading is a stop.
+The codon optimizer and codon usage counts read the plain table only: an
+ambiguous codon is left as it is and not counted.
+
 ### Codon usage tables
 
 | Source | Notes |
@@ -3761,6 +3778,13 @@ which rarely carry a `cs` tag, are stored the same way.
   positions, and a block is written out once no alignment still to come can
   reach it; on a circular reference the first blocks stay open to the end,
   for the alignments across the origin.
+- **Features:** the reference's features are kept with the mapping as they
+  were when the reads were mapped, so the view draws them and variants get
+  their coding changes with the sequence closed. While the sequence is open,
+  and still the length it was mapped at, its own features are used instead,
+  since they may have been edited. A de novo contig keeps the features of the
+  sequence it is linked to (lined up with it exactly); a polished contig that
+  changed keeps none, since its coordinates moved.
 - **Secondary alignments** are not kept (minimap2 runs with
   `--secondary=no`; an imported file's are counted and left out).
 - **Discarding reads:** a read set's reads can be discarded to free storage.
@@ -3816,8 +3840,9 @@ reads, from a whole genome down to single bases.
   after it, the row marks the insertion between the bases as the reads do. Every loaded read counts, as in the coverage track, so
   it is what the reads drawn say, before the thresholds of the variant
   settings; the consensus that is exported (see Variants) applies those.
-- **Features and translation:** when the reference's sequence is open, its
-  features are drawn above it in their own colours, packed into up to four
+- **Features and translation:** the reference's features (its open
+  sequence's, or the copy kept with the mapping) are drawn above it in their
+  own colours, packed into up to four
   lanes (a feature across the origin of a circular reference in two parts).
   Close in (from 3 pixels per base), a CDS or ORF shows its translation in
   place of its name: each amino acid centred on its codon, in the frame of
@@ -3902,17 +3927,62 @@ touches. Calling and judging are separate: every candidate is kept, and the
 thresholds are applied on top, so the table changes as they are typed and
 VCF can name the thresholds a variant failed.
 
-- **Coding changes** are read with the coding feature's own genetic code
-  (its `/transl_table`, the standard code when it names none) and from its
-  `/codon_start`. With the standard code a mitochondrial gene's TGA reads as
-  a stop, so a harmless change to it was reported as nonsense; vertebrate
+- **Coding changes** (`assembly/effects.ts`): a variant is described in
+  every coding feature (CDS or ORF) it falls in, most severe first, so a
+  change in two overlapping genes is reported in both. Tables show the most
+  severe and how many more; the hover card, CSV and VCF list them all. A
+  deletion counts as in a feature when any base it removes is, so one that
+  takes out a start codon from before it is caught.
+- **How a coding feature is read:** as the ribosome reads it. A spliced CDS
+  is read through its exons only, on its own strand, from its `/codon_start`,
+  and read on past its end into the sequence that follows (up to 3,000
+  bases, across the origin of a circular reference). It is translated with
+  its own genetic code (its `/transl_table`, the standard code when it names
+  none). With the standard code a mitochondrial gene's TGA reads as a stop,
+  so a harmless change to it would be reported as nonsense; vertebrate
   mitochondria (table 2) and invertebrate ones (table 5, the COI barcode
   gene) read it as tryptophan. The first codon of a CDS that starts whole
   counts as methionine when it is one of its code's start codons (GTG, TTG
   and others in bacteria, table 11), so a change from one start to another
   is synonymous and a change to anything else is a lost start. Without a
-  `/transl_table` only ATG is taken as the start. Spliced features are read
-  as their whole span, not by exon.
+  `/transl_table` only ATG is taken as the start.
+- **Effects:** the variant is applied to the coding sequence and both are
+  translated; the effect is what changed between the two proteins. A
+  substitution or an in-frame indel is judged on the codons it touches; a
+  frameshift is followed to the first residue that differs and on to the
+  stop the new frame meets. In order of severity: start lost, nonsense (a new
+  stop), frameshift, stop lost (the protein reads on to the next stop),
+  splice site, in-frame deletion, in-frame insertion, missense, synonymous,
+  intron. A variant in an intron of a spliced CDS is a splice site variant
+  within 2 bases of an exon (the GT donor and AG acceptor), or when it takes
+  in both intron and exon; elsewhere in the intron it is an intron variant.
+  Judging an indel by its length alone (a multiple of three or not) would
+  miss an in-frame insertion that brings a stop, a deletion of the stop
+  codon, and where a frameshift ends; translating both sequences catches
+  them all with one rule, at the cost of one translation from the changed
+  codon to the next stop.
+- **Names** follow the HGVS recommendations. The coding DNA change counts
+  from the A of the first codon through the exons only (`c.134A>G`); in an
+  intron from the nearer exon (`c.88+1G>T`, `c.89-2A>G`), before the first
+  codon as `c.-3`, after the stop as `c.*5`. Insertions and deletions are
+  moved as far 3' as their exon allows before they are named (the 3' rule),
+  so a deleted A in AAAA is `c.4del` wherever the caller placed it, and an
+  insertion that repeats the bases before it is a duplication (`c.4_6dup`).
+  The protein change is given in the short one-letter form in tables and on
+  variation features (`K45E`, `W4*`, `A3=`, `K2dup`, `A3_W4insP`, `M1?`,
+  `K45Rfs*12`, `*110Qext*17`) and in the recommended three-letter form,
+  in parentheses because it is predicted rather than seen in a protein, on
+  the hover card and in CSV and VCF (`p.(Lys45Glu)`). In `fs*12` and `ext*17`
+  the count runs from the first changed residue, as 1, to the new stop; `?`
+  when no stop comes within the bases read on. An in-frame change that ends
+  the protein at once is written as a stop at the next residue (`A3*`).
+- **Limits of the coding model:** the wider splice region (the last exon
+  bases and intron bases 3 to 8, which VEP flags) is not flagged; UTRs are
+  not modelled, so a variant outside a coding feature gets no coding change,
+  and a frameshift reads on through unspliced sequence past the last exon;
+  two changes in one codon are each judged alone, since reads are not
+  phased, so the amino acid the pair makes is not given; nonsense-mediated
+  decay is not predicted.
 - **Transitions and transversions:** a single-base change between two
   purines (A, G) or two pyrimidines (C, T) is a transition, between the
   kinds a transversion. Transitions are about twice as common in nature, so
@@ -4005,7 +4075,10 @@ VCF can name the thresholds a variant failed.
   INFO carries depth (DP), reads carrying it (AO), frequency (AF), strand
   counts (DP4, as samtools writes them), the strand bias P (SB), the type,
   the homopolymer length (HP), the repeat (REP), the features (FEAT) and the
-  coding effect (EFF). Sanger contigs export the same VCF, against the
+  coding effect in each coding feature, most severe first (EFF, as
+  effect|feature|c. change|p. change; the `=` of an unchanged protein is
+  written `%3D`, as VEP writes it, since VCF values cannot hold `=`). Sanger
+  contigs export the same VCF, against the
   reference, or along the consensus for a de novo contig.
 - **Consensus:** the sample's sequence, as `ivar consensus` builds it. At a
   site the alleles (bases and deletions) are taken, commonest first, until
@@ -4045,7 +4118,7 @@ sample.
   frequency and a depth per sample.
 - **Clone verification per sample:** the same verdict as for a Sanger
   contig (`assembly/verify.ts`, now shared through `verifyPileup`): every
-  feature of the reference (or the whole reference when it has none open) is
+  feature of the reference (or the whole reference when it has none) is
   checked for coverage by at least a set number of reads, optionally on both
   strands, and for differences, the variants most of the sample's reads carry
   (at least half, from at least two reads, at a covered position). Depth
@@ -5127,7 +5200,13 @@ print colours on white, whatever the app's theme.
 - den Dunnen JT, Dalgleish R, Maglott DR, Hart RK, Greenblatt MS,
   McGowan-Jordan J, Roux AF, Smith T, Antonarakis SE, Taschner PEM (2016)
   "HGVS recommendations for the description of sequence variants: 2016
-  update." *Hum Mutat* 37:564-569. (The variant names.)
+  update." *Hum Mutat* 37:564-569. (The variant names: coding DNA
+  numbering, the 3' rule, dup, fs and ext.)
+
+- McLaren W, Gil L, Hunt SE, Riat HS, Ritchie GRS, Thormann A, Flicek P,
+  Cunningham F (2016) "The Ensembl Variant Effect Predictor." *Genome Biol*
+  17:122. (Effects ranked by severity, the splice site and splice region,
+  and HGVS names in VCF with `=` percent-encoded.)
 
 - SantaLucia J Jr. (1998) "A unified view of polymer, dumbbell, and
   oligonucleotide DNA nearest-neighbor thermodynamics."

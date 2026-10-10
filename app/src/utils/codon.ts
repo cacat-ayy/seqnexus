@@ -7,22 +7,19 @@
  * have no genetic code to work from keep using these functions unchanged.
  */
 
-import { STANDARD_CODE_TABLE } from '../codon/genetic-codes'
+import { geneticCode, STANDARD_CODE_TABLE, translateCodonWith, translateWith } from '../codon/genetic-codes'
 
 /** Standard genetic code codon table. */
 export const CODON_TABLE: Record<string, string> = STANDARD_CODE_TABLE
 
-/** Translate a single codon to its amino acid letter. */
+const STANDARD = geneticCode(1)
+
+/** Translate a single codon to its amino acid letter; ambiguous codons as translateCodonWith reads them. */
 export function translateCodon(codon: string): string {
-  return CODON_TABLE[codon.toUpperCase()] ?? '?'
+  return translateCodonWith(STANDARD, codon)
 }
 
 /** Translate a DNA string to an amino acid string. */
 export function translate(dna: string): string {
-  const upper = dna.toUpperCase()
-  const aas: string[] = []
-  for (let i = 0; i + 2 < upper.length; i += 3) {
-    aas.push(CODON_TABLE[upper.slice(i, i + 3)] ?? '?')
-  }
-  return aas.join('')
+  return translateWith(STANDARD, dna)
 }

@@ -22,7 +22,8 @@ import { baseColor, tracePalette, withAlpha, type TracePalette } from '../sanger
 import { paintPositionRuler, truncate } from '../tracks/draw'
 import type { CoverageLevel } from '../../ngs/alignments'
 import type { PileupSite } from '../../ngs/pileup'
-import { CODING, variantKey, type RefFeature, type Variant } from '../../assembly/variants'
+import { variantKey, type RefFeature, type Variant } from '../../assembly/variants'
+import { CODING } from '../../assembly/effects'
 import { complementBase } from '../../models/complement'
 import { geneticCode, translateCodonWith } from '../../codon/genetic-codes'
 import {

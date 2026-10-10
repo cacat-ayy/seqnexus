@@ -20,6 +20,7 @@ import {
   FILTERS, PRESET_NAME, STRAND_BIAS_P, VARIANT_PRESETS, referenceFrequency, substitutionKind, variantFilters, variantKey, variantLabel, variantQual,
   type FilterId, type Variant, type VariantPreset, type VariantSettings, type VariantType,
 } from '../../assembly/variants'
+import { allCoding, codingLabel, EFFECT_ORDER, effectSeverity } from '../../assembly/effects'
 
 const nf = new Intl.NumberFormat()
 const ROW_H = 24
@@ -49,16 +50,8 @@ interface Props {
 
 type SortKey = 'position' | 'frequency' | 'coverage' | 'count' | 'quality' | 'effect'
 
-const EFFECT_RANK: Record<string, number> = {
-  Nonsense: 0, Frameshift: 0, 'Start lost': 0, 'Stop lost': 0, Missense: 1, 'In-frame insertion': 1, 'In-frame deletion': 1, Synonymous: 2,
-}
-
 function effectClass(v: Variant): string {
-  const e = v.coding?.effect
-  if (!e) return ''
-  if (e === 'Synonymous') return 'mild'
-  if (e === 'Missense' || e.startsWith('In-frame')) return 'moderate'
-  return 'severe'
+  return v.coding ? effectSeverity(v.coding.effect) : ''
 }
 
 function VariantTable(p: Props) {
@@ -86,7 +79,7 @@ function VariantTable(p: Props) {
         case 'coverage': return v.coverage
         case 'count': return v.count
         case 'quality': return variantQual(v)
-        case 'effect': return v.coding ? EFFECT_RANK[v.coding.effect] ?? 3 : 4
+        case 'effect': return v.coding ? EFFECT_ORDER.indexOf(v.coding.effect) : EFFECT_ORDER.length
         default: return v.position
       }
     }
@@ -289,7 +282,7 @@ function VariantTable(p: Props) {
                     <span className="num">{nf.format(v.coverage)}</span>
                     <span className="num">{nf.format(v.count)} <span className="aw-muted">{v.forward.alt}+/{v.reverse.alt}−</span></span>
                     <span className="num">{variantQual(v) >= 999 ? '≥999' : Math.round(variantQual(v))}</span>
-                    <span className={`vt-effect ${effectClass(v)}`}>{v.coding ? `${v.coding.protein} ${v.coding.effect.toLowerCase()}` : v.features[0] ?? ''}</span>
+                    <span className={`vt-effect ${effectClass(v)}`}>{v.coding ? codingLabel(v.coding) : v.features[0] ?? ''}{v.otherCoding.length ? ` +${v.otherCoding.length}` : ''}</span>
                     <span className="vt-flags">
                       {v.strandBiasP < STRAND_BIAS_P && <span className="vt-flag" title={`Strand bias: p ${v.strandBiasP.toPrecision(2)}`}>strand</span>}
                       {v.homopolymer && <span className="vt-flag" title={`In a run of ${v.homopolymer} of the same base`}>HP{v.homopolymer}</span>}
@@ -326,7 +319,7 @@ export function VariantCard({ v, x, y, failed }: { v: Variant; x: number; y: num
           <tr><td>Quality</td><td>{q >= 999 ? 'Q999 or more' : `Q${Math.round(q)}`} (P {v.pValue > 0 ? v.pValue.toExponential(1) : '< 1e-300'} by error alone)</td></tr>
           <tr><td>Strand bias</td><td>p {v.strandBiasP.toPrecision(2)}{v.strandBiasP < STRAND_BIAS_P ? ': seen mostly on one strand' : ''}</td></tr>
           {v.meanQuality >= 0 && v.type !== 'Deletion' && <tr><td>Base quality</td><td>Q{Math.round(v.meanQuality)} on average</td></tr>}
-          {v.coding && <tr><td>{v.coding.feature}</td><td>{v.coding.cdna}, {v.coding.protein} ({v.coding.effect.toLowerCase()})</td></tr>}
+          {allCoding(v).map((c, i) => <tr key={i}><td>{c.feature}</td><td>{c.cdna} {c.hgvsp}, {c.effect.toLowerCase()}</td></tr>)}
           {!v.coding && v.features.length > 0 && <tr><td>In</td><td>{v.features.join(', ')}</td></tr>}
           {v.homopolymer && <tr><td>Homopolymer</td><td>A run of {v.homopolymer} {(v.type === 'Insertion' ? v.alt : v.ref)[0]}: indels here are a common sequencing error</td></tr>}
           {v.repeat && <tr><td>Repeat</td><td>Inside {v.repeat}</td></tr>}

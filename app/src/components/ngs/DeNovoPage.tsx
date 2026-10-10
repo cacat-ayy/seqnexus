@@ -123,7 +123,8 @@ export default function DeNovoPage({ assembly, onShowReads }: { assembly: Assemb
       }
       const undo = await remapContigs({
         assembly, readSet, denovo, onProgress: setImporting,
-        contigs: matched.map((m, i) => ({ name: m.name, bases: m.bases, circular: m.circular, tabId: refs[i]?.tabId ?? null })),
+        // A polished contig that changed no longer shares its features' coordinates.
+        contigs: matched.map((m, i) => ({ name: m.name, bases: m.bases, circular: m.circular, tabId: refs[i]?.tabId ?? null, features: m.changed ? undefined : refs[i]?.features })),
       })
       notify.success(`Replaced the contigs with the polished ones from ${file.name}`, undo ?{ action: { label: 'Undo', onClick: undo } } : undefined)
     } catch (err) {

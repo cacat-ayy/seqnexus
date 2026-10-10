@@ -172,7 +172,7 @@ export default function ClonesSection({ assembly, contigs }: Props) {
             )}
             {shown.map(r => {
               const v = r.report
-              const diffs = v?.differences.map(describeDifference) ?? []
+              const diffs = v?.differences.map(d => describeDifference(d)) ?? []
               const contig = contigs.find(c => c.id === r.contigId)!
               const edited = contig.undoStack.length > 0 || contig.doc.rows.some(x => x.seq !== x.orig)
               return (

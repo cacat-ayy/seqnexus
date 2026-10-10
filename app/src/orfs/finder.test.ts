@@ -29,6 +29,11 @@ describe('ORF finder', () => {
     expect(reverse.map(o => [o.start, o.end, o.codons])).toEqual([[0, 15, 5]])
   })
 
+  it('ends an ORF at an ambiguous codon only when every reading of it is a stop', () => {
+    expect(find('ATGAAAGGGCCCTARAAAAAATAA')).toEqual([{ start: 0, end: 15, strand: 1, frame: 0, codons: 5 }])
+    expect(find('ATGAAAGGGCCCTNAAAAAAATAA').filter(o => o.strand === 1).map(o => o.codons)).toEqual([8])
+  })
+
   it('finds several, none, and copes with an empty sequence', () => {
     expect(find('ATGAAAGGGCCCTAA' + 'NNNNNNNNN' + 'ATGCCCGGGAAATAG').filter(o => o.strand === 1)).toHaveLength(2)
     expect(find('AAAAAAAAAAAAAAAA')).toEqual([])

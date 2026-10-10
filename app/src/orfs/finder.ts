@@ -6,7 +6,7 @@
  */
 
 import { reverseComplement } from '../models/complement'
-import { geneticCode, DEFAULT_GENETIC_CODE_ID } from '../codon/genetic-codes'
+import { geneticCode, translateCodonWith, DEFAULT_GENETIC_CODE_ID } from '../codon/genetic-codes'
 
 export interface ORFResult {
   start: number   // 0-based, half-open; start > end for one that crosses the origin
@@ -37,7 +37,6 @@ export function findOrfs(req: ORFRequest): ORFResult[] {
   if (seqLength === 0) return []
   const circular = req.topology === 'circular'
   const code = geneticCode(req.geneticCode ?? DEFAULT_GENETIC_CODE_ID)
-  const stops = new Set(Object.keys(code.table).filter(c => code.table[c] === '*'))
   const starts = new Set(req.startCodons.map(c => c.toUpperCase()))
   const { minCodons, maxCodons } = req
 
@@ -62,7 +61,8 @@ export function findOrfs(req: ORFRequest): ORFResult[] {
           if (starts.has(codon) && i < seqLength) orfStart = i
           continue
         }
-        if (!stops.has(codon)) continue
+        // An ambiguous codon ends an ORF when every reading of it is a stop (TAR, TRA).
+        if ((code.table[codon] ?? translateCodonWith(code, codon)) !== '*') continue
         const orfEnd = i + 3
         const codons = (orfEnd - orfStart) / 3
         if (codons >= minCodons && (maxCodons === 0 || codons <= maxCodons) && orfEnd - orfStart <= seqLength) {

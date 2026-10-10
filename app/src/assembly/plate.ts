@@ -98,7 +98,7 @@ export function plateCsv(results: readonly CloneResult[], s: PlateVerifySettings
       return [
         r.name, r.reference ?? '', v ? STATUS_LABEL[v.verdict] : 'Not mapped to a reference', String(r.reads),
         v ? pct(v.covered) : '', v ? pct(v.bothStrands) : '', v ? String(lowestDepth(v) ?? '') : '',
-        v ? failedFeatures(v) : '', v ? v.differences.map(describeDifference).join('; ') : '',
+        v ? failedFeatures(v) : '', v ? v.differences.map(d => describeDifference(d)).join('; ') : '',
       ].map(q).join(',')
     }),
   ]

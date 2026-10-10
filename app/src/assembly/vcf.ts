@@ -11,6 +11,7 @@
  */
 
 import { FILTERS, variantQual, type FilterId, type Variant } from './variants'
+import { allCoding } from './effects'
 
 export interface VcfReference {
   name: string
@@ -21,6 +22,9 @@ export interface VcfReference {
 
 /** A VCF field value: no spaces, semicolons, commas or equals signs. */
 const field = (s: string) => s.replace(/[\s;,=]+/g, '_')
+
+/** An HGVS name as a field value: its "=" (an unchanged protein) percent-encoded, as VEP writes it. */
+const hgvsField = (s: string) => field(s.replace(/=/g, '%3D'))
 
 /** POS, REF and ALT of a variant, with the anchor base an indel needs. */
 export function vcfAlleles(v: Variant, bases: string): { pos: number; ref: string; alt: string } {
@@ -65,7 +69,7 @@ export function writeVcf(o: {
     '##INFO=<ID=HP,Number=1,Type=Integer,Description="Length of the homopolymer run the indel is in">',
     '##INFO=<ID=REP,Number=1,Type=String,Description="Short tandem repeat the variant is in">',
     '##INFO=<ID=FEAT,Number=.,Type=String,Description="Features of the reference the variant is in">',
-    '##INFO=<ID=EFF,Number=1,Type=String,Description="Coding effect: effect|feature|cDNA change|protein change">',
+    '##INFO=<ID=EFF,Number=.,Type=String,Description="Coding effect in each coding feature, most severe first: effect|feature|HGVS cDNA change|HGVS protein change">',
     '#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO',
   ]
   const lines: string[] = []
@@ -82,7 +86,7 @@ export function writeVcf(o: {
         ...(v.homopolymer ? [`HP=${v.homopolymer}`] : []),
         ...(v.repeat ? [`REP=${field(v.repeat)}`] : []),
         ...(v.features.length ? [`FEAT=${v.features.map(field).join(',')}`] : []),
-        ...(v.coding ? [`EFF=${field(v.coding.effect)}|${field(v.coding.feature)}|${field(v.coding.cdna)}|${field(v.coding.protein)}`] : []),
+        ...(v.coding ? [`EFF=${allCoding(v).map(c => `${field(c.effect)}|${field(c.feature)}|${hgvsField(c.cdna)}|${hgvsField(c.hgvsp)}`).join(',')}`] : []),
       ].join(';')
       const filter = filters.length ? filters.map(f => FILTERS[f].vcf).join(';') : 'PASS'
       lines.push([names[i], a.pos, '.', a.ref, a.alt, variantQual(v).toFixed(1), filter, info].join('\t'))

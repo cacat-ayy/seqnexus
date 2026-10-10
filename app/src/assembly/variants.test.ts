@@ -3,8 +3,11 @@ import { computeConsensus } from './consensus'
 import { findTandemRepeats } from './repeats'
 import { testContig, testRow } from './testing'
 import {
-  callVariants, codingChange, substitutionKind, DEFAULT_VARIANT_SETTINGS, fisherExact, poissonBinomialTail, variantsCsv, type RefFeature,
+  callVariants, substitutionKind, DEFAULT_VARIANT_SETTINGS, fisherExact, poissonBinomialTail, variantsCsv, type RefFeature,
 } from './variants'
+import { codingChanges } from './effects'
+
+const codingChange = (...a: Parameters<typeof codingChanges>) => codingChanges(...a)[0] ?? null
 import { DEFAULT_VERIFY, verifyClone, verifyCsv, verifyHtml } from './verify'
 
 // ATG AAA GCT TGG TAA: M K A W *, as a CDS from 3 to 18 on a reference of 24.
@@ -32,10 +35,10 @@ describe('variant calling', () => {
   it('tells synonymous, nonsense and stop-lost changes apart', () => {
     const at = (p: number, b: string) => REF.slice(0, p) + b + REF.slice(p + 1)
     // Codons sit at 3 ATG, 6 AAA, 9 GCT, 12 TGG, 15 TAA.
-    expect(call([testRow('a', 0, at(11, 'C'))])[0].coding).toMatchObject({ protein: 'A3A', effect: 'Synonymous' }) // GCT→GCC
+    expect(call([testRow('a', 0, at(11, 'C'))])[0].coding).toMatchObject({ protein: 'A3=', hgvsp: 'p.(Ala3=)', effect: 'Synonymous' }) // GCT→GCC
     expect(call([testRow('a', 0, at(13, 'A'))])[0].coding).toMatchObject({ protein: 'W4*', effect: 'Nonsense' }) // TGG→TAG
-    expect(call([testRow('a', 0, at(15, 'C'))])[0].coding).toMatchObject({ protein: '*5Q', effect: 'Stop lost' }) // TAA→CAA
-    expect(call([testRow('a', 0, at(5, 'A'))])[0].coding).toMatchObject({ protein: 'M1I', effect: 'Start lost' }) // ATG→ATA
+    expect(call([testRow('a', 0, at(15, 'C'))])[0].coding).toMatchObject({ protein: '*5Qext*?', effect: 'Stop lost' }) // TAA→CAA, and no stop in the GGGGGG after it
+    expect(call([testRow('a', 0, at(5, 'A'))])[0].coding).toMatchObject({ protein: 'M1?', hgvsp: 'p.(Met1?)', effect: 'Start lost' }) // ATG→ATA
   })
 
   it('names insertions and deletions, with frameshifts in coding features', () => {
@@ -43,13 +46,14 @@ describe('variant calling', () => {
     const del = REF.slice(0, 7) + '-' + REF.slice(8)
     const d = call([testRow('a', 0, del)])
     expect(d[0]).toMatchObject({ type: 'Deletion', ref: 'A', alt: '', position: 8 })
-    expect(d[0].coding?.effect).toBe('Frameshift')
+    // Moved 3' to the last A of the codon (HGVS); the new frame reads ATG AAG CTT GGT AAG GGG G, with no stop.
+    expect(d[0].coding).toMatchObject({ cdna: 'c.6del', protein: 'A3Lfs*?', effect: 'Frameshift' })
     // Three deleted bases in a row are one in-frame deletion.
     const del3 = REF.slice(0, 9) + '---' + REF.slice(12)
     const d3 = call([testRow('a', 0, del3)])
     expect(d3).toHaveLength(1)
     expect(d3[0]).toMatchObject({ type: 'Deletion', ref: 'GCT', position: 10 })
-    expect(d3[0].coding?.effect).toBe('In-frame deletion')
+    expect(d3[0].coding).toMatchObject({ cdna: 'c.7_9del', protein: 'A3del', hgvsp: 'p.(Ala3del)', effect: 'In-frame deletion' })
   })
 
   it('applies frequency, P-value and coding-only filters', () => {
@@ -104,7 +108,7 @@ describe('coding changes with the feature\'s genetic code', () => {
     expect(codingChange('SNP', 5, 'G', 'A', [cds()], SEQ)!.effect).toBe('Nonsense')
     const mito = codingChange('SNP', 5, 'G', 'A', [cds({ code: 5 })], SEQ)!
     expect(mito.effect).toBe('Synonymous')
-    expect(mito.protein).toBe('W2W')
+    expect(mito.protein).toBe('W2=')
   })
 
   it('keeps a start codon its code allows', () => {

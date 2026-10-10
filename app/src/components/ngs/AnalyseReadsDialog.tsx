@@ -34,6 +34,7 @@ import { startAssemble, startCallVariants, startFindJunctions, startMap, startTr
 import { assembledMessage, defaultDeNovoSettings, denovoBlocked, denovoMethodFor, denovoReadSet } from '../../ngs/denovo/run'
 import { DENOVO_LONG_FILTER } from '../../ngs/denovo/types'
 import { lineUpTargets } from '../../ngs/denovo/lineup'
+import { tabReference } from '../../assembly/features'
 import { deleteMappingStorage, deleteReadChunks } from '../../storage/idb'
 import PrimerClipField from './PrimerClipField'
 import { usePrimerClip } from './usePrimerClip'
@@ -73,9 +74,7 @@ export default function AnalyseReadsDialog({ readSetIds, denovo: startDenovo = f
   useFocusTrap(ref, true)
   useEffect(() => () => { stop.current = true; handle.current?.cancel() }, [])
 
-  const refs: MapReference[] = useMemo(() => tabs.filter(t => refIds.has(t.id)).map(t => ({
-    name: t.doc.name, tabId: t.id, bases: t.doc.sequence.bases, circular: t.doc.sequence.topology === 'circular',
-  })), [tabs, refIds])
+  const refs: MapReference[] = useMemo(() => tabs.filter(t => refIds.has(t.id)).map(tabReference), [tabs, refIds])
   const clip = usePrimerClip(refs)
   const chosen = readSets.filter(r => picked.has(r.id))
   const asFile = openedAsFile()

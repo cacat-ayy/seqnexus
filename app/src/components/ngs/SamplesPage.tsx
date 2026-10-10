@@ -20,7 +20,8 @@ import type { CoverageLevel } from '../../ngs/alignments'
 import { MappingSource } from '../../ngs/view'
 import { siteVariants, technologyOfPreset, variantPresetOf, type SiteCall } from '../../ngs/calls'
 import { differingRows, matrixCsv, samplesMatrix, verifySample } from '../../ngs/samples'
-import { refFeatures } from '../../assembly/features'
+import { mappedFeatures } from '../../assembly/features'
+import { allCoding, codingLabel } from '../../assembly/effects'
 import { PRESET_NAME, VARIANT_PRESETS, variantFilters, type Variant, type VariantPreset } from '../../assembly/variants'
 import { DEFAULT_VERIFY, STATUS_LABEL, type VerifyReport, type VerifySettings, type VerifyStatus } from '../../assembly/verify'
 
@@ -86,17 +87,14 @@ export default function SamplesPage({ assembly, onOpen, onAdd }: Props) {
   const [onlyDiffering, setOnlyDiffering] = useState(false)
   const [verify, setVerify] = useState<VerifySettings>({ ...DEFAULT_VERIFY, minDepth: 10 })
 
-  // The reference's features, when it is open and the length mapped to.
+  // The reference's features: its open sequence's, or the copy the mapping kept.
   const tabs = useEditorStore(s => s.tabs)
-  const features = useMemo(() => refsMeta.map(r => {
-    const t = r.tabId ? tabs.find(x => x.id === r.tabId) : undefined
-    return t && t.doc.sequence.length === r.length ? refFeatures(t.doc.annotations.map(a => a.toData())) : null
-  }), [refsMeta, tabs])
+  const features = useMemo(() => refsMeta.map(r => mappedFeatures(r, tabs)), [refsMeta, tabs])
 
   // Every sample's candidate variants, per reference.
   const variants = useMemo(() => data?.map(d => d.refs.map((r, i) => (r.calls
-    ? siteVariants(r.calls, r.bases, features[i] ?? [], technologyOfPreset(d.sample.report.preset))
-    : null))) ?? null, [data, features])
+    ? siteVariants(r.calls, r.bases, features[i] ?? [], technologyOfPreset(d.sample.report.preset), refsMeta[i]?.circular)
+    : null))) ?? null, [data, features, refsMeta])
 
   const verdicts = useMemo(() => data?.map((d, si) => d.sample.report.references.map((ref, r): VerifyReport | null => {
     const vs = variants?.[si]?.[r]
@@ -142,7 +140,7 @@ export default function SamplesPage({ assembly, onOpen, onAdd }: Props) {
     const detail = vr.map(x => {
       const r = x!
       const feats = r.features.length
-        ? r.features.map(f => `${f.feature.name}: ${STATUS_LABEL[f.status].toLowerCase()}${f.differences.length ? ` (${f.differences.map(d => d.coding?.protein ?? `${d.ref || '-'}${d.position}${d.alt || '-'}`).join(', ')})` : f.covered < 1 ? ` (${pct(f.covered)} covered)` : ''}`)
+        ? r.features.map(f => `${f.feature.name}: ${STATUS_LABEL[f.status].toLowerCase()}${f.differences.length ? ` (${f.differences.map(d => allCoding(d).find(c => c.feature === f.feature.name)?.protein || d.coding?.protein || `${d.ref || '-'}${d.position}${d.alt || '-'}`).join(', ')})` : f.covered < 1 ? ` (${pct(f.covered)} covered)` : ''}`)
         : [`whole reference ${pct(r.covered)} covered, ${r.differences.length} differences`]
       return `${r.reference.name}: ${feats.join('; ')}`
     }).join('\n')
@@ -227,7 +225,7 @@ export default function SamplesPage({ assembly, onOpen, onAdd }: Props) {
           <label className="aw-check small"><input type="checkbox" checked={verify.bothStrands} onChange={e => setVerify(v => ({ ...v, bothStrands: e.target.checked }))} /> on both strands</label>
           <span className="aw-muted">
             {noFeatures
-              ? `· open ${refsMeta.map(r => r.name).join(', ')} to check its features one by one; the whole reference is checked now`
+              ? `· ${refsMeta.map(r => r.name).join(', ')} has no features to check one by one, so the whole reference is checked`
               : '· every feature of the reference is checked; a difference is a variant most reads carry'}
           </span>
         </div>
@@ -291,6 +289,6 @@ export default function SamplesPage({ assembly, onOpen, onAdd }: Props) {
 }
 
 function effectText(v: Variant): string {
-  if (v.coding) return `${v.coding.protein} ${v.coding.effect.toLowerCase()}`
+  if (v.coding) return codingLabel(v.coding)
   return v.features[0] ?? ''
 }

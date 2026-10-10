@@ -27,7 +27,7 @@ import { useFocusTrap } from '../../hooks/useFocusTrap'
 import { readInput } from '../../assembly/input'
 import { DEFAULT_ASSEMBLY } from '../../assembly/types'
 import { assemblyName, referenceSource, type AssemblyRun } from '../../assembly/container'
-import { refFeatures } from '../../assembly/features'
+import { tabReference } from '../../assembly/features'
 import { groupByName, groupKey, NAME_SEPARATORS, SEPARATOR_LABEL, suggestGrouping, type NameGrouping, type NameSeparator } from '../../assembly/groups'
 import type { MapReference } from '../../assembly/map'
 import { guessReferences } from '../../assembly/batch'
@@ -153,10 +153,7 @@ export default function AssembleDialog({ readIds, onClose, referenceTabId, rerun
       return r ? [r] : []
     }
     const t = tabs.find(x => x.id === o.key)
-    return t ? [{
-      name: t.doc.name, tabId: t.id, bases: t.doc.sequence.bases, circular: t.doc.sequence.topology === 'circular',
-      features: refFeatures(t.doc.annotations.map(a => a.toData())),
-    }] : []
+    return t ? [tabReference(t)] : []
   })
 
   const run = () => {

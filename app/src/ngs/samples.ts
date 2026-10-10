@@ -19,6 +19,7 @@ import {
   variantFilters, variantKey, variantLabel, type RefFeature, type Variant, type VariantSettings,
 } from '../assembly/variants'
 import { verifyPileup, type VerifyReport, type VerifySettings } from '../assembly/verify'
+import { codingLabel } from '../assembly/effects'
 
 export interface SampleVariants {
   /** Every candidate variant of the sample on this reference (siteVariants). */
@@ -85,7 +86,7 @@ export function matrixCsv(rows: readonly MatrixRow[], sampleNames: readonly stri
   const head = ['Reference', 'Position', 'Type', 'Change', 'Effect', ...sampleNames.flatMap(n => [`${n} frequency`, `${n} depth`])]
   const lines = rows.map(r => [
     refName(r), String(r.variant.position), r.variant.type, r.label,
-    r.variant.coding ? `${r.variant.coding.protein} ${r.variant.coding.effect}` : r.variant.features.join('; '),
+    r.variant.coding ? codingLabel(r.variant.coding) : r.variant.features.join('; '),
     ...r.cells.flatMap(c => [c.frequency === null ? '' : c.frequency.toFixed(3), String(c.depth)]),
   ].map(q).join(','))
   return [head.map(q).join(','), ...lines].join('\n') + '\n'

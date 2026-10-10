@@ -29,6 +29,7 @@ import { readReferenceBases } from '../../ngs/sam'
 import { openedAsFile } from '../../ngs/jobs'
 import { refFeatures, variantAnnotations } from '../../assembly/features'
 import { DEFAULT_VERIFY, describeChange, describeDifference, STATUS_LABEL, verifyCsv, verifyHtml, type VerifySettings } from '../../assembly/verify'
+import { codingLabel } from '../../assembly/effects'
 import { compareToExpected, liftFeatures, type Comparison } from '../../ngs/denovo/compare'
 import { verifyContig } from '../../ngs/denovo/verifyContig'
 import type { DeNovoReport } from '../../ngs/denovo/types'
@@ -182,9 +183,12 @@ export default function CompareDialog({ assembly, contig: initial, onClose }: Pr
         contigs: d.contigs.map((x, i) => (i === ci ? { ...x, length: cmp.bases.length } : x)),
         matched: [...(d.matched ?? []).filter(m => m.contig !== ci), { contig: ci, expected: tab.doc.name, reversed: cmp.reversed, shift: cmp.shift, at: Date.now() }],
       }
+      const opened = useEditorStore.getState().tabs.find(t => t.id === tabOpened)
       const undo = await remapContigs({
         assembly, readSet, denovo, onProgress: setBusy,
-        contigs: d.contigs.map((x, i) => ({ name: x.name, bases: old[i], circular: x.circular, tabId: i === ci ? tabOpened : sample.report.references[i]?.tabId ?? null })),
+        contigs: d.contigs.map((x, i) => (i === ci
+          ? { name: x.name, bases: old[i], circular: x.circular, tabId: tabOpened, features: opened ? refFeatures(opened.doc.annotations.map(a => a.toData())) : undefined }
+          : { name: x.name, bases: old[i], circular: x.circular, tabId: sample.report.references[i]?.tabId ?? null, features: sample.report.references[i]?.features })),
       })
       notify.success(`Turned ${c.name} to match ${tab.doc.name}; its reads now show its features`, undo ? { action: { label: 'Undo', onClick: undo } } : undefined)
       onClose()
@@ -204,7 +208,7 @@ export default function CompareDialog({ assembly, contig: initial, onClose }: Pr
   }
   const summary = () => report ? [
     `${title} against ${report.reference.name}: ${STATUS_LABEL[report.verdict]}`,
-    ...report.features.map(f => `${f.feature.name}: ${STATUS_LABEL[f.status]}${f.differences.length ? ` (${f.differences.map(describeDifference).join('; ')})` : ''}`),
+    ...report.features.map(f => `${f.feature.name}: ${STATUS_LABEL[f.status]}${f.differences.length ? ` (${f.differences.map(d => describeDifference(d, f.feature)).join('; ')})` : ''}`),
   ].join('\n') : ''
   const chosen = new Set(settings.featureIds ?? [])
   const toggle = (id: string) => setFeatureIds(() => {
@@ -258,7 +262,7 @@ export default function CompareDialog({ assembly, contig: initial, onClose }: Pr
                             <td className="num">{nf.format(f.length)}</td>
                             <td className="num">{pct(f.covered)}</td>
                             <td className="num">{nf.format(f.minDepth)}</td>
-                            <td className="rs-issues" title={f.differences.map(describeDifference).join('\n')}>{shorten(f.differences.map(describeDifference).join('; '))}</td>
+                            <td className="rs-issues" title={f.differences.map(d => describeDifference(d, f.feature)).join('\n')}>{shorten(f.differences.map(d => describeDifference(d, f.feature)).join('; '))}</td>
                           </tr>
                         ))}
                       </tbody>
@@ -278,7 +282,7 @@ export default function CompareDialog({ assembly, contig: initial, onClose }: Pr
                             <td className="cw-base" title={describeChange(v).length > 60 ? describeChange(v) : undefined}>{shorten(describeChange(v))}</td>
                             <td className="num">{nf.format(v.coverage)}</td>
                             <td>{v.features.join(', ')}</td>
-                            <td>{v.coding ? `${v.coding.protein} (${v.coding.effect.toLowerCase()})` : ''}</td>
+                            <td>{v.coding ? codingLabel(v.coding) : ''}</td>
                           </tr>
                         ))}
                       </tbody>

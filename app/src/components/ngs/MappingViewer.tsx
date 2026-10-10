@@ -28,7 +28,7 @@ import { notify } from '../../toast'
 import { downloadText } from '../../utils/download'
 import { startCallVariants } from '../../workers/readset'
 import { siteVariants, technologyOfPreset, variantPresetOf, type SiteCall } from '../../ngs/calls'
-import { refFeatures, variantAnnotations } from '../../assembly/features'
+import { mappedFeatures, variantAnnotations } from '../../assembly/features'
 import {
   VARIANT_PRESETS, variantFilters, variantKey, variantsCsv, type Variant, type VariantPreset, type VariantSettings,
 } from '../../assembly/variants'
@@ -261,9 +261,10 @@ export default function MappingViewer({ ngs, assemblyId, name, refIndex, onRefIn
     return t && t.doc.sequence.length === refs[i].length ? t : undefined
   }, [tabs, refs])
   const refTab = refTabOf(ref)
-  const features = useMemo(() => (refTab ? refFeatures(refTab.doc.annotations.map(a => a.toData())) : []), [refTab])
-  const variants = useMemo(() => (calls && calls.ref === ref && refData?.ref === ref ? siteVariants(calls.list, refData.bases, features, technology) : []),
-    [calls, ref, refData, features, technology])
+  // With the sequence closed, the copy of its features the mapping kept.
+  const features = useMemo(() => mappedFeatures(refs[ref], refTab ? [refTab] : []), [refs, ref, refTab])
+  const variants = useMemo(() => (calls && calls.ref === ref && refData?.ref === ref ? siteVariants(calls.list, refData.bases, features, technology, refs[ref].circular) : []),
+    [calls, ref, refData, features, technology, refs])
   const passing = useMemo(() => variants.filter(v => variantFilters(v, vstate.settings).length === 0).sort((a, b) => a.c0 - b.c0), [variants, vstate.settings])
   const [selVariant, setSelVariant] = useState<string | null>(null)
   const [consensusOpen, setConsensusOpen] = useState(false)
@@ -471,9 +472,7 @@ export default function MappingViewer({ ngs, assemblyId, name, refIndex, onRefIn
       const all = format === 'vcf-all'
       const references = await Promise.all(refs.map(async (r, i) => {
         const [bases, list] = await Promise.all([source.reference(i), source.calls(i)])
-        const t = refTabOf(i)
-        const feats = t ? refFeatures(t.doc.annotations.map(a => a.toData())) : []
-        const vs = list ? siteVariants(list, bases, feats, technology) : []
+        const vs = list ? siteVariants(list, bases, mappedFeatures(r, tabs), technology, r.circular) : []
         return {
           name: r.name, bases,
           variants: vs.map(v => ({ v, filters: variantFilters(v, vstate.settings) })).filter(x => all || x.filters.length === 0),
@@ -720,9 +719,9 @@ export default function MappingViewer({ ngs, assemblyId, name, refIndex, onRefIn
                   <input type="checkbox" checked={display.consensus} onChange={e => setDisplay(d => ({ ...d, consensus: e.target.checked }))} />
                   Consensus row
                 </label>
-                <label className="aw-check small" title={refTab ? 'The reference\'s features above it; coding features show their translation when you zoom in'
-                  : 'The reference\'s features, once its sequence is open'}>
-                  <input type="checkbox" checked={display.features} disabled={!refTab} onChange={e => setDisplay(d => ({ ...d, features: e.target.checked }))} />
+                <label className="aw-check small" title={features.length ? 'The reference\'s features above it; coding features show their translation when you zoom in'
+                  : 'The reference has no features'}>
+                  <input type="checkbox" checked={display.features} disabled={features.length === 0} onChange={e => setDisplay(d => ({ ...d, features: e.target.checked }))} />
                   Features and translation
                 </label>
                 <label className="aw-check small" title="Draw the bases the aligner left unaligned at a read's ends, faintly">

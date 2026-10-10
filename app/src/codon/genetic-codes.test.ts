@@ -92,9 +92,36 @@ describe('translation', () => {
     expect(translateWith(geneticCode(2), 'ATGTGAAGA')).toBe('MW*')
   })
 
-  it('is case insensitive and marks anything unknown', () => {
+  it('is case insensitive and reads U as T', () => {
     expect(translateCodonWith(geneticCode(1), 'atg')).toBe('M')
-    expect(translateCodonWith(geneticCode(1), 'ANG')).toBe('?')
+    expect(translateWith(geneticCode(1), 'AUGUGGUGA')).toBe('MW*')
+  })
+})
+
+describe('ambiguous codons', () => {
+  const std = geneticCode(1)
+
+  it('reads a codon whose every reading agrees as that amino acid', () => {
+    expect(translateCodonWith(std, 'GCN')).toBe('A') // four-fold degenerate
+    expect(translateCodonWith(std, 'YTR')).toBe('L') // CTA CTG TTA TTG
+    expect(translateCodonWith(std, 'MGR')).toBe('R') // AGA AGG CGA CGG
+    expect(translateCodonWith(std, 'TAR')).toBe('*')
+    expect(translateCodonWith(std, 'TRA')).toBe('*') // TAA TGA
+    expect(translateCodonWith(std, 'gcn')).toBe('A')
+  })
+
+  it('reads one that could be different amino acids as X', () => {
+    expect(translateCodonWith(std, 'ANG')).toBe('X')
+    expect(translateCodonWith(std, 'RAY')).toBe('X') // Asn or Asp: no B
+    expect(translateCodonWith(std, 'NNN')).toBe('X')
+    expect(translateCodonWith(std, 'TA-')).toBe('X')
+    expect(translateWith(std, 'ATGGCNANGTAR')).toBe('MAX*')
+  })
+
+  it('follows the code: TRA is a stop in the standard code and not in a mitochondrial one', () => {
+    expect(translateCodonWith(geneticCode(2), 'TRA')).toBe('X') // TAA stop, TGA Trp
+    expect(translateCodonWith(geneticCode(2), 'TGR')).toBe('W') // TGA TGG
+    expect(translateCodonWith(std, 'TGR')).toBe('X')
   })
 })
 

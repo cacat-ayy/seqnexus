@@ -13,6 +13,7 @@ import { copyText } from '../../utils/clipboard'
 import { downloadText } from '../../utils/download'
 import type { ContigDoc } from '../../assembly/types'
 import type { RefFeature, Variant } from '../../assembly/variants'
+import { codingLabel } from '../../assembly/effects'
 import {
   DEFAULT_VERIFY, describeChange, describeDifference, STATUS_LABEL, verifyClone, verifyCsv, verifyHtml, type VerifySettings,
 } from '../../assembly/verify'
@@ -64,7 +65,7 @@ export default function VerifyDialog({ doc, name, consensus, features, canAnnota
   const summary = () => [
     `${report.reference.name}: ${STATUS_LABEL[report.verdict]}`,
     `${pct(report.covered)} covered, ${pct(report.bothStrands)} on both strands, ${report.reads} reads`,
-    ...report.features.map(f => `${f.feature.name}: ${STATUS_LABEL[f.status]}${f.differences.length ? ` (${f.differences.map(describeDifference).join('; ')})` : ''}`),
+    ...report.features.map(f => `${f.feature.name}: ${STATUS_LABEL[f.status]}${f.differences.length ? ` (${f.differences.map(d => describeDifference(d, f.feature)).join('; ')})` : ''}`),
   ].join('\n')
   const toggle = (id: string) => setSettings(s => {
     const ids = new Set(s.featureIds ?? checkable.map(f => f.id))
@@ -107,7 +108,7 @@ export default function VerifyDialog({ doc, name, consensus, features, canAnnota
                         <td className="num">{pct(f.covered)}</td>
                         <td className="num">{pct(f.bothStrands)}</td>
                         <td className="num">{f.minDepth}</td>
-                        <td className="rs-issues" title={f.differences.map(describeDifference).join('\n')}>{f.differences.map(describeDifference).join('; ')}</td>
+                        <td className="rs-issues" title={f.differences.map(d => describeDifference(d, f.feature)).join('\n')}>{f.differences.map(d => describeDifference(d, f.feature)).join('; ')}</td>
                       </tr>
                     ))}
                   </tbody>
@@ -128,7 +129,7 @@ export default function VerifyDialog({ doc, name, consensus, features, canAnnota
                         <td className="num">{Math.round(v.frequency * 100)}% of {v.coverage}</td>
                         <td className="num" title={v.pValue > 1e-4 ? 'Low confidence: check the traces' : undefined}>{v.pValue.toExponential(1)}{v.pValue > 1e-4 ? ' ⚠' : ''}</td>
                         <td>{v.features.join(', ')}</td>
-                        <td>{v.coding ? `${v.coding.protein} (${v.coding.effect.toLowerCase()})` : ''}</td>
+                        <td>{v.coding ? codingLabel(v.coding) : ''}</td>
                       </tr>
                     ))}
                   </tbody>

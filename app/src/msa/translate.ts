@@ -9,7 +9,7 @@
  * sequencing errors to correct.
  */
 
-import { geneticCode } from '../codon/genetic-codes'
+import { geneticCode, translateCodonWith } from '../codon/genetic-codes'
 import type { AlnRow } from './model'
 
 export interface RowTranslation {
@@ -39,7 +39,7 @@ export function translateRow(row: AlnRow, frame: 0 | 1 | 2, codeId: number): Row
 }
 
 function build(seq: string, frame: number, codeId: number): RowTranslation {
-  const table = geneticCode(codeId).table
+  const code = geneticCode(codeId)
   const w = seq.length
   const aa = new Uint8Array(w)
   const pos = new Uint8Array(w).fill(255)
@@ -52,10 +52,9 @@ function build(seq: string, frame: number, codeId: number): RowTranslation {
 
   for (let i = frame; i + 2 < cols.length; i += 3) {
     const c1 = cols[i], c2 = cols[i + 1], c3 = cols[i + 2]
-    const codon = (seq[c1] + seq[c2] + seq[c3]).replace(/U/g, 'T')
-    const a = table[codon] ?? 'X'
-    const code = a.charCodeAt(0)
-    aa[c1] = aa[c2] = aa[c3] = code
+    const a = translateCodonWith(code, seq[c1] + seq[c2] + seq[c3])
+    const ch = a.charCodeAt(0)
+    aa[c1] = aa[c2] = aa[c3] = ch
     pos[c1] = 0; pos[c2] = 1; pos[c3] = 2
     codons.push({ cols: [c1, c2, c3], aa: a })
     if (a === '*' && i + 5 < cols.length) stops.push(c1)

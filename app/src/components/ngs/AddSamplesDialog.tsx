@@ -44,7 +44,7 @@ export default function AddSamplesDialog({ assembly, onClose }: { assembly: Asse
   useEffect(() => {
     let live = true
     Promise.all(first.report.references.map(async (r, i) => ({
-      name: r.name, tabId: r.tabId, circular: r.circular,
+      name: r.name, tabId: r.tabId, circular: r.circular, features: r.features,
       bases: await readReferenceBases({ get: getReadChunk }, first.storageId, i),
     }))).then(x => { if (live) setRefs(x) }).catch(err => notify.error('The mapping\'s references could not be read', { detail: String(err) }))
     return () => { live = false }

@@ -101,7 +101,7 @@ export async function mapToContigs(o: {
   const mapping = await mapReads({
     storageId: o.storageId,
     readSet: o.readSet,
-    refs: o.contigs.map(c => ({ name: c.name, tabId: c.tabId ?? null, bases: c.bases, circular: c.circular })),
+    refs: o.contigs.map(c => ({ name: c.name, tabId: c.tabId ?? null, bases: c.bases, circular: c.circular, features: c.features })),
     preset: o.preset,
     minimap2: o.minimap2,
     getChunk: o.getChunk,

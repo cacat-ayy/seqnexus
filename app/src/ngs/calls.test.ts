@@ -123,7 +123,7 @@ describe('VCF', () => {
   const v = (type: 'SNP' | 'Insertion' | 'Deletion', position: number, ref: string, alt: string) => ({
     c0: 0, c1: 1, type, position, ref, alt, coverage: 20, count: 10, frequency: 0.5, pValue: 1e-8, strandBiasP: 0.5,
     forward: { ref: 5, alt: 5 }, reverse: { ref: 5, alt: 5 }, meanQuality: 30, features: ['gene'],
-    coding: null, repeat: null, homopolymer: null, againstConsensus: false,
+    coding: null, otherCoding: [], repeat: null, homopolymer: null, againstConsensus: false,
   })
 
   it('anchors indels on the base before, or after at the first base', () => {

@@ -26,12 +26,15 @@ import { encodeSites, PileupCounter } from './pileup'
 import type { Histogram } from './types'
 import type { MapPreset } from './mapper'
 import { clipPrimer, type PrimerSite } from './primerClip'
+import type { RefFeature } from '../assembly/variants'
 
 export interface MapReference {
   name: string
   tabId: string | null
   bases: string
   circular: boolean
+  /** The reference's features, kept in the report (see ReferenceReport). */
+  features?: RefFeature[]
 }
 
 export interface ReferenceReport {
@@ -39,6 +42,13 @@ export interface ReferenceReport {
   tabId: string | null
   length: number
   circular: boolean
+  /**
+   * The reference's features when the reads were mapped, so variants get
+   * their codon and protein changes with the sequence closed. The open
+   * sequence's own features are used while it is open (they may have been
+   * edited since).
+   */
+  features?: RefFeature[]
   /** Reads whose primary alignment is on this reference. */
   mappedReads: number
   meanDepth: number
@@ -369,6 +379,7 @@ export class MappingBuilder {
       }
       return {
         name: r.name, tabId: r.tabId, length: L, circular: r.circular,
+        ...(r.features?.length ? { features: r.features } : {}),
         mappedReads: this.mappedPerRef[i],
         meanDepth: L ? sum / L : 0, breadth1: L ? one / L : 0, breadth10: L ? ten / L : 0,
         binSize, coverageBins, sites: siteCounts[i] ?? 0,

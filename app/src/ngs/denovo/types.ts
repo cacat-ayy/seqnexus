@@ -12,6 +12,7 @@
 import { DEFAULT_LONG_TRIM, type Histogram, type TrimSettings } from '../types'
 import type { KmerSpectrum } from './spectrum'
 import type { LongGenomeReport } from './genome'
+import type { RefFeature } from '../../assembly/variants'
 
 /**
  * How the contigs are made.
@@ -175,4 +176,6 @@ export interface AssembledContig {
   circular: boolean
   /** An open sequence it is linked to (lined up with it exactly), whose features show over its reads. */
   tabId?: string | null
+  /** That sequence's features, kept with the mapping. */
+  features?: RefFeature[]
 }

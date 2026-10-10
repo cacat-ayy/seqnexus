@@ -129,7 +129,7 @@ export function buildMappingFigure(p: MappingFigureInput, o: MappingFigureOption
       let lastEnd = -Infinity
       for (const v of vs) {
         const x = xOf(v.c0)
-        const text = v.coding?.protein ?? variantLabel(v)
+        const text = v.coding?.protein || variantLabel(v)
         const tw = text.length * 5.6
         if (x - tw / 2 < lastEnd + 4) continue
         label(x, y + 22, text, ' text-anchor="middle" class="m"')
