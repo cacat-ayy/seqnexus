@@ -10,7 +10,7 @@ import { useState, useMemo, useCallback, useRef } from 'react'
 import { X, ChevronDown, ChevronRight } from 'lucide-react'
 import { useEditorStore } from '../store'
 import { MOTIF_CATEGORIES, MOTIF_LIBRARY, motifDefinition, type MotifHit } from '../protein/motifs'
-import { TM_MOTIF_ID } from '../hooks/useMotifScan'
+import { TM_MOTIF_ID, CF_HELIX_ID, CF_STRAND_ID } from '../hooks/useMotifScan'
 import { TM_WINDOW, TM_THRESHOLD } from '../protein/scales'
 import { motifKey, convertibleMotifs } from '../utils/motif-features'
 import { useExitAnimation } from '../hooks/useExitAnimation'
@@ -48,11 +48,12 @@ export default function MotifPanel({ open, onClose }: Props) {
       list.push(h)
       byMotif.set(h.motifId, list)
     }
-    const order = [...MOTIF_LIBRARY.map(m => m.id), TM_MOTIF_ID]
+    const order = [...MOTIF_LIBRARY.map(m => m.id), TM_MOTIF_ID, CF_HELIX_ID, CF_STRAND_ID]
+    const predicted = new Set([TM_MOTIF_ID, CF_HELIX_ID, CF_STRAND_ID])
     return MOTIF_CATEGORIES.map(category => ({
       category,
       motifs: order
-        .filter(id => byMotif.has(id) && (id === TM_MOTIF_ID ? category === 'Structural' : motifDefinition(id)?.category === category))
+        .filter(id => byMotif.has(id) && (predicted.has(id) ? category === 'Structural' : motifDefinition(id)?.category === category))
         .map(id => ({ id, hits: byMotif.get(id)! })),
     })).filter(g => g.motifs.length > 0)
   }, [shown])
@@ -156,7 +157,9 @@ export default function MotifPanel({ open, onClose }: Props) {
                           <div
                             className="re-enzyme-name"
                             style={{ cursor: 'pointer' }}
-                            title={def ? `${def.pattern}\n${def.description}\n${def.source}` : `Mean Kyte-Doolittle hydropathy over ${TM_WINDOW} residues above ${TM_THRESHOLD}`}
+                            title={def ? `${def.pattern}\n${def.description}\n${def.source}`
+                              : id === TM_MOTIF_ID ? `Mean Kyte-Doolittle hydropathy over ${TM_WINDOW} residues above ${TM_THRESHOLD}`
+                              : 'Chou and Fasman (1978): nucleated where the propensities cluster, extended while they hold'}
                             onClick={() => setCollapsed(prev => {
                               const next = new Set(prev)
                               if (next.has(id)) next.delete(id); else next.add(id)

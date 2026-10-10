@@ -63,6 +63,14 @@ import { matchKey, proposalsFrom } from './utils/auto-annotations'
 import { orfKey, convertibleOrfs, orfToAnnotationData } from './utils/orf-features'
 import { motifKey, convertibleMotifs, motifToAnnotationData } from './utils/motif-features'
 import type { MotifHit } from './protein/motifs'
+
+/** A digest's peptides drawn over the protein they came from. */
+export interface PeptideOverlay {
+  tabId: string
+  /** The proteases, for the lane label. */
+  name: string
+  peptides: { start: number; end: number; name: string; color: string }[]
+}
 import type { ProteinScaleId } from './protein/scales'
 import { variantForEdit, variantAnnotation, isRecordedVariant, mergedDeletion } from './protein/variants'
 import {
@@ -627,6 +635,12 @@ interface EditorStore {
   /** Motif categories switched off in the panel; the overlay follows. */
   motifCategoriesOff: string[]
   setMotifCategoriesOff: (off: string[]) => void
+  /**
+   * The peptides of a digest drawn over a protein, from the digest dialog.
+   * Transient: one overlay for the app, cleared when the tab changes.
+   */
+  peptideOverlay: PeptideOverlay | null
+  setPeptideOverlay: (overlay: PeptideOverlay | null) => void
 
   // ORF display state (cross-view)
   orfResults: ORFResult[]
@@ -1184,6 +1198,18 @@ function selectionStart(sel: Selection, topology: string): number {
  * preference silently reset the others wherever someone forgot to extend the
  * list. One projection, so that cannot happen again.
  */
+/**
+ * The sequence tab a new gel is made from: the one in view, or, while a
+ * gel is the open view, the tab it was entered from. Only then: the
+ * remembered tab outlives the gel, and from a read set or an alignment it
+ * would be some sequence the user left long ago. Null when no sequence is
+ * in view, which makes a blank agarose gel.
+ */
+export function gelSourceTabId(s: Pick<EditorStore, 'activeTabId' | 'activeGelId' | 'gelReturnTabId'>): string | null {
+  if (s.activeTabId) return s.activeTabId
+  return s.activeGelId ? s.gelReturnTabId : null
+}
+
 function displaySnapshot(s: EditorStore): DisplaySettings {
   return {
     colorScheme: s.colorScheme,
@@ -1761,6 +1787,8 @@ export const useEditorStore = create<EditorStore>((set, get) => {
     },
     motifCategoriesOff: [],
     setMotifCategoriesOff: (off) => set({ motifCategoriesOff: off }),
+    peptideOverlay: null,
+    setPeptideOverlay: (overlay) => set({ peptideOverlay: overlay }),
     applyOrfs: (keys) => {
       const state = get()
       // Re-filter rather than trust the caller: an ORF the document has since
@@ -2610,6 +2638,7 @@ export const useEditorStore = create<EditorStore>((set, get) => {
         showMotifs: tab.showMotifs,
         // Motif hits are recomputed by the scan hook for the incoming tab.
         motifResults: [],
+        peptideOverlay: null,
         // Picks belong to what was on screen, not to the app.
         autoAnnotationPicks: new Set<string>(),
         orfPicks: new Set<string>(),
@@ -3536,8 +3565,8 @@ export const useEditorStore = create<EditorStore>((set, get) => {
     createGel(opts = {}) {
       const s = get()
       let state = opts.state
-      const srcId = s.activeTabId ?? s.gelReturnTabId
-      const tab = s.tabs.find(t => t.id === srcId)
+      const srcId = gelSourceTabId(s)
+      const tab = srcId ? s.tabs.find(t => t.id === srcId) : undefined
       if (!state) {
         // The tab record only holds analysis results for tabs in the
         // background; the open one's live in the store.
@@ -3547,6 +3576,7 @@ export const useEditorStore = create<EditorStore>((set, get) => {
           id: tab.id,
           bases: doc.sequence.bases,
           topology: doc.sequence.topology,
+          alphabet: doc.sequence.alphabet,
           shownEnzymes: live ? s.enzymeNames : tab.enzymeNames,
         } : null)
       }

@@ -2103,3 +2103,57 @@
   align-items: stretch;
 }
 .aw-figure-save { display: flex; flex-wrap: wrap; gap: var(--space-1-5); }
+
+/* ===== Protein domain map (linear figure) ===== */
+.domain-map {
+  position: relative;
+  width: 100%;
+  overflow: hidden;
+  background: var(--bg);
+}
+/* The Map view: the figure sits at the top of the full-height pane. */
+.domain-map-fill {
+  height: 100%;
+  overflow: auto;
+}
+/* Above the sequence in the Split view: the figure's own height, with a rule under it. */
+.split-stack .domain-map {
+  flex: none;
+  border-bottom: 1px solid var(--border-light);
+}
+.split-stack {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+}
+.split-stack .split-sequence {
+  flex: 1;
+  min-height: 0;
+}
+
+/* Sections of a toolbar dropdown: a rule, a small heading, and a muted
+   tag at the end of an item (the Gel menu's kind). */
+.tb-dropdown-sep {
+  height: 1px;
+  margin: var(--space-1) 0;
+  background: var(--border-light);
+}
+.tb-dropdown-label {
+  padding: var(--space-1) var(--space-3-5) var(--space-0-5) var(--space-3);
+  font-size: var(--text-2xs);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-muted);
+}
+.tb-dropdown-meta {
+  margin-left: var(--space-3);
+  font-size: var(--text-2xs);
+  font-weight: 400;
+  color: var(--text-muted);
+}
+.tb-dropdown-item.current {
+  border-left-color: var(--accent);
+  color: var(--accent);
+}

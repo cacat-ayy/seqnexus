@@ -12,7 +12,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { GelBand, GelLayout } from '../../gel/bands'
 import { sizeAtMm } from '../../gel/migration'
 import { buildScene, type GelScene, type SceneBand, type SceneLaneInput } from '../../gel/render/scene'
-import { formatBp } from '../../utils/format'
+import { formatGelSize } from '../../gel/model'
 import { getLook } from '../../gel/render/looks'
 import { renderGelCanvas } from '../../gel/render/paint'
 import type { GelDisplay } from '../../gel/workspace'
@@ -157,7 +157,7 @@ export default function GelCanvas({
       ctx.stroke()
       ctx.setLineDash([])
       if (bp !== null) {
-        const text = `≈ ${formatBp(Math.round(bp))}`
+        const text = `≈ ${formatGelSize(Math.round(bp), layout.conditions)}`
         ctx.font = '600 10px Inter, system-ui, sans-serif'
         const w = ctx.measureText(text).width + 10
         const x = Math.min(scene.width - w - 2, slab.x + slab.w + 4)

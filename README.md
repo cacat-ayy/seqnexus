@@ -2519,13 +2519,120 @@ its first residue. The feature list, grouped by type, is the mutation list;
 "Add features to" carries variants to the DNA with everything else. The
 record can be switched off in the display settings.
 
+### Domain map
+
+A protein's Map view is a linear domain map: the chain as a bar with a
+residue ruler, its features in lanes above it as bars in their colours
+(the name inside when it fits, beside it otherwise), one-residue features
+as lollipops with the name above, and disulfide bonds as brackets under
+the chain joining their cysteines. Split stacks the map over the sequence
+at the map's own height. Hovering a feature shows its card, clicking it
+selects its residues, and the current selection is a band on the map.
+
+The map is built as the same backend-neutral display list the plasmid map
+uses (rectangles, lines, dots and text with a halo), so one canvas
+renderer, one SVG emitter and one image export draw it, and the exported
+PNG or SVG is the figure on screen. The plasmid map's style setting applies
+(Publication draws black on white and ignores the theme) and so does its
+palette. Features are laid out greedily into lanes, widest first, with a
+site's label counted as its width so names do not collide; the map is as
+tall as the lanes need. The scene gained a height beside its size for this,
+which the renderers honour and the square plasmid map leaves unset.
+
+### Proteolysis
+
+The Digest button (the restriction enzymes' slot on a protein) cuts the
+protein with one or more proteases. The rules follow ExPASy PeptideCutter
+where it states a simple rule: a residue before the bond, and a residue
+after it (proline, usually) that blocks the cut. Trypsin after Lys or Arg
+not before Pro; chymotrypsin after Phe, Tyr, Trp (high specificity) or
+also Leu and Met (low); Lys-C after Lys; Arg-C after Arg; Glu-C after Glu
+(bicarbonate) or Glu and Asp (phosphate); Asp-N before Asp; pepsin at pH
+1.3 after Phe or Leu, not before Pro nor after a Pro at P2; cyanogen
+bromide after Met. PeptideCutter's longer exception lists (trypsin's CKD,
+DKD, CKH, CKY, RRH, RRR and the WKP and MRP exceptions to the proline rule)
+are not applied: they fine-tune a minority of sites, and the simple rule is
+what every other tool uses. The engineered proteases cut at their
+recognition sequence only: TEV at ENLYFQ before Gly or Ser, thrombin at
+LVPR before Gly or Ser, Factor Xa after IEGR or IDGR, enterokinase after
+DDDDK, HRV 3C at LEVLFQ before Gly. Several proteases pool their sites.
+
+With missed cleavages, every run of up to n+1 consecutive fragments is a
+peptide too, listed beside the complete digest and marked partial. Each
+peptide carries its position in the displayed numbering, monoisotopic and
+average mass (the ProtParam residue masses plus one water), m/z at charges
+1 to 3 from the monoisotopic mass and the proton's mass (1.007276 Da), pI
+with the EMBOSS pKa set, and GRAVY. The header gives the number of
+peptides, the sequence coverage of the complete digest and the largest
+peptide. A peptide clicked is selected on the sequence; "Show on sequence"
+draws the peptides as bars over the protein (alternating colours, partials
+grey), the table exports as CSV, and "Run on gel" opens an SDS-PAGE gel
+with the protein intact beside the digest.
+
+### SDS-PAGE
+
+The virtual gel has a kind: agarose for DNA, SDS-PAGE for proteins. A gel
+started from a protein is poured as 12% acrylamide with a protein ladder,
+the protein intact and a tryptic digest; the kind can be switched in the
+gel's settings, which then offer the acrylamide percentage instead of
+agarose and buffer, protein ladders instead of DNA ladders, and protein
+lanes (a protein document, intact or cut with the proteases above, with
+missed cleavages) instead of sequence and PCR lanes. Every label, the size
+cursor, the inspector, the CSV and the PDF print kilodaltons.
+
+The migration model is the agarose model's sigmoid in log size with the
+protein's mass as the size. SDS gives every chain the same charge per
+mass, so mobility is set by size alone and the distance run is linear in
+log mass across the gel's useful window, which is the Ferguson relation a
+standard curve is drawn on. Each acrylamide percentage is given the
+window it is recommended for (6%: 60 to 250 kDa, 8%: 40 to 180, 10%: 25 to
+120, 12%: 15 to 80, 15%: 8 to 50); the characteristic mass is the window's
+geometric centre and the steepness puts the window's ends near 15% and 95%
+of the run. Bromophenol blue runs with the ion front in SDS-PAGE, so the
+run slider is the front of the run. Band spread, merging, brightness and
+the detection threshold are the agarose model's. The species' size field
+holds base pairs on a DNA gel and daltons on a protein gel, so the band,
+label and layout code is written once. A digest lane shares the load among
+the complete digest's peptides by mass, with each missed cleavage leaving a
+partial a fifth of its share; a peptide can be selected in the protein or
+opened as a protein of its own, numbered as in the chain it came from.
+
+The ladders are representative of the common prestained 10 to 250 kDa and
+dual-colour sets, an unstained broad-range set (6.5 to 200 kDa) and a
+low-range peptide marker (1.4 to 26.6 kDa), equal mass per band with the
+coloured reference bands heavier, about 2.5 µg in a well. Gradient gels
+are not modelled.
+
+### Secondary structure
+
+Chou and Fasman's conformational parameters (1978) are three more graph
+tracks (helix, strand and turn propensity, windows 7, 5 and 5), and their
+nucleate-and-extend rule predicts helices and strands that ride the motif
+overlay as a Structural category beside the membrane spans. A helix is
+nucleated where four of six residues have P(alpha) above 1.03 and
+extended both ways while the mean over four residues stays at or above
+1.00; a strand where three of five residues have P(beta) above 1.05, with
+the same extension; a segment is kept when it is at least six (helix) or
+five (strand) residues long and its own propensity beats the other's, and
+where a helix and a strand overlap the one with the higher mean keeps the
+residues. Turns are not predicted (the tetrapeptide probabilities are
+left out). The method is about 55 to 60% accurate per residue and is kept
+for its transparency: the propensity table says why a helix is predicted
+where it is. The segments are provisional until converted, like every
+other hit on the overlay. GOR IV and COILS are not included: GOR IV's
+parameter tables are too large to embed faithfully and COILS's scoring
+matrix is not reproduced here; a structure from PDB or AlphaFold (the next
+phase) is the better answer for both.
+
 ### Limits
 
-The domain map, proteolysis, secondary structure prediction and the
-structure panel are later phases of the protein work and are not in this
-version. The three-letter spelling is not drawn on a protein's canvas. The
-motif library is a curated subset of PROSITE, not the database; a pattern
-file cannot yet be imported.
+The structure panel is the last phase of the protein work and is not in
+this version. The three-letter spelling is not drawn on a protein's canvas.
+The motif library is a curated subset of PROSITE, not the database; a
+pattern file cannot yet be imported. The domain map is not placed in the
+PDF export, which draws the sequence view; export it as SVG or PNG. SDS-PAGE
+gradient gels and glycosylated or otherwise anomalous migration are not
+modelled.
 
 ---
 
@@ -2993,6 +3100,23 @@ print colours on white, whatever the app's theme.
 
 - The UniProt Consortium (2023) "UniProt: the Universal Protein
   Knowledgebase in 2023." *Nucleic Acids Res* 51:D523-D531.
+
+- Chou PY, Fasman GD (1978) "Prediction of the secondary structure of
+  proteins from their amino acid sequence." *Adv Enzymol Relat Areas Mol
+  Biol* 47:45-148. (The propensities and the nucleation rule.)
+
+- Gasteiger E, Gattiker A, Hoogland C, Ivanyi I, Appel RD, Bairoch A (2003)
+  "ExPASy: the proteomics server for in-depth protein knowledge and
+  analysis." *Nucleic Acids Res* 31:3784-3788. (PeptideCutter's cleavage
+  rules.)
+
+- Shapiro AL, Viñuela E, Maizel JV (1967) "Molecular weight estimation of
+  polypeptide chains by electrophoresis in SDS-polyacrylamide gels."
+  *Biochem Biophys Res Commun* 28:815-820. (Mobility linear in log mass.)
+
+- Laemmli UK (1970) "Cleavage of structural proteins during the assembly of
+  the head of bacteriophage T4." *Nature* 227:680-685. (The discontinuous
+  SDS-PAGE system the gel models.)
 
 - den Dunnen JT, Dalgleish R, Maglott DR, Hart RK, Greenblatt MS,
   McGowan-Jordan J, Roux AF, Smith T, Antonarakis SE, Taschner PEM (2016)

@@ -15,7 +15,7 @@ import type { Alphabet } from '../models/alphabet'
 import { IntervalTree } from '../models/IntervalTree'
 import { orfColor } from '../workers/orf-finder'
 import { orfIdFor, orfName } from '../utils/orf-features'
-import { motifIdFor } from '../utils/motif-features'
+import { motifIdFor, PEPTIDE_ID_PREFIX } from '../utils/motif-features'
 import { proteinScale, scaleProfile } from '../protein/scales'
 import type { GraphTrack } from './sequence-paint'
 import { proposalsFrom, proposalAnnotations } from '../utils/auto-annotations'
@@ -31,6 +31,8 @@ export function useSequenceTracks(doc: DocumentState) {
   const showMotifs = useEditorStore(s => s.showMotifs)
   const allMotifResults = useEditorStore(s => s.motifResults)
   const motifCategoriesOff = useEditorStore(s => s.motifCategoriesOff)
+  const peptideOverlay = useEditorStore(s => s.peptideOverlay)
+  const activeTabId = useEditorStore(s => s.activeTabId)
   const designPicks = useEditorStore(s => s.primerDesign.picks)
   const designBatch = useEditorStore(s => s.primerDesign.batch)
   const showAutoAnnotations = useEditorStore(s => s.showAutoAnnotations)
@@ -72,6 +74,21 @@ export function useSequenceTracks(doc: DocumentState) {
       color: hit.color,
     }))
   }, [showMotifs, allMotifResults, motifCategoriesOff])
+
+  // A digest's peptides, drawn as bars over the protein they were cut
+  // from; the dialog that made them owns the overlay and takes it away.
+  const peptideAnnotations = useMemo(() => {
+    if (!peptideOverlay || peptideOverlay.tabId !== activeTabId) return []
+    return peptideOverlay.peptides.map((p, i) => new Annotation({
+      id: `${PEPTIDE_ID_PREFIX}${i}`,
+      name: p.name,
+      type: 'mat_peptide',
+      start: p.start,
+      end: p.end,
+      strand: 0,
+      color: p.color,
+    }))
+  }, [peptideOverlay, activeTabId])
 
   // Primers: one lane item per binding site, spanning its tails too. Saved
   // primers and the workbench's unsaved picks go through the same path; the
@@ -124,15 +141,18 @@ export function useSequenceTracks(doc: DocumentState) {
     for (const ann of motifAnnotations) {
       tree.insert(ann)
     }
+    for (const ann of peptideAnnotations) {
+      tree.insert(ann)
+    }
     return tree
-  }, [visibleAnnotations, orfAnnotations, allPrimerItems, autoAnnotations, motifAnnotations])
+  }, [visibleAnnotations, orfAnnotations, allPrimerItems, autoAnnotations, motifAnnotations, peptideAnnotations])
 
   // Combined list for hit-testing (visible annotations + ORFs + primers + proposals)
   const allAnnotations = useMemo(() => {
-    const extra = [...orfAnnotations, ...allPrimerItems.map(i => i.annotation), ...autoAnnotations, ...motifAnnotations]
+    const extra = [...orfAnnotations, ...allPrimerItems.map(i => i.annotation), ...autoAnnotations, ...motifAnnotations, ...peptideAnnotations]
     if (extra.length === 0) return visibleAnnotations
     return [...visibleAnnotations, ...extra]
-  }, [visibleAnnotations, orfAnnotations, allPrimerItems, autoAnnotations, motifAnnotations])
+  }, [visibleAnnotations, orfAnnotations, allPrimerItems, autoAnnotations, motifAnnotations, peptideAnnotations])
 
   return {
     primerSites, designPreview, allPrimerItems, primerItemById, visibleAnnotations, annTree, allAnnotations,

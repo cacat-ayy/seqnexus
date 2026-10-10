@@ -16,7 +16,7 @@ export const DEFAULT_PNG_SCALE = 3
 export function plasmidToPng(scene: PlasmidScene, scale = DEFAULT_PNG_SCALE): Promise<Blob> {
   const canvas = document.createElement('canvas')
   canvas.width = Math.round(scene.size * scale)
-  canvas.height = Math.round(scene.size * scale)
+  canvas.height = Math.round((scene.height ?? scene.size) * scale)
 
   const ctx = canvas.getContext('2d')
   if (!ctx) return Promise.reject(new Error('Could not create a drawing context'))

@@ -94,3 +94,33 @@ export function extractFragment(sourceId: string, enzymeNames: string[], f: Frag
 export function pcrTemplate(templateId: string): DocumentState | null {
   return docOf(templateId)
 }
+
+/**
+ * Cut a peptide out of a protein lane: open it as a protein of its own,
+ * with the features it covers, the way a band is cut out of a gel. The
+ * fragment's residues are taken from the source as it is now.
+ */
+export function extractPeptide(sourceId: string, proteaseNames: string[], f: FragmentOrigin): boolean {
+  const doc = docOf(sourceId)
+  if (!doc || !doc.sequence.isProtein) {
+    notify.error('The source protein is no longer open')
+    return false
+  }
+  const residues = doc.sequence.basesIn(f.start, f.end)
+  if (residues.length === 0) return false
+  const inside = doc.annotations
+    .filter(a => a.start >= f.start && a.end <= f.end && !a.segments)
+    .map(a => new Annotation({ ...a, id: `${a.id}_pep`, start: a.start - f.start, end: a.end - f.start, qualifiers: a.qualifiers }))
+  const origin = doc.metadata?.displayOrigin ?? 0
+  const state: DocumentState = {
+    name: `${doc.name} ${f.start + 1}-${f.end} peptide`,
+    description: `Peptide ${f.start + 1}-${f.end} of ${doc.name}, from a virtual SDS-PAGE gel: digested with ${proteaseNames.join(' + ')}, ${residues.length} aa.`,
+    sequence: new Sequence(residues, 'linear', 'protein'),
+    annotations: inside,
+    // Keep the numbering of the chain it came from.
+    metadata: { origin: 'gel', displayOrigin: -(f.start - origin) },
+  }
+  useEditorStore.getState().openDocumentState(state)
+  notify.success(`Opened the ${residues.length} aa peptide as a new protein`)
+  return true
+}

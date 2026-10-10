@@ -18,16 +18,17 @@ import { useEditorStore, type GelDoc } from '../../store'
 import { notify } from '../../toast'
 import { isWidgetKeyTarget } from '../../utils/key-target'
 import { layoutGel, DEFAULT_BAND_OPTIONS, type GelBand, type PlacedSpecies } from '../../gel/bands'
-import { DEFAULT_SAMPLE_NG, type GelConditions, type GelLane } from '../../gel/model'
+import { DEFAULT_SAMPLE_NG, isProteinGel, type GelConditions, type GelLane } from '../../gel/model'
+import { DEFAULT_PROTEIN_NG } from '../../gel/workspace'
+import { gelCaption, GEL_FORMATS } from '../../gel/migration'
 import type { GelResolver, SequenceSource } from '../../gel/simulate'
-import { GEL_FORMATS } from '../../gel/migration'
 import { buildScene, type GelScene } from '../../gel/render/scene'
 import { GEL_LOOKS, GEL_LOOK_ORDER, getLook, type GelLookId } from '../../gel/render/looks'
 import { rasterCanvas, renderGelCanvas } from '../../gel/render/paint'
 import { sceneToSvg } from '../../gel/render/svg'
 import { MAX_LANES, autoLaneLabel, newLaneId, type GelDisplay, type GelWorkspaceState, type NameLookup } from '../../gel/workspace'
 import { describeBand, describeSpecies, fragmentEnds, fragmentPosition, laneCsv, laneReport } from '../../gel/report'
-import { extractFragment, pcrTemplate, selectInSequence } from '../../gel/actions'
+import { extractFragment, extractPeptide, pcrTemplate, selectInSequence } from '../../gel/actions'
 import { exportGelPdf } from '../../gel/exportPdf'
 import { downloadBlob, downloadText } from '../../utils/download'
 import { openPcrProduct } from '../primers/workbench/openProduct'
@@ -92,6 +93,7 @@ export default function GelWorkspace({ gel, onClose, onExportPrompt }: Props) {
   // ---- Sources ----
   const sources = useMemo((): SourceOption[] => tabs.map(t => ({
     id: t.id, name: t.doc.name, length: t.doc.sequence.length, topology: t.doc.sequence.topology,
+    alphabet: t.doc.sequence.alphabet,
   })), [tabs])
 
   const oligoOptions = useMemo((): OligoOption[] => oligos.map(o => ({ id: o.id, name: o.name, length: o.sequence.length })), [oligos])
@@ -104,6 +106,7 @@ export default function GelWorkspace({ gel, onClose, onExportPrompt }: Props) {
         name: tab.doc.name,
         bases: tab.doc.sequence.bases,
         topology: tab.doc.sequence.topology,
+        alphabet: tab.doc.sequence.alphabet,
         damMethylated: tab.doc.metadata?.damMethylated,
         dcmMethylated: tab.doc.metadata?.dcmMethylated,
       }
@@ -149,15 +152,21 @@ export default function GelWorkspace({ gel, onClose, onExportPrompt }: Props) {
     if (lanes.length >= MAX_LANES) return
     // A new lane starts as the last sample run uncut: the next thing to try
     // is usually another digest of the same sequence.
-    const lastSeq = [...lanes].reverse().find(l => l.sample.kind === 'sequence')?.sample
-    const sourceId = lastSeq?.kind === 'sequence' ? lastSeq.sourceId : sources[0]?.id
+    const protein = isProteinGel(conditions)
+    const wantKind = protein ? 'protein' : 'sequence'
+    const last = [...lanes].reverse().find(l => l.sample.kind === wantKind)?.sample
+    const sourceId = last && (last.kind === 'sequence' || last.kind === 'protein')
+      ? last.sourceId
+      : sources.find(s => (s.alphabet === 'protein') === protein)?.id
     const lane: GelLane = {
       id: newLaneId(),
-      sample: sourceId ? { kind: 'sequence', sourceId, enzymes: [], ng: DEFAULT_SAMPLE_NG } : { kind: 'empty' },
+      sample: !sourceId ? { kind: 'empty' }
+        : protein ? { kind: 'protein', sourceId, ng: DEFAULT_PROTEIN_NG, proteases: [] }
+        : { kind: 'sequence', sourceId, enzymes: [], ng: DEFAULT_SAMPLE_NG },
     }
     setLanes(ls => [...ls, lane])
     selectLane(lanes.length)
-  }, [lanes, sources, setLanes, selectLane])
+  }, [lanes, sources, conditions, setLanes, selectLane])
 
   const removeLane = useCallback((idx: number) => {
     if (!lanes[idx]) return
@@ -221,13 +230,15 @@ export default function GelWorkspace({ gel, onClose, onExportPrompt }: Props) {
   const lane = selectedLane !== null ? lanes[selectedLane] : undefined
 
   const onSelectFragment = useCallback((s: PlacedSpecies) => {
-    if (lane?.sample.kind !== 'sequence' || !s.fragment) return
+    if (!lane || !s.fragment) return
+    if (lane.sample.kind !== 'sequence' && lane.sample.kind !== 'protein') return
     selectInSequence(lane.sample.sourceId, s.fragment)
   }, [lane])
 
   const onExtractFragment = useCallback((s: PlacedSpecies) => {
-    if (lane?.sample.kind !== 'sequence' || !s.fragment) return
-    extractFragment(lane.sample.sourceId, lane.sample.enzymes, s.fragment)
+    if (!lane || !s.fragment) return
+    if (lane.sample.kind === 'sequence') extractFragment(lane.sample.sourceId, lane.sample.enzymes, s.fragment)
+    else if (lane.sample.kind === 'protein') extractPeptide(lane.sample.sourceId, lane.sample.proteases, s.fragment)
   }, [lane])
 
   const onOpenPcrProduct = useCallback(() => {
@@ -315,8 +326,8 @@ export default function GelWorkspace({ gel, onClose, onExportPrompt }: Props) {
   const exportPdf = () => {
     const canvas = renderGelCanvas(exportScene(), look, paintOpts(3))
     if (!canvas) return
-    const rows = laneReport(lanes, layout, names.sequence, { enzymeSep: ' + ', sizeSep: ', ', format: describeSpecies })
-    exportGelPdf(canvas, rows, conditions.agarosePct)
+    const rows = laneReport(lanes, layout, names.sequence, { enzymeSep: ' + ', sizeSep: ', ', format: s => describeSpecies(s, conditions) })
+    exportGelPdf(canvas, rows, { caption: gelCaption(conditions), unit: isProteinGel(conditions) ? 'kDa' : 'bp' })
   }
 
   return (
@@ -337,7 +348,7 @@ export default function GelWorkspace({ gel, onClose, onExportPrompt }: Props) {
           size={Math.max(6, (nameDraft ?? gel.name).length)}
         />
         <button className="gw-chip" onClick={() => setPanel('gel')} title="Gel settings">
-          {conditions.agarosePct.toFixed(1)}% · {conditions.buffer} · {GEL_FORMATS[conditions.format].label} · run {Math.round(conditions.dyeFront * 100)}%
+          {isProteinGel(conditions) ? gelCaption(conditions) : `${conditions.agarosePct.toFixed(1)}% · ${conditions.buffer} · ${GEL_FORMATS[conditions.format].label}`} · run {Math.round(conditions.dyeFront * 100)}%
         </button>
         <span className="gw-muted">{lanes.length} / {MAX_LANES} lanes</span>
         <span className="gw-spacer" />
@@ -350,9 +361,12 @@ export default function GelWorkspace({ gel, onClose, onExportPrompt }: Props) {
         >
           {GEL_LOOK_ORDER.map(id => <option key={id} value={id}>{GEL_LOOKS[id].label}</option>)}
         </select>
+        {/* The designer picks restriction enzymes for DNA; a protein gel has no use for it. */}
+        {!isProteinGel(conditions) && (
         <button className={`gw-btn ${panel === 'design' ? 'active' : ''}`} onClick={() => setPanel('design')} title="Find enzymes that tell sequences apart">
           <Wand2 size={13} /> Design digest
         </button>
+        )}
         <button className="gw-btn" onClick={() => useEditorStore.getState().createGel()} title="Start another gel from the sequence you were viewing">
           <FilePlus2 size={13} /> New gel
         </button>
@@ -405,9 +419,11 @@ export default function GelWorkspace({ gel, onClose, onExportPrompt }: Props) {
             <button role="tab" aria-selected={panel === 'gel'} className={`gw-tab ${panel === 'gel' ? 'active' : ''}`} onClick={() => setPanel('gel')}>
               Gel &amp; image
             </button>
+            {!isProteinGel(conditions) && (
             <button role="tab" aria-selected={panel === 'design'} className={`gw-tab ${panel === 'design' ? 'active' : ''}`} onClick={() => setPanel('design')}>
               Design
             </button>
+            )}
           </div>
           {panel === 'gel' ? (
             <GelSettings conditions={conditions} onConditions={patchConditions} display={display} onDisplay={patchDisplay} />
@@ -429,6 +445,7 @@ export default function GelWorkspace({ gel, onClose, onExportPrompt }: Props) {
               sources={sources}
               oligos={oligoOptions}
               resolveSource={resolver.sequence}
+              conditions={conditions}
               selectedBand={selectedBand?.laneIdx === selectedLane ? selectedBand.bandIdx : null}
               onHoverBand={setHoverRow}
               onSelectBand={bandIdx => setSelectedBand({ laneIdx: selectedLane!, bandIdx })}

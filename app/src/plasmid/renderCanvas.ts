@@ -107,16 +107,17 @@ export function renderSceneToCanvas(
   viewport: Viewport = IDENTITY_VIEWPORT,
 ): void {
   // The background is painted unscaled so panning cannot expose bare canvas.
+  const height = scene.height ?? scene.size
   ctx.save()
   ctx.fillStyle = scene.background
-  ctx.fillRect(0, 0, scene.size, scene.size)
+  ctx.fillRect(0, 0, scene.size, height)
   ctx.restore()
 
   ctx.save()
   ctx.translate(viewport.tx, viewport.ty)
-  ctx.translate(scene.size / 2, scene.size / 2)
+  ctx.translate(scene.size / 2, height / 2)
   ctx.scale(viewport.scale, viewport.scale)
-  ctx.translate(-scene.size / 2, -scene.size / 2)
+  ctx.translate(-scene.size / 2, -height / 2)
 
   for (const item of scene.items) {
     ctx.globalAlpha = item.kind === 'curvedText' ? 1 : (item.alpha ?? 1)

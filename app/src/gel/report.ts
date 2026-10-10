@@ -4,8 +4,7 @@
  */
 
 import { bandLabelBp, type GelBand, type GelLayout, type PlacedSpecies } from './bands'
-import type { FragmentOrigin, GelLane } from './model'
-import { formatBp } from '../utils/format'
+import { formatGelSize, type FragmentOrigin, type GelConditions, type GelLane } from './model'
 import { getLadder } from './ladders'
 
 export const FORM_LABEL: Record<PlacedSpecies['form'], string> = {
@@ -20,9 +19,10 @@ export function formatNg(ng: number): string {
   return `${ng.toFixed(2)} ng`
 }
 
-/** One molecule in a few words: "3.0 kb" or "4.4 kb supercoiled". */
-export function describeSpecies(s: PlacedSpecies): string {
-  return s.form === 'linear' ? formatBp(s.bp) : `${formatBp(s.bp)} ${s.form}`
+/** One molecule in a few words: "3.0 kb" or "4.4 kb supercoiled"; "27.3 kDa" on a protein gel. */
+export function describeSpecies(s: PlacedSpecies, c: Pick<GelConditions, 'kind'> = {}): string {
+  const size = formatGelSize(s.bp, c)
+  return s.form === 'linear' ? size : `${size} ${s.form}`
 }
 
 /**
@@ -40,17 +40,17 @@ export function fragmentEnds(f: FragmentOrigin): string {
   return `${f.leftEnzyme ?? 'end'} / ${f.rightEnzyme ?? 'end'}`
 }
 
-export function describeBand(band: GelBand): string {
+export function describeBand(band: GelBand, c: Pick<GelConditions, 'kind'> = {}): string {
   const parts: string[] = []
   if (band.members.length === 1) {
     const s = band.members[0]
-    parts.push(formatBp(s.bp))
+    parts.push(formatGelSize(s.bp, c))
     if (s.form !== 'linear') parts.push(FORM_LABEL[s.form])
   } else {
     const sizes = new Set(band.members.map(m => m.bp))
     parts.push(sizes.size === 1
-      ? `${formatBp(band.members[0].bp)} ×${band.members.length}`
-      : `~${formatBp(bandLabelBp(band))} (${band.members.map(describeSpecies).join(', ')})`)
+      ? `${formatGelSize(band.members[0].bp, c)} ×${band.members.length}`
+      : `~${formatGelSize(bandLabelBp(band), c)} (${band.members.map(m => describeSpecies(m, c)).join(', ')})`)
   }
   parts.push(formatNg(band.ng))
   if (!band.visible) parts.push('too faint to see')
@@ -72,7 +72,7 @@ export interface LaneReportRow {
   fragments: string
 }
 
-const TYPE_LABEL = { empty: 'Empty', ladder: 'Ladder', sequence: 'Sample', pcr: 'PCR', sizes: 'Sizes' } as const
+const TYPE_LABEL = { empty: 'Empty', ladder: 'Ladder', sequence: 'Sample', pcr: 'PCR', sizes: 'Sizes', protein: 'Protein' } as const
 
 export function laneReport(
   lanes: GelLane[],
@@ -85,12 +85,17 @@ export function laneReport(
     const s = lane.sample
     return {
       lane: i + 1,
-      type: s.kind === 'sequence' && s.enzymes.length === 0 ? 'Uncut' : s.kind === 'sequence' ? 'Digest' : TYPE_LABEL[s.kind],
+      type: s.kind === 'sequence' && s.enzymes.length === 0 ? 'Uncut'
+        : s.kind === 'sequence' ? 'Digest'
+        : s.kind === 'protein' && s.proteases.length > 0 ? 'Digest'
+        : TYPE_LABEL[s.kind],
       source: s.kind === 'ladder' ? getLadder(s.ladderId)?.name ?? s.ladderId
-        : s.kind === 'sequence' ? sourceName(s.sourceId) ?? 'Missing'
+        : s.kind === 'sequence' || s.kind === 'protein' ? sourceName(s.sourceId) ?? 'Missing'
         : s.kind === 'pcr' ? sourceName(s.templateId) ?? 'Missing'
         : '',
-      enzymes: s.kind === 'sequence' ? s.enzymes.join(opts.enzymeSep) : '',
+      enzymes: s.kind === 'sequence' ? s.enzymes.join(opts.enzymeSep)
+        : s.kind === 'protein' ? s.proteases.join(opts.enzymeSep)
+        : '',
       fragCount: species.length,
       fragments: species.map(opts.format).join(opts.sizeSep),
     }
@@ -108,6 +113,6 @@ export function laneCsv(lanes: GelLane[], layout: GelLayout, sourceName: (id: st
     sizeSep: '; ',
     format: s => (s.form === 'linear' ? String(s.bp) : `${s.bp} ${s.form}`),
   })
-  const header = 'Lane,Type,Source,Enzymes,# Fragments,Fragments (bp)'
+  const header = `Lane,Type,Source,Enzymes,# Fragments,Fragments (${layout.conditions.kind === 'sds-page' ? 'Da' : 'bp'})`
   return [header, ...rows.map(r => [r.lane, r.type, r.source, r.enzymes, r.fragCount, r.fragments].map(csvCell).join(','))].join('\n')
 }

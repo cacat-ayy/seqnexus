@@ -19,13 +19,17 @@ export interface LadderBand {
 export interface Ladder {
   id: string
   name: string
-  /** Descending by size. */
+  /** DNA ladders run on agarose, protein ladders on SDS-PAGE. Absent is DNA. */
+  kind?: 'dna' | 'protein'
+  /** Descending by size: bp for DNA, Da for protein. */
   bands: LadderBand[]
   /** Nominal total load in ng; the sum of `bands`. */
   totalNg: number
 }
 
 const NOMINAL_LOAD_NG = 500
+/** A prestained protein ladder: about 2.5 µg in a well. */
+const PROTEIN_LOAD_NG = 2500
 const REFERENCE_FACTOR = 2.5
 
 /** Equal mass per band, reference bands boosted, scaled to `total`. */
@@ -66,9 +70,34 @@ export const LADDERS: Ladder[] = [
     [766, 500, 350, 250, 200, 150, 100, 75, 50, 25])),
   ladder('hi-lo', 'Hi-Lo DNA Marker', equalMass(
     [10000, 8000, 6000, 4000, 3000, 2000, 1500, 1000, 750, 500, 250, 100])),
+  // Protein ladders, in daltons, for SDS-PAGE. A prestained ladder loads
+  // about 2.5 µg in a 5 µl well, with one or two bands dyed a different
+  // colour to orient by; those are the reference bands here. Sizes follow
+  // the common 10-250 kDa and broad-range sets; representative, not any
+  // one vendor's datasheet.
+  proteinLadder('protein-10-250', 'Prestained Protein Ladder 10-250 kDa',
+    [250, 130, 100, 70, 55, 35, 25, 15, 10], [70, 25]),
+  proteinLadder('protein-dual', 'Dual Colour Protein Standard 10-250 kDa',
+    [250, 150, 100, 75, 50, 37, 25, 20, 15, 10], [75, 25]),
+  proteinLadder('protein-broad', 'Unstained Broad Range 6.5-200 kDa',
+    [200, 116.25, 97.4, 66.2, 45, 31, 21.5, 14.4, 6.5], []),
+  proteinLadder('protein-low', 'Low Range Peptide Marker 1.4-26.6 kDa',
+    [26.6, 17, 14.2, 6.5, 3.5, 1.4], []),
 ]
 
+/** Sizes in kDa, equal mass per band, reference bands boosted. */
+function proteinLadder(id: string, name: string, kDa: number[], references: number[]): Ladder {
+  const bands = equalMass(kDa.map(k => Math.round(k * 1000)), references.map(k => Math.round(k * 1000)), PROTEIN_LOAD_NG)
+  return { ...ladder(id, name, bands), kind: 'protein' }
+}
+
 export const DEFAULT_LADDER_ID = LADDERS[0].id
+export const DEFAULT_PROTEIN_LADDER_ID = 'protein-10-250'
+
+/** The ladders for a gel's kind. */
+export function laddersFor(kind: 'dna' | 'protein'): Ladder[] {
+  return LADDERS.filter(l => (l.kind ?? 'dna') === kind)
+}
 
 /** Look a ladder up by id, or by display name (older saved gels stored names). */
 export function getLadder(idOrName: string): Ladder | undefined {

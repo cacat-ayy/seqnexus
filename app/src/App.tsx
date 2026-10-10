@@ -8,6 +8,9 @@ import PlasmidMap from './components/PlasmidMap'
 import EnzymePanel from './components/EnzymePanel'
 import ORFPanel from './components/ORFPanel'
 import MotifPanel from './components/MotifPanel'
+import type { GelKind } from './gel/model'
+import DigestDialog from './components/DigestDialog'
+import DomainMap from './components/DomainMap'
 import FeatureSidebar from './components/FeatureSidebar'
 import EmptyState from './components/EmptyState'
 import DisplayPopover from './components/DisplayPopover'
@@ -27,7 +30,7 @@ const GelWorkspace = lazy(() => import('./components/gel/GelWorkspace'))
 const CloneWorkspace = lazy(() => import('./components/cloning/CloneWorkspace'))
 import {
   useEditorStore, isOriginSpanningSelection, selectionSegments, extraSelectionsOf, selectedRanges, joinedSegments,
-  type SequencingRead,
+  gelSourceTabId, type SequencingRead,
 } from './store'
 import { editedRead, toFasta, toFastq } from './sanger/edits'
 import { displayPosition, internalPosition } from './models/Document'
@@ -180,6 +183,17 @@ function SequenceZoomLabel({ zoomLevel }: { zoomLevel: number }) {
   )
 }
 
+/**
+ * The gel kind for the document a gel would be made from (gelSourceTabId,
+ * the rule createGel uses too, so the toolbar and the gel it creates
+ * agree). With no sequence in view it is agarose.
+ */
+function gelKindFor(s: ReturnType<typeof useEditorStore.getState>): GelKind {
+  const id = gelSourceTabId(s)
+  const doc = !id ? undefined : id === s.activeTabId ? s.doc : s.tabs.find(t => t.id === id)?.doc
+  return doc?.sequence.alphabet === 'protein' ? 'sds-page' : 'agarose'
+}
+
 export default function App() {
   const activeTabId = useEditorStore(s => s.activeTabId)
   const selectedExportableCount = useEditorStore(s => countSelectable(s.explorerSelectedIds))
@@ -318,6 +332,7 @@ export default function App() {
   const [newSeqModalOpen, setNewSeqModalOpen] = useState(false)
   const [orfModalOpen, setOrfModalOpen] = useState(false)
   const [motifPanelOpen, setMotifPanelOpen] = useState(false)
+  const [digestOpen, setDigestOpen] = useState(false)
   const [enzymeModalOpen, setEnzymeModalOpen] = useState(false)
   const [annotateModalOpen, setAnnotateModalOpen] = useState(false)
   const [codonModalOpen, setCodonModalOpen] = useState(false)
@@ -428,14 +443,31 @@ export default function App() {
 
   /** Open the most recently edited gel, or start one from the sequence in view. */
   const openGel = useCallback(() => {
+    // The gel kind follows the document a gel would be made from: the one
+    // in view, or the one the open gel was entered from. A protein reopens
+    // its latest SDS-PAGE gel, DNA its latest agarose gel, and a new gel of
+    // the right kind is started when there is none.
     const s = useEditorStore.getState()
-    if (s.gels.length > 0) {
-      const latest = s.gels.reduce((a, b) => (b.modifiedAt > a.modifiedAt ? b : a))
+    const kind = gelKindFor(s)
+    const matching = s.gels.filter(g => (g.state.conditions.kind ?? 'agarose') === kind)
+    if (matching.length > 0) {
+      const latest = matching.reduce((a, b) => (b.modifiedAt > a.modifiedAt ? b : a))
       s.setActiveGel(latest.id)
       return
     }
     s.createGel()
   }, [])
+
+  const [gelDropdownOpen, setGelDropdownOpen] = useState(false)
+  const gelBtnRef = useRef<HTMLDivElement>(null)
+  usePopoverDismiss(gelDropdownOpen, () => setGelDropdownOpen(false), gelBtnRef)
+  const gels = useEditorStore(s => s.gels)
+  /** The document a new gel would be made from, for the menu's wording. */
+  const gelSourceName = useEditorStore(s => {
+    const id = gelSourceTabId(s)
+    return id ? s.tabs.find(t => t.id === id)?.doc.name ?? null : null
+  })
+  const gelSourceIsProtein = useEditorStore(s => gelKindFor(s) === 'sds-page')
 
   const openCloning = useCallback(() => {
     const s = useEditorStore.getState()
@@ -1306,13 +1338,14 @@ export default function App() {
     { id: 'orfs', label: 'Find ORFs', group: 'Analyse', icon: Dna, keywords: 'open reading frame', disabled: noDna, run: () => setOrfModalOpen(true) },
     { id: 'motifs', label: 'Find Motifs and Sites', group: 'Analyse', icon: Atom, keywords: 'prosite glycosylation phosphorylation liability transmembrane protein', disabled: noDoc || !isProtein, run: () => setMotifPanelOpen(true) },
     { id: 'enzymes', label: 'Restriction Enzymes', group: 'Analyse', icon: Scissors, keywords: 'digest cut sites', disabled: noDna, run: () => setEnzymeModalOpen(true) },
+    { id: 'digest', label: 'Proteolytic Digest', group: 'Analyse', icon: Scissors, keywords: 'trypsin protease peptide mass spectrometry coverage', disabled: noDoc || !isProtein, run: () => setDigestOpen(true) },
     { id: 'primers', label: 'Design Primers', group: 'Analyse', icon: FlaskConical, keywords: 'pcr tm oligo', disabled: noDna, run: openPrimerDesign },
     { id: 'blast', label: 'BLAST Search', group: 'Analyse', icon: Globe, keywords: 'ncbi homology', disabled: noDoc, run: () => setBlastModalOpen(true) },
     { id: 'align', label: 'Align Sequences', group: 'Analyse', icon: AlignLeft, keywords: 'msa pairwise clustal', run: () => setAlignModalOpen(true) },
     { id: 'analyse-reads', label: 'Analyse NGS Reads…', group: 'Analyse', icon: Route, keywords: 'pipeline map variants trim fastq samples consensus', run: () => openAnalyse() },
     { id: 'assemble-reads', label: 'Assemble NGS Reads de novo…', group: 'Analyse', icon: Shapes, keywords: 'de novo assembly contig plasmid amplicon nanopore long reads whole plasmid sequencing', run: () => openAnalyse([], true) },
     { id: 'gel', label: 'Virtual Gel', group: 'Analyse', icon: GalleryVertical, keywords: 'electrophoresis digest agarose', run: openGel },
-    { id: 'new-gel', label: 'New Gel', group: 'Analyse', icon: GalleryVertical, keywords: 'electrophoresis digest agarose', run: () => useEditorStore.getState().createGel() },
+    { id: 'new-gel', label: 'New Gel', group: 'Analyse', icon: GalleryVertical, keywords: 'electrophoresis digest agarose sds-page protein page', run: () => useEditorStore.getState().createGel() },
     { id: 'codon-optimize', label: isProtein ? 'Back-translate to DNA' : 'Codon Optimization', group: 'Analyse', icon: Wand2, keywords: 'codon usage rare harmonize express host back-translate reverse translate', disabled: noDoc, run: () => setCodonModalOpen(true) },
     { id: 'properties', label: 'Sequence Properties', group: 'Analyse', icon: BarChart3, disabled: noDoc, run: () => setPropertiesModalOpen(true) },
 
@@ -1516,9 +1549,17 @@ export default function App() {
               <span className="tb-icon"><Dna size={14} /></span><span className="tb-text">ORFs</span>
             </button>
           )}
-          <button className="tb" onClick={() => setEnzymeModalOpen(true)} disabled={noDna} {...tip({ label: 'Restriction enzymes', desc: 'Find cut sites and choose enzymes to show', why: needsSequence })}>
-            <span className="tb-icon"><Scissors size={14} /></span><span className="tb-text">Enzymes</span>
-          </button>
+          {/* Proteases are a protein's restriction enzymes: the digest sits
+              in the enzymes' slot. */}
+          {isProtein ? (
+            <button className="tb" onClick={() => setDigestOpen(true)} {...tip({ label: 'Digest', desc: 'Cut with proteases: peptides, masses, coverage, and a gel' })}>
+              <span className="tb-icon"><Scissors size={14} /></span><span className="tb-text">Digest</span>
+            </button>
+          ) : (
+            <button className="tb" onClick={() => setEnzymeModalOpen(true)} disabled={noDna} {...tip({ label: 'Restriction enzymes', desc: 'Find cut sites and choose enzymes to show', why: needsSequence })}>
+              <span className="tb-icon"><Scissors size={14} /></span><span className="tb-text">Enzymes</span>
+            </button>
+          )}
           <button className="tb" onClick={openPrimerDesign} disabled={noDna} {...tip({ label: 'Primers', desc: 'Design primers and manage the primer library', why: needsSequence })}>
             <span className="tb-icon"><FlaskConical size={14} /></span><span className="tb-text">Primers</span>
           </button>
@@ -1564,9 +1605,59 @@ export default function App() {
           <button className="tb" onClick={() => setAlignModalOpen(true)} {...tip({ label: 'Align', desc: 'Pairwise and multiple sequence alignment' })}>
             <span className="tb-icon"><AlignLeft size={14} /></span><span className="tb-text">Align</span>
           </button>
-          <button className={`tb ${gelOpen ? 'active' : ''}`} onClick={() => (gelOpen ? setActiveGel(null) : openGel())} aria-pressed={gelOpen} {...tip({ label: 'Gel', desc: gelOpen ? 'Close the gel and return to the sequence' : 'Simulate agarose gel electrophoresis' })}>
-            <span className="tb-icon"><GalleryVertical size={14} /></span><span className="tb-text">Gel</span>
-          </button>
+          {/* Split like Cloning: the button reopens the latest gel of the
+              kind the document needs, the caret starts a new one or jumps
+              to any gel in the session. */}
+          <div className="tb-split" ref={gelBtnRef}>
+            <button className={`tb ${gelOpen ? 'active' : ''}`} onClick={() => (gelOpen ? setActiveGel(null) : openGel())} aria-pressed={gelOpen} {...tip({
+              label: 'Gel',
+              desc: gelOpen ? 'Close the gel and return to the sequence'
+                : gelSourceIsProtein ? 'Simulate SDS-PAGE: open the latest protein gel or start one'
+                : 'Simulate agarose gel electrophoresis: open the latest DNA gel or start one',
+            })}>
+              <span className="tb-icon"><GalleryVertical size={14} /></span><span className="tb-text">Gel</span>
+            </button>
+            <button
+              className="tb tb-split-caret"
+              onClick={() => setGelDropdownOpen(v => !v)}
+              aria-haspopup="menu"
+              aria-expanded={gelDropdownOpen}
+              {...tip({ label: 'Start a new gel, or open one' })}
+            >
+              <ChevronDownSmall size={12} />
+            </button>
+            {gelDropdownOpen && (
+              <div className="tb-dropdown" role="menu">
+                <button
+                  className="tb-dropdown-item"
+                  role="menuitem"
+                  title={gelSourceIsProtein ? 'SDS-PAGE with a protein ladder, the protein and a tryptic digest' : 'Agarose with a ladder, the sequence uncut and a suggested digest'}
+                  onClick={() => { useEditorStore.getState().createGel(); setGelDropdownOpen(false) }}
+                >
+                  {gelSourceName
+                    ? `New ${gelSourceIsProtein ? 'SDS-PAGE' : 'agarose'} gel from ${gelSourceName}`
+                    : 'New agarose gel'}
+                </button>
+                {gels.length > 0 && (
+                  <>
+                    <div className="tb-dropdown-sep" role="separator" />
+                    <div className="tb-dropdown-label">Open a gel</div>
+                    {[...gels].sort((a, b) => b.modifiedAt - a.modifiedAt).slice(0, 12).map(g => (
+                      <button
+                        key={g.id}
+                        className={`tb-dropdown-item ${activeGel?.id === g.id ? 'current' : ''}`}
+                        role="menuitem"
+                        onClick={() => { setActiveGel(g.id); setGelDropdownOpen(false) }}
+                      >
+                        {g.name}
+                        <span className="tb-dropdown-meta">{g.state.conditions.kind === 'sds-page' ? 'SDS-PAGE' : 'agarose'}</span>
+                      </button>
+                    ))}
+                  </>
+                )}
+              </div>
+            )}
+          </div>
           <button className="tb" onClick={() => setCodonModalOpen(true)} disabled={noDoc} {...tip(isProtein
             ? { label: 'Back-translate', desc: 'Write the protein as DNA with the codons of an expression host', why: 'Open a sequence to use this' }
             : { label: 'Optimize codons', desc: 'Recode a coding sequence for an expression host', why: 'Open a sequence to use this' })}>
@@ -1896,11 +1987,32 @@ export default function App() {
             </div>
           ) : (
             <>
-              {/* View mode tabs. A protein has no map, so it gets a label
-                  where the choice would be and is always drawn linear. */}
+              {/* View mode tabs. A protein's map is its linear domain map,
+                  stored under the same 'circular' mode the plasmid map uses
+                  so the tab's view mode needs no third meaning; Split stacks
+                  the map over the sequence. */}
               <div className="view-tabs" ref={viewTabsRef}>
                 {isProtein ? (
-                  <span className="view-tab active view-tab-static">Protein</span>
+                  <>
+                    <button
+                      className={`view-tab ${viewMode === 'linear' ? 'active' : ''}`}
+                      onClick={() => setViewMode('linear')}
+                    >
+                      Sequence
+                    </button>
+                    <button
+                      className={`view-tab ${viewMode === 'circular' ? 'active' : ''}`}
+                      onClick={() => setViewMode('circular')}
+                    >
+                      Map
+                    </button>
+                    <button
+                      className={`view-tab ${viewMode === 'split' ? 'active' : ''}`}
+                      onClick={() => setViewMode('split')}
+                    >
+                      Split
+                    </button>
+                  </>
                 ) : (
                   <>
                     <button
@@ -2165,7 +2277,16 @@ export default function App() {
                         </div>
                       </div>
                     )}
-                    {(viewMode === 'linear' || isProtein) && <SequenceView onFindRequest={handleOpenFind} onFindClose={handleCloseFind} onAnnotateRequest={handleAnnotateRequest} onEditFeature={handleOpenFeaturesPanel} onFindInDna={handleFindInDna} />}
+                    {viewMode === 'linear' && <SequenceView onFindRequest={handleOpenFind} onFindClose={handleCloseFind} onAnnotateRequest={handleAnnotateRequest} onEditFeature={handleOpenFeaturesPanel} onFindInDna={handleFindInDna} />}
+                    {viewMode === 'circular' && isProtein && <DomainMap onExportPrompt={handleFilenamePrompt} fill />}
+                    {viewMode === 'split' && isProtein && (
+                      <div className="split-stack">
+                        <DomainMap onExportPrompt={handleFilenamePrompt} />
+                        <div className="split-sequence">
+                          <SequenceView onFindRequest={handleOpenFind} onFindClose={handleCloseFind} onAnnotateRequest={handleAnnotateRequest} onEditFeature={handleOpenFeaturesPanel} onFindInDna={handleFindInDna} />
+                        </div>
+                      </div>
+                    )}
                     {viewMode === 'circular' && !isProtein && <PlasmidMap onFindRequest={handleOpenFind} onAnnotateRequest={handleAnnotateRequest} onEditFeature={handleOpenFeaturesPanel} onExportPrompt={handleFilenamePrompt} />}
                     {viewMode === 'split' && !isProtein && (
                       <div
@@ -2360,6 +2481,8 @@ export default function App() {
           }
         }}
       />
+
+      <DigestDialog open={digestOpen} onClose={() => setDigestOpen(false)} />
 
       <ConfirmDialog
         open={manyRecords !== null}

@@ -8,6 +8,7 @@
  */
 
 import { pkaSet } from './properties'
+import { CF_HELIX, CF_SHEET, CF_TURN } from './secondary'
 
 /** Kyte J, Doolittle RF (1982) hydropathy. Positive is hydrophobic. */
 export const KYTE_DOOLITTLE: Readonly<Record<string, number>> = {
@@ -33,7 +34,7 @@ export const VIHINEN_FLEXIBILITY: Readonly<Record<string, number>> = {
   M: 0.952, N: 1.048, P: 1.049, Q: 1.037, R: 1.008, S: 1.046, T: 0.997, V: 0.931, W: 0.904, Y: 0.929,
 }
 
-export type ProteinScaleId = 'kd' | 'hopp-woods' | 'eisenberg' | 'charge' | 'flexibility'
+export type ProteinScaleId = 'kd' | 'hopp-woods' | 'eisenberg' | 'charge' | 'flexibility' | 'cf-helix' | 'cf-sheet' | 'cf-turn'
 
 export interface ProteinScale {
   id: ProteinScaleId
@@ -86,6 +87,23 @@ export const PROTEIN_SCALES: readonly ProteinScale[] = [
     id: 'flexibility', label: 'Flexibility (Vihinen)', short: 'Flexibility',
     description: 'Vihinen et al. (1994) normalized B-factors; above 1 is more mobile than average',
     window: 9, mid: 1, min: 0.9, max: 1.1, above: 'flexible', below: 'rigid', table: VIHINEN_FLEXIBILITY,
+  },
+  // Chou-Fasman propensities. Odd windows centred on each residue, near
+  // the 6, 5 and 4 the method nucleates on.
+  {
+    id: 'cf-helix', label: 'Helix propensity (Chou-Fasman)', short: 'Helix',
+    description: 'Chou and Fasman (1978) P(alpha); above 1 favours a helix',
+    window: 7, mid: 1, min: 0.5, max: 1.5, above: 'helix-favouring', below: 'helix-breaking', table: CF_HELIX,
+  },
+  {
+    id: 'cf-sheet', label: 'Strand propensity (Chou-Fasman)', short: 'Strand',
+    description: 'Chou and Fasman (1978) P(beta); above 1 favours a beta strand',
+    window: 5, mid: 1, min: 0.3, max: 1.7, above: 'strand-favouring', below: 'strand-breaking', table: CF_SHEET,
+  },
+  {
+    id: 'cf-turn', label: 'Turn propensity (Chou-Fasman)', short: 'Turn',
+    description: 'Chou and Fasman (1978) P(turn); above 1 favours a beta turn',
+    window: 5, mid: 1, min: 0.4, max: 1.6, above: 'turn-favouring', below: 'turn-avoiding', table: CF_TURN,
   },
 ]
 

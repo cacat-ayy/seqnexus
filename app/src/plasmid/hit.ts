@@ -54,6 +54,13 @@ export function hitTestScene(scene: PlasmidScene, x: number, y: number): HitRegi
   }
   if (best) return best
 
+  // Feature bars of a linear figure, the topmost (last drawn) first.
+  for (let i = scene.hitRegions.length - 1; i >= 0; i--) {
+    const r = scene.hitRegions[i]
+    if (r.kind !== 'box') continue
+    if (x >= r.x && x <= r.x + r.w && y >= r.y && y <= r.y + r.h) return r
+  }
+
   const c = scene.size / 2
   const dist = Math.hypot(x - c, y - c)
   const angle = Math.atan2(y - c, x - c)

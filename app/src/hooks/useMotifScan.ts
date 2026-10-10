@@ -2,9 +2,27 @@ import { useEffect } from 'react'
 import { useEditorStore } from '../store'
 import { scanMotifs, type MotifHit } from '../protein/motifs'
 import { transmembraneSegments } from '../protein/scales'
+import { chouFasman } from '../protein/secondary'
 
 /** The hydropathy rule's hits ride the motif overlay, as one more category. */
 export const TM_MOTIF_ID = 'tm-hydropathy'
+/** So do the Chou-Fasman helices and strands. */
+export const CF_HELIX_ID = 'cf-helix'
+export const CF_STRAND_ID = 'cf-strand'
+
+/** Predicted helices and strands as motif hits; provisional like the membrane spans. */
+export function secondaryStructureHits(residues: string): MotifHit[] {
+  return chouFasman(residues).map(s => ({
+    motifId: s.kind === 'helix' ? CF_HELIX_ID : CF_STRAND_ID,
+    name: s.kind === 'helix' ? 'Helix (Chou-Fasman)' : 'Strand (Chou-Fasman)',
+    category: 'Structural',
+    type: 'Region',
+    // Feature colours, data as in the library: helix red-orange, strand amber.
+    color: s.kind === 'helix' ? '#f06595' : '#fab005',
+    start: s.start, end: s.end,
+    sequence: residues.slice(s.start, s.end).toUpperCase(),
+  }))
+}
 
 /** Kyte-Doolittle membrane spans as motif hits, so the overlay and the panel show them beside the patterns. */
 export function transmembraneHits(residues: string): MotifHit[] {
@@ -39,7 +57,8 @@ export function useMotifScan(panelOpen: boolean): void {
       if (store.motifResults.length > 0) store.setMotifResults([])
       return
     }
-    const hits = [...scanMotifs(bases), ...transmembraneHits(bases)].sort((a, b) => a.start - b.start || a.end - b.end)
+    const hits = [...scanMotifs(bases), ...transmembraneHits(bases), ...secondaryStructureHits(bases)]
+      .sort((a, b) => a.start - b.start || a.end - b.end)
     store.setMotifResults(hits)
   }, [wanted, activeTabId, bases])
 }

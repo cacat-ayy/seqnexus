@@ -10,14 +10,26 @@
  * groups them into what the eye sees. None of it touches React or the store.
  */
 
+import { formatBp } from '../utils/format'
+
 export type GelBuffer = 'TAE' | 'TBE'
 
 /** Physical gel size, which sets how far the DNA can travel. */
 export type GelFormat = 'mini' | 'midi' | 'large'
 
+/**
+ * An agarose gel separates DNA by length; an SDS-PAGE gel separates
+ * proteins by mass. The lanes, the ladders, the migration model and the
+ * unit on every label follow the kind. Absent means agarose.
+ */
+export type GelKind = 'agarose' | 'sds-page'
+
 export interface GelConditions {
+  kind?: GelKind
   /** Agarose concentration in % (w/v), 0.5-3. */
   agarosePct: number
+  /** SDS-PAGE only: acrylamide %T of the resolving gel. */
+  acrylamidePct?: number
   buffer: GelBuffer
   format: GelFormat
   /**
@@ -90,10 +102,21 @@ export type LaneSample =
     }
   | {
       kind: 'sizes'
-      /** Band sizes in bp, typed in: to compare against a real gel. */
+      /** Band sizes in bp (Da on an SDS-PAGE gel), typed in: to compare against a real gel. */
       sizes: number[]
       /** Mass per band. */
       ng: number
+    }
+  | {
+      kind: 'protein'
+      /** Id of the source protein document; the caller resolves it. */
+      sourceId: string
+      /** Protein loaded, in ng (a Coomassie lane takes a microgram or two). */
+      ng: number
+      /** Protease ids the sample was digested with; empty runs it intact. */
+      proteases: string[]
+      /** Missed cleavages allowed in the digest. */
+      missedCleavages?: number
     }
 
 export interface GelLane {
@@ -127,7 +150,11 @@ export interface FragmentOrigin {
 
 /** One population of identical molecules in a lane. */
 export interface DnaSpecies {
-  /** Length in bp. */
+  /**
+   * Size in the gel's unit: base pairs of DNA on an agarose gel, daltons of
+   * protein on an SDS-PAGE gel. One field so the band, label and layout code
+   * is written once; `formatGelSize` prints it with the right unit.
+   */
   bp: number
   form: DnaForm
   /** Mass loaded, which is what the stain sees. */
@@ -138,4 +165,16 @@ export interface DnaSpecies {
   reference?: boolean
   /** PCR lanes: the intended product, as opposed to a side product. */
   pcr?: 'product' | 'side'
+}
+
+export function isProteinGel(c: Pick<GelConditions, 'kind'>): boolean {
+  return c.kind === 'sds-page'
+}
+
+/** "13.7 kDa" on a protein gel, "1.2 kb" on a DNA gel. */
+export function formatGelSize(size: number, c: Pick<GelConditions, 'kind'>): string {
+  if (!isProteinGel(c)) return formatBp(size)
+  if (size >= 100_000) return `${Math.round(size / 1000)} kDa`
+  if (size >= 1000) return `${(size / 1000).toFixed(1)} kDa`
+  return `${Math.round(size)} Da`
 }

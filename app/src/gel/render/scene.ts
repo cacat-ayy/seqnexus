@@ -9,9 +9,9 @@
  */
 
 import { bandLabelBp, type GelBand, type GelLayout } from '../bands'
-import { GEL_FORMATS } from '../migration'
+import { gelCaption } from '../migration'
 import { toneMap, bandPeakDensity } from './raster'
-import { formatBp } from '../../utils/format'
+import { formatGelSize } from '../model'
 
 export interface Rect { x: number; y: number; w: number; h: number }
 
@@ -179,7 +179,7 @@ export function buildScene({ width, height, layout, lanes, exposure, labelMode =
       })
       if (i === firstLadder) {
         const bp = bandLabelBp(band)
-        sizeLabels.push({ y, text: formatBp(bp), major: band.members.some(m => m.reference) || bp % 1000 === 0 })
+        sizeLabels.push({ y, text: formatGelSize(bp, layout.conditions), major: band.members.some(m => m.reference) || bp % 1000 === 0 })
       }
     })
   }
@@ -189,7 +189,7 @@ export function buildScene({ width, height, layout, lanes, exposure, labelMode =
     .filter(d => d.y < slab.y + slab.h)
 
   const c = layout.conditions
-  const caption = `${c.agarosePct}% agarose · ${c.buffer} · ${GEL_FORMATS[c.format]?.label ?? c.format}`
+  const caption = gelCaption(c)
 
   return {
     width, height, slab, figure, labelMode, ghost, wellY, wellH: WELL_H, originY, pxPerMm,

@@ -16,6 +16,8 @@ import { getEnzyme, type RestrictionEnzyme } from '../enzymes/db'
 import { findUnblockedSites } from '../cloning/digest'
 import { getLadder, type Ladder } from './ladders'
 import { simulatePcr } from '../primers/pcr'
+import { protease, digest, type Protease } from '../protein/proteolysis'
+import { proteinMass } from '../protein/properties'
 import type { PrimerData } from '../primers/oligo'
 import {
   DEFAULT_PLASMID_FORMS,
@@ -31,6 +33,8 @@ export interface SequenceSource {
   name: string
   bases: string
   topology: 'linear' | 'circular'
+  /** Absent is DNA; a protein's bases are residues, for an SDS-PAGE lane. */
+  alphabet?: 'dna' | 'protein'
   damMethylated?: boolean
   dcmMethylated?: boolean
 }
@@ -210,6 +214,48 @@ export function simulatePcrLane(
   return { species, warnings, totalNg: Math.max(0, ng) }
 }
 
+/**
+ * A protein lane on SDS-PAGE: the intact chain, or the peptides of a digest,
+ * each weighed by its share of the chain's mass. Peptides carry a fragment
+ * origin with the protease that made each end, so the inspector can select
+ * them in the protein. Species are in daltons (average mass).
+ */
+export function simulateProtein(source: SequenceSource, sample: Extract<LaneSample, { kind: 'protein' }>): LaneSimulation {
+  const residues = source.bases
+  const n = residues.length
+  if (n === 0) return { ...EMPTY, warnings: [`${source.name} is empty`] }
+  if (source.alphabet !== 'protein') return { ...EMPTY, warnings: [`${source.name} is DNA, not a protein`] }
+  const ng = Math.max(0, sample.ng)
+  const enzymes = sample.proteases.map(id => protease(id)).filter((p): p is Protease => !!p)
+  const unknown = sample.proteases.filter(id => !protease(id))
+  const warnings = unknown.map(id => `Unknown protease "${id}"`)
+  if (enzymes.length === 0) {
+    return { species: [{ bp: Math.round(proteinMass(residues).average), form: 'linear', ng }], warnings, totalNg: ng }
+  }
+  const peptides = digest(residues, enzymes, { missedCleavages: sample.missedCleavages ?? 0 })
+  if (peptides.length <= 1 && peptides[0]?.missed === 0 && peptides[0]?.end - peptides[0]?.start === n) {
+    warnings.push(`${enzymes.map(e => e.name).join(' + ')} does not cut ${source.name}`)
+  }
+  // Mass is shared by the complete digest; partials are extra, fainter.
+  const complete = peptides.filter(p => p.missed === 0)
+  const total = complete.reduce((a, p) => a + p.average, 0) || 1
+  const names = enzymes.map(e => e.name).join('/')
+  const species: DnaSpecies[] = peptides.map((p, i) => ({
+    bp: Math.round(p.average),
+    form: 'linear',
+    ng: p.missed === 0 ? (ng * p.average) / total : (ng * p.average) / total * MISSED_SHARE ** p.missed,
+    fragment: {
+      index: i, start: p.start, end: p.end,
+      leftEnzyme: p.start === 0 ? null : names,
+      rightEnzyme: p.end === n ? null : names,
+    },
+  }))
+  return { species, warnings, totalNg: ng }
+}
+
+/** How much of a peptide's share each missed cleavage leaves it. */
+const MISSED_SHARE = 0.2
+
 export function simulateLane(sample: LaneSample, resolver: SourceResolver | GelResolver): LaneSimulation {
   const { sequence: resolve, oligo } = toResolver(resolver)
   switch (sample.kind) {
@@ -241,6 +287,11 @@ export function simulateLane(sample: LaneSample, resolver: SourceResolver | GelR
       const rev = oligo?.(sample.reverseId) ?? null
       if (!fwd || !rev) return { ...EMPTY, warnings: ['Choose two primers from the primer library'] }
       return simulatePcrLane(template, fwd, rev, sample.ng)
+    }
+    case 'protein': {
+      const source = resolve(sample.sourceId)
+      if (!source) return { ...EMPTY, warnings: ['The source protein is no longer available'] }
+      return simulateProtein(source, sample)
     }
     case 'sizes': {
       const species: DnaSpecies[] = sample.sizes

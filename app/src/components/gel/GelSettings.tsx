@@ -2,11 +2,12 @@
  * How the gel was poured and run, and how it is imaged.
  */
 
-import { AGAROSE_MAX, AGAROSE_MIN, GEL_FORMATS, resolutionRange } from '../../gel/migration'
-import type { GelBuffer, GelConditions, GelFormat } from '../../gel/model'
+import {
+  AGAROSE_MAX, AGAROSE_MIN, GEL_FORMATS, resolutionRange, ACRYLAMIDE_OPTIONS, DEFAULT_ACRYLAMIDE_PCT, clampAcrylamide,
+} from '../../gel/migration'
+import { isProteinGel, formatGelSize, type GelBuffer, type GelConditions, type GelFormat, type GelKind } from '../../gel/model'
 import { GEL_LOOKS, GEL_LOOK_ORDER, type GelLookId } from '../../gel/render/looks'
 import type { GelEffects } from '../../gel/render/raster'
-import { formatBp } from '../../utils/format'
 import type { GelDisplay, LaneLabelMode } from '../../gel/workspace'
 
 interface Props {
@@ -24,21 +25,49 @@ const EFFECTS: { key: keyof GelEffects; label: string; hint: string }[] = [
 
 export default function GelSettings({ conditions, onConditions, display, onDisplay }: Props) {
   const [lo, hi] = resolutionRange(conditions)
+  const protein = isProteinGel(conditions)
   return (
     <div className="gw-inspector-body">
       <div className="gw-section-title">Gel</div>
-      <label className="gw-field">
-        <span className="gw-field-label">Agarose</span>
-        <span className="gw-slider">
-          <input
-            type="range" min={AGAROSE_MIN} max={AGAROSE_MAX} step={0.1}
-            value={conditions.agarosePct}
-            onChange={e => onConditions({ agarosePct: Number(e.target.value) })}
-          />
-          <span className="gw-slider-value">{conditions.agarosePct.toFixed(1)}%</span>
-        </span>
-      </label>
-      <div className="gw-field-hint">Separates about {formatBp(lo)} to {formatBp(hi)} well</div>
+      {/* The kind decides the matrix, the ladders, the migration model and
+          the unit on every label; switching keeps the lanes, which the
+          inspector then flags as the wrong molecule for this gel. */}
+      <div className="gw-field">
+        <span className="gw-field-label">Kind</span>
+        <div className="toggle-group" role="radiogroup" aria-label="Gel kind">
+          {([['agarose', 'Agarose'], ['sds-page', 'SDS-PAGE']] as [GelKind, string][]).map(([k, label]) => (
+            <button key={k} role="radio" aria-checked={(conditions.kind ?? 'agarose') === k}
+              className={`toggle-btn ${(conditions.kind ?? 'agarose') === k ? 'active' : ''}`}
+              title={k === 'agarose' ? 'DNA by length' : 'Proteins by mass, denatured in SDS'}
+              onClick={() => onConditions(k === 'sds-page'
+                ? { kind: 'sds-page', acrylamidePct: conditions.acrylamidePct ?? DEFAULT_ACRYLAMIDE_PCT }
+                : { kind: undefined })}>{label}</button>
+          ))}
+        </div>
+      </div>
+      {protein ? (
+        <label className="gw-field">
+          <span className="gw-field-label">Acrylamide</span>
+          <select className="select gw-select" value={clampAcrylamide(conditions.acrylamidePct)}
+            onChange={e => onConditions({ acrylamidePct: Number(e.target.value) })}>
+            {ACRYLAMIDE_OPTIONS.map(p => <option key={p} value={p}>{p}% T</option>)}
+          </select>
+        </label>
+      ) : (
+        <label className="gw-field">
+          <span className="gw-field-label">Agarose</span>
+          <span className="gw-slider">
+            <input
+              type="range" min={AGAROSE_MIN} max={AGAROSE_MAX} step={0.1}
+              value={conditions.agarosePct}
+              onChange={e => onConditions({ agarosePct: Number(e.target.value) })}
+            />
+            <span className="gw-slider-value">{conditions.agarosePct.toFixed(1)}%</span>
+          </span>
+        </label>
+      )}
+      <div className="gw-field-hint">Separates about {formatGelSize(lo, conditions)} to {formatGelSize(hi, conditions)} well</div>
+      {!protein && (
       <div className="gw-field">
         <span className="gw-field-label">Buffer</span>
         <div className="toggle-group" role="radiogroup" aria-label="Buffer">
@@ -49,6 +78,7 @@ export default function GelSettings({ conditions, onConditions, display, onDispl
           ))}
         </div>
       </div>
+      )}
       <div className="gw-field">
         <span className="gw-field-label">Size</span>
         <div className="toggle-group" role="radiogroup" aria-label="Gel size">

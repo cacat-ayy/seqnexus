@@ -24,7 +24,7 @@ interface LaneRow {
  * alternative (raw PDF binary) is fragile for image embedding without
  * a library.
  */
-export function exportGelPdf(canvas: HTMLCanvasElement, rows: LaneRow[], gelPct: number): void {
+export function exportGelPdf(canvas: HTMLCanvasElement, rows: LaneRow[], gel: { caption: string; unit: string }): void {
   const imgDataUrl = canvas.toDataURL('image/png')
 
   // Compute aspect ratio for the image
@@ -52,11 +52,11 @@ export function exportGelPdf(canvas: HTMLCanvasElement, rows: LaneRow[], gelPct:
 </head>
 <body>
   <h1>Virtual Gel Electrophoresis</h1>
-  <div class="meta">Gel: ${gelPct}% agarose &middot; ${rows.length} lanes &middot; ${new Date().toLocaleDateString()}</div>
+  <div class="meta">Gel: ${gel.caption} &middot; ${rows.length} lanes &middot; ${new Date().toLocaleDateString()}</div>
   <img class="gel-img" src="${imgDataUrl}" width="${imgW}" height="${imgH}" />
   <table>
     <thead>
-      <tr><th>Lane</th><th>Type</th><th>Source</th><th>Enzymes</th><th>#</th><th>Fragments (bp)</th></tr>
+      <tr><th>Lane</th><th>Type</th><th>Source</th><th>Enzymes</th><th>#</th><th>Fragments (${gel.unit})</th></tr>
     </thead>
     <tbody>
       ${rows.map(r => `<tr>

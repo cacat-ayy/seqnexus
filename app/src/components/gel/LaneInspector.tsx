@@ -7,10 +7,13 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Copy, Trash2, AlertTriangle, TextSelect, Scissors, FileOutput } from 'lucide-react'
-import { LADDERS, DEFAULT_LADDER_ID, getLadder } from '../../gel/ladders'
+import { laddersFor, DEFAULT_LADDER_ID, DEFAULT_PROTEIN_LADDER_ID, getLadder } from '../../gel/ladders'
 import {
-  DEFAULT_PCR_NG, DEFAULT_SAMPLE_NG, DEFAULT_SIZES_NG, type GelLane, type LaneSample,
+  DEFAULT_PCR_NG, DEFAULT_SAMPLE_NG, DEFAULT_SIZES_NG, isProteinGel, formatGelSize,
+  type GelConditions, type GelLane, type LaneSample,
 } from '../../gel/model'
+import { DEFAULT_PROTEIN_NG } from '../../gel/workspace'
+import { PROTEASES } from '../../protein/proteolysis'
 import type { LaneLayout, PlacedSpecies } from '../../gel/bands'
 import type { SequenceSource } from '../../gel/simulate'
 import { FORM_PRESETS, formPresetId, autoLaneLabel } from '../../gel/workspace'
@@ -19,7 +22,7 @@ import { formatBp } from '../../utils/format'
 import EnzymeField from '../EnzymeField'
 import { parseSizes } from '../../gel/parse'
 
-export interface SourceOption { id: string; name: string; length: number; topology: 'linear' | 'circular' }
+export interface SourceOption { id: string; name: string; length: number; topology: 'linear' | 'circular'; alphabet?: 'dna' | 'protein' }
 export interface OligoOption { id: string; name: string; length: number }
 
 interface Props {
@@ -29,6 +32,8 @@ interface Props {
   sources: SourceOption[]
   oligos: OligoOption[]
   resolveSource: (id: string) => SequenceSource | null
+  /** The gel's kind decides which samples and ladders are offered, and the size unit. */
+  conditions: GelConditions
   /** Band of this lane picked on the gel. */
   selectedBand: number | null
   onHoverBand: (bandIdx: number | null) => void
@@ -44,11 +49,18 @@ interface Props {
 
 type Kind = LaneSample['kind']
 
-const KINDS: { kind: Kind; label: string; title: string }[] = [
+const DNA_KINDS: { kind: Kind; label: string; title: string }[] = [
   { kind: 'ladder', label: 'Ladder', title: 'A DNA size ladder' },
   { kind: 'sequence', label: 'Sequence', title: 'A sequence, uncut or digested' },
   { kind: 'pcr', label: 'PCR', title: 'The product of two primers from the library' },
   { kind: 'sizes', label: 'Sizes', title: 'Band sizes typed in, e.g. from a real gel' },
+  { kind: 'empty', label: 'Empty', title: 'An empty well' },
+]
+
+const PROTEIN_KINDS: { kind: Kind; label: string; title: string }[] = [
+  { kind: 'ladder', label: 'Ladder', title: 'A protein mass ladder' },
+  { kind: 'protein', label: 'Protein', title: 'A protein, intact or digested with a protease' },
+  { kind: 'sizes', label: 'Sizes', title: 'Band masses in Da typed in, e.g. from a real gel' },
   { kind: 'empty', label: 'Empty', title: 'An empty well' },
 ]
 
@@ -85,10 +97,12 @@ function SizesField({ sizes, onChange }: { sizes: number[]; onChange: (sizes: nu
 }
 
 export default function LaneInspector({
-  lane, index, layout, sources, oligos, resolveSource, selectedBand, onHoverBand, onSelectBand,
+  lane, index, layout, sources, oligos, resolveSource, conditions, selectedBand, onHoverBand, onSelectBand,
   onChange, onRemove, onDuplicate, onSelectInSequence, onExtract, onOpenPcrProduct,
 }: Props) {
   const sample = lane.sample
+  const protein = isProteinGel(conditions)
+  const proteinSources = sources.filter(s => s.alphabet === 'protein')
   const tableRef = useRef<HTMLDivElement>(null)
   const names = {
     sequence: (id: string) => sources.find(s => s.id === id)?.name ?? null,
@@ -106,7 +120,12 @@ export default function LaneInspector({
     // Carry the sequence across where it makes sense: digest ↔ PCR template.
     const seqId = sample.kind === 'sequence' ? sample.sourceId : sample.kind === 'pcr' ? sample.templateId : sources[0]?.id ?? ''
     switch (kind) {
-      case 'ladder': return setSample({ kind: 'ladder', ladderId: DEFAULT_LADDER_ID })
+      case 'ladder': return setSample({ kind: 'ladder', ladderId: protein ? DEFAULT_PROTEIN_LADDER_ID : DEFAULT_LADDER_ID })
+      case 'protein': return setSample({
+        kind: 'protein',
+        sourceId: sample.kind === 'protein' ? sample.sourceId : proteinSources[0]?.id ?? '',
+        ng: DEFAULT_PROTEIN_NG, proteases: [],
+      })
       case 'empty': return setSample({ kind: 'empty' })
       case 'sequence': return setSample({ kind: 'sequence', sourceId: seqId, enzymes: [], ng: DEFAULT_SAMPLE_NG })
       case 'pcr': return setSample({
@@ -189,7 +208,7 @@ export default function LaneInspector({
       </div>
 
       <div className="gw-kinds" role="radiogroup" aria-label="Sample type">
-        {KINDS.map(k => (
+        {(protein ? PROTEIN_KINDS : DNA_KINDS).map(k => (
           <button
             key={k.kind}
             role="radio"
@@ -212,7 +231,7 @@ export default function LaneInspector({
               value={getLadder(sample.ladderId)?.id ?? DEFAULT_LADDER_ID}
               onChange={e => setSample({ kind: 'ladder', ladderId: e.target.value, ...(sample.ng !== undefined ? { ng: sample.ng } : {}) })}
             >
-              {LADDERS.map(l => <option key={l.id} value={l.id}>{l.name}</option>)}
+              {laddersFor(protein ? 'protein' : 'dna').map(l => <option key={l.id} value={l.id}>{l.name}</option>)}
             </select>
           </label>
           <label className="gw-field">
@@ -271,6 +290,51 @@ export default function LaneInspector({
         </>
       )}
 
+      {sample.kind === 'protein' && (
+        <>
+          <label className="gw-field">
+            <span className="gw-field-label">Protein</span>
+            <select className="select gw-select" value={sample.sourceId} onChange={e => setSample({ ...sample, sourceId: e.target.value })}>
+              {!proteinSources.some(s => s.id === sample.sourceId) && <option value={sample.sourceId}>Choose a protein</option>}
+              {proteinSources.map(s => (
+                <option key={s.id} value={s.id}>{s.name} ({s.length} aa)</option>
+              ))}
+            </select>
+          </label>
+          {proteinSources.length === 0 && (
+            <div className="gw-field-hint warn">No protein is open. Open or translate one first.</div>
+          )}
+          <div className="gw-field">
+            <span className="gw-field-label">Protease</span>
+            <div className="gw-protease-list">
+              {PROTEASES.map(p => (
+                <label key={p.id} className="gw-check" title={p.description}>
+                  <input
+                    type="checkbox"
+                    checked={sample.proteases.includes(p.id)}
+                    onChange={e => setSample({
+                      ...sample,
+                      proteases: e.target.checked ? [...sample.proteases, p.id] : sample.proteases.filter(id => id !== p.id),
+                    })}
+                  />
+                  {p.name}
+                </label>
+              ))}
+            </div>
+          </div>
+          {sample.proteases.length > 0 && (
+            <label className="gw-field" title="Peptides with this many sites skipped are shown too, fainter">
+              <span className="gw-field-label">Missed</span>
+              <select className="select gw-select" value={sample.missedCleavages ?? 0}
+                onChange={e => setSample({ ...sample, missedCleavages: Number(e.target.value) })}>
+                {[0, 1, 2].map(n => <option key={n} value={n}>{n} missed cleavage{n === 1 ? '' : 's'}</option>)}
+              </select>
+            </label>
+          )}
+          {amountField(sample.ng, ng => setSample({ ...sample, ng }, ngKey), 'Amount', 'Protein loaded; a Coomassie lane takes a microgram or two')}
+        </>
+      )}
+
       {sample.kind === 'pcr' && (
         <>
           {sequenceSelect(sample.templateId, id => setSample({ ...sample, templateId: id }), 'Template')}
@@ -310,7 +374,7 @@ export default function LaneInspector({
       {rows.length > 0 && (
         <div className="gw-frag-section">
           <div className="gw-section-title">
-            {isLadder || sample.kind === 'sizes' ? 'Bands' : sample.kind === 'pcr' ? 'Products' : 'Fragments'} <span className="gw-count">{rows.length}</span>
+            {isLadder || sample.kind === 'sizes' ? 'Bands' : sample.kind === 'pcr' ? 'Products' : sample.kind === 'protein' ? (sample.proteases.length > 0 ? 'Peptides' : 'Protein') : 'Fragments'} <span className="gw-count">{rows.length}</span>
           </div>
           <div className="gw-frag-table-wrap" ref={tableRef}>
             <table className="gw-frag-table">
@@ -341,7 +405,7 @@ export default function LaneInspector({
                       onClick={() => r.bandIdx !== null && onSelectBand(r.bandIdx)}
                     >
                       <td className="size">
-                        {formatBp(r.species.bp)}
+                        {formatGelSize(r.species.bp, conditions)}
                         {r.species.reference && <span className="gw-pill" title="Reference band, loaded heavier">ref</span>}
                         {r.species.pcr === 'side' && <span className="gw-pill warn" title="Another product the primers could make">side</span>}
                         {r.merged && <span className="gw-pill" title="Runs together with another fragment">merged</span>}
@@ -359,7 +423,7 @@ export default function LaneInspector({
                               <button
                                 className="gw-row-btn"
                                 title="Select in the sequence"
-                                aria-label={`Select the ${formatBp(r.species.bp)} fragment in the sequence`}
+                                aria-label={`Select the ${formatGelSize(r.species.bp, conditions)} fragment in the sequence`}
                                 onClick={e => { e.stopPropagation(); onSelectInSequence(r.species) }}
                               >
                                 <TextSelect size={12} />
@@ -367,7 +431,7 @@ export default function LaneInspector({
                               <button
                                 className="gw-row-btn"
                                 title="Cut out: open as a new sequence"
-                                aria-label={`Extract the ${formatBp(r.species.bp)} fragment as a new sequence`}
+                                aria-label={`Extract the ${formatGelSize(r.species.bp, conditions)} fragment as a new sequence`}
                                 onClick={e => { e.stopPropagation(); onExtract(r.species) }}
                               >
                                 <Scissors size={12} />

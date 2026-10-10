@@ -76,11 +76,16 @@ export type HitRegion =
       span: number
     }
   | { kind: 'point'; id: string; type: 'enzyme'; x: number; y: number; r: number }
+  /** A feature bar on a linear figure. */
+  | { kind: 'box'; id: string; type: 'feature'; x: number; y: number; w: number; h: number }
   /** A cut-site name: the box its text fills, centred on x, y and turned by `rotate`. */
   | { kind: 'label'; id: string; type: 'enzyme'; x: number; y: number; w: number; h: number; rotate: number }
 
 export interface PlasmidScene {
+  /** Width, and the height unless `height` says otherwise: the map is square. */
   size: number
+  /** A linear figure (the domain map) is wide and as tall as its lanes need. */
+  height?: number
   background: string
   items: SceneItem[]
   hitRegions: HitRegion[]

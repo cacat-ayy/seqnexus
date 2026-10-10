@@ -8,8 +8,8 @@
 
 import { findCutSites, cuttingSites } from '../enzymes/finder'
 import { getEnzyme } from '../enzymes/db'
-import { DEFAULT_LADDER_ID, getLadder } from './ladders'
-import { AGAROSE_MAX, AGAROSE_MIN, GEL_FORMATS } from './migration'
+import { DEFAULT_LADDER_ID, DEFAULT_PROTEIN_LADDER_ID, getLadder } from './ladders'
+import { AGAROSE_MAX, AGAROSE_MIN, GEL_FORMATS, DEFAULT_ACRYLAMIDE_PCT, clampAcrylamide } from './migration'
 import {
   DEFAULT_CONDITIONS, DEFAULT_PCR_NG, DEFAULT_SAMPLE_NG, DEFAULT_SIZES_NG,
   type FormMix, type GelConditions, type GelFormat, type GelLane, type LaneSample,
@@ -59,6 +59,7 @@ export function newLaneId(): string {
 export function laneUsesSequence(lane: GelLane, sequenceIds: ReadonlySet<string>): boolean {
   const s = lane.sample
   return (s.kind === 'sequence' && sequenceIds.has(s.sourceId))
+    || (s.kind === 'protein' && sequenceIds.has(s.sourceId))
     || (s.kind === 'pcr' && sequenceIds.has(s.templateId))
 }
 
@@ -104,8 +105,18 @@ export interface ActiveSequence {
   id: string
   bases: string
   topology: 'linear' | 'circular'
+  /** A protein starts an SDS-PAGE gel instead of an agarose one. */
+  alphabet?: 'dna' | 'protein'
   /** Enzymes shown on the sequence's map, if any. */
   shownEnzymes: string[]
+}
+
+/** How much protein a first lane loads: a Coomassie lane takes a microgram or two. */
+export const DEFAULT_PROTEIN_NG = 2000
+
+/** A gel poured for proteins: 12% acrylamide, run to the front. */
+export const DEFAULT_PAGE_CONDITIONS: GelConditions = {
+  ...DEFAULT_CONDITIONS, kind: 'sds-page', acrylamidePct: DEFAULT_ACRYLAMIDE_PCT, dyeFront: 0.9,
 }
 
 /** Fragments smaller than this are hard to see, so a diagnostic avoids them. */
@@ -177,8 +188,33 @@ export function digestWorkspace(sourceId: string, enzymes: string[]): GelWorkspa
   }
 }
 
+/** A protein's first gel: SDS-PAGE with a protein ladder, the protein intact, and a tryptic digest. */
+export function proteinLanes(active: ActiveSequence): GelLane[] {
+  return [
+    { id: newLaneId(), sample: { kind: 'ladder', ladderId: DEFAULT_PROTEIN_LADDER_ID } },
+    { id: newLaneId(), sample: { kind: 'protein', sourceId: active.id, ng: DEFAULT_PROTEIN_NG, proteases: [] } },
+    { id: newLaneId(), sample: { kind: 'protein', sourceId: active.id, ng: DEFAULT_PROTEIN_NG, proteases: ['trypsin'] } },
+  ]
+}
+
 export function defaultWorkspace(active: ActiveSequence | null): GelWorkspaceState {
+  if (active?.alphabet === 'protein') {
+    return { conditions: DEFAULT_PAGE_CONDITIONS, lanes: proteinLanes(active), display: DEFAULT_DISPLAY }
+  }
   return { conditions: DEFAULT_CONDITIONS, lanes: defaultLanes(active), display: DEFAULT_DISPLAY }
+}
+
+/** A gel for one protein digest: ladder, the protein intact, and the digest. */
+export function proteinDigestWorkspace(sourceId: string, proteases: string[], missedCleavages = 0): GelWorkspaceState {
+  return {
+    conditions: DEFAULT_PAGE_CONDITIONS,
+    display: DEFAULT_DISPLAY,
+    lanes: [
+      { id: newLaneId(), sample: { kind: 'ladder', ladderId: DEFAULT_PROTEIN_LADDER_ID } },
+      { id: newLaneId(), sample: { kind: 'protein', sourceId, ng: DEFAULT_PROTEIN_NG, proteases: [] } },
+      { id: newLaneId(), sample: { kind: 'protein', sourceId, ng: DEFAULT_PROTEIN_NG, proteases, missedCleavages } },
+    ],
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -191,6 +227,7 @@ function clamp(v: unknown, lo: number, hi: number, fallback: number): number {
 
 function sanitizeConditions(c: Partial<GelConditions> | undefined): GelConditions {
   return {
+    ...(c?.kind === 'sds-page' ? { kind: 'sds-page' as const, acrylamidePct: clampAcrylamide(c.acrylamidePct) } : {}),
     agarosePct: clamp(c?.agarosePct, AGAROSE_MIN, AGAROSE_MAX, DEFAULT_CONDITIONS.agarosePct),
     buffer: c?.buffer === 'TBE' ? 'TBE' : 'TAE',
     format: c?.format && c.format in GEL_FORMATS ? c.format as GelFormat : DEFAULT_CONDITIONS.format,
@@ -230,6 +267,15 @@ function sanitizeSample(s: Partial<LaneSample> | undefined): LaneSample {
       forwardId: typeof s.forwardId === 'string' ? s.forwardId : '',
       reverseId: typeof s.reverseId === 'string' ? s.reverseId : '',
       ng: clamp(s.ng, 1, 10_000, DEFAULT_PCR_NG),
+    }
+  }
+  if (s?.kind === 'protein' && typeof s.sourceId === 'string') {
+    return {
+      kind: 'protein',
+      sourceId: s.sourceId,
+      ng: clamp(s.ng, 1, 20_000, DEFAULT_PROTEIN_NG),
+      proteases: Array.isArray(s.proteases) ? s.proteases.filter(p => typeof p === 'string') : [],
+      ...(typeof s.missedCleavages === 'number' ? { missedCleavages: clamp(s.missedCleavages, 0, 5, 0) } : {}),
     }
   }
   if (s?.kind === 'sizes' && Array.isArray(s.sizes)) {
@@ -291,6 +337,10 @@ export function autoLaneLabel(sample: LaneSample, names: NameLookup | ((id: stri
       const fwd = lookup.oligo?.(sample.forwardId) ?? '?'
       const rev = lookup.oligo?.(sample.reverseId) ?? '?'
       return `PCR ${fwd}-${rev}`
+    }
+    case 'protein': {
+      const name = lookup.sequence(sample.sourceId) ?? 'Missing'
+      return sample.proteases.length > 0 ? `${name} ${sample.proteases.join('+')}` : name
     }
     case 'sizes': return 'Sizes'
   }

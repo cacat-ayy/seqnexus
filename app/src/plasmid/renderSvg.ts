@@ -189,8 +189,8 @@ export function renderSceneToSvg(scene: PlasmidScene): string {
   return [
     `<?xml version="1.0" encoding="UTF-8"?>`,
     `<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" `
-      + `width="${n(scene.size)}" height="${n(scene.size)}" `
-      + `viewBox="0 0 ${n(scene.size)} ${n(scene.size)}">`,
+      + `width="${n(scene.size)}" height="${n(scene.height ?? scene.size)}" `
+      + `viewBox="0 0 ${n(scene.size)} ${n(scene.height ?? scene.size)}">`,
     defs.length > 0 ? `<defs>${defs.join('')}</defs>` : '',
     body.join('\n'),
     `</svg>`,

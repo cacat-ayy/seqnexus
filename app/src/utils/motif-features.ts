@@ -67,3 +67,6 @@ export function motifToAnnotationData(hit: MotifHit): AnnotationData {
     qualifiers: { note: [`${hit.sequence}, ${hit.category.toLowerCase()}`] },
   }
 }
+
+/** Ids of the peptides a digest overlay draws; synthetic like the motif hits. */
+export const PEPTIDE_ID_PREFIX = '_pep_'

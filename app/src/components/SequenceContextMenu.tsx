@@ -185,7 +185,9 @@ export default function SequenceContextMenu({
   const hasSelection = segs.length > 0
   const primer = target.annId ? primerItemById.get(target.annId) ?? null : null
   const ann = target.annId && !primer ? annotations.find(a => a.id === target.annId) ?? null : null
-  const isUserAnn = !!ann && !ann.id.startsWith('_orf_') && !isAutoAnnotationId(ann.id)
+  // Synthetic overlays (ORFs, suggestions, motif hits, peptides) all carry a
+  // leading underscore; only the document's own features can be edited.
+  const isUserAnn = !!ann && !ann.id.startsWith('_') && !isAutoAnnotationId(ann.id)
   const group = target.enzymeGroup
   const circular = doc.sequence.topology === 'circular'
   // A protein has no other strand, no translation, no primers and no
