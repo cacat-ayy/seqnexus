@@ -296,6 +296,32 @@ function placeInnerLabels(
   return placed
 }
 
+// ---- Cut-site names ----
+
+/** A cut site's name, before it is placed inside the circle or listed. */
+interface SiteName {
+  key: string
+  text: string
+  angle: number
+  /** At the bold weight. */
+  width: number
+  fill: string
+  font: string
+  picked: boolean
+  hovered: boolean
+  /** Translucent for a site methylation blocks. */
+  alpha: number
+}
+
+/** Cut sites closer together than a row of text, this many or more in a
+ *  run, are listed beside the circle instead of named inside it. */
+const CLUSTER_MIN = 5
+
+/** Below this size (the split view) a small feature is left unnamed. */
+const SMALL_MAP = 500
+/** A feature whose arc is shorter than this, in pixels, is small. */
+const SMALL_FEATURE_PX = 24
+
 // ---- Outside label placement ----
 
 interface OutsideLabel {
@@ -565,6 +591,7 @@ export function buildPlasmidScene(input: PlasmidSceneInput): PlasmidScene {
   }
 
   // --- Enzyme cut sites ---
+  const siteNames: SiteName[] = []
   for (const group of enzymeGroups) {
     const angle = posToAngle(group.cutPos, seqLen)
     const hovered = group.key === hoveredEnzymeKey
@@ -585,22 +612,37 @@ export function buildPlasmidScene(input: PlasmidSceneInput): PlasmidScene {
     hitRegions.push({ kind: 'point', id: group.key, type: 'enzyme', x: mx, y: my, r: 10 })
 
     if (style.showEnzymeLabels) {
-      const f = font(style.enzymeSize, hovered || picked)
-      innerLabels.push({
-        text: group.label, angle,
+      siteNames.push({
+        key: group.key, text: group.label, angle,
         // Laid out at its bold width whether or not it is bold, so hovering a
         // name (which bolds it) cannot widen it, push it to another row and
         // put a different name under the pointer.
         width: measureText(group.label, font(style.enzymeSize, true)),
-        fill: ink, font: f,
-        // Ruler numbers are 0, so a chosen site still yields to them; it
-        // goes before every other site, which is what keeps it on the map.
-        priority: picked ? 0.5 : 1,
-        leader: true,
-        leaderColor: ink,
-        hitId: group.key,
+        fill: ink, font: font(style.enzymeSize, hovered || picked),
+        picked, hovered, alpha,
       })
     }
+  }
+
+  // A crowded stretch of sites (a multiple cloning site) is listed beside
+  // the circle; every other name goes inside, on the ruler's tiers.
+  const ringsOuter = baseRadius + 14 + Math.max(0, rings.length - 1) * (style.arcWidth + style.arcGap)
+    + style.arcWidth / 2
+  const runs = findCrowdedRuns(siteNames, baseRadius, listRowHeight(style))
+  drawRunBrackets(items, runs, cx, cy, baseRadius, ringsOuter + 4, colors)
+  const listed = new Set(runs.flat().map(site => site.key))
+  for (const site of siteNames) {
+    if (listed.has(site.key)) continue
+    innerLabels.push({
+      text: site.text, angle: site.angle, width: site.width,
+      fill: site.fill, font: site.font,
+      // Ruler numbers are 0, so a chosen site still yields to them; it
+      // goes before every other site, which is what keeps it on the map.
+      priority: site.picked ? 0.5 : 1,
+      leader: true,
+      leaderColor: site.fill,
+      hitId: site.key,
+    })
   }
 
   // --- Guide cuts ---
@@ -763,6 +805,11 @@ export function buildPlasmidScene(input: PlasmidSceneInput): PlasmidScene {
           fill: contrastText(ann.color),
           flip: isFlipped(startAngle + span / 2),
         })
+      } else if (size < SMALL_MAP && arcLength < SMALL_FEATURE_PX) {
+        // A small map (the split view) leaves a small feature unnamed: its
+        // name would be one more leader in the most crowded stretch, and
+        // hovering the feature still names it.
+        continue
       } else {
         outside.push({
           text: ann.name, display: ann.name,
@@ -773,11 +820,17 @@ export function buildPlasmidScene(input: PlasmidSceneInput): PlasmidScene {
     }
   }
 
+  // --- Lists of a crowded stretch's site names, and the feature names beside them ---
+  const taken = drawRunLists(items, hitRegions, runs, outside, {
+    cx, cy, size, ringsOuter, style, colors, measureText, font,
+  })
+
   // --- Labels that did not fit inside their arc ---
-  if (outside.length > 0) {
+  const rest = taken.size > 0 ? outside.filter(l => !taken.has(l)) : outside
+  if (rest.length > 0) {
     const outermost = baseRadius + 14 + Math.max(0, rings.length - 1) * (style.arcWidth + style.arcGap)
     layoutOutsideLabels(
-      items, outside, cx, cy, size, outermost, style, colors, measureText, font,
+      items, rest, cx, cy, size, outermost, style, colors, measureText, font,
     )
   }
 
@@ -997,4 +1050,218 @@ function layoutOutsideLabels(
       halo: style.labelHalo ? colors.bg : undefined,
     })
   }
+}
+
+/** Row height of a list beside the circle, for site and feature names alike. */
+function listRowHeight(style: PlasmidStyle): number {
+  return Math.max(style.labelSize, style.enzymeSize) + 4
+}
+
+/**
+ * Runs of CLUSTER_MIN or more cut sites closer together, on the backbone,
+ * than a row of text: a multiple cloning site, where a dozen sites sit a
+ * pixel or two apart and their names on the tiers inside the circle end up
+ * turned every which way and partly dropped. Each run is listed beside the
+ * circle instead (drawRunLists); fewer sites, or sites further apart, are
+ * named inside as before.
+ */
+function findCrowdedRuns(sites: SiteName[], baseRadius: number, rowH: number): SiteName[][] {
+  const n = sites.length
+  if (n < CLUSTER_MIN) return []
+  const sorted = [...sites].sort((a, b) => normalizeAngle(a.angle) - normalizeAngle(b.angle))
+  const close = (i: number) =>
+    normalizeAngle(sorted[(i + 1) % n].angle - sorted[i].angle) * baseRadius < rowH
+  // Start from a site with a gap before it, so a run across the origin is
+  // not cut in two. With no such gap there is no run to speak of.
+  const first = sorted.findIndex((_, i) => !close((i - 1 + n) % n))
+  if (first < 0) return []
+  const runs: SiteName[][] = []
+  let run = [sorted[first]]
+  for (let k = 1; k <= n; k++) {
+    const i = (first + k) % n
+    if (k < n && close((i - 1 + n) % n)) { run.push(sorted[i]); continue }
+    if (run.length >= CLUSTER_MIN) runs.push(run)
+    run = [sorted[i]]
+  }
+  return runs
+}
+
+/**
+ * A bracket over each run, just outside the rings, with a stem down to the
+ * backbone at each end. Drawn before the features, so the stems pass under
+ * them.
+ */
+function drawRunBrackets(
+  items: SceneItem[], runs: SiteName[][],
+  cx: number, cy: number, baseRadius: number, stemR: number, colors: PlasmidColors,
+): void {
+  const at = (r: number, a: number) => ({ x: cx + Math.cos(a) * r, y: cy + Math.sin(a) * r })
+  for (const run of runs) {
+    const a0 = run[0].angle
+    const span = normalizeAngle(run[run.length - 1].angle - a0)
+    for (const a of [a0, a0 + span]) {
+      const p = at(baseRadius + 10, a)
+      const q = at(stemR, a)
+      items.push({ kind: 'line', x1: p.x, y1: p.y, x2: q.x, y2: q.y, stroke: colors.enzyme, width: 0.75, alpha: 0.6 })
+    }
+    items.push({
+      kind: 'arcBand', cx, cy, radius: stemR, startAngle: a0, span, width: 1.5,
+      strand: 0, fill: colors.enzyme, alpha: 0.6,
+    })
+  }
+}
+
+interface ListContext {
+  cx: number
+  cy: number
+  size: number
+  /** Outer edge of the outermost feature ring. */
+  ringsOuter: number
+  style: PlasmidStyle
+  colors: PlasmidColors
+  measureText: (t: string, f: string) => number
+  font: (px: number, bold?: boolean) => string
+}
+
+type ListEntry =
+  | { kind: 'site'; angle: number; site: SiteName }
+  | { kind: 'feature'; angle: number; label: OutsideLabel }
+
+/**
+ * The names of each crowded run in one straight list beside the circle, in
+ * their order round it, each with a thin line from the bracket at its own
+ * site. The list sits level with the run, on the side of the circle the run
+ * is on, and starts where the outermost of its rows clears the rings.
+ *
+ * Feature names that would land beside the list (in a pUC19, the lac
+ * operator, promoter and CAP site just past its cloning site) join it in
+ * their place round the circle, with their leaders from their own arcs: on
+ * their own they would be stacked outward over the list and off the canvas.
+ * The list is laid out again as names join, until no more do.
+ *
+ * Returns the feature names it took, so they are not placed again.
+ */
+function drawRunLists(
+  items: SceneItem[],
+  hitRegions: HitRegion[],
+  runs: SiteName[][],
+  outside: OutsideLabel[],
+  ctx: ListContext,
+): Set<OutsideLabel> {
+  const { cx, cy, size, ringsOuter, style, colors, measureText, font } = ctx
+  const taken = new Set<OutsideLabel>()
+  const rowH = listRowHeight(style)
+  // Close to the edge, as the old outside names go: the room beside a
+  // centred circle is narrow.
+  const margin = 2
+  const stemR = ringsOuter + 4
+  const labelR = ringsOuter + 10
+  const rows = Math.max(1, Math.floor((size - 2 * margin) / rowH) + 1)
+  const at = (r: number, a: number) => ({ x: cx + Math.cos(a) * r, y: cy + Math.sin(a) * r })
+  const idealY = (a: number) => cy + Math.sin(a) * labelR
+  // Rows taken per side, so two lists on one side do not overlap.
+  const used: Record<'left' | 'right', { top: number; bottom: number }[]> = { left: [], right: [] }
+
+  for (const run of runs) {
+    const a0 = run[0].angle
+    const mid = a0 + normalizeAngle(run[run.length - 1].angle - a0) / 2
+    const side: 'left' | 'right' = Math.cos(mid) >= 0 ? 'right' : 'left'
+    // Angle from the middle of the run, clockwise positive, so the order
+    // holds across the origin. Down the right is clockwise, down the left
+    // anticlockwise.
+    const rel = (a: number) => normalizeAngle(a - mid + Math.PI) - Math.PI
+    const place = (entries: ListEntry[]) => {
+      const order = [...entries].sort((p, q) => (side === 'right' ? 1 : -1) * (rel(p.angle) - rel(q.angle)))
+      const height = (order.length - 1) * rowH
+      const centre = order.reduce((s, e) => s + idealY(e.angle), 0) / order.length
+      let y0 = Math.min(Math.max(centre - height / 2, margin + rowH / 2), size - margin - rowH / 2 - height)
+      for (const u of used[side]) {
+        if (y0 - rowH / 2 < u.bottom && y0 + height + rowH / 2 > u.top) y0 = u.bottom + rowH / 2
+      }
+      return { order, y0, height }
+    }
+
+    let entries: ListEntry[] = run.map(site => ({ kind: 'site', angle: site.angle, site }))
+    let layout = place(entries)
+    for (let pass = 0; pass < 5; pass++) {
+      const top = layout.y0 - rowH
+      const bottom = layout.y0 + layout.height + rowH
+      const join = outside.filter(l => !taken.has(l)
+        && (Math.cos(l.midAngle) >= 0) === (side === 'right')
+        && idealY(l.midAngle) >= top && idealY(l.midAngle) <= bottom)
+      if (join.length === 0) break
+      for (const l of join) {
+        taken.add(l)
+        entries.push({ kind: 'feature', angle: l.midAngle, label: l })
+      }
+      layout = place(entries)
+    }
+    // A list longer than the canvas keeps chosen sites and feature names
+    // first, then sites in their order.
+    if (entries.length > rows) {
+      const rank = (e: ListEntry) => (e.kind === 'site' ? (e.site.picked ? 0 : 2) : 1)
+      entries = entries.map((e, i) => ({ e, i }))
+        .sort((p, q) => rank(p.e) - rank(q.e) || p.i - q.i)
+        .slice(0, rows).map(p => p.e)
+      layout = place(entries)
+    }
+    const { order, y0, height } = layout
+    used[side].push({ top: y0 - rowH / 2, bottom: y0 + height + rowH / 2 })
+
+    // Start where the outermost row clears the rings.
+    let reach = 0
+    order.forEach((_, i) => {
+      const dy = Math.max(0, Math.abs(y0 + i * rowH - cy) - rowH / 2)
+      if (dy < labelR) reach = Math.max(reach, Math.sqrt(labelR * labelR - dy * dy))
+    })
+    const x = side === 'right' ? cx + reach + 3 : cx - reach - 3
+    const ex = side === 'right' ? x - 2 : x + 2
+    const align = side === 'right' ? 'left' : 'right'
+    const avail = Math.min(size * 0.22, side === 'right' ? size - margin - x : x - margin)
+
+    order.forEach((e, i) => {
+      const y = y0 + i * rowH
+      if (e.kind === 'site') {
+        const site = e.site
+        const from = at(stemR, site.angle)
+        items.push({
+          kind: 'line', x1: from.x, y1: from.y, x2: ex, y2: y,
+          stroke: site.fill, width: 0.75, alpha: (site.hovered || site.picked ? 1 : 0.5) * site.alpha,
+        })
+        items.push({
+          kind: 'text', x, y, text: site.text, font: site.font, fill: site.fill, align, baseline: 'middle',
+          halo: style.labelHalo ? colors.bg : undefined,
+          alpha: site.alpha < 1 ? site.alpha : undefined,
+        })
+        // The name is the reliable target: the ticks are a pixel or two apart.
+        hitRegions.push({
+          kind: 'label', id: site.key, type: 'enzyme',
+          x: side === 'right' ? x + site.width / 2 : x - site.width / 2, y,
+          w: site.width, h: rowH - 2, rotate: 0,
+        })
+      } else {
+        const l = e.label
+        const f = font(style.labelSize, l.hovered)
+        const from = at(l.arcRadius + style.arcWidth / 2 + 4, l.midAngle)
+        items.push({
+          kind: 'line', x1: from.x, y1: from.y, x2: ex, y2: y,
+          stroke: l.hovered ? colors.text : colors.tickMinor, width: 0.75,
+        })
+        items.push({
+          kind: 'text', x, y, text: fitText(l.text, f, avail, measureText), font: f,
+          fill: l.hovered ? colors.text : colors.textMuted, align, baseline: 'middle',
+          halo: style.labelHalo ? colors.bg : undefined,
+        })
+      }
+    })
+  }
+  return taken
+}
+
+/** The text, cut short with an ellipsis if it is wider than the room. */
+function fitText(text: string, f: string, room: number, measureText: (t: string, f: string) => number): string {
+  if (measureText(text, f) <= room) return text
+  let t = text
+  while (t.length > 1 && measureText(t + '…', f) > room) t = t.slice(0, -1)
+  return t + '…'
 }

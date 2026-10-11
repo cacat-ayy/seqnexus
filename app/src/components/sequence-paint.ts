@@ -697,6 +697,33 @@ export function paintSequenceRows(
 
     const forwardY = cy
 
+    // --- A faint tint over every recognition site, on both strands ---
+    // Painted as the union of the sites, so a cloning site's overlapping
+    // sites make one even band rather than darker patches where they
+    // overlap; the bars above are what tell the sites apart. It fades with
+    // the rest while a site is hovered, and the hovered one is tinted harder
+    // below.
+    if (groupedSites.length > 0) {
+      const spans = groupedSites
+        .filter(g => g.recognitionStart < rowEnd && g.recognitionEnd > rowStart)
+        .map(g => [Math.max(g.recognitionStart, rowStart), Math.min(g.recognitionEnd, rowEnd)])
+        .sort((a, b) => a[0] - b[0])
+      ctx.fillStyle = COLORS.enzymeBg
+      ctx.globalAlpha = fadeOthers
+      const tint = (from: number, to: number) => {
+        const x1 = baseX(from, rowStart, L)
+        ctx.fillRect(x1, cy, baseX(to - 1, rowStart, L) + L.bpWidth - x1, L.seqLineHeight)
+      }
+      let run: number[] | null = null
+      for (const [from, to] of spans) {
+        if (run && from <= run[1]) { run[1] = Math.max(run[1], to); continue }
+        if (run) tint(run[0], run[1])
+        run = [from, to]
+      }
+      if (run) tint(run[0], run[1])
+      ctx.globalAlpha = 1
+    }
+
     // --- The hovered site, tinted on both strands ---
     if (hoveredEnzymeGroup && groupedSites.length > 0) {
       const group = hoveredEnzymeGroup

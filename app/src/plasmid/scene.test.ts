@@ -397,3 +397,95 @@ describe('the cloning workspace options', () => {
     expect(buildPlasmidScene(input({ openEnds: true })).items.some(i => i.kind === 'ring')).toBe(true)
   })
 })
+
+describe('a crowded stretch of cut sites', () => {
+  const MCS = ['EcoRI', 'SacI', 'KpnI', 'SmaI', 'BamHI', 'XbaI', 'SalI', 'PstI', 'SphI', 'HindIII']
+    .map((label, i) => ({ key: label, label, cutPos: 396 + i * 6, methEffect: null }))
+  const texts = (items: SceneItem[]) =>
+    items.filter((i): i is Extract<SceneItem, { kind: 'text' }> => i.kind === 'text')
+  const bracket = (items: SceneItem[]) =>
+    items.filter(i => i.kind === 'arcBand' && i.width === 1.5 && i.strand === 0)
+
+  it('lists its names in one straight column beside the circle, in order', () => {
+    const scene = buildPlasmidScene(input({ enzymeGroups: MCS }))
+    const names = MCS.map(s => texts(scene.items).find(t => t.text === s.label)!)
+    for (const t of names) {
+      expect(t).toBeDefined()
+      expect(t.rotate).toBeUndefined()
+      expect(Math.hypot(t.x - 300, t.y - 300)).toBeGreaterThan(scene.baseRadius)
+      expect(t.x).toBeCloseTo(names[0].x, 6)
+    }
+    // The stretch is on the right, so clockwise reads downward.
+    for (let i = 1; i < names.length; i++) expect(names[i].y).toBeGreaterThan(names[i - 1].y)
+    expect(bracket(scene.items)).toHaveLength(1)
+  })
+
+  it('leaves a short run inside the circle, as before', () => {
+    const scene = buildPlasmidScene(input({ enzymeGroups: MCS.slice(0, 4) }))
+    expect(bracket(scene.items)).toHaveLength(0)
+    for (const s of MCS.slice(0, 4)) {
+      const t = texts(scene.items).find(x => x.text === s.label)
+      if (t) expect(Math.hypot(t.x - 300, t.y - 300)).toBeLessThan(scene.baseRadius)
+    }
+  })
+
+  it('keeps the circle in the middle', () => {
+    const scene = buildPlasmidScene(input({ enzymeGroups: MCS }))
+    expect(scene.baseRadius).toBe(600 * getPlasmidStyle('modern').radiusFactor)
+    const name = texts(scene.items).find(t => t.text === 'pUC19')!
+    expect(name.x).toBe(300)
+  })
+
+  it('keeps feature names off the list', () => {
+    const scene = buildPlasmidScene(input({
+      enzymeGroups: MCS,
+      rings: stackAnnotations([ann(100, 900, 'a', 'ampR'), ann(397, 454, 'mcs', 'multiple cloning site')]),
+    }))
+    const list = MCS.map(s => texts(scene.items).find(t => t.text === s.label)!)
+    const feature = texts(scene.items).find(t => t.text.startsWith('mult'))!
+    expect(feature).toBeDefined()
+    const w = measure(feature.text, feature.font)
+    const fx1 = feature.align === 'left' ? feature.x : feature.align === 'right' ? feature.x - w : feature.x - w / 2
+    for (const t of list) {
+      const tw = measure(t.text, t.font)
+      const overlapX = fx1 < t.x + tw && fx1 + w > t.x
+      const overlapY = Math.abs(feature.y - t.y) < 10
+      expect(overlapX && overlapY).toBe(false)
+    }
+  })
+})
+
+describe('feature names beside a crowded stretch', () => {
+  const MCS = ['EcoRI', 'SacI', 'KpnI', 'SmaI', 'BamHI', 'XbaI', 'SalI', 'PstI', 'SphI', 'HindIII']
+    .map((label, i) => ({ key: label, label, cutPos: 396 + i * 6, methEffect: null }))
+
+  it('join its list, in their place round the circle', () => {
+    const scene = buildPlasmidScene(input({
+      enzymeGroups: MCS,
+      rings: stackAnnotations([ann(100, 300, 'a', 'ampR'), ann(469, 491, 'laco', 'lacO')]),
+    }))
+    const text = (t: string) => scene.items.find(i => i.kind === 'text' && i.text === t) as Extract<SceneItem, { kind: 'text' }>
+    const lacO = text('lacO')
+    const last = text('HindIII')
+    expect(lacO).toBeDefined()
+    expect(lacO.x).toBeCloseTo(last.x, 6)
+    // lacO is past the cloning site clockwise, so it comes after HindIII.
+    expect(lacO.y).toBeGreaterThan(last.y)
+  })
+})
+
+describe('a small map', () => {
+  const small = [ann(100, 900, 'a', 'ampR'), ann(1200, 1500, 'b', 'ori'), ann(469, 491, 'laco', 'lacO')]
+  const names = (size: number) =>
+    buildPlasmidScene(input({ size, rings: stackAnnotations(small) })).items
+      .flatMap(i => (i.kind === 'text' || i.kind === 'curvedText' ? [i.text] : []))
+
+  it('leaves small features unnamed', () => {
+    expect(names(440)).not.toContain('lacO')
+    expect(names(440)).toContain('ori')
+  })
+
+  it('names them on a larger map', () => {
+    expect(names(600)).toContain('lacO')
+  })
+})

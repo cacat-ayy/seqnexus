@@ -610,6 +610,25 @@ circle, lower tiers filled first, and a name pushed inward gets a leader
 line back to the backbone. Overlapping features are stacked onto separate
 rings.
 
+A crowded stretch of cut sites is listed instead. Five or more sites in a
+run, each closer to the next on the backbone than a row of text (a multiple
+cloning site), get a bracket over their stretch just outside the rings, with
+a stem down to the backbone at each end, and their names in one straight
+list beside the circle, level with the stretch and in their order round it.
+Each name has a thin line from the bracket at its own site. On the inner
+tiers those names were turned every which way and the ones that found no
+room were dropped. Feature names that would land beside the list (the lac
+operator, promoter and CAP site just past pUC19's cloning site) join it in
+their place round the circle, since on their own they would be stacked
+outward over the list. The circle stays in the middle of the canvas, so a
+name in the list that is wider than the room beside it is shortened with an
+ellipsis. Shorter runs, and sites further apart, are named inside as before.
+
+On a small map (under 500 px across, as in the split view) a feature whose
+arc is shorter than 24 px gets no name outside the circle: in the stretches
+where small parts cluster, those names were most of the clutter. Hovering
+the feature still names it.
+
 ### Rings and tracks
 
 - Features, stacked so that none overlap.
