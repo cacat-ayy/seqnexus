@@ -42,6 +42,7 @@ export function usePlasmidSceneData(doc: DocumentState) {
 
   // Global display preferences
   const plasmidStyleId = useEditorStore(s => s.plasmidStyle)
+  const layout = useEditorStore(s => s.plasmidLayout)
   const showGcRing = useEditorStore(s => s.showGcRing)
   const showPlasmidLegend = useEditorStore(s => s.showPlasmidLegend)
   const style = useMemo(() => getPlasmidStyle(plasmidStyleId), [plasmidStyleId])
@@ -209,7 +210,7 @@ export function usePlasmidSceneData(doc: DocumentState) {
   }, [showPlasmidLegend, allAnnotations])
 
   return {
-    style, allAnnotations, rings, annById, proposalIds, pickedIds, sceneEnzymes, enzymeByKey, sceneGuides,
+    style, layout, allAnnotations, rings, annById, proposalIds, pickedIds, sceneEnzymes, enzymeByKey, sceneGuides,
     primerSites, designPreview, allPrimerItems, primerItemById, siteCountOf, scenePrimers,
     methylation, gcSeries, gcOverall, legend,
   }

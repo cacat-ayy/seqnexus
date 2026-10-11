@@ -1,0 +1,28 @@
+LOCUS       EGFP_cassette_(fragment_A)     813 bp    ds-DNA     linear   11-OCT-2026
+DEFINITION  Fragment A of a three-part HiFi assembly: pUC19 arm, T7 promoter,
+            EGFP, arm shared with fragment B.
+FEATURES             Location/Qualifiers
+     misc_feature    1..30
+                     /label="homology to pUC19"
+     promoter        31..48
+                     /label="T7 promoter"
+     CDS             55..780
+                     /label="EGFP"
+     misc_feature    784..813
+                     /label="homology to fragment B"
+ORIGIN
+        1 ttcgagctcg gtacccgggg atcctctaga taatacgact cactataggc caccatgtct
+       61 agagtgagca agggcgagga gctgttcacc ggggtggtgc ccatcctggt cgagctggac
+      121 ggcgacgtaa acggccacaa gttcagcgtg tccggcgagg gcgagggcga tgccacctac
+      181 ggcaagctga ccctgaagtt catctgcacc accggcaagc tgcccgtgcc ctggcccacc
+      241 ctcgtgacca ccctgaccta cggcgtgcag tgcttcagcc gctaccccga ccacatgaag
+      301 cagcacgact tcttcaagtc cgccatgccc gaaggctacg tccaggagag aaccatcttc
+      361 ttcaaggacg acggcaacta caagacccgc gccgaggtga agttcgaggg cgacaccctg
+      421 gtgaaccgca tcgagctgaa gggcatcgac ttcaaggagg acggcaacat cctggggcac
+      481 aagctggagt acaactacaa cagccacaac gtctatatca tggccgacaa gcagaagaac
+      541 ggcatcaagg tgaacttcaa gatccgccac aacatcgagg acggcagcgt gcagctcgcc
+      601 gaccactacc agcagaacac ccccatcggc gacggccccg tgctgctgcc cgacaaccac
+      661 tacctgagca cccagtccgc cctgagcaaa gaccccaacg agaagcgcga tcacatggtc
+      721 ctgctggagt tcgtgaccgc cgccgggatc actctcggca tggacgagct gtacaagtaa
+      781 taagggataa gcatgagccc cttctccgtc tcc
+//

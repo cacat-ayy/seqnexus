@@ -304,6 +304,36 @@ describe('a cloning design in the explorer', () => {
     act(() => { fireEvent.keyDown(document.activeElement!, { key: 'Delete' }) })
     expect(store().clones).toHaveLength(0)
   })
+
+  it('deletes the row that was clicked', () => {
+    let keep = ''
+    let gone = ''
+    act(() => {
+      keep = store().createClone({ name: 'Keep me', activate: false })
+      gone = store().createClone({ name: 'Delete me', activate: false })
+    })
+    const { container } = renderPanel()
+    const row = container.querySelector<HTMLElement>(`[data-uid="${toUid('clone', gone)}"]`)!
+    // A click focuses the row before its click handler runs, as in a browser.
+    act(() => { row.focus(); fireEvent.click(row) })
+    act(() => { fireEvent.keyDown(document.activeElement!, { key: 'Delete' }) })
+    expect(store().clones.map(c => c.id)).toEqual([keep])
+  })
+
+  it('deletes the whole selection with the Delete key', () => {
+    act(() => {
+      store().createClone({ name: 'First', activate: false })
+      store().createClone({ name: 'Second', activate: false })
+    })
+    const { container } = renderPanel()
+    const [a, b] = store().clones.map(c => container.querySelector<HTMLElement>(`[data-uid="${toUid('clone', c.id)}"]`)!)
+    act(() => { a.focus(); fireEvent.click(a) })
+    act(() => { b.focus(); fireEvent.click(b, { ctrlKey: true }) })
+    act(() => { fireEvent.keyDown(document.activeElement!, { key: 'Delete' }) })
+    expect(document.querySelector('.confirm-message')?.textContent).toContain('2 selected items')
+    act(() => { fireEvent.click(document.querySelector('.confirm-dialog .btn-danger')!) })
+    expect(store().clones).toHaveLength(0)
+  })
 })
 
 describe('ExplorerPanel reveals what was just created', () => {

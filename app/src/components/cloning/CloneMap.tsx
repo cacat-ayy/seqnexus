@@ -73,9 +73,13 @@ function CloneMap({
   const containerRef = useRef<HTMLDivElement>(null)
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const styleId = useEditorStore(s => s.plasmidStyle)
+  const layout = useEditorStore(s => s.plasmidLayout)
   const style = useMemo(() => getPlasmidStyle(styleId), [styleId])
 
-  const [size, setSize] = useState(0)
+  // The map fills the panel rather than the largest square inside it: the
+  // circle is the same size either way, drawn from the shorter side, and the
+  // width left over is where the names go instead of being cut short.
+  const [size, setSize] = useState({ width: 0, height: 0 })
   const [viewport, setViewport] = useState<Viewport>(FIT)
   const [hoveredSite, setHoveredSite] = useState<string | null>(null)
   const [hoveredFeature, setHoveredFeature] = useState<string | null>(null)
@@ -100,7 +104,10 @@ function CloneMap({
   useEffect(() => {
     const el = containerRef.current
     if (!el) return
-    const measure = () => setSize(Math.floor(Math.min(el.clientWidth, el.clientHeight)))
+    const measure = () => setSize(prev => {
+      const next = { width: Math.floor(el.clientWidth), height: Math.floor(el.clientHeight) }
+      return prev.width === next.width && prev.height === next.height ? prev : next
+    })
     measure()
     const ro = new ResizeObserver(measure)
     ro.observe(el)
@@ -116,9 +123,10 @@ function CloneMap({
     sites.map(s => ({ key: s.key, label: s.label, cutPos: s.cutPos, methEffect: s.methEffect })), [sites])
 
   const scene = useMemo<PlasmidScene | null>(() => {
-    if (size <= 0) return null
+    if (size.width <= 0 || size.height <= 0) return null
     return buildPlasmidScene({
-      size,
+      size: size.width,
+      height: size.height,
       seqLen: bases.length,
       name,
       topology,
@@ -145,10 +153,11 @@ function CloneMap({
       ...(note ? { centreNote: note } : {}),
       showCaret: false,
       openEnds: true,
+      layout,
     })
     // themeVersion re-resolves the colours on a theme switch.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [size, bases.length, name, topology, style, rings, hoveredFeature, enzymeGroups, hoveredSite, gc, picked, regions, note, themeVersion])
+  }, [size, bases.length, name, topology, style, layout, rings, hoveredFeature, enzymeGroups, hoveredSite, gc, picked, regions, note, themeVersion])
 
   const sceneRef = useRef(scene)
   sceneRef.current = scene
@@ -159,12 +168,14 @@ function CloneMap({
     const canvas = canvasRef.current
     if (!canvas || !scene) return
     const dpr = window.devicePixelRatio || 1
+    const sceneHeight = scene.height ?? scene.size
     const px = Math.round(scene.size * dpr)
-    if (canvas.width !== px || canvas.height !== px) {
+    const py = Math.round(sceneHeight * dpr)
+    if (canvas.width !== px || canvas.height !== py) {
       canvas.width = px
-      canvas.height = px
+      canvas.height = py
       canvas.style.width = `${scene.size}px`
-      canvas.style.height = `${scene.size}px`
+      canvas.style.height = `${sceneHeight}px`
     }
     const ctx = canvas.getContext('2d')
     if (!ctx) return
@@ -179,10 +190,11 @@ function CloneMap({
     if (!canvas || !s) return null
     const rect = canvas.getBoundingClientRect()
     const vp = viewportRef.current
-    const half = s.size / 2
+    const halfX = s.size / 2
+    const halfY = (s.height ?? s.size) / 2
     return {
-      x: (clientX - rect.left - vp.tx - half) / vp.scale + half,
-      y: (clientY - rect.top - vp.ty - half) / vp.scale + half,
+      x: (clientX - rect.left - vp.tx - halfX) / vp.scale + halfX,
+      y: (clientY - rect.top - vp.ty - halfY) / vp.scale + halfY,
       scene: s,
     }
   }, [])
@@ -191,10 +203,11 @@ function CloneMap({
 
   /** The base under a point on or near the molecule, or null in the middle. */
   const positionAt = useCallback((x: number, y: number, s: PlasmidScene): number | null => {
-    const c = s.size / 2
-    const dist = Math.hypot(x - c, y - c)
+    const cx = s.size / 2
+    const cy = (s.height ?? s.size) / 2
+    const dist = Math.hypot(x - cx, y - cy)
     if (dist < s.baseRadius * 0.6 || dist > s.baseRadius * 1.8 || bases.length === 0) return null
-    return angleToPos(Math.atan2(y - c, x - c), bases.length)
+    return angleToPos(Math.atan2(y - cy, x - cx), bases.length)
   }, [bases.length])
 
   const onMouseMove = (e: React.MouseEvent) => {
@@ -310,9 +323,10 @@ function CloneMap({
         const next = Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, v.scale * (e.deltaY < 0 ? 1.12 : 1 / 1.12)))
         if (next === v.scale) return v
         if (next === MIN_ZOOM) return FIT
-        const half = s.size / 2
+        const halfX = s.size / 2
+        const halfY = (s.height ?? s.size) / 2
         const k = next / v.scale
-        return { scale: next, tx: px - k * (px - v.tx - half) - half, ty: py - k * (py - v.ty - half) - half }
+        return { scale: next, tx: px - k * (px - v.tx - halfX) - halfX, ty: py - k * (py - v.ty - halfY) - halfY }
       })
     }
     canvas.addEventListener('wheel', wheel, { passive: false })

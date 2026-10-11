@@ -7,6 +7,10 @@
  * binding half is sized by the app's own primer designer, so these melt where
  * the rest of its primers do.
  *
+ * A Type IIS part that already carries its sites, which is what a part out of
+ * a kit or a previous assembly is, needs nothing ordered for it: it says so
+ * and the overhangs it is built around are kept for its neighbours.
+ *
  * Nothing here changes the design: it says what to order to build it.
  */
 
@@ -16,11 +20,11 @@ import { notify } from '../../toast'
 import { downloadText } from '../../utils/download'
 import { useEditorStore } from '../../store'
 import { getEnzyme } from '../../enzymes/db'
-import { chooseOverhangSet } from '../../cloning/fidelity'
 import { planJunctionReads } from '../../cloning/verify'
 import type { Assembly } from '../../cloning/product'
-import { designAssemblyOligos, designTypeIISOligos, type OligoPair, type OligoTarget } from '../../cloning/oligos'
+import { designAssemblyOligos, planTypeIISOligos, type OligoPair, type OligoTarget } from '../../cloning/oligos'
 import {
+  partBases,
   partLength,
   partTopology,
   vectorsFirst,
@@ -86,23 +90,30 @@ export default function OligosPanel({ design, product, onClose }: Props) {
   // Both the pairs and the overhangs they were built around come out of one
   // pass: choosing a fresh overhang set on every render would hand back
   // different primers each time.
-  const { pairs, overhangsUsed } = useMemo(() => {
-    if (parts.length === 0) return { pairs: [] as OligoPair[], overhangsUsed: [] as string[] }
+  const { pairs, overhangsUsed, overhangsFromParts } = useMemo(() => {
+    const none = { pairs: [] as OligoPair[], overhangsUsed: [] as string[], overhangsFromParts: [] as string[] }
+    if (parts.length === 0) return none
     const targets = parts.map(targetOf)
 
     if (design.method === 'golden-gate') {
       const enzyme = getEnzyme(design.typeIIS)
-      if (!enzyme) return { pairs: [] as OligoPair[], overhangsUsed: [] as string[] }
-      // One overhang per junction, chosen so the set does not cross-react.
-      const overhangs = chooseOverhangSet(targets.length)
-      return { pairs: designTypeIISOligos(targets, { enzyme, overhangs }), overhangsUsed: overhangs }
+      if (!enzyme) return none
+      const plan = planTypeIISOligos(
+        parts.map((part, i) => ({
+          target: targets[i],
+          bases: partBases(part),
+          topology: partTopology(part),
+        })),
+        enzyme,
+      )
+      return { pairs: plan.pairs, overhangsUsed: plan.chosen, overhangsFromParts: plan.fromParts }
     }
 
     if (design.method === 'homology') {
-      return { pairs: designAssemblyOligos(targets, { kit: design.kit }), overhangsUsed: [] as string[] }
+      return { ...none, pairs: designAssemblyOligos(targets, { kit: design.kit }) }
     }
 
-    return { pairs: [] as OligoPair[], overhangsUsed: [] as string[] }
+    return none
   }, [parts, design.method, design.typeIIS, design.kit])
   // Reads that confirm the construct once it is built: one across each seam,
   // which is where a cloning reaction goes wrong.
@@ -173,6 +184,12 @@ export default function OligosPanel({ design, product, onClose }: Props) {
         <p className="cw-hint">Add the parts first and the primers for them will appear here.</p>
       )}
 
+      {overhangsFromParts.length > 0 && (
+        <p className="cw-blurb">
+          Overhangs the parts already carry: {overhangsFromParts.join(', ')}.
+        </p>
+      )}
+
       {overhangsUsed.length > 0 && (
         <p className="cw-blurb">
           Overhangs chosen so they do not cross-react: {overhangsUsed.join(', ')}.
@@ -191,18 +208,29 @@ export default function OligosPanel({ design, product, onClose }: Props) {
               </tr>
             </thead>
             <tbody>
-              {pairs.flatMap((pair, i) => [pair.forward, pair.reverse].map((oligo, j) => (
-                <tr key={`${i}-${j}`}>
-                  <td className="cw-cell-name">{oligo.name}</td>
-                  <td className="cw-oligo-seq">
-                    {oligo.sequence
-                      ? <><span className="cw-oligo-tail">{oligo.tail}</span>{oligo.anneal}</>
-                      : <span className="cw-hint">{pair.warnings[0] ?? 'Could not be designed'}</span>}
-                  </td>
-                  <td className="cw-cell-size">{oligo.sequence.length || '-'}</td>
-                  <td className="cw-cell-size">{oligo.tm > 0 ? `${oligo.tm.toFixed(1)}` : '-'}</td>
-                </tr>
-              )))}
+              {pairs.flatMap((pair, i) => (pair.ready
+                // One row for a part that needs nothing ordered, rather than
+                // two rows of blanks where its primers would have been.
+                ? [(
+                  <tr key={`${i}-ready`}>
+                    <td className="cw-cell-name">{pair.partName}</td>
+                    <td className="cw-oligo-seq"><span className="cw-hint">{pair.ready}</span></td>
+                    <td className="cw-cell-size">-</td>
+                    <td className="cw-cell-size">-</td>
+                  </tr>
+                )]
+                : [pair.forward, pair.reverse].map((oligo, j) => (
+                  <tr key={`${i}-${j}`}>
+                    <td className="cw-cell-name">{oligo.name}</td>
+                    <td className="cw-oligo-seq">
+                      {oligo.sequence
+                        ? <><span className="cw-oligo-tail">{oligo.tail}</span>{oligo.anneal}</>
+                        : <span className="cw-hint">{pair.warnings[0] ?? 'Could not be designed'}</span>}
+                    </td>
+                    <td className="cw-cell-size">{oligo.sequence.length || '-'}</td>
+                    <td className="cw-cell-size">{oligo.tm > 0 ? `${oligo.tm.toFixed(1)}` : '-'}</td>
+                  </tr>
+                ))))}
             </tbody>
           </table>
         </div>
@@ -250,9 +278,10 @@ export default function OligosPanel({ design, product, onClose }: Props) {
 
       {pairs.length > 0 && (
         <p className="cw-line-caption">
-          The tail is shown in colour; the rest is what binds the template.
-          {' '}Parts total {parts.reduce((n, p) => n + partLength(p), 0).toLocaleString()} bp,
-          {' '}of which {usable.length} {usable.length === 1 ? 'piece is' : 'pieces are'} amplified.
+          {usable.length > 0 && 'The tail is shown in colour; the rest is what binds the template. '}
+          Parts total {parts.reduce((n, p) => n + partLength(p), 0).toLocaleString()} bp,
+          {' '}of which {usable.length === 0 ? 'none is' : `${usable.length} ${usable.length === 1 ? 'piece is' : 'pieces are'}`} amplified
+          {pairs.some(p => p.ready) && ': the rest are ready to use as they are'}.
         </p>
       )}
     </div>

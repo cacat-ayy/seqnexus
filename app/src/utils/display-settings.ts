@@ -21,6 +21,7 @@ import {
 } from './base-colors'
 import {
   DEFAULT_PLASMID_STYLE, PLASMID_STYLES, type PlasmidStyleId,
+  DEFAULT_PLASMID_LAYOUT, PLASMID_LAYOUTS, type PlasmidLayout,
 } from '../plasmid/styles'
 import {
   AMINO_ACID_STYLES, DEFAULT_AMINO_ACID_STYLE, DEFAULT_TRANSLATION_FRAME,
@@ -44,6 +45,8 @@ export interface DisplaySettings {
   showAnnotationTracks: boolean
   /** Which predefined look the circular map is drawn in. */
   plasmidStyle: PlasmidStyleId
+  /** Where features and cut sites go round the circular map. */
+  plasmidLayout: PlasmidLayout
   /** Draw the GC content and GC skew tracks inside the plasmid backbone. */
   showGcRing: boolean
   /** Draw a feature-type colour key in the corner of the map. */
@@ -78,6 +81,8 @@ export const DEFAULT_DISPLAY_SETTINGS: DisplaySettings = {
   showComplement: true,
   showAnnotationTracks: true,
   plasmidStyle: DEFAULT_PLASMID_STYLE,
+  // The map the app has always drawn, until the ring layout is chosen.
+  plasmidLayout: DEFAULT_PLASMID_LAYOUT,
   // Both off: they are additions, and an existing user should see the map
   // they already know until they ask for more on it.
   showGcRing: false,
@@ -101,6 +106,7 @@ export const DEFAULT_DISPLAY_SETTINGS: DisplaySettings = {
 const VALID_SCHEMES = new Set(COLOR_SCHEMES.map(s => s.id))
 const VALID_TARGETS = new Set(COLOR_TARGETS.map(t => t.id))
 const VALID_PLASMID_STYLES = new Set(PLASMID_STYLES.map(s => s.id))
+const VALID_PLASMID_LAYOUTS = new Set(PLASMID_LAYOUTS.map(l => l.id))
 const VALID_FRAMES = new Set(TRANSLATION_FRAMES.map(f => f.id))
 const VALID_AA_STYLES = new Set(AMINO_ACID_STYLES.map(s => s.id))
 const VALID_CODES = new Set(GENETIC_CODES.map(c => c.id))
@@ -137,6 +143,9 @@ export function loadDisplaySettings(): DisplaySettings {
       plasmidStyle: VALID_PLASMID_STYLES.has(parsed.plasmidStyle as PlasmidStyleId)
         ? parsed.plasmidStyle as PlasmidStyleId
         : DEFAULT_DISPLAY_SETTINGS.plasmidStyle,
+      plasmidLayout: VALID_PLASMID_LAYOUTS.has(parsed.plasmidLayout as PlasmidLayout)
+        ? parsed.plasmidLayout as PlasmidLayout
+        : DEFAULT_DISPLAY_SETTINGS.plasmidLayout,
       showGcRing: typeof parsed.showGcRing === 'boolean'
         ? parsed.showGcRing
         : DEFAULT_DISPLAY_SETTINGS.showGcRing,

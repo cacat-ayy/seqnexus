@@ -1,0 +1,55 @@
+LOCUS       pENTR-EGFP          2305 bp    ds-DNA     circular   11-OCT-2026
+DEFINITION  Gateway entry clone: EGFP between attL1 and attL2, for an LR
+            reaction.
+FEATURES             Location/Qualifiers
+     protein_bind    21..51
+                     /label="attL1"
+     CDS             70..795
+                     /label="EGFP"
+     protein_bind    811..840
+                     /label="attL2"
+     CDS             861..1676
+                     /label="KanR"
+     rep_origin      1697..2285
+                     /label="ori"
+ORIGIN
+        1 tgaacgttgc actcaaaact acaagtttgt acaaaaaagc aggctccgcg gtaaaggtga
+       61 cgagccacca tgtctagagt gagcaagggc gaggagctgt tcaccggggt ggtgcccatc
+      121 ctggtcgagc tggacggcga cgtaaacggc cacaagttca gcgtgtccgg cgagggcgag
+      181 ggcgatgcca cctacggcaa gctgaccctg aagttcatct gcaccaccgg caagctgccc
+      241 gtgccctggc ccaccctcgt gaccaccctg acctacggcg tgcagtgctt cagccgctac
+      301 cccgaccaca tgaagcagca cgacttcttc aagtccgcca tgcccgaagg ctacgtccag
+      361 gagagaacca tcttcttcaa ggacgacggc aactacaaga cccgcgccga ggtgaagttc
+      421 gagggcgaca ccctggtgaa ccgcatcgag ctgaagggca tcgacttcaa ggaggacggc
+      481 aacatcctgg ggcacaagct ggagtacaac tacaacagcc acaacgtcta tatcatggcc
+      541 gacaagcaga agaacggcat caaggtgaac ttcaagatcc gccacaacat cgaggacggc
+      601 agcgtgcagc tcgccgacca ctaccagcag aacaccccca tcggcgacgg ccccgtgctg
+      661 ctgcccgaca accactacct gagcacccag tccgccctga gcaaagaccc caacgagaag
+      721 cgcgatcaca tggtcctgct ggagttcgtg accgccgccg ggatcactct cggcatggac
+      781 gagctgtaca agtaataatg acccagcgat acccagcttt cttgtacaaa gttggcatta
+      841 acgtgcgact catatcttag atgagccata ttcaacggga aacgtcttgc tcgaggccgc
+      901 gattaaattc caacatggat gctgatttat atgggtataa atgggctcgc gataatgtcg
+      961 ggcaatcagg tgcgacaatc tatcgattgt atgggaagcc cgatgcgcca gagttgtttc
+     1021 tgaaacatgg caaaggtagc gttgccaatg atgttacaga tgagatggtc agactaaact
+     1081 ggctgacgga atttatgcct cttccgacca tcaagcattt tatccgtact cctgatgatg
+     1141 catggttact caccactgcg atccccggga aaacagcatt ccaggtatta gaagaatatc
+     1201 ctgattcagg tgaaaatatt gttgatgcgc tggcagtgtt cctgcgccgg ttgcattcga
+     1261 ttcctgtttg taattgtcct tttaacagcg atcgcgtatt tcgtctcgct caggcgcaat
+     1321 cacgaatgaa taacggtttg gttgatgcga gtgattttga tgacgagcgt aatggctggc
+     1381 ctgttgaaca agtctggaaa gaaatgcata agcttttgcc attctcaccg gattcagtcg
+     1441 tcactcatgg tgatttctca cttgataacc ttatttttga cgaggggaaa ttaataggtt
+     1501 gtattgatgt tggacgagtc ggaatcgcag accgatacca ggatcttgcc atcctatgga
+     1561 actgcctcgg tgagttttct ccttcattac agaaacggct ttttcaaaaa tatggtattg
+     1621 ataatcctga tatgaataaa ttgcagtttc atttgatgct cgatgagttt ttctaaatgg
+     1681 cgcaaattaa aagatattga gatccttttt ttctgcgcgt aatctgctgc ttgcaaacaa
+     1741 aaaaaccacc gctaccagcg gtggtttgtt tgccggatca agagctacca actctttttc
+     1801 cgaaggtaac tggcttcagc agagcgcaga taccaaatac tgttcttcta gtgtagccgt
+     1861 agttaggcca ccacttcaag aactctgtag caccgcctac atacctcgct ctgctaatcc
+     1921 tgttaccagt ggctgctgcc agtggcgata agtcgtgtct taccgggttg gactcaagac
+     1981 gatagttacc ggataaggcg cagcggtcgg gctgaacggg gggttcgtgc acacagccca
+     2041 gcttggagcg aacgacctac accgaactga gatacctaca gcgtgagcta tgagaaagcg
+     2101 ccacgcttcc cgaagggaga aaggcggaca ggtatccggt aagcggcagg gtcggaacag
+     2161 gagagcgcac gagggagctt ccagggggaa acgcctggta tctttatagt cctgtcgggt
+     2221 ttcgccacct ctgacttgag cgtcgatttt tgtgatgctc gtcagggggg cggagcctat
+     2281 ggaaaacggg gccgacgaag gagtt
+//

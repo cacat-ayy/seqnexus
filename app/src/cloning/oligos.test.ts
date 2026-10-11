@@ -7,7 +7,7 @@
 import { describe, it, expect } from 'vitest'
 import { reverseComplement } from '../models/complement'
 import { getEnzyme } from '../enzymes/db'
-import { designAssemblyOligos, designTypeIISOligos, type OligoTarget } from './oligos'
+import { designAssemblyOligos, designTypeIISOligos, planTypeIISOligos, type OligoTarget, type TypeIISPart } from './oligos'
 import { homologyAssemble, type HomologyPart } from './homology'
 import { digest } from './cut'
 import { assemble } from './assemble'
@@ -185,5 +185,112 @@ describe('oligos for a Type IIS assembly', () => {
       { enzyme: BsaI, overhangs: ['AATG'] },
     )
     expect(pairs[0].warnings.join(' ')).toContain('internal BsaI site')
+  })
+})
+
+describe('planning a Type IIS design', () => {
+  const BsaI = getEnzyme('BsaI')!
+  const clean = (n: number, seed: number) =>
+    filler(n, seed).replace(/GGTCTC/g, 'GGTCTA').replace(/GAGACC/g, 'GAGACT')
+
+  /** A part written for the pot: sites pointing inwards, overhangs in place. */
+  const finished = (left: string, body: string, right: string) =>
+    clean(10, 3) + 'GGTCTCA' + left + body + right + 'T' + 'GAGACC' + clean(10, 5)
+
+  const partOf = (name: string, bases: string, topology: 'linear' | 'circular' = 'linear'): TypeIISPart => ({
+    target: { name, template: bases, topology, start: 0, end: topology === 'circular' ? 0 : bases.length },
+    bases,
+    topology,
+  })
+
+  it('orders nothing for parts that already carry their sites', () => {
+    // A ring of two: the vector hands over at GGAG and takes the insert back
+    // at AATG, which is what the parts' own overhangs say.
+    const plan = planTypeIISOligos([
+      partOf('vector', finished('AATG', clean(300, 11), 'GGAG'), 'circular'),
+      partOf('insert', finished('GGAG', clean(80, 7), 'AATG')),
+    ], BsaI)
+    expect(plan.pairs.every(p => p.ready)).toBe(true)
+    expect(plan.pairs.every(p => p.forward.sequence === '')).toBe(true)
+    expect(plan.chosen).toEqual([])
+    expect(plan.fromParts.sort()).toEqual(['AATG', 'GGAG'])
+    expect(plan.pairs.flatMap(p => p.warnings)).toEqual([])
+    expect(plan.pairs[1].ready).toContain('GGAG')
+  })
+
+  it('still designs primers for a plain template, keeping its neighbour\'s overhang', () => {
+    const plan = planTypeIISOligos([
+      partOf('promoter', finished('GGAG', clean(80, 7), 'AATG')),
+      partOf('cds', clean(600, 13)),
+    ], BsaI)
+    expect(plan.pairs[0].ready).toBeTruthy()
+    // The CDS starts where the promoter ends, so its forward tail carries AATG.
+    expect(plan.pairs[1].ready).toBeUndefined()
+    expect(plan.pairs[1].forward.tail).toBe('GGTCTC' + 'A' + 'AATG')
+    // Its far end is the junction back to the promoter, which the promoter fixes.
+    expect(plan.pairs[1].reverse.tail).toBe('GGTCTC' + 'T' + reverseComplement('GGAG'))
+    expect(plan.chosen).toEqual([])
+  })
+
+  it('chooses the junctions no part has fixed', () => {
+    const plan = planTypeIISOligos([
+      partOf('a', clean(600, 17)),
+      partOf('b', clean(600, 19)),
+    ], BsaI)
+    expect(plan.fromParts).toEqual([])
+    expect(plan.chosen).toHaveLength(2)
+    expect(plan.pairs.every(p => p.forward.sequence.length > 0)).toBe(true)
+  })
+
+  it('says so when two finished parts disagree about where they meet', () => {
+    const plan = planTypeIISOligos([
+      partOf('promoter', finished('GGAG', clean(80, 7), 'AATG')),
+      partOf('terminator', finished('GCTT', clean(80, 23), 'CGCT')),
+    ], BsaI)
+    expect(plan.pairs[0].warnings.join(' ')).toContain('not listed in the order they assemble in')
+  })
+
+  it('leaves a part with an internal site to the warning it already gets', () => {
+    const broken = finished('GGAG', clean(40, 29) + 'GGTCTCAAAAA' + clean(40, 31), 'AATG')
+    const plan = planTypeIISOligos([partOf('broken', broken), partOf('b', clean(600, 19))], BsaI)
+    expect(plan.pairs[0].ready).toBeUndefined()
+    expect(plan.pairs[0].warnings.join(' ')).toContain('internal BsaI site')
+  })
+})
+
+describe('finished Type IIS parts listed out of order', () => {
+  const BsaI = getEnzyme('BsaI')!
+  const clean = (n: number, seed: number) =>
+    filler(n, seed).replace(/GGTCTC/g, 'GGTCTA').replace(/GAGACC/g, 'GAGACT')
+  const finished = (left: string, body: string, right: string) =>
+    clean(10, 3) + 'GGTCTCA' + left + body + right + 'T' + 'GAGACC' + clean(10, 5)
+  const partOf = (name: string, bases: string, topology: 'linear' | 'circular' = 'linear'): TypeIISPart => ({
+    target: { name, template: bases, topology, start: 0, end: topology === 'circular' ? 0 : bases.length },
+    bases,
+    topology,
+  })
+
+  // A MoClo ring: vector CGCT..GGAG, promoter GGAG..AATG, CDS AATG..GCTT,
+  // terminator GCTT..CGCT, listed here in none of those orders.
+  const shuffled = [
+    partOf('vector', finished('CGCT', clean(400, 41), 'GGAG'), 'circular'),
+    partOf('terminator', finished('GCTT', clean(60, 43), 'CGCT')),
+    partOf('promoter', finished('GGAG', clean(80, 45), 'AATG')),
+    partOf('cds', finished('AATG', clean(300, 47), 'GCTT')),
+  ]
+
+  it('follows the overhangs rather than the order they were listed in', () => {
+    const plan = planTypeIISOligos(shuffled, BsaI)
+    expect(plan.pairs.flatMap(p => p.warnings)).toEqual([])
+    expect(plan.pairs.every(p => p.ready)).toBe(true)
+    expect(plan.fromParts.sort()).toEqual(['AATG', 'CGCT', 'GCTT', 'GGAG'])
+    expect(plan.chosen).toEqual([])
+  })
+
+  it('says so when the parts cannot chain into a ring', () => {
+    // The same terminator twice: its overhang is now on two parts, so there
+    // is no one order the reaction reads them in.
+    const plan = planTypeIISOligos([...shuffled, shuffled[1]], BsaI)
+    expect(plan.pairs.flatMap(p => p.warnings).join(' ')).toContain('not listed in the order they assemble in')
   })
 })

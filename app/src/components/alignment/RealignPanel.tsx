@@ -7,8 +7,10 @@
  * block are left as they are.
  */
 
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState, type RefObject } from 'react'
 import { Loader2, Wand2, X } from 'lucide-react'
+import { usePopoverDismiss } from '../../hooks/usePopoverDismiss'
+import { useEscapeClose } from '../../hooks/useEscapeClose'
 import { ungapped, width, type AlnDoc } from '../../msa/model'
 import {
   DEFAULT_ENGINE_SETTINGS, ENGINE_CHOICES, engineChoice, engineLabel, estimateSeconds, formatDuration,
@@ -34,13 +36,15 @@ interface Props {
   selection: Selection | null
   onApply: (r: RealignResult) => void
   onClose: () => void
+  /** The toolbar button that toggles the panel: clicking it is not a click outside. */
+  triggerRef: RefObject<HTMLElement | null>
   /** Tell the workspace a job is running, so it can hold edits. */
   onBusy: (busy: boolean) => void
 }
 
 let lastSettings: EngineSettings = DEFAULT_ENGINE_SETTINGS
 
-export default function RealignPanel({ doc, selection, onApply, onClose, onBusy }: Props) {
+export default function RealignPanel({ doc, selection, onApply, onClose, onBusy, triggerRef }: Props) {
   const usable = !!selection && selection.rowIds.length >= 2 && selection.c1 - selection.c0 >= 2
   const [target, setTarget] = useState<'selection' | 'all'>(usable ? 'selection' : 'all')
   const [settings, setSettings] = useState<EngineSettings>(lastSettings)
@@ -77,11 +81,9 @@ export default function RealignPanel({ doc, selection, onApply, onClose, onBusy 
   const jobRef = useRef<AlignJob | null>(null)
   useEffect(() => () => { jobRef.current?.cancel(); onBusy(false) }, [onBusy])
 
-  useEffect(() => {
-    const close = (e: MouseEvent) => { if (!job && !ref.current?.contains(e.target as Node)) onClose() }
-    document.addEventListener('mousedown', close)
-    return () => document.removeEventListener('mousedown', close)
-  }, [job, onClose])
+  // A click outside or Escape closes the panel, except while a job runs (closing would cancel it).
+  usePopoverDismiss(!job, onClose, ref, triggerRef)
+  useEscapeClose(!job, onClose)
 
   const pairwiseOk = block.picked.length === 2
 

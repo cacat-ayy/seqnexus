@@ -1,0 +1,20 @@
+LOCUS       EGFP_(TA_insert)     735 bp    ds-DNA     linear   11-OCT-2026
+DEFINITION  PCR product for TOPO-TA or TOPO-Blunt cloning.
+FEATURES             Location/Qualifiers
+     CDS             7..732
+                     /label="EGFP"
+ORIGIN
+        1 gccaccatgt ctagagtgag caagggcgag gagctgttca ccggggtggt gcccatcctg
+       61 gtcgagctgg acggcgacgt aaacggccac aagttcagcg tgtccggcga gggcgagggc
+      121 gatgccacct acggcaagct gaccctgaag ttcatctgca ccaccggcaa gctgcccgtg
+      181 ccctggccca ccctcgtgac caccctgacc tacggcgtgc agtgcttcag ccgctacccc
+      241 gaccacatga agcagcacga cttcttcaag tccgccatgc ccgaaggcta cgtccaggag
+      301 agaaccatct tcttcaagga cgacggcaac tacaagaccc gcgccgaggt gaagttcgag
+      361 ggcgacaccc tggtgaaccg catcgagctg aagggcatcg acttcaagga ggacggcaac
+      421 atcctggggc acaagctgga gtacaactac aacagccaca acgtctatat catggccgac
+      481 aagcagaaga acggcatcaa ggtgaacttc aagatccgcc acaacatcga ggacggcagc
+      541 gtgcagctcg ccgaccacta ccagcagaac acccccatcg gcgacggccc cgtgctgctg
+      601 cccgacaacc actacctgag cacccagtcc gccctgagca aagaccccaa cgagaagcgc
+      661 gatcacatgg tcctgctgga gttcgtgacc gccgccggga tcactctcgg catggacgag
+      721 ctgtacaagt aataa
+//

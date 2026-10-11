@@ -13,7 +13,8 @@
 
 import type { Annotation } from '../models/Annotation'
 import { contrastText, visibleStroke } from '../utils/color'
-import type { PlasmidStyle, PlasmidColors } from './styles'
+import type { PlasmidLayout, PlasmidStyle, PlasmidColors } from './styles'
+import { displayPosition } from '../models/Document'
 import {
   TWO_PI, normalizeAngle, posToAngle, annArcSpan, planTicks,
 } from './geometry'
@@ -142,7 +143,14 @@ export interface SceneGcSeries {
 }
 
 export interface PlasmidSceneInput {
+  /** Width, and the height unless `height` says otherwise. */
   size: number
+  /**
+   * A taller-than-wide or wider-than-tall map. The circle is drawn at the
+   * centre of the rectangle at the size the shorter side allows, so the extra
+   * room goes to the names around it rather than to the circle.
+   */
+  height?: number
   seqLen: number
   name: string
   topology: 'linear' | 'circular'
@@ -206,6 +214,8 @@ export interface PlasmidSceneInput {
   /** Break the backbone at the origin of a linear sequence, with an end bar
    *  each side, so a linear molecule does not read as a circle. */
   openEnds?: boolean
+  /** Where features and cut sites go round the ring. Default features outside. */
+  layout?: PlasmidLayout
 }
 
 // ---- Inner label placement ----
@@ -311,6 +321,8 @@ interface SiteName {
   hovered: boolean
   /** Translucent for a site methylation blocks. */
   alpha: number
+  /** Where it cuts, as the position the user reads (from the display origin, 1-based). */
+  pos: number
 }
 
 /** Cut sites closer together than a row of text, this many or more in a
@@ -331,6 +343,8 @@ interface OutsideLabel {
   arcRadius: number
   width: number
   hovered: boolean
+  /** The angle the feature covers, so a crowded spot can keep the larger ones' names. */
+  span?: number
 }
 
 // ---- Builder ----
@@ -345,18 +359,41 @@ export function buildPlasmidScene(input: PlasmidSceneInput): PlasmidScene {
     showFeatureLabels = true, showCentre = true,
     searchHits = [], currentSearchHit = -1,
     pickedEnzymeKeys, regions = [], showCaret = true, centreNote, openEnds = false,
+    layout = 'features-outside',
   } = input
+  // The ring layout: features on rings inside the backbone, the ruler's
+  // numbers in a thin band just inside it, every cut site named outside.
+  const ring = layout === 'sites-outside'
 
   const items: SceneItem[] = []
   const hitRegions: HitRegion[] = []
-  const cx = size / 2
-  const cy = size / 2
-  const baseRadius = size * style.radiusFactor
+  // The map fills the box it is given, with the circle centred in it and sized
+  // by the shorter side. `shortSide` is what "how big is this map" means: a
+  // wide box is not a bigger map, it is the same map with more room for names.
+  // (`span` is taken further down for the angle a feature covers.)
+  const width = size
+  const height = input.height ?? size
+  const shortSide = Math.min(width, height)
+  const cx = width / 2
+  const cy = height / 2
+  const baseRadius = shortSide * style.radiusFactor
+  const ringStep = style.arcWidth + style.arcGap
+  // Inside the backbone in the ring layout, leaving a band for the ruler's
+  // numbers; outside it otherwise, as the map has always been drawn.
+  const featureRadius = (ringIdx: number) => ring
+    ? baseRadius - style.backboneWidth / 2 - 22 - style.arcWidth / 2 - ringIdx * ringStep
+    : baseRadius + 14 + ringIdx * ringStep
+  // Primers in the ring layout go just outside the backbone, where the inside
+  // is the features'; the cut sites' leaders start past them.
+  const primerW = Math.max(4, style.arcWidth * 0.4)
+  const primerR = ring
+    ? baseRadius + style.backboneWidth / 2 + 4 + primerW / 2
+    : baseRadius - style.arcWidth / 2 - 6
 
   const font = (px: number, bold = false) =>
     `${bold ? 'bold ' : ''}${px}px ${style.fontFamily}`
 
-  items.push({ kind: 'rect', x: 0, y: 0, w: size, h: size, fill: colors.bg })
+  items.push({ kind: 'rect', x: 0, y: 0, w: width, h: height, fill: colors.bg })
 
   if (seqLen === 0) {
     items.push({
@@ -364,7 +401,7 @@ export function buildPlasmidScene(input: PlasmidSceneInput): PlasmidScene {
       font: font(style.centreNameSize, true), fill: colors.textMuted,
       align: 'center', baseline: 'middle',
     })
-    return { size, background: colors.bg, items, hitRegions, baseRadius }
+    return { size: width, height, background: colors.bg, items, hitRegions, baseRadius }
   }
 
   const hasSelection = selection.anchor !== selection.caret
@@ -479,8 +516,9 @@ export function buildPlasmidScene(input: PlasmidSceneInput): PlasmidScene {
     const ticks = planTicks(seqLen, displayOrigin)
     for (const tick of ticks) {
       const angle = posToAngle(tick.pos, seqLen)
-      const from = baseRadius + style.backboneWidth / 2
-      const to = from + (tick.major ? 7 : 3)
+      // Pointing in in the ring layout, where the outside is the sites'.
+      const from = ring ? baseRadius - style.backboneWidth / 2 : baseRadius + style.backboneWidth / 2
+      const to = from + (ring ? -1 : 1) * (tick.major ? 7 : 3)
       items.push({
         kind: 'line',
         x1: cx + Math.cos(angle) * from, y1: cy + Math.sin(angle) * from,
@@ -523,8 +561,10 @@ export function buildPlasmidScene(input: PlasmidSceneInput): PlasmidScene {
   }
 
   // --- GC ring, inside the backbone ---
-  if (gc && gc.content.length > 0) {
-    const gcOuter = baseRadius - style.arcWidth - 10
+  // Just inside it here; in the ring layout the inside is the features', so
+  // it is drawn later, inside them and their names.
+  const drawGcRing = (gcOuter: number) => {
+    if (!gc || gc.content.length === 0) return
     const gcBand = 26
     const gcMid = gcOuter - gcBand / 2
     const n = gc.content.length
@@ -553,11 +593,10 @@ export function buildPlasmidScene(input: PlasmidSceneInput): PlasmidScene {
       })
     }
   }
+  if (!ring) drawGcRing(baseRadius - style.arcWidth - 10)
 
-  // --- Primers, their own thin ring just inside the backbone ---
+  // --- Primers, their own thin ring beside the backbone (see primerR) ---
   if (primers.length > 0) {
-    const primerR = baseRadius - style.arcWidth / 2 - 6
-    const primerW = Math.max(4, style.arcWidth * 0.4)
     for (const p of primers) {
       const startAngle = posToAngle(p.start, seqLen)
       const span = annArcSpan(p.start, p.end, seqLen)
@@ -571,13 +610,14 @@ export function buildPlasmidScene(input: PlasmidSceneInput): PlasmidScene {
         alpha: p.selected ? 1 : 0.75,
       })
       // A tail does not pair, so it is not an arc: it is a flag lifting off
-      // the end it hangs from, pointing into the map.
+      // the end it hangs from, pointing away from the backbone.
       const flagAt = (pos: number) => {
         const a = posToAngle(pos, seqLen)
+        const tip = primerR + (ring ? 9 : -9)
         items.push({
           kind: 'line',
           x1: cx + Math.cos(a) * primerR, y1: cy + Math.sin(a) * primerR,
-          x2: cx + Math.cos(a) * (primerR - 9), y2: cy + Math.sin(a) * (primerR - 9),
+          x2: cx + Math.cos(a) * tip, y2: cy + Math.sin(a) * tip,
           stroke: fill, width: 1.5,
         })
       }
@@ -591,6 +631,11 @@ export function buildPlasmidScene(input: PlasmidSceneInput): PlasmidScene {
   }
 
   // --- Enzyme cut sites ---
+  // Where the names' leaders start: past the outermost feature ring, or in the
+  // ring layout just past the backbone (and past the primers, drawn there).
+  const ringsOuter = ring
+    ? baseRadius + style.backboneWidth / 2 + (primers.length > 0 ? primerW + 6 : 2)
+    : baseRadius + 14 + Math.max(0, rings.length - 1) * ringStep + style.arcWidth / 2
   const siteNames: SiteName[] = []
   for (const group of enzymeGroups) {
     const angle = posToAngle(group.cutPos, seqLen)
@@ -598,17 +643,20 @@ export function buildPlasmidScene(input: PlasmidSceneInput): PlasmidScene {
     const picked = pickedEnzymeKeys?.has(group.key) ?? false
     const ink = picked ? colors.accent : colors.enzyme
     const alpha = group.methEffect === 'blocked' ? 0.25 : group.methEffect === 'impaired' ? 0.5 : 1
-    const from = baseRadius - (picked ? 14 : 10)
-    const to = baseRadius + (picked ? 14 : 10)
+    // In the ring layout a thin tick from the backbone out to where the
+    // site's leader starts, so tick and leader read as one line; otherwise a
+    // tick across the backbone with a dot on it.
+    const from = ring ? baseRadius - style.backboneWidth / 2 : baseRadius - (picked ? 14 : 10)
+    const to = ring ? ringsOuter + 4 : baseRadius + (picked ? 14 : 10)
     items.push({
       kind: 'line',
       x1: cx + Math.cos(angle) * from, y1: cy + Math.sin(angle) * from,
       x2: cx + Math.cos(angle) * to, y2: cy + Math.sin(angle) * to,
-      stroke: ink, width: hovered || picked ? 3 : 1.5, alpha,
+      stroke: ink, width: hovered || picked ? (ring ? 2.5 : 3) : (ring ? 1 : 1.5), alpha,
     })
     const mx = cx + Math.cos(angle) * baseRadius
     const my = cy + Math.sin(angle) * baseRadius
-    items.push({ kind: 'dot', x: mx, y: my, r: hovered || picked ? 4 : 2.5, fill: ink, alpha })
+    if (!ring) items.push({ kind: 'dot', x: mx, y: my, r: hovered || picked ? 4 : 2.5, fill: ink, alpha })
     hitRegions.push({ kind: 'point', id: group.key, type: 'enzyme', x: mx, y: my, r: 10 })
 
     if (style.showEnzymeLabels) {
@@ -620,16 +668,19 @@ export function buildPlasmidScene(input: PlasmidSceneInput): PlasmidScene {
         width: measureText(group.label, font(style.enzymeSize, true)),
         fill: ink, font: font(style.enzymeSize, hovered || picked),
         picked, hovered, alpha,
+        pos: displayPosition(Math.min(seqLen - 1, Math.max(0, Math.floor(group.cutPos))), displayOrigin, seqLen),
       })
     }
   }
 
   // A crowded stretch of sites (a multiple cloning site) is listed beside
-  // the circle; every other name goes inside, on the ruler's tiers.
-  const ringsOuter = baseRadius + 14 + Math.max(0, rings.length - 1) * (style.arcWidth + style.arcGap)
-    + style.arcWidth / 2
-  const runs = findCrowdedRuns(siteNames, baseRadius, listRowHeight(style))
-  drawRunBrackets(items, runs, cx, cy, baseRadius, ringsOuter + 4, colors)
+  // the circle; every other name goes inside, on the ruler's tiers. In the
+  // ring layout every site is named outside, each side of the circle laid
+  // out as one, so there is no run to bracket and nothing goes inside.
+  const runs = ring
+    ? (siteNames.length > 0 ? [[...siteNames].sort((a, b) => normalizeAngle(a.angle) - normalizeAngle(b.angle))] : [])
+    : findCrowdedRuns(siteNames, baseRadius, listRowHeight(style))
+  if (!ring) drawRunBrackets(items, runs, cx, cy, ringsOuter + 4, colors)
   const listed = new Set(runs.flat().map(site => site.key))
   for (const site of siteNames) {
     if (listed.has(site.key)) continue
@@ -689,11 +740,14 @@ export function buildPlasmidScene(input: PlasmidSceneInput): PlasmidScene {
       x2: cx + centreW / 2 + 8, y2: cy + 40,
     }
     const lineHeight = Math.max(style.tickSize, style.enzymeSize) + 3
+    // In the ring layout only the ruler's numbers are inside, in the one band
+    // between the backbone and the features, so a single tier there.
+    const tickBand = baseRadius - style.backboneWidth / 2 - 13
     const placed = placeInnerLabels(
       innerLabels,
-      baseRadius - 20,
+      ring ? tickBand : baseRadius - 20,
       15,
-      40,
+      ring ? tickBand : 40,
       reserved,
       cx, cy,
       lineHeight,
@@ -739,8 +793,11 @@ export function buildPlasmidScene(input: PlasmidSceneInput): PlasmidScene {
 
   // --- Feature arcs ---
   const outside: OutsideLabel[] = []
+  // Names that do not fit their arrow, in the ring layout: written curved
+  // inside the innermost ring rather than beside the circle.
+  const innerNames: OutsideLabel[] = []
   for (let ringIdx = 0; ringIdx < rings.length; ringIdx++) {
-    const radius = baseRadius + 14 + ringIdx * (style.arcWidth + style.arcGap)
+    const radius = featureRadius(ringIdx)
     for (const ann of rings[ringIdx]) {
       const startAngle = posToAngle(ann.start, seqLen)
       const span = annArcSpan(ann.start, ann.end, seqLen)
@@ -797,7 +854,9 @@ export function buildPlasmidScene(input: PlasmidSceneInput): PlasmidScene {
       const textWidth = measureText(ann.name, labelFont)
       const arcLength = Math.abs(span) * radius
 
-      if (style.labelPlacement === 'outside' && textWidth + 8 < arcLength) {
+      // In the ring layout a name that fits always goes in its arrow, as the
+      // names that do not are written curved just inside it.
+      if ((ring || style.labelPlacement === 'outside') && textWidth + 8 < arcLength) {
         items.push({
           kind: 'curvedText', cx, cy, radius,
           midAngle: startAngle + span / 2,
@@ -805,32 +864,70 @@ export function buildPlasmidScene(input: PlasmidSceneInput): PlasmidScene {
           fill: contrastText(ann.color),
           flip: isFlipped(startAngle + span / 2),
         })
-      } else if (size < SMALL_MAP && arcLength < SMALL_FEATURE_PX) {
+      } else if (shortSide < SMALL_MAP && arcLength < SMALL_FEATURE_PX) {
         // A small map (the split view) leaves a small feature unnamed: its
         // name would be one more leader in the most crowded stretch, and
         // hovering the feature still names it.
         continue
       } else {
-        outside.push({
+        ;(ring ? innerNames : outside).push({
           text: ann.name, display: ann.name,
           midAngle: startAngle + span / 2,
-          arcRadius: radius, width: textWidth, hovered,
+          arcRadius: radius, width: textWidth, hovered, span: Math.abs(span),
         })
       }
     }
   }
 
+  // --- The construct's name in the middle, shortened to the room it has ---
+  // In the ring layout the features are inside the backbone, so the name has
+  // only the room inside the innermost ring, at the height it is written.
+  const innermost = featureRadius(Math.max(0, rings.length - 1)) - style.arcWidth / 2
+  const nameFont = font(style.centreNameSize, true)
+  const maxNameW = ring
+    ? Math.max(60, 2 * Math.sqrt(Math.max(0, (innermost - 6) ** 2 - 20 ** 2)) - 8)
+    : baseRadius * 1.5
+  let centreName = name
+  if (measureText(centreName, nameFont) > maxNameW) {
+    while (centreName.length > 1 && measureText(centreName + '…', nameFont) > maxNameW) {
+      centreName = centreName.slice(0, -1)
+    }
+    centreName += '…'
+  }
+
+  // --- Ring layout: names inside the rings, then the GC ring inside them ---
+  // A name with no room inside (the rings stacked deep, a long name in the
+  // middle) is named outside with the sites rather than left off.
+  let unplacedInside: OutsideLabel[] = []
+  if (ring) {
+    const centreW = Math.max(measureText(centreName, nameFont), 160)
+    const clearOfCentre = showCentre ? Math.hypot(centreW / 2 + 8, 40) + style.labelSize : 30
+    const { reach, unplaced } = placeInnerCurvedNames(items, innerNames, {
+      cx, cy, startR: innermost - 6 - style.labelSize / 2, stepR: style.labelSize + 5,
+      minR: clearOfCentre, style, colors, font,
+    })
+    unplacedInside = unplaced
+    drawGcRing((reach ?? innermost) - 8)
+  }
+
   // --- Lists of a crowded stretch's site names, and the feature names beside them ---
-  const taken = drawRunLists(items, hitRegions, runs, outside, {
-    cx, cy, size, ringsOuter, style, colors, measureText, font,
+  const occupied: Rect[] = []
+  // Feature names that go outside: those that did not fit their arc, or in
+  // the ring layout those with no room left inside.
+  const outsideNames = ring ? unplacedInside : outside
+  const taken = drawRunLists(items, hitRegions, runs, outsideNames, {
+    cx, cy, width, height, occupied, outline: outlineOf(items), ringsOuter, style, colors, measureText, font,
+    spread: ring, showPositions: ring,
   })
 
   // --- Labels that did not fit inside their arc ---
-  const rest = taken.size > 0 ? outside.filter(l => !taken.has(l)) : outside
+  const rest = taken.size > 0 ? outsideNames.filter(l => !taken.has(l)) : outsideNames
   if (rest.length > 0) {
-    const outermost = baseRadius + 14 + Math.max(0, rings.length - 1) * (style.arcWidth + style.arcGap)
+    // Past whatever is drawn round the outside: the feature rings, or in the
+    // ring layout the backbone and the primers beside it.
+    const outermost = ring ? ringsOuter : baseRadius + 14 + Math.max(0, rings.length - 1) * ringStep
     layoutOutsideLabels(
-      items, rest, cx, cy, size, outermost, style, colors, measureText, font,
+      items, rest, cx, cy, width, height, occupied, outermost, style, colors, measureText, font,
     )
   }
 
@@ -847,15 +944,6 @@ export function buildPlasmidScene(input: PlasmidSceneInput): PlasmidScene {
 
   // --- Centre block ---
   if (showCentre) {
-    const nameFont = font(style.centreNameSize, true)
-    const maxNameW = baseRadius * 1.5
-    let centreName = name
-    if (measureText(centreName, nameFont) > maxNameW) {
-      while (centreName.length > 1 && measureText(centreName + '…', nameFont) > maxNameW) {
-        centreName = centreName.slice(0, -1)
-      }
-      centreName += '…'
-    }
     items.push({
       kind: 'text', x: cx, y: cy - 12, text: centreName, font: nameFont,
       fill: colors.text, align: 'center', baseline: 'middle',
@@ -898,12 +986,12 @@ export function buildPlasmidScene(input: PlasmidSceneInput): PlasmidScene {
     const rowH = 15
     const pad = 10
     const legendFont = font(style.labelSize)
-    const width = Math.max(...legend.map(l => measureText(l.label, legendFont))) + swatch + pad * 2 + 8
-    const height = legend.length * rowH + pad * 2
+    const legendWidth = Math.max(...legend.map(l => measureText(l.label, legendFont))) + swatch + pad * 2 + 8
+    const legendHeight = legend.length * rowH + pad * 2
     const lx = pad
-    const ly = size - height - pad
+    const ly = height - legendHeight - pad
     items.push({
-      kind: 'rect', x: lx, y: ly, w: width, h: height,
+      kind: 'rect', x: lx, y: ly, w: legendWidth, h: legendHeight,
       fill: colors.bg, stroke: colors.tickMinor, alpha: 0.95,
     })
     legend.forEach((entry, i) => {
@@ -919,7 +1007,7 @@ export function buildPlasmidScene(input: PlasmidSceneInput): PlasmidScene {
     })
   }
 
-  return { size, background: colors.bg, items, hitRegions, baseRadius }
+  return { size: width, height, background: colors.bg, items, hitRegions, baseRadius }
 }
 
 // ---- Helpers ----
@@ -952,7 +1040,8 @@ function formatBpShort(n: number): string {
 function layoutOutsideLabels(
   items: SceneItem[],
   labels: OutsideLabel[],
-  cx: number, cy: number, size: number,
+  cx: number, cy: number, width: number, height: number,
+  occupied: readonly Rect[],
   outermost: number,
   style: PlasmidStyle,
   colors: PlasmidColors,
@@ -960,7 +1049,9 @@ function layoutOutsideLabels(
   font: (px: number, bold?: boolean) => string,
 ): void {
   const TIER_GAP = 14
-  const MAX_W = size * 0.22
+  // What a name may take before it is shortened: a share of the width, but
+  // never more than the room beside the circle, which is where it is written.
+  const MAX_W = Math.max(width * 0.22, (width - 2 * outermost) / 2 - 12)
   const LABEL_H = style.labelSize + 2
   const PAD = 3
   const baseLabelR = outermost + style.arcWidth / 2 + 18
@@ -981,14 +1072,43 @@ function layoutOutsideLabels(
   })
   prepared.sort((a, b) => normalizeAngle(a.midAngle) - normalizeAngle(b.midAngle))
 
-  const pos = (l: Prepared, tier: number) => {
+  type Placed = { lx: number; ly: number; align: 'left' | 'right' | 'center'; held?: boolean }
+
+  /**
+   * A label pulled back inside the canvas.
+   *
+   * Tiers stack outward from the circle, which at 12 and 6 o'clock walks a
+   * crowded cluster straight off the top or bottom edge. Rather than let a
+   * name be drawn where it cannot be read, it is held at the edge and the
+   * tier spreads it sideways instead, away from the centre: that is the room
+   * a map wider than it is tall has, and it is where a person would write it.
+   */
+  const fit = (p: Placed, l: Prepared, tier: number): Placed => {
+    const minY = LABEL_H / 2 + PAD
+    const maxY = height - LABEL_H / 2 - PAD
+    const ly = Math.min(Math.max(p.ly, minY), maxY)
+    let { lx, align } = p
+    if (ly !== p.ly) {
+      // A step of a whole name, since a shorter one would leave the names
+      // held at the edge written over each other.
+      const dir = p.lx >= cx ? 1 : -1
+      lx = p.lx + dir * tier * (l.width + 10)
+      align = dir > 0 ? 'left' : 'right'
+    }
+    // And inside the left and right edges, whichever way the text runs.
+    const low = align === 'left' ? PAD : align === 'right' ? l.width + PAD : l.width / 2 + PAD
+    const high = align === 'left' ? width - l.width - PAD : align === 'right' ? width - PAD : width - l.width / 2 - PAD
+    return { lx: Math.min(Math.max(lx, low), Math.max(low, high)), ly, align, held: ly !== p.ly }
+  }
+
+  const pos = (l: Prepared, tier: number): Placed => {
     const r = baseLabelR + tier * TIER_GAP
     const rx = cx + Math.cos(l.midAngle) * r
     const ry = cy + Math.sin(l.midAngle) * r
     const na = normalizeAngle(l.midAngle)
     const nearTop = na > Math.PI * 1.47 || na < Math.PI * 0.03
     const nearBottom = na > Math.PI * 0.47 && na < Math.PI * 0.53
-    if (nearTop || nearBottom) return { lx: rx, ly: ry, align: 'center' as const }
+    if (nearTop || nearBottom) return fit({ lx: rx, ly: ry, align: 'center' }, l, tier)
 
     const onRight = na < Math.PI / 2 || na > Math.PI * 1.5
     // Clear the outermost arc at this y rather than along the radius, so long
@@ -998,11 +1118,11 @@ function layoutOutsideLabels(
     if (dy * dy < arcOuter * arcOuter) {
       const xExtent = Math.sqrt(arcOuter * arcOuter - dy * dy)
       const gap = 6 + tier * TIER_GAP
-      return onRight
-        ? { lx: Math.max(cx + xExtent + gap, rx), ly: ry, align: 'left' as const }
-        : { lx: Math.min(cx - xExtent - gap, rx), ly: ry, align: 'right' as const }
+      return fit(onRight
+        ? { lx: Math.max(cx + xExtent + gap, rx), ly: ry, align: 'left' }
+        : { lx: Math.min(cx - xExtent - gap, rx), ly: ry, align: 'right' }, l, tier)
     }
-    return { lx: rx, ly: ry, align: onRight ? ('left' as const) : ('right' as const) }
+    return fit({ lx: rx, ly: ry, align: onRight ? 'left' : 'right' }, l, tier)
   }
 
   const rect = (l: Prepared, tier: number): Rect => {
@@ -1013,20 +1133,35 @@ function layoutOutsideLabels(
   }
 
   const tiers: Rect[][] = []
+  // Every name already placed, whatever tier it went in. A tier is a ring, so
+  // two tiers were taken not to meet, but a long name at an outer tier reaches
+  // back under a short one further in, and a name held at an edge leaves its
+  // ring altogether. Both are only caught by looking at all of them.
+  const placedRects: Rect[] = []
+  const free = (r: Rect) =>
+    !occupied.some(e => rectsOverlap(r, e)) && !placedRects.some(e => rectsOverlap(r, e))
+
   for (const l of prepared) {
     let placed = false
     for (let t = 0; t < tiers.length; t++) {
       const r = rect(l, t)
-      if (!tiers[t].some(e => rectsOverlap(r, e))) {
+      if (free(r)) {
         l.tier = t
         tiers[t].push(r)
+        placedRects.push(r)
         placed = true
         break
       }
     }
     if (!placed) {
-      l.tier = tiers.length
-      tiers.push([rect(l, l.tier)])
+      // A fresh tier, stepped on until it clears the lists and the names
+      // already written at this edge.
+      let t = tiers.length
+      for (let tried = 0; tried < 10 && !free(rect(l, t)); tried++) t++
+      l.tier = t
+      while (tiers.length <= t) tiers.push([])
+      tiers[t].push(rect(l, t))
+      placedRects.push(rect(l, t))
     }
   }
 
@@ -1087,23 +1222,20 @@ function findCrowdedRuns(sites: SiteName[], baseRadius: number, rowH: number): S
 }
 
 /**
- * A bracket over each run, just outside the rings, with a stem down to the
- * backbone at each end. Drawn before the features, so the stems pass under
- * them.
+ * A bracket over each run, just outside the rings, marking the stretch its
+ * names come from. It used to have a stem down to the backbone at each end,
+ * from when the list's lines started at the bracket; now every site has a
+ * leader of its own from just outside the rings at its own angle, and the
+ * stems, which ran up through the whole stack of rings, were the only lines
+ * the leaders still crossed.
  */
 function drawRunBrackets(
   items: SceneItem[], runs: SiteName[][],
-  cx: number, cy: number, baseRadius: number, stemR: number, colors: PlasmidColors,
+  cx: number, cy: number, stemR: number, colors: PlasmidColors,
 ): void {
-  const at = (r: number, a: number) => ({ x: cx + Math.cos(a) * r, y: cy + Math.sin(a) * r })
   for (const run of runs) {
     const a0 = run[0].angle
     const span = normalizeAngle(run[run.length - 1].angle - a0)
-    for (const a of [a0, a0 + span]) {
-      const p = at(baseRadius + 10, a)
-      const q = at(stemR, a)
-      items.push({ kind: 'line', x1: p.x, y1: p.y, x2: q.x, y2: q.y, stroke: colors.enzyme, width: 0.75, alpha: 0.6 })
-    }
     items.push({
       kind: 'arcBand', cx, cy, radius: stemR, startAngle: a0, span, width: 1.5,
       strand: 0, fill: colors.enzyme, alpha: 0.6,
@@ -1114,7 +1246,20 @@ function drawRunBrackets(
 interface ListContext {
   cx: number
   cy: number
-  size: number
+  width: number
+  height: number
+  /**
+   * Boxes the lists fill, for the names laid out afterwards to keep out of.
+   * The two layouts are separate passes, so without this a name held at an
+   * edge can land on a list row.
+   */
+  occupied: Rect[]
+  /** What is drawn round the circle so far, for the names to sit just past. */
+  outline: OutlineArc[]
+  /** Rows near their own anchors rather than one block per spot (the ring layout). */
+  spread?: boolean
+  /** Write a site's position beside its name, "BamHI (975)" (the ring layout). */
+  showPositions?: boolean
   /** Outer edge of the outermost feature ring. */
   ringsOuter: number
   style: PlasmidStyle
@@ -1127,19 +1272,41 @@ type ListEntry =
   | { kind: 'site'; angle: number; site: SiteName }
   | { kind: 'feature'; angle: number; label: OutsideLabel }
 
+/** Feature names this close together round the circle, this many or more,
+ *  are a crowded spot of their own, with or without cut sites among them. */
+const FEATURE_CLUSTER_MIN = 3
+
 /**
- * The names of each crowded run in one straight list beside the circle, in
- * their order round it, each with a thin line from the bracket at its own
- * site. The list sits level with the run, on the side of the circle the run
- * is on, and starts where the outermost of its rows clears the rings.
+ * How far down a side of the circle an angle is, from 12 o'clock to 6: the
+ * order a column beside the circle is read in, top row first. Down the right
+ * is clockwise, down the left anticlockwise, so both sides read downward.
+ */
+function downSide(a: number, side: 'left' | 'right'): number {
+  return side === 'right' ? normalizeAngle(a - Math.PI * 1.5) : normalizeAngle(Math.PI * 1.5 - a)
+}
+
+/**
+ * The names at each crowded spot beside the circle, one row each, every name
+ * just past what is in the way at its own height, with leaders that do not
+ * cross.
  *
- * Feature names that would land beside the list (in a pUC19, the lac
- * operator, promoter and CAP site just past its cloning site) join it in
- * their place round the circle, with their leaders from their own arcs: on
- * their own they would be stacked outward over the list and off the canvas.
- * The list is laid out again as names join, until no more do.
+ * A crowded spot is a run of cut sites closer together than a row of text (a
+ * multiple cloning site), or a few feature names bunched round the circle,
+ * together with the feature names close enough to it to compete for the same
+ * room. Its names are split by side: those left of the vertical through the
+ * centre go to the left, the rest to the right. So a spot at 12
+ * o'clock opens both ways, and one at 3 o'clock goes right.
  *
- * Returns the feature names it took, so they are not placed again.
+ * Each side is read top to bottom in the order its anchors come down that
+ * side, which for a run of cut sites is the cloning site's own order, and
+ * each leader runs straight from its anchor to a short flat tail into its
+ * name. The order is kept unless it leaves two leaders crossing out in the
+ * open, and then names are moved, feature names before sites (see below).
+ *
+ * Feature names that would land beside a spot's names join them in their
+ * place round the circle, and the side is laid out again as names join,
+ * until no more do. Returns the feature names it took, so they are not
+ * placed again.
  */
 function drawRunLists(
   items: SceneItem[],
@@ -1148,7 +1315,9 @@ function drawRunLists(
   outside: OutsideLabel[],
   ctx: ListContext,
 ): Set<OutsideLabel> {
-  const { cx, cy, size, ringsOuter, style, colors, measureText, font } = ctx
+  const { cx, cy, width, height, occupied, outline, ringsOuter, style, colors, measureText, font } = ctx
+  const spread = ctx.spread ?? false
+  const showPositions = ctx.showPositions ?? false
   const taken = new Set<OutsideLabel>()
   const rowH = listRowHeight(style)
   // Close to the edge, as the old outside names go: the room beside a
@@ -1156,106 +1325,570 @@ function drawRunLists(
   const margin = 2
   const stemR = ringsOuter + 4
   const labelR = ringsOuter + 10
-  const rows = Math.max(1, Math.floor((size - 2 * margin) / rowH) + 1)
+  const rows = Math.max(1, Math.floor((height - 2 * margin) / rowH) + 1)
   const at = (r: number, a: number) => ({ x: cx + Math.cos(a) * r, y: cy + Math.sin(a) * r })
   const idealY = (a: number) => cy + Math.sin(a) * labelR
-  // Rows taken per side, so two lists on one side do not overlap.
+  const sideOf = (a: number): 'left' | 'right' => (Math.cos(a) >= 0 ? 'right' : 'left')
+  // Rows taken per side, so two columns on one side do not overlap.
   const used: Record<'left' | 'right', { top: number; bottom: number }[]> = { left: [], right: [] }
+  // How far either side of a spot a feature name still competes for its room:
+  // the arc four rows of text take up just outside the rings.
+  const reachAngle = (4 * rowH) / labelR
 
-  for (const run of runs) {
-    const a0 = run[0].angle
-    const mid = a0 + normalizeAngle(run[run.length - 1].angle - a0) / 2
-    const side: 'left' | 'right' = Math.cos(mid) >= 0 ? 'right' : 'left'
-    // Angle from the middle of the run, clockwise positive, so the order
-    // holds across the origin. Down the right is clockwise, down the left
-    // anticlockwise.
-    const rel = (a: number) => normalizeAngle(a - mid + Math.PI) - Math.PI
-    const place = (entries: ListEntry[]) => {
-      const order = [...entries].sort((p, q) => (side === 'right' ? 1 : -1) * (rel(p.angle) - rel(q.angle)))
-      const height = (order.length - 1) * rowH
-      const centre = order.reduce((s, e) => s + idealY(e.angle), 0) / order.length
-      let y0 = Math.min(Math.max(centre - height / 2, margin + rowH / 2), size - margin - rowH / 2 - height)
-      for (const u of used[side]) {
-        if (y0 - rowH / 2 < u.bottom && y0 + height + rowH / 2 > u.top) y0 = u.bottom + rowH / 2
+  // --- The spots: each run of sites, and each bunch of feature names ---
+  interface Spot { start: number; span: number; sites: SiteName[] }
+  const spots: Spot[] = runs.map(run => ({
+    start: run[0].angle,
+    span: normalizeAngle(run[run.length - 1].angle - run[0].angle),
+    sites: run,
+  }))
+  const inSpot = (a: number, s: Spot) => normalizeAngle(a - (s.start - reachAngle)) <= s.span + 2 * reachAngle
+  {
+    const loose = outside.filter(l => !spots.some(s => inSpot(l.midAngle, s)))
+      .sort((p, q) => normalizeAngle(p.midAngle) - normalizeAngle(q.midAngle))
+    const n = loose.length
+    const gapAfter = (i: number) => normalizeAngle(loose[(i + 1) % n].midAngle - loose[i].midAngle) > reachAngle
+    // Start after a gap, so a bunch across the origin (12 o'clock, where a
+    // plasmid's own junctions sit) is one bunch and not two halves.
+    const first = n === 0 ? -1 : loose.findIndex((_, i) => gapAfter((i - 1 + n) % n))
+    if (first >= 0) {
+      let group: OutsideLabel[] = []
+      for (let k = 0; k < n; k++) {
+        const i = (first + k) % n
+        group.push(loose[i])
+        if (gapAfter(i) || k === n - 1) {
+          if (group.length >= FEATURE_CLUSTER_MIN) {
+            spots.push({
+              start: group[0].midAngle,
+              span: normalizeAngle(group[group.length - 1].midAngle - group[0].midAngle),
+              sites: [],
+            })
+          }
+          group = []
+        }
       }
-      return { order, y0, height }
     }
+  }
 
-    let entries: ListEntry[] = run.map(site => ({ kind: 'site', angle: site.angle, site }))
-    let layout = place(entries)
-    for (let pass = 0; pass < 5; pass++) {
-      const top = layout.y0 - rowH
-      const bottom = layout.y0 + layout.height + rowH
-      const join = outside.filter(l => !taken.has(l)
-        && (Math.cos(l.midAngle) >= 0) === (side === 'right')
-        && idealY(l.midAngle) >= top && idealY(l.midAngle) <= bottom)
-      if (join.length === 0) break
-      for (const l of join) {
-        taken.add(l)
-        entries.push({ kind: 'feature', angle: l.midAngle, label: l })
+  // --- One column per side of each spot ---
+  for (const spot of spots) {
+    const near = outside.filter(l => !taken.has(l) && inSpot(l.midAngle, spot))
+    const all: ListEntry[] = [
+      ...spot.sites.map(site => ({ kind: 'site' as const, angle: site.angle, site })),
+      ...near.map(label => ({ kind: 'feature' as const, angle: label.midAngle, label })),
+    ]
+    for (const l of near) taken.add(l)
+
+    for (const side of ['left', 'right'] as const) {
+      let entries = all.filter(e => sideOf(e.angle) === side)
+      if (entries.length === 0) continue
+
+      const place = (list: ListEntry[]) => {
+        const order = [...list].sort((p, q) => downSide(p.angle, side) - downSide(q.angle, side))
+        if (spread) {
+          // Every row as near its own anchor's height as the rows above and
+          // below it allow, rather than all of them in one block round their
+          // middle: the names of a whole side of the circle, not one spot.
+          const rowsY = packRows(order.map(e => idealY(e.angle)), rowH, margin + rowH / 2, height - margin - rowH / 2)
+          return { order, y0: rowsY[0], listHeight: rowsY[rowsY.length - 1] - rowsY[0], rowsY }
+        }
+        const listHeight = (order.length - 1) * rowH
+        const centre = order.reduce((s, e) => s + idealY(e.angle), 0) / order.length
+        let y0 = Math.min(Math.max(centre - listHeight / 2, margin + rowH / 2), height - margin - rowH / 2 - listHeight)
+        for (const u of used[side]) {
+          if (y0 - rowH / 2 < u.bottom && y0 + listHeight + rowH / 2 > u.top) y0 = u.bottom + rowH / 2
+        }
+        return { order, y0, listHeight, rowsY: order.map((_, i) => y0 + i * rowH) }
       }
-      layout = place(entries)
-    }
-    // A list longer than the canvas keeps chosen sites and feature names
-    // first, then sites in their order.
-    if (entries.length > rows) {
-      const rank = (e: ListEntry) => (e.kind === 'site' ? (e.site.picked ? 0 : 2) : 1)
-      entries = entries.map((e, i) => ({ e, i }))
-        .sort((p, q) => rank(p.e) - rank(q.e) || p.i - q.i)
-        .slice(0, rows).map(p => p.e)
-      layout = place(entries)
-    }
-    const { order, y0, height } = layout
-    used[side].push({ top: y0 - rowH / 2, bottom: y0 + height + rowH / 2 })
 
-    // Start where the outermost row clears the rings.
-    let reach = 0
-    order.forEach((_, i) => {
-      const dy = Math.max(0, Math.abs(y0 + i * rowH - cy) - rowH / 2)
-      if (dy < labelR) reach = Math.max(reach, Math.sqrt(labelR * labelR - dy * dy))
-    })
-    const x = side === 'right' ? cx + reach + 3 : cx - reach - 3
-    const ex = side === 'right' ? x - 2 : x + 2
-    const align = side === 'right' ? 'left' : 'right'
-    const avail = Math.min(size * 0.22, side === 'right' ? size - margin - x : x - margin)
+      let layout = place(entries)
+      for (let pass = 0; pass < 5; pass++) {
+        const top = layout.y0 - rowH
+        const bottom = layout.y0 + layout.listHeight + rowH
+        const join = outside.filter(l => !taken.has(l)
+          && sideOf(l.midAngle) === side
+          && idealY(l.midAngle) >= top && idealY(l.midAngle) <= bottom)
+        if (join.length === 0) break
+        for (const l of join) {
+          taken.add(l)
+          entries.push({ kind: 'feature', angle: l.midAngle, label: l })
+        }
+        layout = place(entries)
+      }
+      // A column longer than the canvas keeps chosen sites and feature names
+      // first, then sites in their order.
+      if (entries.length > rows) {
+        const rank = (e: ListEntry) => (e.kind === 'site' ? (e.site.picked ? 0 : 2) : 1)
+        entries = entries.map((e, i) => ({ e, i }))
+          .sort((p, q) => rank(p.e) - rank(q.e) || p.i - q.i)
+          .slice(0, rows).map(p => p.e)
+        layout = place(entries)
+      }
+      const { order, y0, listHeight, rowsY } = layout
+      used[side].push({ top: y0 - rowH / 2, bottom: y0 + listHeight + rowH / 2 })
 
-    order.forEach((e, i) => {
-      const y = y0 + i * rowH
-      if (e.kind === 'site') {
-        const site = e.site
-        const from = at(stemR, site.angle)
-        items.push({
-          kind: 'line', x1: from.x, y1: from.y, x2: ex, y2: y,
-          stroke: site.fill, width: 0.75, alpha: (site.hovered || site.picked ? 1 : 0.5) * site.alpha,
-        })
-        items.push({
-          kind: 'text', x, y, text: site.text, font: site.font, fill: site.fill, align, baseline: 'middle',
-          halo: style.labelHalo ? colors.bg : undefined,
-          alpha: site.alpha < 1 ? site.alpha : undefined,
-        })
-        // The name is the reliable target: the ticks are a pixel or two apart.
-        hitRegions.push({
-          kind: 'label', id: site.key, type: 'enzyme',
-          x: side === 'right' ? x + site.width / 2 : x - site.width / 2, y,
-          w: site.width, h: rowH - 2, rotate: 0,
-        })
-      } else {
-        const l = e.label
-        const f = font(style.labelSize, l.hovered)
-        const from = at(l.arcRadius + style.arcWidth / 2 + 4, l.midAngle)
-        items.push({
-          kind: 'line', x1: from.x, y1: from.y, x2: ex, y2: y,
-          stroke: l.hovered ? colors.text : colors.tickMinor, width: 0.75,
-        })
-        items.push({
-          kind: 'text', x, y, text: fitText(l.text, f, avail, measureText), font: f,
-          fill: l.hovered ? colors.text : colors.textMuted, align, baseline: 'middle',
-          halo: style.labelHalo ? colors.bg : undefined,
+      type Pt = { x: number; y: number }
+      const anchorOf = (e: ListEntry) => (e.kind === 'site'
+        ? { angle: e.site.angle, fromR: stemR }
+        : { angle: e.label.midAngle, fromR: e.label.arcRadius + style.arcWidth / 2 + 4 })
+
+      // Each name sits just past whatever is in the way at its own height, so
+      // it stays beside the stack it belongs to instead of lining up with the
+      // others at the width of the widest row. In the way means what is drawn
+      // there (the feature arcs, the backbone, the bracket) and the leaders of
+      // this spot climbing past that height to rows further out: above the
+      // stack nothing is drawn, and a name placed by the arcs alone would sit
+      // on the lines going up beside it.
+      const GAP = 8
+      const rowY = rowsY
+      // First by what is drawn alone. Once the order is known, the leaders
+      // themselves are in the way too (see relax, below).
+      const toX = (reach: number) => (side === 'right' ? cx + reach : cx - reach)
+      const drawnReach = rowY.map(y => outlineExtent(outline, cy, y - rowH / 2, y + rowH / 2, side) + GAP)
+      let rowX = drawnReach.map(toX)
+      let rowEx = rowX.map(x => (side === 'right' ? x - 2 : x + 2))
+      const align = side === 'right' ? 'left' : 'right'
+      const availAt = (i: number) => (side === 'right' ? width - margin - rowX[i] : rowX[i] - margin)
+
+      /** Keep a row's box, so a later name is not written over it. */
+      const occupy = (i: number, w: number) => {
+        const x = rowX[i]
+        occupied.push({
+          x1: side === 'right' ? x - 2 : x - w - 2,
+          x2: side === 'right' ? x + w + 2 : x + 2,
+          y1: rowY[i] - rowH / 2, y2: rowY[i] + rowH / 2,
         })
       }
-    })
+
+      /**
+       * Straight from the anchor to a short flat tail into the name. The line
+       * goes at whatever slant reaches the name, so a name can sit wherever
+       * there is room near its spot: a leader made to run out along its radius
+       * first could only meet a row far above a 2 o'clock site a long way out
+       * to the side, past free room nearer in.
+       */
+      const TAIL = 6
+      const path = (e: ListEntry, row: number): Pt[] => {
+        const { angle, fromR } = anchorOf(e)
+        const y = rowY[row]
+        const ex = rowEx[row]
+        const start = at(fromR, angle)
+        const end = { x: ex, y }
+        const tail = { x: side === 'right' ? ex - TAIL : ex + TAIL, y }
+        return [start, tail, end]
+      }
+
+      // Which order round the circle keeps the leaders apart depends on the
+      // room above the spot. With room, each leader climbs its radius to its
+      // row, and the anchor nearest 12 o'clock, whose line is the most
+      // upright, must have the top row. When the rings reach the edge there
+      // is nowhere to climb: every leader starts above every row and fans
+      // down to the column, and then the anchor furthest from 12 o'clock,
+      // nearest the column, must have the top row instead. So both orders
+      // round the circle are tried, each polished by swapping neighbouring
+      // rows wherever that takes a crossing away, and the one with fewer
+      // crossings wins, then the one with shorter leaders.
+      // Only crossings out in the open count. Leaders leaving ticks a pixel or
+      // two apart, as at a multiple cloning site, leave as a bundle and may
+      // cross within its first couple of rows whatever order they are in, at
+      // an angle too shallow to read as a crossing; reordering the names to
+      // avoid that would scramble the cloning site's order, which is plain to
+      // see, to remove something that is not.
+      const NEAR = 24
+      const crossings = (p: Pt[], q: Pt[]) => {
+        let count = 0
+        for (let i = 0; i + 1 < p.length; i++) {
+          for (let j = 0; j + 1 < q.length; j++) {
+            const at = crossingPoint(p[i], p[i + 1], q[j], q[j + 1])
+            if (!at) continue
+            if (Math.hypot(at.x - p[0].x, at.y - p[0].y) < NEAR || Math.hypot(at.x - q[0].x, at.y - q[0].y) < NEAR) continue
+            count++
+          }
+        }
+        return count
+      }
+      const score = (list: ListEntry[]) => {
+        const paths = list.map((e, i) => path(e, i))
+        let count = 0
+        let length = 0
+        // The rows whose leaders take part in a crossing, for the polish to
+        // try moving and no others.
+        const involved = new Set<number>()
+        for (let i = 0; i < paths.length; i++) {
+          for (let k = 0; k + 1 < paths[i].length; k++) {
+            length += Math.hypot(paths[i][k + 1].x - paths[i][k].x, paths[i][k + 1].y - paths[i][k].y)
+          }
+          for (let j = i + 1; j < paths.length; j++) {
+            const c = crossings(paths[i], paths[j])
+            if (c > 0) { count += c; involved.add(i); involved.add(j) }
+          }
+        }
+        return { count, length, involved }
+      }
+      const better = (a: { count: number; length: number }, b: { count: number; length: number }) =>
+        a.count < b.count || (a.count === b.count && a.length < b.length - 0.5)
+      // A row may need to move several places at once (a feature on an inner
+      // ring whose leader climbs past every other line belongs at the far
+      // end), and one step at a time may not take a crossing away until the
+      // last, so a name is tried in every row, not only next door.
+      const polish = (list: ListEntry[]) => {
+        let best = score(list)
+        for (let pass = 0; pass < list.length && best.count > 0; pass++) {
+          let improved = false
+          // Only names whose leaders cross are moved, feature names before
+          // cut sites (a cloning site's order is worth keeping), each to the
+          // nearest row that takes a crossing away.
+          const movable = [...best.involved].sort((p, q) =>
+            Number(list[p].kind === 'site') - Number(list[q].kind === 'site') || p - q)
+          for (const i of movable) {
+            if (best.count === 0 || improved) break
+            const rows = list.map((_, j) => j).filter(j => j !== i).sort((p, q) => Math.abs(p - i) - Math.abs(q - i))
+            for (const j of rows) {
+              const [moved] = list.splice(i, 1)
+              list.splice(j, 0, moved)
+              const now = score(list)
+              if (now.count < best.count) { best = now; improved = true; break }
+              list.splice(j, 1)
+              list.splice(i, 0, moved)
+            }
+          }
+          if (!improved) break
+        }
+        return best
+      }
+      /**
+       * Push each name out past every other leader that passes through its
+       * row, measured on the leaders as they will be drawn. A name only ever
+       * moves outward, so this settles; it stops after a few rounds in any
+       * case. In an order without crossings a leader passing a row runs inside
+       * that row's own bend, so the push costs nothing there.
+       */
+      const relax = (list: ListEntry[]) => {
+        // From scratch each time: a push made for an earlier order of the
+        // rows is no reason to keep a name out now.
+        rowX = drawnReach.map(toX)
+        rowEx = rowX.map(x => (side === 'right' ? x - 2 : x + 2))
+        const sign = side === 'right' ? 1 : -1
+        for (let round = 0; round < 6; round++) {
+          const paths = list.map((e, i) => path(e, i))
+          let moved = false
+          rowY.forEach((y, i) => {
+            const top = y - rowH / 2
+            const bottom = y + rowH / 2
+            let reach = drawnReach[i] - GAP
+            // Its own leader must not run through its own text. The leader
+            // comes to the tail, just short of the name, from wherever the
+            // anchor is; from an anchor further out than the tail it passes
+            // under or over the text on the way, and clears it as long as it
+            // still climbs or falls the text's half height over the tail's
+            // length. So a name can sit up and in from a site low down, the
+            // free room nearer the circle, and only a name almost level with a
+            // site further out has to move out past it.
+            {
+              const a = paths[i][0]
+              const lead = TAIL + 2
+              const halfText = rowH / 2 - 2
+              const need = (a.x - cx) * sign - lead * Math.abs(a.y - y) / halfText + lead
+              reach = Math.max(reach, need - GAP)
+            }
+            paths.forEach((p, j) => {
+              if (j === i) return
+              for (let k = 0; k + 1 < p.length; k++) {
+                const a = p[k]
+                const b = p[k + 1]
+                // The part of this segment inside the row's height.
+                const lo = Math.max(top, Math.min(a.y, b.y))
+                const hi = Math.min(bottom, Math.max(a.y, b.y))
+                if (lo > hi) continue
+                for (const yy of a.y === b.y ? [a.y] : [lo, hi]) {
+                  const x = a.y === b.y ? Math.max(a.x - cx, b.x - cx) * (side === 'right' ? 1 : -1)
+                    : (a.x + (b.x - a.x) * (yy - a.y) / (b.y - a.y) - cx) * (side === 'right' ? 1 : -1)
+                  reach = Math.max(reach, x)
+                }
+              }
+            })
+            const next = toX(reach + GAP)
+            if (side === 'right' ? next > rowX[i] + 0.5 : next < rowX[i] - 0.5) {
+              rowX[i] = next
+              rowEx[i] = side === 'right' ? next - 2 : next + 2
+              moved = true
+            }
+          })
+          if (!moved) break
+        }
+      }
+      // Pushing names out can bring a crossing back, and taking one away moves
+      // the leaders the names were pushed past, so the two take turns until
+      // the rows are clear or a few rounds have gone by.
+      // Each order is judged with its names where they will really be: before
+      // the push a name can sit inside its own leader's turn, and the crossings
+      // that makes are not the order's fault. So the order round the circle is
+      // kept whenever, placed properly, it has no crossings; only then is the
+      // other way round, or a polish, tried.
+      const placed = (list: ListEntry[]) => { relax(list); return score(list) }
+      let rowsOrder = [...order]
+      let best = placed(rowsOrder)
+      if (best.count > 0) {
+        const reversed = [...order].reverse()
+        const other = placed(reversed)
+        if (better(other, best)) { rowsOrder = reversed; best = other }
+      }
+      for (let round = 0; round < 4 && best.count > 0; round++) {
+        relax(rowsOrder)
+        polish(rowsOrder)
+        best = placed(rowsOrder)
+      }
+      relax(rowsOrder)
+
+      const leader = (e: ListEntry, row: number, stroke: string, alpha?: number) => {
+        const pts = path(e, row)
+        for (let i = 0; i + 1 < pts.length; i++) {
+          items.push({ kind: 'line', x1: pts[i].x, y1: pts[i].y, x2: pts[i + 1].x, y2: pts[i + 1].y, stroke, width: 0.75, alpha })
+        }
+      }
+
+      rowsOrder.forEach((e, i) => {
+        const y = rowY[i]
+        const x = rowX[i]
+        const avail = availAt(i)
+        // With no room for even a few letters beside the circle (a crowded
+        // spot on a small square map), a name would be one letter and an
+        // ellipsis hanging off the canvas. It is left to its hover card,
+        // unless it is a site the user chose, which always stays named.
+        // A site's name is no use cut short ("EcoR…" could be several
+        // enzymes), so it needs room for all of it.
+        const f = e.kind === 'site' ? e.site.font : font(style.labelSize, e.label.hovered)
+        const keep = e.kind === 'site' ? e.site.picked || e.site.hovered : e.label.hovered
+        // In the ring layout a site's position goes beside its name, on the
+        // outer side of it: "BamHI (975)" on the right, "(975) BamHI" on the
+        // left, so the name is what the leader reaches.
+        const posFont = font(style.enzymeSize)
+        const posText = e.kind === 'site' && showPositions ? `(${e.site.pos.toLocaleString()})` : ''
+        const posW = posText ? measureText(posText, posFont) : 0
+        const posGap = posText ? 4 : 0
+        const needs = e.kind === 'site' ? e.site.width + posGap + posW : measureText('MM…', f)
+        if (avail < needs && !keep) return
+        if (e.kind === 'site') {
+          const site = e.site
+          const fullW = site.width + posGap + posW
+          leader(e, i, site.fill, (site.hovered || site.picked ? 1 : 0.5) * site.alpha)
+          // The name next to the circle either way, the position beyond it.
+          const shown = fitText(site.text, site.font, Math.max(0, avail - posGap - posW), measureText)
+          items.push({
+            kind: 'text', x, y, text: shown,
+            font: site.font, fill: site.fill, align, baseline: 'middle',
+            halo: style.labelHalo ? colors.bg : undefined,
+            alpha: site.alpha < 1 ? site.alpha : undefined,
+          })
+          if (posText) {
+            // Right after the name as drawn, not after the bold width the row
+            // is laid out at, which would leave a gap on every name not bold.
+            const nameW = measureText(shown, site.font)
+            items.push({
+              kind: 'text', x: side === 'right' ? x + nameW + posGap : x - nameW - posGap, y, text: posText,
+              font: posFont, fill: colors.textMuted, align, baseline: 'middle',
+              halo: style.labelHalo ? colors.bg : undefined,
+              alpha: site.alpha < 1 ? site.alpha : undefined,
+            })
+          }
+          // The name is the reliable target: the ticks are a pixel or two apart.
+          hitRegions.push({
+            kind: 'label', id: site.key, type: 'enzyme',
+            x: side === 'right' ? x + fullW / 2 : x - fullW / 2, y,
+            w: fullW, h: rowH - 2, rotate: 0,
+          })
+          occupy(i, fullW)
+        } else {
+          const l = e.label
+          leader(e, i, l.hovered ? colors.text : colors.tickMinor)
+          const shown = fitText(l.text, f, Math.max(0, avail), measureText)
+          items.push({
+            kind: 'text', x, y, text: shown, font: f,
+            fill: l.hovered ? colors.text : colors.textMuted, align, baseline: 'middle',
+            halo: style.labelHalo ? colors.bg : undefined,
+          })
+          occupy(i, measureText(shown, f))
+        }
+      })
+    }
   }
   return taken
+}
+
+/** The outer edge of something drawn round the circle: a feature, the backbone, the bracket. */
+interface OutlineArc { radius: number; start: number; span: number }
+
+/** The outer edges of the arcs and rings drawn so far, for the columns to keep clear of. */
+function outlineOf(items: readonly SceneItem[]): OutlineArc[] {
+  const out: OutlineArc[] = []
+  for (const i of items) {
+    if (i.kind === 'arcBand') out.push({ radius: i.radius + i.width / 2, start: i.startAngle, span: i.span })
+    else if (i.kind === 'ring') out.push({ radius: i.radius + i.width / 2, start: 0, span: Math.PI * 2 })
+  }
+  return out
+}
+
+/**
+ * How far from the centre, sideways, anything drawn reaches between two
+ * heights on one side of the circle.
+ *
+ * On an arc the extremes within a band of heights are where it crosses the
+ * band's top or bottom, at its widest point level with the centre, or at its
+ * own ends, so those are the only points looked at.
+ */
+function outlineExtent(
+  arcs: readonly OutlineArc[], cy: number,
+  yTop: number, yBottom: number, side: 'left' | 'right',
+): number {
+  let reach = 0
+  const inArc = (a: OutlineArc, angle: number) => a.span >= Math.PI * 2 - 1e-9 || normalizeAngle(angle - a.start) <= a.span
+  const consider = (a: OutlineArc, angle: number) => {
+    const x = Math.cos(angle) * a.radius
+    const y = cy + Math.sin(angle) * a.radius
+    if (y < yTop - 1e-9 || y > yBottom + 1e-9) return
+    if ((side === 'right') !== (x >= 0)) return
+    if (!inArc(a, angle)) return
+    reach = Math.max(reach, Math.abs(x))
+  }
+  for (const a of arcs) {
+    for (const y of [yTop, yBottom]) {
+      const dy = y - cy
+      if (Math.abs(dy) > a.radius) continue
+      const dx = Math.sqrt(a.radius * a.radius - dy * dy)
+      consider(a, Math.atan2(dy, side === 'right' ? dx : -dx))
+    }
+    consider(a, side === 'right' ? 0 : Math.PI)
+    if (a.span < Math.PI * 2 - 1e-9) {
+      consider(a, a.start)
+      consider(a, a.start + a.span)
+    }
+  }
+  return reach
+}
+
+/** In the ring layout, names stacked at one spot inside the rings, at most. */
+const MAX_INNER_STACK = 2
+
+interface CurvedNamesContext {
+  cx: number
+  cy: number
+  /** Radius of the first tier, just inside the innermost feature ring. */
+  startR: number
+  stepR: number
+  /** No tier inside this, where the name and length in the middle are. */
+  minR: number
+  style: PlasmidStyle
+  colors: PlasmidColors
+  font: (px: number, bold?: boolean) => string
+}
+
+/**
+ * Feature names that do not fit their arrow, in the ring layout: written along
+ * the circle just inside the innermost feature ring, centred on their feature,
+ * on the first tier where they do not run into a name already there.
+ *
+ * Curved, like the names inside the arrows, so the inside of the ring reads as
+ * one set of names. No leader lines: a name sits at its own feature's angle,
+ * and a line from a feature out to a name further in would run through the
+ * names on the tiers between.
+ *
+ * At most MAX_INNER_STACK names are stacked at any one spot. Larger features
+ * claim their places first, so where several small ones crowd together (the
+ * operator, promoter and CAP site past a cloning site) it is the smallest
+ * whose names are left off, to their hover cards; a stack of five names going
+ * in towards the middle read as one block that named nothing clearly. The
+ * name under the pointer goes before all of them, so it is always shown.
+ *
+ * Returns how far in the names reach (the inner edge of the innermost one,
+ * or null when none were placed) for the GC ring to sit inside them, and the
+ * names there was no room for at all inside (the rings stacked deep, a long
+ * name in the middle), to be named outside with the sites instead.
+ */
+function placeInnerCurvedNames(
+  items: SceneItem[],
+  labels: readonly OutsideLabel[],
+  ctx: CurvedNamesContext,
+): { reach: number | null; unplaced: OutsideLabel[] } {
+  const { cx, cy, startR, stepR, minR, style, colors, font } = ctx
+  const tiers: { angle: number; halfSpan: number }[][] = []
+  let reach: number | null = null
+  const unplaced: OutsideLabel[] = []
+  const sorted = [...labels].sort((a, b) =>
+    Number(b.hovered) - Number(a.hovered)
+    || (b.span ?? 0) - (a.span ?? 0)
+    || normalizeAngle(a.midAngle) - normalizeAngle(b.midAngle))
+  for (const l of sorted) {
+    // No room inside at all: named outside instead.
+    if (startR < minR) { unplaced.push(l); continue }
+    // Past the stack's limit, the spot is crowded and the name is left off.
+    for (let t = 0; t < MAX_INNER_STACK; t++) {
+      const r = startR - t * stepR
+      if (r < minR) break
+      tiers[t] ??= []
+      const halfSpan = (l.width + 10) / (2 * r)
+      const clash = tiers[t].some(e => {
+        let d = Math.abs(normalizeAngle(l.midAngle) - normalizeAngle(e.angle))
+        if (d > Math.PI) d = TWO_PI - d
+        return d < halfSpan + e.halfSpan
+      })
+      if (clash) continue
+      tiers[t].push({ angle: l.midAngle, halfSpan })
+      items.push({
+        kind: 'curvedText', cx, cy, radius: r, midAngle: l.midAngle,
+        text: l.text, font: font(style.labelSize, l.hovered),
+        fill: l.hovered ? colors.text : colors.textMuted,
+        flip: isFlipped(l.midAngle),
+      })
+      reach = Math.min(reach ?? Number.POSITIVE_INFINITY, r - style.labelSize / 2 - 2)
+      break
+    }
+  }
+  return { reach, unplaced }
+}
+
+/**
+ * Heights for rows of names, each as near its ideal as the rows around it
+ * allow, a row apart and inside the canvas.
+ *
+ * Least squares under "each row at least one row below the last": taking each
+ * ideal less its own row's offset turns that into a plain non-decreasing fit,
+ * which pooling neighbours that are out of order solves exactly. A run of
+ * names that want the same height ends up centred on them; a name with room
+ * keeps its own height.
+ */
+function packRows(ideal: readonly number[], rowH: number, top: number, bottom: number): number[] {
+  const blocks: { sum: number; count: number }[] = []
+  ideal.forEach((t, i) => {
+    blocks.push({ sum: t - i * rowH, count: 1 })
+    while (blocks.length > 1) {
+      const b = blocks[blocks.length - 1]
+      const a = blocks[blocks.length - 2]
+      if (a.sum / a.count <= b.sum / b.count) break
+      a.sum += b.sum
+      a.count += b.count
+      blocks.pop()
+    }
+  })
+  const y: number[] = []
+  for (const b of blocks) for (let k = 0; k < b.count; k++) y.push(b.sum / b.count + y.length * rowH)
+  const n = y.length
+  for (let i = 0; i < n; i++) y[i] = Math.max(y[i], top + i * rowH)
+  for (let i = n - 1; i >= 0; i--) y[i] = Math.min(y[i], bottom - (n - 1 - i) * rowH)
+  return y
+}
+
+/** Where two segments cross each other, or null; a shared end is not a crossing. */
+function crossingPoint(
+  a: { x: number; y: number }, b: { x: number; y: number },
+  c: { x: number; y: number }, d: { x: number; y: number },
+): { x: number; y: number } | null {
+  const side = (p: { x: number; y: number }, q: { x: number; y: number }, r: { x: number; y: number }) =>
+    (q.x - p.x) * (r.y - p.y) - (q.y - p.y) * (r.x - p.x)
+  const s1 = side(a, b, c)
+  const s2 = side(a, b, d)
+  if (!(s1 * s2 < -1e-6 && side(c, d, a) * side(c, d, b) < -1e-6)) return null
+  const t = s1 / (s1 - s2)
+  return { x: c.x + (d.x - c.x) * t, y: c.y + (d.y - c.y) * t }
 }
 
 /** The text, cut short with an ellipsis if it is wider than the room. */

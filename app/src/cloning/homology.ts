@@ -383,7 +383,7 @@ export function homologyAssemble(
       )
     }
   }
-  warnings.push(...misassemblyWarnings(oriented, minOverlap, maxOverlap))
+  warnings.push(...misassemblyWarnings(oriented, finds, minOverlap, maxOverlap))
 
   const products: Assembly[] = []
   const seen = new Set<string>()
@@ -629,6 +629,7 @@ function readAround(seq: string, start: number, count: number): string {
  */
 function misassemblyWarnings(
   oriented: readonly Oriented[],
+  finds: readonly JunctionFind[],
   minOverlap: number,
   maxOverlap: number,
 ): string[] {
@@ -640,8 +641,15 @@ function misassemblyWarnings(
       const left = oriented[a]
       const right = oriented[b]
       if (left.circular || right.circular) continue
+      // The arms these two already join on, either way round. A stretch
+      // inside one of those is that junction, not a second place they meet.
+      const joins = finds.flatMap(f => {
+        if (f.left === a && f.right === b) return [spansOf(f)]
+        if (f.left === b && f.right === a) return [{ a: spansOf(f).b, b: spansOf(f).a }]
+        return []
+      })
       // An arm shared somewhere other than the ends that meet.
-      const inner = sharedInternal(left.seq, right.seq, Math.max(minOverlap, 20), maxOverlap)
+      const inner = sharedInternal(left.seq, right.seq, Math.max(minOverlap, 20), maxOverlap, joins)
       if (inner) {
         const key = [left.input, right.input].sort().join('-')
         if (seen.has(key)) continue
@@ -656,15 +664,44 @@ function misassemblyWarnings(
   return warnings
 }
 
-/** Length of a repeat the two sequences share other than at the joining ends. */
-function sharedInternal(a: string, b: string, minLength: number, maxLength: number): number | null {
+/** Half-open spans on each of two parts: the stretch they share at a junction. */
+interface Span { start: number; end: number }
+
+/** Where a junction's shared arm sits on each of the two parts it joins. */
+function spansOf(find: JunctionFind): { a: Span; b: Span } {
+  const length = find.overlap.length
+  return {
+    a: { start: find.leftEnd - length, end: find.leftEnd },
+    b: { start: find.rightStart, end: find.rightStart + length },
+  }
+}
+
+const within = (span: Span, start: number, end: number) => start >= span.start && end <= span.end
+
+/**
+ * Length of a repeat the two sequences share other than at a junction they
+ * already form.
+ *
+ * `joins` carries those junctions' own spans, and a stretch lying inside one
+ * of them on both parts is that junction seen again rather than a second place
+ * the parts meet: every shorter window of a shared arm is also shared, so
+ * without this every pair of parts that legitimately joined reported itself.
+ */
+function sharedInternal(
+  a: string,
+  b: string,
+  minLength: number,
+  maxLength: number,
+  joins: readonly { a: Span; b: Span }[],
+): number | null {
   const limit = Math.min(maxLength, a.length, b.length)
   for (let length = limit; length >= minLength; length--) {
     for (let i = 0; i + length <= a.length; i++) {
-      // Skip the stretch at a's tail, which is where a legitimate join sits.
-      if (i + length === a.length) continue
-      const at = b.indexOf(a.slice(i, i + length))
-      if (at > 0) return length
+      const window = a.slice(i, i + length)
+      for (let at = b.indexOf(window); at !== -1; at = b.indexOf(window, at + 1)) {
+        const isJunction = joins.some(j => within(j.a, i, i + length) && within(j.b, at, at + length))
+        if (!isJunction) return length
+      }
     }
   }
   return null

@@ -81,7 +81,7 @@ function PlasmidMap(_props: PlasmidMapProps) {
   const guideResults = useEditorStore(s => s.guideResults)
 
   const {
-    style, allAnnotations, rings, annById, proposalIds, pickedIds, sceneEnzymes, enzymeByKey, sceneGuides,
+    style, layout, allAnnotations, rings, annById, proposalIds, pickedIds, sceneEnzymes, enzymeByKey, sceneGuides,
     allPrimerItems, primerItemById, siteCountOf, scenePrimers, methylation, gcSeries, gcOverall, legend,
   } = usePlasmidSceneData(doc)
 
@@ -182,10 +182,11 @@ function PlasmidMap(_props: PlasmidMapProps) {
       gc: gcSeries,
       gcPercent: gcOverall,
       legend,
+      layout,
     })
   }, [
     canvasSize, doc.sequence.length, doc.sequence.topology, doc.name, doc.metadata,
-    style, colors, rings, hoveredAnnotationId, proposalIds, pickedIds, sceneEnzymes,
+    style, layout, colors, rings, hoveredAnnotationId, proposalIds, pickedIds, sceneEnzymes,
     hoveredEnzymeKey, sceneGuides, hoveredGuideKey, selectedGuideKey, scenePrimers, selection, extraSelections, search, methylation, gcSeries, gcOverall, legend,
   ])
 

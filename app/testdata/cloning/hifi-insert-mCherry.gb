@@ -1,0 +1,25 @@
+LOCUS       mCherry_(HiFi_insert)     780 bp    ds-DNA     linear   11-OCT-2026
+DEFINITION  mCherry with 30 bp arms matching pUC19 either side of the XbaI
+            site, for HiFi, Gibson or In-Fusion.
+FEATURES             Location/Qualifiers
+     misc_feature    1..30
+                     /label="homology to pUC19"
+     CDS             37..747
+                     /label="mCherry"
+     misc_feature    751..780
+                     /label="homology to pUC19"
+ORIGIN
+        1 ttcgagctcg gtacccgggg atcctctaga gccaccatgg tgagcaaggg cgaggaggat
+       61 aacatggcca tcatcaagga gttcatgcgc ttcaaggtgc acatggaggg ctccgtgaac
+      121 ggccacgagt tcgagatcga gggcgagggc gagggccgcc cctacgaggg cacccagacc
+      181 gccaagctga aggtgaccaa gggtggcccc ctgcccttcg cctgggacat cctgtcccct
+      241 cagttcatgt acggctccaa ggcctacgtg aagcaccccg ccgacatccc cgactacttg
+      301 aagctgtcct tccccgaggg cttcaagtgg gagcgcgtga tgaacttcga ggacggcggc
+      361 gtggtgaccg tgacccagga ctcctccctg caggacggcg agttcatcta caaggtgaag
+      421 ctgcgcggca ccaacttccc ctccgacggc cccgtaatgc agaagaagac catgggctgg
+      481 gaggcctcct ccgagcggat gtaccccgag gacggcgccc tgaagggcga gatcaagcag
+      541 aggctgaagc tgaaggacgg cggccactac gacgctgagg tcaagaccac ctacaaggcc
+      601 aagaagcccg tgcagctgcc cggcgcctac aacgtcaaca tcaagttgga catcacctcc
+      661 cacaacgagg actacaccat cgtggaacag tacgaacgcg ccgagggccg ccactccacc
+      721 ggcggcatgg acgagctgta caagtaataa gtcgacctgc aggcatgcaa gcttggcgta
+//

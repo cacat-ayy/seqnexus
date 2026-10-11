@@ -7,8 +7,10 @@
  * edits stay as they are. "Realign everything" runs an engine on all rows.
  */
 
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState, type RefObject } from 'react'
 import { ListPlus, Loader2, Search, X } from 'lucide-react'
+import { usePopoverDismiss } from '../../hooks/usePopoverDismiss'
+import { useEscapeClose } from '../../hooks/useEscapeClose'
 import { applyEdits, useEditorStore } from '../../store'
 import { tabUid, toUid } from '../../explorer/types'
 import { cleanResidues, detectKind, ungapped, type AlnDoc, type RowInput } from '../../msa/model'
@@ -36,13 +38,15 @@ interface Props {
   doc: AlnDoc
   onApply: (r: AddResult) => void
   onClose: () => void
+  /** The toolbar button that toggles the panel: clicking it is not a click outside. */
+  triggerRef: RefObject<HTMLElement | null>
   onBusy: (busy: boolean) => void
 }
 
 /** Profile additions run on the main thread; past this many cells they would freeze it. */
 const MAX_PROFILE_CELLS = 4e8
 
-export default function AddSequencesPanel({ doc, onApply, onClose, onBusy }: Props) {
+export default function AddSequencesPanel({ doc, onApply, onClose, onBusy, triggerRef }: Props) {
   const tabs = useEditorStore(s => s.tabs)
   const reads = useEditorStore(s => s.sequencingReads)
   const [query, setQuery] = useState('')
@@ -109,11 +113,9 @@ export default function AddSequencesPanel({ doc, onApply, onClose, onBusy }: Pro
     return () => clearInterval(t)
   }, [job])
   useEffect(() => () => { jobRef.current?.cancel(); onBusy(false) }, [onBusy])
-  useEffect(() => {
-    const close = (e: MouseEvent) => { if (!job && !working && !ref.current?.contains(e.target as Node)) onClose() }
-    document.addEventListener('mousedown', close)
-    return () => document.removeEventListener('mousedown', close)
-  }, [job, working, onClose])
+  // A click outside or Escape closes the panel, except while a job runs (closing would cancel it).
+  usePopoverDismiss(!job && !working, onClose, ref, triggerRef)
+  useEscapeClose(!job && !working, onClose)
 
   const toggle = (key: string) => setPicked(p => {
     const next = new Set(p)

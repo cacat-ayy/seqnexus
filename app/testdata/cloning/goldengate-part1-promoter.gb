@@ -1,0 +1,17 @@
+LOCUS       GG_promoter_part      72 bp    ds-DNA     linear   11-OCT-2026
+DEFINITION  Golden Gate part: T7 promoter, BsaI fusion sites GGAG and AATG.
+FEATURES             Location/Qualifiers
+     misc_feature    11..17
+                     /label="BsaI site"
+     misc_feature    18..21
+                     /label="GGAG overhang"
+     promoter        22..51
+                     /label="T7 promoter"
+     misc_feature    52..55
+                     /label="AATG overhang"
+     misc_feature    56..62
+                     /label="BsaI site"
+ORIGIN
+        1 tcaccgccga ggtctcagga gtaatacgac tcactatagg gtggacagac caatgtgaga
+       61 ccctgtatcc tg
+//

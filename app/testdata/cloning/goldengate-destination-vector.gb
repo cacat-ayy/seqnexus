@@ -1,0 +1,46 @@
+LOCUS       pGG-dest            1753 bp    ds-DNA     circular   11-OCT-2026
+DEFINITION  Golden Gate destination vector: BsaI sites inside the stuffer,
+            leaving CGCT and GGAG on the backbone.
+FEATURES             Location/Qualifiers
+     CDS             21..1031
+                     /label="SmR"
+     rep_origin      1052..1600
+                     /label="p15A ori"
+     misc_feature    1625..1631
+                     /label="BsaI site"
+     misc_feature    1632..1722
+                     /label="lacZ stuffer"
+     misc_feature    1723..1729
+                     /label="BsaI site"
+ORIGIN
+        1 tgctaccagg gatacatatt atgcgctcac gcaactggtc cagaaccttg accgaacgca
+       61 gcggtggtaa cggcgcagtg gcggttttca tggcttgtta tgactgtttt tttggggtac
+      121 agtctatgcc tcgggcatcc aagcagcaag cgcgttacgc cgtgggtcga tgtttgatgt
+      181 tatggagcag caacgatgtt acgcagcagg gcagtcgccc taaaacaaag ttaaacatca
+      241 tgagggaagc ggtgatcgcc gaagtatcga ctcaactatc agaggtagtt ggcgtcatcg
+      301 agcgccatct cgaaccgacg ttgctggccg tacatttgta cggctccgca gtggatggcg
+      361 gcctgaagcc acacagtgat attgatttgc tggttacggt gaccgtaagg cttgatgaaa
+      421 caacgcggcg agctttgatc aacgaccttt tggaaacttc ggcttcccct ggagagagcg
+      481 agattctccg cgctgtagaa gtcaccattg ttgtgcacga cgacatcatt ccgtggcgtt
+      541 atccagctaa gcgcgaactg caatttggag aatggcagcg caatgacatt cttgcaggta
+      601 tcttcgagcc agccacgatc gacattgatc tggctatctt gctgacaaaa gcaagagaac
+      661 atagcgttgc cttggtaggt ccagcggcgg aggaactctt tgatccggtt cctgaacagg
+      721 atctatttga ggcgctaaat gaaaccttaa cgctatggaa ctcgccgccc gactgggctg
+      781 gcgatgagcg aaatgtagtg cttacgttgt cccgcatttg gtacagcgca gtaaccggca
+      841 aaatcgcgcc gaaggatgtc gctgccgact gggcaatgga gcgcctgccg gcccagtatc
+      901 agcccgtcat acttgaagct agacaggctt atcttggaca agaagaagat cgcttggcct
+      961 cgcgcgcaga tcagttggaa gaatttgtcc actacgtgaa aggcgagatc accaaggtag
+     1021 tcggcaaata aagctgtggg taaactgcgg tttcttgaga tcgttttggt ctgcgcgtaa
+     1081 tctcttgctc tgaaaacgaa aaaaccgcct tgcagggcgg tttttcgaag gttctctgag
+     1141 ctaccaactc tttgaaccga ggtaactggc ttggaggagc gcagtcacca aaacttgtcc
+     1201 tttcagttta gccttaaccg gcgcatgact tcaagactaa ctcctctaaa tcaattacca
+     1261 gtggctgctg ccagtggtgc ttttgcatgt ctttccgggt tggactcaag acgatagtta
+     1321 ccggataagg cgcagcggtc ggactgaacg gggggttcgt gcatacagtc cagcttggag
+     1381 cgaactgcct acccggaact gagtgtcagg cgtggaatga gacaaacgcg gccataacag
+     1441 cggaatgaca ccggtaaacc gaaaggcagg aacaggagag cgcacgaggg agccgccagg
+     1501 gggaaacgcc tggtatcttt atagtcctgt cgggtttcgc caccactgat ttgagcgtca
+     1561 gatttcgtga tgcttgtcag gggggcggag cctatggaaa agcggactca agtcgcgtcg
+     1621 ggagagagac cagacgccag gagcatgggg cctagtcatc ctttacactt tatgcttccg
+     1681 gctcgtatgt tgagaagggc ccaagagcct caagattaga tcggtctcac gctcgttacc
+     1741 tcgtttggta tat
+//

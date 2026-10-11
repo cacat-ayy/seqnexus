@@ -276,6 +276,38 @@ function ExplorerPanel({
     })
   }, [actions])
 
+  // --- Deletion ---
+  const deleteSelection = useCallback(() => {
+    const uids = [...selectedIds]
+    const count = uids.length
+    if (count === 0) return
+    setCtxMenu(null)
+    const picked = uids.map(uid => byUid.get(uid)).filter((i): i is ExplorerItem => !!i)
+    const seqIds = picked.filter(i => i.kind === 'sequence').map(i => i.id)
+    const atRisk = gelLanesAtRisk(seqIds, new Set(picked.filter(i => i.kind === 'gel').map(i => i.id)))
+    setConfirmState({
+      title: 'Delete Selected',
+      message: `Are you sure you want to delete ${count} selected item${count > 1 ? 's' : ''}?`
+        + (atRisk
+          ? ` ${atRisk.phrase} ${atRisk.count === 1 ? 'uses' : 'use'} the selected sequence${seqIds.length === 1 ? '' : 's'} and will be deleted too.`
+          : ''),
+      buttons: [
+        { label: 'Cancel', value: 'cancel' },
+        { label: 'Delete', value: 'delete', variant: 'danger' },
+      ],
+      onResult: value => {
+        setConfirmState(null)
+        if (value !== 'delete') return
+        for (const uid of uids) {
+          const item = byUid.get(uid)
+          if (item) actions.removeQuiet(item)
+        }
+        setSelectedIds(new Set())
+        notify.success(`Deleted ${count} item${count === 1 ? '' : 's'}`)
+      },
+    })
+  }, [selectedIds, byUid, actions, setSelectedIds])
+
   // --- Keyboard navigation ---
   const keyboard = useTreeKeyboard(nodes, useMemo(() => ({
     open: item => actions.open(item),
@@ -284,7 +316,12 @@ function ExplorerPanel({
       if (node.type === 'item') setRenamingKey(node.item.uid)
       else if (node.type === 'folder') setRenamingKey(node.folder.id)
     },
-    remove: item => deleteItem(item),
+    // With several rows selected, Delete takes the whole selection, as the
+    // context menu's Delete Selected does; otherwise the row under the cursor.
+    remove: item => {
+      if (selectedIds.size > 1 && selectedIds.has(item.uid)) deleteSelection()
+      else deleteItem(item)
+    },
     setExpanded: (node, expanded) => {
       if (node.type === 'folder') {
         if (node.folder.collapsed === expanded) toggleFolder(node.folder.id)
@@ -303,7 +340,7 @@ function ExplorerPanel({
       else if (mode === 'toggle') setSelectedIds(toggleIn(selectedIds, node.item.uid))
       else setSelectedIds(new Set([...selectedIds, node.item.uid]))
     },
-  }), [actions, deleteItem, nodes, toggleFolder, settings.collapsedGroups, patchSettings, selectedIds, setSelectedIds]))
+  }), [actions, deleteItem, deleteSelection, nodes, toggleFolder, settings.collapsedGroups, patchSettings, selectedIds, setSelectedIds]))
 
   // --- Width and resizing ---
   const resizing = useRef(false)
@@ -342,38 +379,7 @@ function ExplorerPanel({
     onImportFiles(Array.from(files))
   }, [onImportFiles])
 
-  // --- Deletion ---
-  const deleteSelection = useCallback(() => {
-    const uids = [...selectedIds]
-    const count = uids.length
-    if (count === 0) return
-    setCtxMenu(null)
-    const picked = uids.map(uid => byUid.get(uid)).filter((i): i is ExplorerItem => !!i)
-    const seqIds = picked.filter(i => i.kind === 'sequence').map(i => i.id)
-    const atRisk = gelLanesAtRisk(seqIds, new Set(picked.filter(i => i.kind === 'gel').map(i => i.id)))
-    setConfirmState({
-      title: 'Delete Selected',
-      message: `Are you sure you want to delete ${count} selected item${count > 1 ? 's' : ''}?`
-        + (atRisk
-          ? ` ${atRisk.phrase} ${atRisk.count === 1 ? 'uses' : 'use'} the selected sequence${seqIds.length === 1 ? '' : 's'} and will be deleted too.`
-          : ''),
-      buttons: [
-        { label: 'Cancel', value: 'cancel' },
-        { label: 'Delete', value: 'delete', variant: 'danger' },
-      ],
-      onResult: value => {
-        setConfirmState(null)
-        if (value !== 'delete') return
-        for (const uid of uids) {
-          const item = byUid.get(uid)
-          if (item) actions.removeQuiet(item)
-        }
-        setSelectedIds(new Set())
-        notify.success(`Deleted ${count} item${count === 1 ? '' : 's'}`)
-      },
-    })
-  }, [selectedIds, byUid, actions, setSelectedIds])
-
+  // --- Deleting folders ---
   const deleteFolder = useCallback((folderId: string, name: string) => {
     setCtxMenu(null)
     const store = useEditorStore.getState()

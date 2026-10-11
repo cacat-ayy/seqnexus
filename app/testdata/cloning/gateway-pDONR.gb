@@ -1,0 +1,61 @@
+LOCUS       pDONR               2537 bp    ds-DNA     circular   11-OCT-2026
+DEFINITION  Gateway donor vector: ccdB and CmR between attP1 and attP2, for a
+            BP reaction.
+FEATURES             Location/Qualifiers
+     protein_bind    21..45
+                     /label="attP1"
+     CDS             58..717
+                     /label="CmR"
+     CDS             730..1035
+                     /label="ccdB"
+     protein_bind    1048..1072
+                     /label="attP2"
+     CDS             1093..1908
+                     /label="KanR"
+     rep_origin      1929..2517
+                     /label="ori"
+ORIGIN
+        1 ttggggagta tgccgctttt acaagtttgt acaaaaaagc tgaactctac atcccccatg
+       61 gagaaaaaaa tcactggata taccaccgtt gatatatccc aatggcatcg taaagaacat
+      121 tttgaggcat ttcagtcagt tgctcaatgt acctataacc agaccgttca gctggatatt
+      181 acggcctttt taaagaccgt aaagaaaaat aagcacaagt tttatccggc ctttattcac
+      241 attcttgccc gcctgatgaa tgctcatccg gaattacgta tggcaatgaa agacggtgag
+      301 ctggtgatat gggatagtgt tcacccttgt tacaccgttt tccatgagca aactgaaacg
+      361 ttttcatcgc tctggagtga ataccacgac gatttccggc agtttctaca catatattcg
+      421 caagatgtgg cgtgttacgg tgaaaacctg gcctatttcc ctaaagggtt tattgagaat
+      481 atgtttttcg tctcagccaa tccctgggtg agtttcacca gttttgattt aaacgtggcc
+      541 aatatggaca acttcttcgc ccccgttttc accatgggca aatattatac gcaaggcgac
+      601 aaggtgctga tgccgctggc gattcaggtt catcatgccg tttgtgatgg cttccatgtc
+      661 ggcagaatgc ttaatgaatt acaacagtac tgcgatgagt ggcagggcgg ggcgtaattt
+      721 cgtacagtga tgcagtttaa ggtttacacc tataaaagag agagccgtta tcgtctgttt
+      781 gtggatgtac agagtgatat tattgacacg cccgggcgac ggatggtgat ccccctggcc
+      841 agtgcacgtc tgctgtcaga taaagtctcc cgtgaacttt acccggtggt gcatatcggg
+      901 gatgaaagct ggcgcatgat gaccaccgat atggccagtg tgccggtctc cgttatcggg
+      961 gaagaagtgg ctgatctcag ccaccgcgaa aatgacatca aaaacgccat taacctgatg
+     1021 ttctggggaa tataatctcc taaggctacc actttgtaca agaaagctga actttagata
+     1081 tctaaagcat tcatgagcca tattcaacgg gaaacgtctt gctcgaggcc gcgattaaat
+     1141 tccaacatgg atgctgattt atatgggtat aaatgggctc gcgataatgt cgggcaatca
+     1201 ggtgcgacaa tctatcgatt gtatgggaag cccgatgcgc cagagttgtt tctgaaacat
+     1261 ggcaaaggta gcgttgccaa tgatgttaca gatgagatgg tcagactaaa ctggctgacg
+     1321 gaatttatgc ctcttccgac catcaagcat tttatccgta ctcctgatga tgcatggtta
+     1381 ctcaccactg cgatccccgg gaaaacagca ttccaggtat tagaagaata tcctgattca
+     1441 ggtgaaaata ttgttgatgc gctggcagtg ttcctgcgcc ggttgcattc gattcctgtt
+     1501 tgtaattgtc cttttaacag cgatcgcgta tttcgtctcg ctcaggcgca atcacgaatg
+     1561 aataacggtt tggttgatgc gagtgatttt gatgacgagc gtaatggctg gcctgttgaa
+     1621 caagtctgga aagaaatgca taagcttttg ccattctcac cggattcagt cgtcactcat
+     1681 ggtgatttct cacttgataa ccttattttt gacgagggga aattaatagg ttgtattgat
+     1741 gttggacgag tcggaatcgc agaccgatac caggatcttg ccatcctatg gaactgcctc
+     1801 ggtgagtttt ctccttcatt acagaaacgg ctttttcaaa aatatggtat tgataatcct
+     1861 gatatgaata aattgcagtt tcatttgatg ctcgatgagt ttttctaaac tctctggttt
+     1921 actgtgcttt gagatccttt ttttctgcgc gtaatctgct gcttgcaaac aaaaaaacca
+     1981 ccgctaccag cggtggtttg tttgccggat caagagctac caactctttt tccgaaggta
+     2041 actggcttca gcagagcgca gataccaaat actgttcttc tagtgtagcc gtagttaggc
+     2101 caccacttca agaactctgt agcaccgcct acatacctcg ctctgctaat cctgttacca
+     2161 gtggctgctg ccagtggcga taagtcgtgt cttaccgggt tggactcaag acgatagtta
+     2221 ccggataagg cgcagcggtc gggctgaacg gggggttcgt gcacacagcc cagcttggag
+     2281 cgaacgacct acaccgaact gagataccta cagcgtgagc tatgagaaag cgccacgctt
+     2341 cccgaaggga gaaaggcgga caggtatccg gtaagcggca gggtcggaac aggagagcgc
+     2401 acgagggagc ttccaggggg aaacgcctgg tatctttata gtcctgtcgg gtttcgccac
+     2461 ctctgacttg agcgtcgatt tttgtgatgc tcgtcagggg ggcggagcct atggaaaatt
+     2521 aagagtacat catgcgc
+//

@@ -10,6 +10,7 @@ import type { RestrictionEnzyme } from '../enzymes/db'
 import { recognitionToRegex } from '../enzymes/db'
 import { reverseComplement } from '../models/complement'
 import type { DocumentState } from '../models/Document'
+import { Sequence } from '../models/Sequence'
 import type { CloningFragment, CloningProduct } from './types'
 import { digestFragments, areOverhangsCompatible, type Overhang } from './digest'
 import { productName, productDescription } from './naming'
@@ -52,6 +53,66 @@ function checkOverhangFidelity(overhangs: string[]): string[] {
   return fidelityWarnings(overhangs)
 }
 
+
+/** How many times the enzyme reads its site in a part, on either strand. */
+function countSites(bases: string, topology: 'linear' | 'circular', enzyme: RestrictionEnzyme): number {
+  const site = enzyme.recognition.toUpperCase()
+  const rc = reverseComplement(site)
+  // A site can straddle the origin of a circle, so the scan runs on past it.
+  const seq = (topology === 'circular' ? bases + bases.slice(0, site.length - 1) : bases).toUpperCase()
+  const count = (pattern: string) =>
+    (seq.match(new RegExp(recognitionToRegex(pattern), 'g')) ?? []).length
+  // A palindromic site reads the same both ways round, so it is counted once.
+  return site === rc ? count(site) : count(site) + count(rc)
+}
+
+/**
+ * The fusion sites a part already carries, when it is a finished Type IIS part.
+ *
+ * A part written for Golden Gate has the enzyme's sites pointing inwards from
+ * its ends (or outwards into the backbone, on a destination vector), so the
+ * digest hands back one piece with the four-base overhangs that decide where
+ * it goes. That part is ready for the pot and needs no primers: amplifying it
+ * would only add a second pair of sites. Anything else, including a plain
+ * template with no sites at all, comes back null and is amplified as before.
+ *
+ * The overhangs are returned as the bases read along the top strand at each
+ * end, which is how a primer tail writes them. Only 5' overhangs are reported,
+ * since that is what the Golden Gate enzymes leave and what the primer tails
+ * are built for.
+ */
+export function typeIISFusionSites(
+  bases: string,
+  topology: 'linear' | 'circular',
+  enzyme: RestrictionEnzyme,
+): { start: string; end: string } | null {
+  const doc: DocumentState = {
+    name: 'part',
+    sequence: new Sequence(bases, topology),
+    annotations: [],
+  }
+  // Two sites and no more: one at each end of a part, or, on a destination
+  // vector, one at each end of the stuffer. A third is a site inside the part,
+  // which the digest can still leave one clean piece of, so counting is what
+  // tells the two apart: that part is broken and needs the internal-site
+  // warning, not a note saying it is ready.
+  if (countSites(bases, topology, enzyme) !== 2) return null
+  const { fragments } = digestFragments(doc, [enzyme])
+  // Uncut, so there are no sites to speak of.
+  if (fragments.length < 2) return null
+  // The pieces carrying the sites are cut away; what is left is the part. More
+  // than one means the sites do not simply flank it, which is the case the
+  // internal-site warning is for.
+  const kept = fragments.filter(f => !isBackboneFragment(f, enzyme))
+  if (kept.length !== 1) return null
+  const f = kept[0]
+  if (f.overhang5Type !== 'five_prime' || f.overhang3Type !== 'five_prime') return null
+  if (!f.overhang5 || !f.overhang3) return null
+  // An end's bases are written along whichever strand protrudes. At the start
+  // of the piece that is the top strand; at the end it is the bottom one, so
+  // it is turned round to read along the top like the other.
+  return { start: f.overhang5.toUpperCase(), end: reverseComplement(f.overhang3).toUpperCase() }
+}
 
 /**
  * Simulate Golden Gate Assembly.

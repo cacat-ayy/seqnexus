@@ -1,0 +1,28 @@
+LOCUS       GG_CDS_part          750 bp    ds-DNA     linear   11-OCT-2026
+DEFINITION  Golden Gate part: mCherry, BsaI fusion sites AATG and GCTT.
+FEATURES             Location/Qualifiers
+     misc_feature    11..17
+                     /label="BsaI site"
+     misc_feature    18..21
+                     /label="AATG overhang"
+     CDS             22..729
+                     /label="mCherry"
+     misc_feature    730..733
+                     /label="GCTT overhang"
+     misc_feature    734..740
+                     /label="BsaI site"
+ORIGIN
+        1 tggtaaacga ggtctcaaat ggtgagcaag ggcgaggagg ataacatggc catcatcaag
+       61 gagttcatgc gcttcaaggt gcacatggag ggctccgtga acggccacga gttcgagatc
+      121 gagggcgagg gcgagggccg cccctacgag ggcacccaga ccgccaagct gaaggtgacc
+      181 aagggtggcc ccctgccctt cgcctgggac atcctgtccc ctcagttcat gtacggctcc
+      241 aaggcctacg tgaagcaccc cgccgacatc cccgactact tgaagctgtc cttccccgag
+      301 ggcttcaagt gggagcgcgt gatgaacttc gaggacggcg gcgtggtgac cgtgacccag
+      361 gactcctccc tgcaggacgg cgagttcatc tacaaggtga agctgcgcgg caccaacttc
+      421 ccctccgacg gccccgtaat gcagaagaag accatgggct gggaggcctc ctccgagcgg
+      481 atgtaccccg aggacggcgc cctgaagggc gagatcaagc agaggctgaa gctgaaggac
+      541 ggcggccact acgacgctga ggtcaagacc acctacaagg ccaagaagcc cgtgcagctg
+      601 cccggcgcct acaacgtcaa catcaagttg gacatcacct cccacaacga ggactacacc
+      661 atcgtggaac agtacgaacg cgccgagggc cgccactcca ccggcggcat ggacgagctg
+      721 tacaagtaag ctttgagacc ctgattagtg
+//

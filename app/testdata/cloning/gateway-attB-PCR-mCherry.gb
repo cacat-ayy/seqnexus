@@ -1,0 +1,25 @@
+LOCUS       attB-mCherry_PCR_product     786 bp    ds-DNA     linear   11-OCT-2026
+DEFINITION  Gateway BP substrate: mCherry flanked by attB1 and attB2.
+FEATURES             Location/Qualifiers
+     protein_bind    9..33
+                     /label="attB1"
+     CDS             40..750
+                     /label="mCherry"
+     protein_bind    754..778
+                     /label="attB2"
+ORIGIN
+        1 gtatatagac aagtttgtac aaaaaagcag gctgccacca tggtgagcaa gggcgaggag
+       61 gataacatgg ccatcatcaa ggagttcatg cgcttcaagg tgcacatgga gggctccgtg
+      121 aacggccacg agttcgagat cgagggcgag ggcgagggcc gcccctacga gggcacccag
+      181 accgccaagc tgaaggtgac caagggtggc cccctgccct tcgcctggga catcctgtcc
+      241 cctcagttca tgtacggctc caaggcctac gtgaagcacc ccgccgacat ccccgactac
+      301 ttgaagctgt ccttccccga gggcttcaag tgggagcgcg tgatgaactt cgaggacggc
+      361 ggcgtggtga ccgtgaccca ggactcctcc ctgcaggacg gcgagttcat ctacaaggtg
+      421 aagctgcgcg gcaccaactt cccctccgac ggccccgtaa tgcagaagaa gaccatgggc
+      481 tgggaggcct cctccgagcg gatgtacccc gaggacggcg ccctgaaggg cgagatcaag
+      541 cagaggctga agctgaagga cggcggccac tacgacgctg aggtcaagac cacctacaag
+      601 gccaagaagc ccgtgcagct gcccggcgcc tacaacgtca acatcaagtt ggacatcacc
+      661 tcccacaacg aggactacac catcgtggaa cagtacgaac gcgccgaggg ccgccactcc
+      721 accggcggca tggacgagct gtacaagtaa taaaccactt tgtacaagaa agctgggtgc
+      781 atttat
+//

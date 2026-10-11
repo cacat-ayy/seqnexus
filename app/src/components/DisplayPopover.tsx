@@ -15,7 +15,7 @@ import {
   type ColorSchemeId, type ColorTarget,
 } from '../utils/base-colors'
 import { contrastText } from '../utils/color'
-import { PLASMID_STYLES, type PlasmidStyleId } from '../plasmid/styles'
+import { PLASMID_LAYOUTS, PLASMID_STYLES, type PlasmidStyleId } from '../plasmid/styles'
 import { GENETIC_CODES } from '../codon/genetic-codes'
 import {
   AMINO_ACID_STYLES, TRANSLATION_FRAMES, aminoAcidFill,
@@ -190,6 +190,8 @@ export default function DisplayPopover({ open, onClose, triggerRef }: Props) {
   const toggleAnnotationTracks = useEditorStore(s => s.toggleAnnotationTracks)
   const plasmidStyle = useEditorStore(s => s.plasmidStyle)
   const setPlasmidStyle = useEditorStore(s => s.setPlasmidStyle)
+  const plasmidLayout = useEditorStore(s => s.plasmidLayout)
+  const setPlasmidLayout = useEditorStore(s => s.setPlasmidLayout)
   const showGcRing = useEditorStore(s => s.showGcRing)
   const toggleGcRing = useEditorStore(s => s.toggleGcRing)
   const showPlasmidLegend = useEditorStore(s => s.showPlasmidLegend)
@@ -523,7 +525,25 @@ export default function DisplayPopover({ open, onClose, triggerRef }: Props) {
       <div className="dp-sep" />
 
       <div className="dp-section">
-        <div className="dp-section-label" id="dp-plasmid-label">Plasmid map</div>
+        <div className="dp-target-row">
+          <span className="dp-section-label" id="dp-plasmid-label">Plasmid map</span>
+          {/* Where things go round the ring, apart from the look a style sets,
+              so any style can be drawn either way. */}
+          <div className="dp-target" role="radiogroup" aria-label="Plasmid map layout">
+            {PLASMID_LAYOUTS.map(l => (
+              <button
+                key={l.id}
+                className={`dp-target-btn ${plasmidLayout === l.id ? 'active' : ''}`}
+                role="radio"
+                aria-checked={plasmidLayout === l.id}
+                title={l.description}
+                onClick={() => setPlasmidLayout(l.id)}
+              >
+                {l.label}
+              </button>
+            ))}
+          </div>
+        </div>
         <div className="dp-style-list" role="radiogroup" aria-labelledby="dp-plasmid-label">
           {PLASMID_STYLES.map(s => (
             <button

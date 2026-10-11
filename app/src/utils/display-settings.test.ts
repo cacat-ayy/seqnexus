@@ -15,6 +15,7 @@ describe('display settings persistence', () => {
       showComplement: true,
       showAnnotationTracks: true,
       plasmidStyle: 'modern',
+      plasmidLayout: 'features-outside',
       showGcRing: false,
       showPlasmidLegend: false,
       // Translation was always drawn, following the annotated features, so
@@ -40,6 +41,7 @@ describe('display settings persistence', () => {
       showComplement: false,
       showAnnotationTracks: false,
       plasmidStyle: 'publication' as const,
+      plasmidLayout: 'sites-outside' as const,
       showGcRing: true,
       showPlasmidLegend: true,
       showTranslation: false,
@@ -55,6 +57,11 @@ describe('display settings persistence', () => {
   it('falls back to defaults on unparseable JSON', () => {
     localStorage.setItem(KEY, '{not json')
     expect(loadDisplaySettings()).toEqual(DEFAULT_DISPLAY_SETTINGS)
+  })
+
+  it('falls back to the usual layout for one it does not recognise', () => {
+    localStorage.setItem(KEY, JSON.stringify({ plasmidLayout: 'spiral' }))
+    expect(loadDisplaySettings().plasmidLayout).toBe('features-outside')
   })
 
   it('rejects a colour scheme id it does not recognise', () => {

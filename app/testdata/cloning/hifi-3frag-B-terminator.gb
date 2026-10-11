@@ -1,0 +1,14 @@
+LOCUS       T7_terminator_(fragment_B)     101 bp    ds-DNA     linear   11-OCT-2026
+DEFINITION  Fragment B of a three-part HiFi assembly: arm shared with fragment
+            A, T7 terminator, pUC19 arm.
+FEATURES             Location/Qualifiers
+     misc_feature    1..30
+                     /label="homology to fragment A"
+     terminator      31..71
+                     /label="T7 terminator"
+     misc_feature    72..101
+                     /label="homology to pUC19"
+ORIGIN
+        1 gggataagca tgagcccctt ctccgtctcc tcacactggc tcaccttcgg gtgggccttt
+       61 ctgcgtttat agtcgacctg caggcatgca agcttggcgt a
+//

@@ -33,6 +33,9 @@ self-contained HTML file.
 - [Plasmid Map](#plasmid-map)
   - [One scene, two renderers](#one-scene-two-renderers)
   - [Styles and labels](#styles-and-labels)
+  - [Names stay on the map](#names-stay-on-the-map)
+  - [How big the map is drawn](#how-big-the-map-is-drawn)
+  - [Sites outside](#sites-outside)
   - [Rings and tracks](#rings-and-tracks)
   - [Working on the map](#working-on-the-map)
 - [Selections](#selections)
@@ -608,26 +611,136 @@ outside with leader lines. Publication draws black on white and ignores the
 theme. Ruler numbers and cut-site names share one tier map inside the
 circle, lower tiers filled first, and a name pushed inward gets a leader
 line back to the backbone. Overlapping features are stacked onto separate
-rings.
+rings. All of this describes the usual layout, features round the outside
+of the backbone; the other one, features inside and sites outside, is
+[Sites outside](#sites-outside).
 
-A crowded stretch of cut sites is listed instead. Five or more sites in a
-run, each closer to the next on the backbone than a row of text (a multiple
-cloning site), get a bracket over their stretch just outside the rings, with
-a stem down to the backbone at each end, and their names in one straight
-list beside the circle, level with the stretch and in their order round it.
-Each name has a thin line from the bracket at its own site. On the inner
-tiers those names were turned every which way and the ones that found no
-room were dropped. Feature names that would land beside the list (the lac
-operator, promoter and CAP site just past pUC19's cloning site) join it in
-their place round the circle, since on their own they would be stacked
-outward over the list. The circle stays in the middle of the canvas, so a
-name in the list that is wider than the room beside it is shortened with an
-ellipsis. Shorter runs, and sites further apart, are named inside as before.
+A crowded spot is named beside the circle instead. A crowded spot is a run of five
+or more cut sites, each closer to the next on the backbone than a row of text
+(a multiple cloning site), or three or more feature names bunched together
+round the circle, with or without sites among them; feature names close
+enough to either kind to compete for its room belong to it too. On the inner
+tiers those site names were turned every which way and the ones that found
+no room were dropped, and feature names stacked outward until they ran off
+the canvas.
+
+A spot's names are split by side: those left of the vertical through the
+centre go to the left of the circle, the rest to the right, so a spot at 12
+o'clock (where a plasmid's own junctions sit) opens both ways and one at 3
+o'clock goes right. On each side they take one row each, stacked, and each
+name sits just past whatever is in the way at its own height: the feature
+arcs, the backbone and the bracket, measured on what is actually drawn there,
+and the leaders of the other names passing that row. So the names follow the
+stack and then the circle's shoulder down, close to what they name. A first
+version lined them up in one straight column instead, kept clear of a full
+circle as big as the outermost ring; at a junction where the rings stack four
+or five deep in one narrow spot, that put the names a long way out, beside a
+stack that was not there. A run of sites keeps a bracket over its stretch
+just outside the rings.
+
+Each leader runs straight from its site to a short flat tail into the name,
+at whatever slant reaches it. An earlier version made each leader run out
+along its radius first and turn flat only once level with its row; lines
+along radii cannot cross, but a site at 2 o'clock with its row near the top
+then had to travel far out to the side to climb that high, so the name ended
+up at the edge of the map with free room nearer the circle, above lacZ-alpha
+in pUC19, going unused. A name also keeps clear of its own leader: a leader
+coming up from a site further out passes under the text on its way to the
+tail, and only a name almost level with a site further out has to move out
+past it.
+
+The rows go in the order round the circle, which for a run of cut sites is
+the cloning site's own order, and that order is kept whenever, with the names
+where they will really be, it leaves no two leaders crossing. Leaders leaving
+ticks a pixel or two apart leave as a bundle, and may cross within its first
+couple of rows at an angle too shallow to read as a crossing, so only
+crossings more than 24 px from where both leaders start count. When one
+does, the other way round is tried, and then a name whose leader is in a
+crossing is moved to the nearest row that takes it away, a feature name
+before a cut site, so it is the cloning site's order that stays. The bracket
+used to have a stem down to the backbone at each end; those stems ran up
+through the whole stack of rings and were the only lines the leaders still
+crossed, and every site has a leader of its own, so they were dropped.
+
+The circle stays in the middle of the canvas, so a feature name wider than
+the room beside it is shortened with an ellipsis, and one with no room for
+even a few letters (a crowded spot on a small square map) is left to its
+hover card rather than drawn as one letter hanging off the edge. A cut site's
+name is no use shortened ("EcoR…" could be several enzymes), so it needs room
+for the whole name or is left to its hover card, unless it is a site you
+chose, which always stays named. Names away from crowded spots are placed as
+before.
 
 On a small map (under 500 px across, as in the split view) a feature whose
 arc is shorter than 24 px gets no name outside the circle: in the stretches
 where small parts cluster, those names were most of the clutter. Hovering
 the feature still names it.
+
+### Names stay on the map
+
+A name outside the circle is placed on a tier, stepping outward until it
+clears the names already there. Two rules keep that honest:
+
+- **Nothing is written off the canvas.** Tiers step outward from the circle,
+  which at 12 and 6 o'clock walks a crowded cluster straight off the top or
+  bottom edge, where it cannot be read at all. Such a name is held at the
+  edge, and its tier then spreads it sideways, away from the centre, so a
+  cluster fans out along the edge instead of climbing off it. Names are kept
+  inside the left and right edges the same way, whichever way the text runs
+  from its anchor.
+- **A new name is checked against every name already placed**, not only
+  against the others on its own tier. Tiers are rings, so they were taken
+  never to meet, but a long name on an outer tier reaches back under a short
+  one further in, and a name held at an edge has left its ring altogether.
+  The names a crowded stretch's list has already taken are checked too, since
+  the list and the tiers are laid out in separate passes.
+
+### How big the map is drawn
+
+The map fills the box it is given rather than the largest square inside it.
+The circle is centred in that box and sized by the shorter side, so it is the
+same circle either way: the room a wide panel has to spare goes to the names
+around it, which is where it is needed, and not to a bigger circle. In the
+cloning workspace, where the panel is much wider than it is tall, that is the
+difference between names cut short with an ellipsis and names written out.
+
+### Sites outside
+
+A second layout, chosen in the Display menu next to the styles and separate
+from them, so any style can be drawn either way: the ring layout many cloning
+tools draw. It applies to every circular map, in the sequence view, the
+cloning workspace and exported figures.
+
+- **Features inside the backbone**, on rings stepping inward, with the
+  ruler's ticks pointing in and its numbers in a thin band between the
+  backbone and the first ring. A name that fits its arrow is written in it;
+  one that does not is written curved just inside the innermost ring,
+  centred on its feature, on the first tier where it runs into no other
+  name, so the inside of the ring reads as one set of names. There are no
+  leader lines there, since a line from a feature to a name further in would
+  run through the names on the tiers between. At most two names are stacked
+  at any one spot: larger features claim their places first, so where small
+  ones crowd together (the operator, promoter and CAP site past pUC19's
+  cloning site) the smallest are left to their hover cards, rather than five
+  names stacking in towards the middle. The feature under the pointer is
+  always named.
+- **Every cut site named outside**, with a thin tick from the backbone out to
+  where its leader starts, and its position beside its name: "BamHI (975)"
+  right of the circle, "(975) BamHI" left of it, so the name is the end the
+  leader reaches and the position the outer end. The position is the one the
+  rest of the app shows, from the display origin. Each side of the circle is
+  laid out as one, with the placement crowded stretches use in the other
+  layout (see [Styles and labels](#styles-and-labels)), except that each name
+  is placed as near its own site's height as the names above and below it
+  allow rather than in one block: a least-squares fit under "a row apart",
+  which pooling neighbours that are out of order solves exactly. So the names
+  spread round the whole circle, close to their sites.
+- **The middle.** The construct's name is shortened to the room inside the
+  innermost ring, since the features are inside now. A feature name with no
+  room left inside, when the rings stack deep in one spot or the name in the
+  middle is long, is named outside with the sites instead of being left off.
+  Primers go just outside the backbone, the cut sites' leaders starting past
+  them, and the GC ring goes inside the features and their names.
 
 ### Rings and tracks
 
@@ -3034,7 +3147,11 @@ promoter or a CDS ending at an arm keeps its real extent instead of being
 clipped at a junction drawn an arbitrary few bases to one side. Homology
 between parts that are not meant to meet is reported as a warning: those
 arms anneal too, and the assembly that comes out is not the one that was
-drawn.
+drawn. The search for it skips the arms the two parts already join on, by
+the spans those junctions were found at, since every shorter window of a
+shared arm is shared as well: matching only the ends exactly would report
+each real junction back as a second place its parts meet, which it did for
+any two linear parts that joined.
 
 ### Golden Gate
 
@@ -3206,6 +3323,33 @@ so these oligos melt where the rest of its primers do (see
   overhang that decides where the part goes. The sites end up outside the
   product and are lost with the cut, which is why the assembly is seamless
   and one-pot.
+
+A Golden Gate part often arrives with the sites already on it: a part from a
+kit, a destination vector, anything that came out of an earlier assembly.
+Nothing is ordered for those. A part is taken to be finished when it carries
+exactly two of the enzyme's sites and the digest leaves a single piece with a
+5' overhang at each end, which is the shape of a part written for the pot;
+counting the sites is what separates it from a part with a site left inside,
+since an internal site can also leave one clean piece behind, and that part
+needs the internal-site warning rather than a note saying it is ready. A
+destination vector has the same shape read the other way round, its sites
+sitting in the stuffer and pointing out into the backbone, so it is
+recognised too: a vector goes into the reaction cut, never amplified.
+
+The overhangs those parts carry are the design's own, so they are kept rather
+than invented, and only the junctions no part has fixed are chosen, against
+the fixed ones so the set as a whole still tells itself apart (see
+[Overhang fidelity](#overhang-fidelity)). Primers built around a fresh set
+would not fit the parts the design is made of.
+
+When every part is finished, the order comes from the overhangs, by following
+each part's end to the part that starts with it, which is how the reaction
+reads them: the order the parts happen to be listed in does not matter. It
+matters only when something still has to be amplified, since a template
+carries no overhang to place it by, and then two finished parts that disagree
+about the overhang where they meet say so. A chain that cannot close, or a
+step with two candidates, is left to the order given and the same warning,
+the second being an overhang used twice, which the reaction itself reports.
 
 Nothing here changes the design: it says what to order to build it. The
 recombination methods join sequences you already have and need no oligos.

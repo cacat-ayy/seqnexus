@@ -49,7 +49,7 @@ export function useSequencePdfSource(): SequencePdfSource {
   const { annTree, primerItemById, guideItemById, visibleAnnotations } = useSequenceTracks(doc)
   const { translationFrames, translationRows, translateSelection, translationCode } = useTranslationSettings(doc.sequence.alphabet)
   const {
-    style: mapStyle, rings, proposalIds, pickedIds, sceneEnzymes, scenePrimers,
+    style: mapStyle, layout: mapLayout, rings, proposalIds, pickedIds, sceneEnzymes, scenePrimers,
     methylation, gcSeries, gcOverall, legend,
   } = usePlasmidSceneData(doc)
 
@@ -95,9 +95,10 @@ export function useSequencePdfSource(): SequencePdfSource {
       gc: gcSeries,
       gcPercent: gcOverall,
       legend,
+      layout: mapLayout,
     })
   }, [
-    circular, doc, mapStyle, mapColors, rings, proposalIds, pickedIds, sceneEnzymes,
+    circular, doc, mapStyle, mapLayout, mapColors, rings, proposalIds, pickedIds, sceneEnzymes,
     scenePrimers, methylation, gcSeries, gcOverall, legend,
   ])
 

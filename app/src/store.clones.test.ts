@@ -11,7 +11,7 @@ import { emptyDesign, partFromDoc } from './cloning/design'
 const reset = () => {
   useEditorStore.setState({
     tabs: [], activeTabId: null, clones: [], activeCloneId: null, cloneReturnTabId: null,
-    gels: [], activeGelId: null, folders: [], recentlyDeleted: [],
+    gels: [], activeGelId: null, gelReturnTabId: null, folders: [], recentlyDeleted: [],
   })
 }
 
@@ -178,6 +178,34 @@ describe('designs and the rest of the workspace', () => {
 
     useEditorStore.getState().createClone()
     expect(useEditorStore.getState().activeGelId).toBeNull()
+  })
+
+  it('is closed when a gel is opened, since the design would be drawn over it', () => {
+    openSequence('pUC', 'ACGT'.repeat(100), 'circular')
+    const gelId = useEditorStore.getState().createGel({ activate: false })
+    useEditorStore.getState().createClone()
+    useEditorStore.getState().setActiveGel(gelId)
+    const s = useEditorStore.getState()
+    expect(s.activeGelId).toBe(gelId)
+    expect(s.activeCloneId).toBeNull()
+  })
+
+  it('hands the gel its way back, so closing the gel returns to the sequence', () => {
+    const tabId = openSequence('pUC', 'ACGT'.repeat(100), 'circular')
+    const gelId = useEditorStore.getState().createGel({ activate: false })
+    useEditorStore.getState().createClone()
+    useEditorStore.getState().setActiveGel(gelId)
+    useEditorStore.getState().setActiveGel(null)
+    expect(useEditorStore.getState().activeTabId).toBe(tabId)
+  })
+
+  it('takes the gel\'s way back when opened from a gel', () => {
+    const tabId = openSequence('pUC', 'ACGT'.repeat(100), 'circular')
+    useEditorStore.getState().createGel()
+    const cloneId = useEditorStore.getState().createClone({ activate: false })
+    useEditorStore.getState().setActiveClone(cloneId)
+    useEditorStore.getState().setActiveClone(null)
+    expect(useEditorStore.getState().activeTabId).toBe(tabId)
   })
 
   it('is closed when a sequence is opened instead', () => {

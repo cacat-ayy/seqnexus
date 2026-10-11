@@ -239,10 +239,15 @@
   font-family: inherit;
   font-size: var(--text-2xs);
   font-weight: 600;
+  /* Two-word choices such as "Sites outside" stay on one line. */
+  white-space: nowrap;
   cursor: pointer;
   transition: background-color var(--dur-fast) var(--ease-out),
               color var(--dur-fast) var(--ease-out);
 }
+
+/* A section title beside a choice keeps to one line and gives way to it. */
+.dp-target-row > .dp-section-label { white-space: nowrap; }
 
 .dp-target-btn:hover:not(:disabled) { color: var(--text); }
 

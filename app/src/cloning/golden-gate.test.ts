@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest'
 import { Sequence } from '../models/Sequence'
 import type { DocumentState } from '../models/Document'
 import { getEnzyme } from '../enzymes/db'
-import { goldenGateAssemble } from './golden-gate'
+import { goldenGateAssemble, typeIISFusionSites } from './golden-gate'
 
 const BsaI = getEnzyme('BsaI')!
 // BsaI: recognition GGTCTC (6bp), fwd_cut=7, rev_cut=11
@@ -184,5 +184,52 @@ describe('goldenGateAssemble', () => {
       w => w.includes('AATG') && w.includes('AACG') && w.includes('cross-react'),
     )
     expect(hasFidelityWarning).toBe(true)
+  })
+})
+
+describe('typeIISFusionSites', () => {
+  const clean = (n: number, seed: number) => {
+    let x = seed | 0 || 1
+    let out = ''
+    while (out.length < n) {
+      x ^= x << 13; x |= 0
+      x ^= x >>> 17
+      x ^= x << 5; x |= 0
+      out += 'ACGT'[(x >>> 8) & 3]
+      if (out.endsWith('GGTCTC') || out.endsWith('GAGACC')) out = out.slice(0, -1)
+    }
+    return out
+  }
+  /** A part written the way a Golden Gate part is: sites pointing inwards. */
+  const part = (left: string, body: string, right: string) =>
+    clean(10, 3) + 'GGTCTCA' + left + body + right + 'T' + 'GAGACC' + clean(10, 5)
+
+  it('reads the overhangs a finished part carries', () => {
+    const sites = typeIISFusionSites(part('GGAG', clean(60, 7), 'AATG'), 'linear', BsaI)
+    expect(sites).toEqual({ start: 'GGAG', end: 'AATG' })
+  })
+
+  it('reads them on a destination vector, whose sites sit in the stuffer', () => {
+    // The sites point outwards from the stuffer, so the backbone comes out
+    // clean with an overhang at each end.
+    const vector = clean(200, 11) + 'GGAG' + 'A' + 'GAGACC' + clean(60, 13)
+      + 'GGTCTC' + 'A' + 'CGCT' + clean(200, 17)
+    const sites = typeIISFusionSites(vector, 'circular', BsaI)
+    // The kept piece starts at CGCT and runs round the circle to GGAG.
+    expect(sites).toEqual({ start: 'CGCT', end: 'GGAG' })
+  })
+
+  it('is null for a plain template with no sites', () => {
+    expect(typeIISFusionSites(clean(400, 19), 'linear', BsaI)).toBeNull()
+  })
+
+  it('is null when a site is left inside the part', () => {
+    const body = clean(30, 21) + 'GGTCTCAAAAA' + clean(30, 23)
+    expect(typeIISFusionSites(part('GGAG', body, 'AATG'), 'linear', BsaI)).toBeNull()
+  })
+
+  it('is null when only one end carries a site', () => {
+    const half = clean(10, 25) + 'GGTCTCA' + 'GGAG' + clean(60, 27)
+    expect(typeIISFusionSites(half, 'linear', BsaI)).toBeNull()
   })
 })

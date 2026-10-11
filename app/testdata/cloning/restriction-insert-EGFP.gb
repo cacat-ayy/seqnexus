@@ -1,0 +1,25 @@
+LOCUS       EGFP_insert          775 bp    ds-DNA     linear   11-OCT-2026
+DEFINITION  EGFP PCR product flanked by EcoRI and HindIII sites, for
+            restriction cloning into pUC19.
+FEATURES             Location/Qualifiers
+     misc_feature    15..20
+                     /label="EcoRI site"
+     CDS             27..752
+                     /label="EGFP"
+     misc_feature    756..761
+                     /label="HindIII site"
+ORIGIN
+        1 agcgtgttgc gtccgaattc gccaccatgt ctagagtgag caagggcgag gagctgttca
+       61 ccggggtggt gcccatcctg gtcgagctgg acggcgacgt aaacggccac aagttcagcg
+      121 tgtccggcga gggcgagggc gatgccacct acggcaagct gaccctgaag ttcatctgca
+      181 ccaccggcaa gctgcccgtg ccctggccca ccctcgtgac caccctgacc tacggcgtgc
+      241 agtgcttcag ccgctacccc gaccacatga agcagcacga cttcttcaag tccgccatgc
+      301 ccgaaggcta cgtccaggag agaaccatct tcttcaagga cgacggcaac tacaagaccc
+      361 gcgccgaggt gaagttcgag ggcgacaccc tggtgaaccg catcgagctg aagggcatcg
+      421 acttcaagga ggacggcaac atcctggggc acaagctgga gtacaactac aacagccaca
+      481 acgtctatat catggccgac aagcagaaga acggcatcaa ggtgaacttc aagatccgcc
+      541 acaacatcga ggacggcagc gtgcagctcg ccgaccacta ccagcagaac acccccatcg
+      601 gcgacggccc cgtgctgctg cccgacaacc actacctgag cacccagtcc gccctgagca
+      661 aagaccccaa cgagaagcgc gatcacatgg tcctgctgga gttcgtgacc gccgccggga
+      721 tcactctcgg catggacgag ctgtacaagt aataaaagct tcggacgtac ccgtt
+//

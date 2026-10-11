@@ -76,6 +76,8 @@ export default function AlignmentWorkspace({ aln, onClose, onExportPrompt, findR
   const [nameDraft, setNameDraft] = useState<string | null>(null)
   const [realignOpen, setRealignOpen] = useState(false)
   const [addOpen, setAddOpen] = useState(false)
+  const realignBtnRef = useRef<HTMLButtonElement>(null)
+  const addBtnRef = useRef<HTMLButtonElement>(null)
   const [figureOpen, setFigureOpen] = useState(false)
   // A realign is running: edits wait, so the result still fits what it was computed from.
   const [busy, setBusy] = useState(false)
@@ -535,6 +537,7 @@ export default function AlignmentWorkspace({ aln, onClose, onExportPrompt, findR
         </button>
         <div className="aw-export">
           <button
+            ref={addBtnRef}
             className={`aw-btn ${addOpen ? 'active' : ''}`}
             onClick={() => setAddOpen(o => !o)}
             aria-expanded={addOpen}
@@ -542,10 +545,11 @@ export default function AlignmentWorkspace({ aln, onClose, onExportPrompt, findR
           >
             <ListPlus size={13} /> Add
           </button>
-          {addOpen && <AddSequencesPanel doc={doc} onApply={applyAdd} onClose={() => setAddOpen(false)} onBusy={setBusy} />}
+          {addOpen && <AddSequencesPanel doc={doc} onApply={applyAdd} onClose={() => setAddOpen(false)} triggerRef={addBtnRef} onBusy={setBusy} />}
         </div>
         <div className="aw-export">
           <button
+            ref={realignBtnRef}
             className={`aw-btn ${realignOpen ? 'active' : ''}`}
             onClick={() => setRealignOpen(o => !o)}
             aria-expanded={realignOpen}
@@ -559,11 +563,20 @@ export default function AlignmentWorkspace({ aln, onClose, onExportPrompt, findR
               selection={selection}
               onApply={applyRealign}
               onClose={() => setRealignOpen(false)}
+              triggerRef={realignBtnRef}
               onBusy={setBusy}
             />
           )}
         </div>
-        <button className={`aw-btn ${findOpen ? 'active' : ''}`} onClick={() => { setFindOpen(true); requestAnimationFrame(() => findInput.current?.focus()) }} title="Find a motif (Ctrl+F)">
+        <button
+          className={`aw-btn ${findOpen ? 'active' : ''}`}
+          aria-pressed={findOpen}
+          onClick={() => {
+            if (findOpen) closeFind()
+            else { setFindOpen(true); requestAnimationFrame(() => findInput.current?.focus()) }
+          }}
+          title={findOpen ? 'Close find' : 'Find a motif (Ctrl+F)'}
+        >
           <Search size={13} /> Find
         </button>
         <div className="aw-export" ref={exportRef}>

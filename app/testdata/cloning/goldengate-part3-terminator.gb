@@ -1,0 +1,17 @@
+LOCUS       GG_terminator_part      83 bp    ds-DNA     linear   11-OCT-2026
+DEFINITION  Golden Gate part: T7 terminator, BsaI fusion sites GCTT and CGCT.
+FEATURES             Location/Qualifiers
+     misc_feature    11..17
+                     /label="BsaI site"
+     misc_feature    18..21
+                     /label="GCTT overhang"
+     terminator      22..62
+                     /label="T7 terminator"
+     misc_feature    63..66
+                     /label="CGCT overhang"
+     misc_feature    67..73
+                     /label="BsaI site"
+ORIGIN
+        1 acactagtgc ggtctcagct ttcacactgg ctcaccttcg ggtgggcctt tctgcgttta
+       61 tacgcttgag acccttacat gtc
+//

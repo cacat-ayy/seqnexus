@@ -238,3 +238,21 @@ export function resolvePlasmidColors(
     dcm: v('--warning', '#f59e0b'),
   }
 }
+
+/**
+ * Where things go round the backbone, separate from the look a style sets.
+ *
+ * - `features-outside`: feature arrows on rings outside the backbone, cut-site
+ *   names inside it on the ruler's tiers. The map the app has always drawn.
+ * - `sites-outside`: the ring layout many cloning tools use. Feature arrows on
+ *   rings inside the backbone, every cut site named outside it with its
+ *   position, beside the circle.
+ */
+export type PlasmidLayout = 'features-outside' | 'sites-outside'
+
+export const PLASMID_LAYOUTS: { id: PlasmidLayout; label: string; description: string }[] = [
+  { id: 'features-outside', label: 'Features outside', description: 'Features round the ring, sites inside' },
+  { id: 'sites-outside', label: 'Sites outside', description: 'Features inside the ring, sites named outside' },
+]
+
+export const DEFAULT_PLASMID_LAYOUT: PlasmidLayout = 'features-outside'

@@ -1,0 +1,42 @@
+LOCUS       pCR-TOPO            1519 bp    ds-DNA     circular   11-OCT-2026
+DEFINITION  TOPO vector: one topoisomerase CCCTT site in the MCS, with the
+            CACC overhang for Directional TOPO.
+FEATURES             Location/Qualifiers
+     promoter        21..51
+                     /label="lac promoter"
+     misc_feature    62..94
+                     /label="MCS"
+     misc_feature    74..78
+                     /label="topoisomerase I site"
+     CDS             115..930
+                     /label="KanR"
+     rep_origin      951..1499
+                     /label="p15A ori"
+ORIGIN
+        1 atggaatatc cggaatccgt tttacacttt atgcttccgg ctcgtatgtt gacggtatcc
+       61 catgtataca gcacccttca ccccccctat cgaactcaga ttacgtagcg taacatgagc
+      121 catattcaac gggaaacgtc ttgctcgagg ccgcgattaa attccaacat ggatgctgat
+      181 ttatatgggt ataaatgggc tcgcgataat gtcgggcaat caggtgcgac aatctatcga
+      241 ttgtatggga agcccgatgc gccagagttg tttctgaaac atggcaaagg tagcgttgcc
+      301 aatgatgtta cagatgagat ggtcagacta aactggctga cggaatttat gcctcttccg
+      361 accatcaagc attttatccg tactcctgat gatgcatggt tactcaccac tgcgatcccc
+      421 gggaaaacag cattccaggt attagaagaa tatcctgatt caggtgaaaa tattgttgat
+      481 gcgctggcag tgttcctgcg ccggttgcat tcgattcctg tttgtaattg tccttttaac
+      541 agcgatcgcg tatttcgtct cgctcaggcg caatcacgaa tgaataacgg tttggttgat
+      601 gcgagtgatt ttgatgacga gcgtaatggc tggcctgttg aacaagtctg gaaagaaatg
+      661 cataagcttt tgccattctc accggattca gtcgtcactc atggtgattt ctcacttgat
+      721 aaccttattt ttgacgaggg gaaattaata ggttgtattg atgttggacg agtcggaatc
+      781 gcagaccgat accaggatct tgccatccta tggaactgcc tcggtgagtt ttctccttca
+      841 ttacagaaac ggctttttca aaaatatggt attgataatc ctgatatgaa taaattgcag
+      901 tttcatttga tgctcgatga gtttttctaa cccacatggc agagtacgag ttcttgagat
+      961 cgttttggtc tgcgcgtaat ctcttgctct gaaaacgaaa aaaccgcctt gcagggcggt
+     1021 ttttcgaagg ttctctgagc taccaactct ttgaaccgag gtaactggct tggaggagcg
+     1081 cagtcaccaa aacttgtcct ttcagtttag ccttaaccgg cgcatgactt caagactaac
+     1141 tcctctaaat caattaccag tggctgctgc cagtggtgct tttgcatgtc tttccgggtt
+     1201 ggactcaaga cgatagttac cggataaggc gcagcggtcg gactgaacgg ggggttcgtg
+     1261 catacagtcc agcttggagc gaactgccta cccggaactg agtgtcaggc gtggaatgag
+     1321 acaaacgcgg ccataacagc ggaatgacac cggtaaaccg aaaggcagga acaggagagc
+     1381 gcacgaggga gccgccaggg ggaaacgcct ggtatcttta tagtcctgtc gggtttcgcc
+     1441 accactgatt tgagcgtcag atttcgtgat gcttgtcagg ggggcggagc ctatggaaac
+     1501 tccgtagtgg ctgacacta
+//

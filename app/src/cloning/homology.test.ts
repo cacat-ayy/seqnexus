@@ -273,3 +273,34 @@ describe('findHomology', () => {
     )).toEqual([])
   })
 })
+
+describe('homology somewhere other than the junction', () => {
+  const vector = filler(2000, 61)
+  const at = 900
+  const arm = 30
+  const shared = filler(arm, 67)
+
+  // Two linear parts that join on `shared`: vector arm, payload, shared arm,
+  // then shared arm, payload, vector arm.
+  const fragA = vector.slice(at - arm, at) + filler(500, 71) + shared
+  const fragB = shared + filler(300, 73) + vector.slice(at, at + arm)
+
+  it('says nothing about the arm two parts legitimately join on', () => {
+    const result = homologyAssemble([
+      part('vec', vector, 'circular'), part('A', fragA), part('B', fragB),
+    ])
+    expect(expected(result.products)).toHaveLength(1)
+    expect(result.warnings.filter(w => w.includes('away from the ends that join'))).toEqual([])
+  })
+
+  it('still reports an arm the two share somewhere else', () => {
+    // fragB carries a second copy of fragA's tail in its middle, so the parts
+    // can meet in more than one place and the order is not the drawn one.
+    const repeat = fragA.slice(-arm)
+    const withRepeat = shared + filler(150, 79) + repeat + filler(150, 83) + vector.slice(at, at + arm)
+    const result = homologyAssemble([
+      part('vec', vector, 'circular'), part('A', fragA), part('B', withRepeat),
+    ])
+    expect(result.warnings.some(w => w.includes('away from the ends that join'))).toBe(true)
+  })
+})

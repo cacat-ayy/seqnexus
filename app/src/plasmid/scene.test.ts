@@ -406,14 +406,13 @@ describe('a crowded stretch of cut sites', () => {
   const bracket = (items: SceneItem[]) =>
     items.filter(i => i.kind === 'arcBand' && i.width === 1.5 && i.strand === 0)
 
-  it('lists its names in one straight column beside the circle, in order', () => {
+  it('lists its names beside the circle, flat, in order', () => {
     const scene = buildPlasmidScene(input({ enzymeGroups: MCS }))
     const names = MCS.map(s => texts(scene.items).find(t => t.text === s.label)!)
     for (const t of names) {
       expect(t).toBeDefined()
       expect(t.rotate).toBeUndefined()
       expect(Math.hypot(t.x - 300, t.y - 300)).toBeGreaterThan(scene.baseRadius)
-      expect(t.x).toBeCloseTo(names[0].x, 6)
     }
     // The stretch is on the right, so clockwise reads downward.
     for (let i = 1; i < names.length; i++) expect(names[i].y).toBeGreaterThan(names[i - 1].y)
@@ -468,9 +467,13 @@ describe('feature names beside a crowded stretch', () => {
     const lacO = text('lacO')
     const last = text('HindIII')
     expect(lacO).toBeDefined()
-    expect(lacO.x).toBeCloseTo(last.x, 6)
-    // lacO is past the cloning site clockwise, so it comes after HindIII.
-    expect(lacO.y).toBeGreaterThan(last.y)
+    // Beside the sites, on their side, rather than stacked out on its own.
+    expect(lacO.align).toBe(last.align)
+    expect(Math.abs(lacO.y - last.y)).toBeLessThan(60)
+    // Its place among the sites can give way to keep the leaders apart: a
+    // feature's leader starts on its own ring, inside the sites', and the
+    // layout moves a feature name before it moves a site, so the cloning
+    // site's own order is what stays.
   })
 })
 
@@ -487,5 +490,328 @@ describe('a small map', () => {
 
   it('names them on a larger map', () => {
     expect(names(600)).toContain('lacO')
+  })
+})
+
+describe('a map wider than it is tall', () => {
+  const wide = buildPlasmidScene(input({ size: 900, height: 500 }))
+  const square = buildPlasmidScene(input({ size: 500 }))
+
+  it('reports the box it was given', () => {
+    expect(wide.size).toBe(900)
+    expect(wide.height).toBe(500)
+  })
+
+  it('keeps the circle the size the shorter side allows', () => {
+    expect(wide.baseRadius).toBe(square.baseRadius)
+  })
+
+  it('centres the circle in the box', () => {
+    const ring = wide.items.find(i => i.kind === 'ring')
+    expect(ring).toBeDefined()
+    if (ring?.kind !== 'ring') throw new Error('not a ring')
+    expect(ring.cx).toBe(450)
+    expect(ring.cy).toBe(250)
+  })
+
+  it('fills the whole box with the background', () => {
+    const bg = wide.items[0]
+    if (bg.kind !== 'rect') throw new Error('not the background')
+    expect([bg.w, bg.h]).toEqual([900, 500])
+  })
+
+  it('lets a long name run further before it is shortened', () => {
+    const long = ann(1600, 1640, 'long', 'a feature with a very long name indeed')
+    const names = (over: Partial<PlasmidSceneInput>) =>
+      buildPlasmidScene(input({ rings: stackAnnotations([long]), ...over })).items
+        .flatMap(i => (i.kind === 'text' ? [i.text] : []))
+    const narrow = names({ size: 500 }).find(t => t.startsWith('a feature'))
+    const roomy = names({ size: 900, height: 500 }).find(t => t.startsWith('a feature'))
+    expect(narrow).toBeDefined()
+    expect(roomy).toBeDefined()
+    expect(roomy!.length).toBeGreaterThan(narrow!.length)
+  })
+
+  it('still behaves as a square map when no height is given', () => {
+    const plain = buildPlasmidScene(input({ size: 500 }))
+    expect(plain.height).toBe(500)
+    expect(plain.baseRadius).toBe(square.baseRadius)
+  })
+})
+
+describe('names stay inside the map', () => {
+  // A crowded origin: several features at nearly the same angle, which is
+  // what stacks names outward at 12 o'clock.
+  const cluster = [
+    ann(2680, 20, 'c1', 'homology to fragment A'),
+    ann(2660, 10, 'c2', 'homology to fragment B'),
+    ann(2600, 40, 'c3', 'a terminator with a name'),
+    ann(2500, 60, 'c4', 'multiple cloning site'),
+    ann(2400, 80, 'c5', 'homology to the vector'),
+  ]
+  const boxes = (size: number, height: number) =>
+    buildPlasmidScene(input({ size, height, rings: stackAnnotations(cluster) }))
+      .items.flatMap(i => {
+        if (i.kind !== 'text') return []
+        const w = measure(i.text, i.font)
+        const x1 = i.align === 'center' ? i.x - w / 2 : i.align === 'right' ? i.x - w : i.x
+        return [{ text: i.text, x1, x2: x1 + w, y: i.y }]
+      })
+
+  it('keeps every name within a wide map', () => {
+    const out = boxes(900, 500).filter(b => b.x1 < 0 || b.x2 > 900 || b.y < 0 || b.y > 500)
+    expect(out).toEqual([])
+  })
+
+  it('keeps every name within a square map too', () => {
+    const out = boxes(500, 500).filter(b => b.x1 < 0 || b.x2 > 500 || b.y < 0 || b.y > 500)
+    expect(out).toEqual([])
+  })
+})
+
+describe('crowded spots in columns with elbow leaders', () => {
+  type Line = Extract<SceneItem, { kind: 'line' }>
+  const leaders = (items: SceneItem[]) =>
+    items.filter((i): i is Line => i.kind === 'line' && i.width === 0.75 && Math.hypot(i.x2 - i.x1, i.y2 - i.y1) >= 3)
+  /**
+   * Crossings out in the open: two leaders meeting more than 24 px from
+   * where either starts. Leaders leaving ticks a pixel or two apart touch
+   * near the ticks whatever their order, and the layout does not reorder
+   * names over that.
+   */
+  const crossingsIn = (items: SceneItem[]) => {
+    const segs = leaders(items)
+    // Each segment's leader starts where its run of joined segments starts.
+    const starts: { x: number; y: number }[] = []
+    segs.forEach((s, i) => {
+      const prev = segs[i - 1]
+      starts.push(prev && prev.x2 === s.x1 && prev.y2 === s.y1 ? starts[i - 1] : { x: s.x1, y: s.y1 })
+    })
+    const side = (ax: number, ay: number, bx: number, by: number, px: number, py: number) =>
+      (bx - ax) * (py - ay) - (by - ay) * (px - ax)
+    let n = 0
+    for (let i = 0; i < segs.length; i++) {
+      for (let j = i + 1; j < segs.length; j++) {
+        const a = segs[i], b = segs[j]
+        const s1 = side(a.x1, a.y1, a.x2, a.y2, b.x1, b.y1)
+        const s2 = side(a.x1, a.y1, a.x2, a.y2, b.x2, b.y2)
+        if (!(s1 * s2 < -1e-6 && side(b.x1, b.y1, b.x2, b.y2, a.x1, a.y1) * side(b.x1, b.y1, b.x2, b.y2, a.x2, a.y2) < -1e-6)) continue
+        const t = s1 / (s1 - s2)
+        const px = b.x1 + (b.x2 - b.x1) * t
+        const py = b.y1 + (b.y2 - b.y1) * t
+        const far = (s: { x: number; y: number }) => Math.hypot(px - s.x, py - s.y) >= 24
+        if (far(starts[i]) && far(starts[j])) n++
+      }
+    }
+    return n
+  }
+  const texts = (items: SceneItem[]) =>
+    items.filter((i): i is Extract<SceneItem, { kind: 'text' }> => i.kind === 'text')
+
+  // A multiple cloning site straddling the origin, with overlapping features
+  // on stacked rings around it: the shape of a plasmid's own junction.
+  const seqLen = 2686
+  const sites = ['EcoRI', 'SacI', 'KpnI', 'SmaI', 'BamHI', 'XbaI', 'SalI', 'PstI', 'SphI', 'HindIII']
+    .map((label, i) => ({ key: label, label, cutPos: (seqLen - 30 + i * 6) % seqLen, methEffect: null }))
+  const features = [
+    ann(2600, 40, 'f1', 'homology arm left'),
+    ann(2620, 60, 'f2', 'multiple cloning site'),
+    ann(2560, 20, 'f3', 'terminator'),
+    ann(10, 120, 'f4', 'homology arm right'),
+    ann(2640, 90, 'f5', 'lacZ fragment'),
+  ]
+  const scene = (size = 600, height?: number) => buildPlasmidScene(input({
+    size, height, seqLen, enzymeGroups: sites, rings: stackAnnotations(features),
+  }))
+
+  it('opens a spot at 12 o\'clock both ways, a column to each side', () => {
+    const s = scene()
+    const cx = s.size / 2
+    const named = texts(s.items).filter(t => sites.some(x => x.label === t.text) || features.some(f => f.name === t.text))
+    expect(named.some(t => t.x < cx && t.align === 'right')).toBe(true)
+    expect(named.some(t => t.x > cx && t.align === 'left')).toBe(true)
+  })
+
+  /** The right-hand column's site names, top to bottom, as cut-order indices. */
+  const rightColumn = (s: ReturnType<typeof scene>) => {
+    const cx = s.size / 2
+    return texts(s.items)
+      .filter(t => t.align === 'left' && t.x > cx && sites.some(x => x.label === t.text))
+      .sort((a, b) => a.y - b.y)
+      .map(t => sites.findIndex(x => x.label === t.text))
+  }
+
+  it('reads a column downward in the order its sites come down that side, given room above', () => {
+    // Tall enough that the rings stop well short of the top edge, so every
+    // leader can climb its radius to its row.
+    const order = rightColumn(scene(600, 1000))
+    expect(order.length).toBeGreaterThan(2)
+    for (let i = 1; i < order.length; i++) expect(order[i]).toBeGreaterThan(order[i - 1])
+  })
+
+
+  it('never crosses two leaders', () => {
+    for (const [w, h] of [[600, undefined], [900, 500], [500, undefined], [1200, 700], [600, 1000]] as const) {
+      expect(crossingsIn(scene(w, h).items)).toBe(0)
+    }
+  })
+
+  it('makes a crowded spot of a few bunched feature names, with no cut sites at all', () => {
+    const s = buildPlasmidScene(input({ size: 600, seqLen, rings: stackAnnotations(features) }))
+    expect(crossingsIn(s.items)).toBe(0)
+    const named = texts(s.items).filter(t => features.some(f => f.name === t.text))
+    expect(named.length).toBeGreaterThanOrEqual(3)
+    // Written flat beside the circle, not along an arc or turned.
+    for (const t of named) {
+      expect(t.rotate).toBeUndefined()
+      expect(Math.hypot(t.x - s.size / 2, t.y - s.size / 2)).toBeGreaterThan(s.baseRadius)
+    }
+  })
+
+  it('puts each name just past what is drawn at its height, not in a column', () => {
+    // A 12 o'clock spot with room above: the stack is narrow at the top and
+    // the circle widens below it, so the names near the top sit closer to
+    // the vertical through the centre than the names further down.
+    const s = scene(600, 1000)
+    const cx = s.size / 2
+    const right = texts(s.items)
+      .filter(t => t.align === 'left' && t.x > cx && t.rotate === undefined)
+      .sort((a, b) => a.y - b.y)
+    expect(right.length).toBeGreaterThan(2)
+    expect(right[0].x).toBeLessThan(right[right.length - 1].x)
+  })
+})
+
+describe('the ring layout (sites outside)', () => {
+  type Text = Extract<SceneItem, { kind: 'text' }>
+  type Curved = Extract<SceneItem, { kind: 'curvedText' }>
+  type Band = Extract<SceneItem, { kind: 'arcBand' }>
+  const sites = [
+    { key: 'BamHI', label: 'BamHI', cutPos: 300, methEffect: null },
+    { key: 'EcoRI', label: 'EcoRI', cutPos: 2000, methEffect: null },
+  ]
+  const features = [ann(100, 900, 'a', 'ampR'), ann(1200, 1500, 'b', 'ori'), ann(1600, 1620, 'c', 'a promoter')]
+  const build = (layout: 'features-outside' | 'sites-outside') => buildPlasmidScene(input({
+    enzymeGroups: sites, rings: stackAnnotations(features), layout,
+  }))
+  const at = (s: { size: number; height?: number }, x: number, y: number) =>
+    Math.hypot(x - s.size / 2, y - (s.height ?? s.size) / 2)
+
+  it('draws the features inside the backbone, and outside it in the default layout', () => {
+    const ring = build('sites-outside')
+    const plain = build('features-outside')
+    const featureBands = (s: ReturnType<typeof build>) =>
+      s.items.filter((i): i is Band => i.kind === 'arcBand' && i.fill === features[0].color)
+    expect(featureBands(ring).every(b => b.radius < ring.baseRadius)).toBe(true)
+    expect(featureBands(plain).every(b => b.radius > plain.baseRadius)).toBe(true)
+  })
+
+  it('names every site outside the circle, with its position beside it', () => {
+    const s = build('sites-outside')
+    const texts = s.items.filter((i): i is Text => i.kind === 'text')
+    for (const site of sites) {
+      const name = texts.find(t => t.text === site.label)
+      expect(name).toBeDefined()
+      expect(at(s, name!.x, name!.y)).toBeGreaterThan(s.baseRadius)
+      const pos = texts.find(t => t.text === `(${(site.cutPos + 1).toLocaleString()})` && t.y === name!.y)
+      expect(pos).toBeDefined()
+      // The name is the end nearer the circle, the position the outer end.
+      expect(at(s, pos!.x, pos!.y)).toBeGreaterThan(at(s, name!.x, name!.y))
+    }
+  })
+
+  it('keeps the ruler numbers inside the backbone and no site names inside', () => {
+    const s = build('sites-outside')
+    const turned = s.items.filter((i): i is Text => i.kind === 'text' && i.rotate !== undefined)
+    expect(turned.length).toBeGreaterThan(0)
+    for (const t of turned) {
+      expect(/^[\d.,]+$/.test(t.text)).toBe(true)
+      expect(at(s, t.x, t.y)).toBeLessThan(s.baseRadius)
+    }
+  })
+
+  it('writes a name that does not fit its arrow curved, inside the ring', () => {
+    const s = build('sites-outside')
+    const name = s.items.find((i): i is Curved => i.kind === 'curvedText' && i.text === 'a promoter')
+    expect(name).toBeDefined()
+    const arc = s.items.find((i): i is Band => i.kind === 'arcBand' && i.fill === features[2].color)!
+    expect(name!.radius).toBeLessThan(arc.radius)
+  })
+
+  it('leaves the leaders uncrossed and every name on the map', () => {
+    const many = Array.from({ length: 24 }, (_, i) => ({
+      key: `E${i}`, label: `Enzyme${i}`, cutPos: Math.round((i * 2686) / 24 + (i % 3) * 7), methEffect: null,
+    }))
+    for (const [w, h] of [[600, undefined], [900, 600]] as const) {
+      const s = buildPlasmidScene(input({ size: w, height: h, enzymeGroups: many, layout: 'sites-outside' }))
+      const texts = s.items.filter((i): i is Text => i.kind === 'text' && i.rotate === undefined && i.align !== 'center')
+      for (const t of texts) {
+        const wid = measure(t.text, t.font)
+        const x1 = t.align === 'right' ? t.x - wid : t.x
+        expect(x1).toBeGreaterThanOrEqual(0)
+        expect(x1 + wid).toBeLessThanOrEqual(w)
+        expect(t.y).toBeGreaterThanOrEqual(0)
+        expect(t.y).toBeLessThanOrEqual(h ?? w)
+      }
+      expect(openCrossings(s.items)).toBe(0)
+    }
+  })
+})
+
+/** Leader crossings more than 24 px from where both leaders start. */
+function openCrossings(items: SceneItem[]): number {
+  type Line = Extract<SceneItem, { kind: 'line' }>
+  const segs = items.filter((i): i is Line => i.kind === 'line' && i.width === 0.75 && Math.hypot(i.x2 - i.x1, i.y2 - i.y1) >= 3)
+  const starts: { x: number; y: number }[] = []
+  segs.forEach((s, i) => {
+    const prev = segs[i - 1]
+    starts.push(prev && prev.x2 === s.x1 && prev.y2 === s.y1 ? starts[i - 1] : { x: s.x1, y: s.y1 })
+  })
+  const side = (ax: number, ay: number, bx: number, by: number, px: number, py: number) =>
+    (bx - ax) * (py - ay) - (by - ay) * (px - ax)
+  let n = 0
+  for (let i = 0; i < segs.length; i++) {
+    for (let j = i + 1; j < segs.length; j++) {
+      const a = segs[i], b = segs[j]
+      const s1 = side(a.x1, a.y1, a.x2, a.y2, b.x1, b.y1)
+      const s2 = side(a.x1, a.y1, a.x2, a.y2, b.x2, b.y2)
+      if (!(s1 * s2 < -1e-6 && side(b.x1, b.y1, b.x2, b.y2, a.x1, a.y1) * side(b.x1, b.y1, b.x2, b.y2, a.x2, a.y2) < -1e-6)) continue
+      const t = s1 / (s1 - s2)
+      const px = b.x1 + (b.x2 - b.x1) * t
+      const py = b.y1 + (b.y2 - b.y1) * t
+      if (Math.hypot(px - starts[i].x, py - starts[i].y) >= 24 && Math.hypot(px - starts[j].x, py - starts[j].y) >= 24) n++
+    }
+  }
+  return n
+}
+
+describe('a crowded spot inside the ring layout', () => {
+  type Curved = Extract<SceneItem, { kind: 'curvedText' }>
+  // Five small features side by side on one ring, too short for their names
+  // to fit in their arrows, of different lengths.
+  const bunch = [
+    ann(500, 512, 'f1', 'twelve bp feature'),
+    ann(513, 533, 'f2', 'twenty bp feature'),
+    ann(534, 564, 'f3', 'thirty bp feature'),
+    ann(565, 605, 'f4', 'forty bp feature'),
+    ann(606, 656, 'f5', 'fifty bp feature'),
+  ]
+  const names = (hovered: string | null = null) =>
+    buildPlasmidScene(input({ rings: stackAnnotations(bunch), layout: 'sites-outside', hoveredAnnotationId: hovered }))
+      .items.filter((i): i is Curved => i.kind === 'curvedText').map(i => i.text)
+
+  it('names at most two of them', () => {
+    expect(names().filter(n => n.endsWith('feature'))).toHaveLength(2)
+  })
+
+  it('keeps the names of the largest and leaves off the smallest', () => {
+    const shown = names()
+    expect(shown).toContain('fifty bp feature')
+    expect(shown).toContain('forty bp feature')
+    expect(shown).not.toContain('twelve bp feature')
+  })
+
+  it('always shows the one under the pointer', () => {
+    expect(names('f1')).toContain('twelve bp feature')
   })
 })

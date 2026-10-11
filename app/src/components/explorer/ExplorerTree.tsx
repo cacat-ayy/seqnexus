@@ -255,7 +255,14 @@ export default function ExplorerTree({
       // Tab reaches the tree and the arrow keys take over from there.
       tabIndex={focusIndex < 0 ? 0 : -1}
       onKeyDown={onKeyDown}
-      onFocus={e => { if (e.target === e.currentTarget && focusIndex < 0) onFocusIndex(0) }}
+      onFocus={e => {
+        if (e.target === e.currentTarget) { if (focusIndex < 0) onFocusIndex(0); return }
+        // A row focused by a click becomes the keyboard cursor, so Delete, F2
+        // and the arrows act on the row that was clicked.
+        const row = (e.target as HTMLElement).closest<HTMLElement>('[data-index]')
+        const index = row ? Number(row.dataset.index) : -1
+        if (index >= 0 && index !== focusIndex) onFocusIndex(index)
+      }}
       onScroll={e => setScrollTop(e.currentTarget.scrollTop)}
       onDragOver={e => {
         if (!isInternal(e)) return

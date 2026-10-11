@@ -39,7 +39,7 @@ import type { ProteinSchemeId } from './utils/residue-colors'
 import type { PkaSetId } from './protein/properties'
 import { codingLength, residuesToDna, translationDocument, translationSource, type TranslationRequest } from './protein/link'
 import { loadDisplaySettings, saveDisplaySettings, type DisplaySettings } from './utils/display-settings'
-import type { PlasmidStyleId } from './plasmid/styles'
+import type { PlasmidLayout, PlasmidStyleId } from './plasmid/styles'
 import type { Ab1Data } from './io/ab1'
 import type { CutSite } from './enzymes/finder'
 import { DEFAULT_SUBSET, freeSetName, setKey, type EnzymeSet } from './enzymes/sets'
@@ -589,6 +589,9 @@ interface EditorStore {
   toggleAnnotationTracks: () => void
   plasmidStyle: PlasmidStyleId
   setPlasmidStyle: (id: PlasmidStyleId) => void
+  /** Features round the ring with sites inside, or features inside with sites outside. */
+  plasmidLayout: PlasmidLayout
+  setPlasmidLayout: (layout: PlasmidLayout) => void
   showGcRing: boolean
   toggleGcRing: () => void
   showPlasmidLegend: boolean
@@ -1371,6 +1374,7 @@ function displaySnapshot(s: EditorStore): DisplaySettings {
     showComplement: s.showComplement,
     showAnnotationTracks: s.showAnnotationTracks,
     plasmidStyle: s.plasmidStyle,
+    plasmidLayout: s.plasmidLayout,
     showGcRing: s.showGcRing,
     showPlasmidLegend: s.showPlasmidLegend,
     showTranslation: s.showTranslation,
@@ -1766,6 +1770,7 @@ export const useEditorStore = create<EditorStore>((set, get) => {
         showComplement: initial.showComplement,
         showAnnotationTracks: initial.showAnnotationTracks,
         plasmidStyle: initial.plasmidStyle,
+        plasmidLayout: initial.plasmidLayout,
         showGcRing: initial.showGcRing,
         showPlasmidLegend: initial.showPlasmidLegend,
         showTranslation: initial.showTranslation,
@@ -1819,6 +1824,10 @@ export const useEditorStore = create<EditorStore>((set, get) => {
         setPlasmidStyle: (id: PlasmidStyleId) => {
           set({ plasmidStyle: id })
           persist({ plasmidStyle: id })
+        },
+        setPlasmidLayout: (layout: PlasmidLayout) => {
+          set({ plasmidLayout: layout })
+          persist({ plasmidLayout: layout })
         },
         toggleGcRing: () => {
           const next = !get().showGcRing
@@ -3985,7 +3994,9 @@ export const useEditorStore = create<EditorStore>((set, get) => {
         set({
           tabs,
           activeCloneId: id,
-          cloneReturnTabId: outgoing ?? s.cloneReturnTabId,
+          // Coming from a gel, the tab to go back to is the one the gel was
+          // opened from.
+          cloneReturnTabId: outgoing ?? (s.activeGelId ? s.gelReturnTabId : null) ?? s.cloneReturnTabId,
           activeTabId: null,
           activeSequencingReadIds: [],
           activeAlignmentId: null,
@@ -4085,20 +4096,25 @@ export const useEditorStore = create<EditorStore>((set, get) => {
         set({
           tabs,
           activeGelId: id,
-          gelReturnTabId: outgoing ?? s.gelReturnTabId,
+          // Coming from a cloning design, the tab to go back to is the one
+          // the design was opened from.
+          gelReturnTabId: outgoing ?? (s.activeCloneId ? s.cloneReturnTabId : null) ?? s.gelReturnTabId,
           activeTabId: null,
           activeSequencingReadIds: [],
           activeAlignmentId: null,
           activeContigId: null,
           activeAssemblyId: null,
           activeReadSetId: null,
+          // The cloning workspace is drawn ahead of the gel, so a design left
+          // open would hide the gel just opened.
+          activeCloneId: null,
         })
         return
       }
       set({ activeGelId: null })
       const back = s.gelReturnTabId
       const nothingElseOpen = !s.activeTabId && !s.activeAlignmentId && !s.activeContigId && !s.activeAssemblyId && !s.activeReadSetId
-        && s.activeSequencingReadIds.length === 0
+        && !s.activeCloneId && s.activeSequencingReadIds.length === 0
       if (nothingElseOpen && back && s.tabs.some(t => t.id === back)) get().setActiveTab(back)
     },
 

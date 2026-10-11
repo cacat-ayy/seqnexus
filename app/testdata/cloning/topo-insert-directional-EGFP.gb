@@ -1,0 +1,22 @@
+LOCUS       EGFP_(directional_insert)     733 bp    ds-DNA     linear   11-OCT-2026
+DEFINITION  PCR product with a 5' CACC clamp, for Directional TOPO cloning.
+FEATURES             Location/Qualifiers
+     misc_feature    1..4
+                     /label="CACC clamp"
+     CDS             5..730
+                     /label="EGFP"
+ORIGIN
+        1 caccatgtct agagtgagca agggcgagga gctgttcacc ggggtggtgc ccatcctggt
+       61 cgagctggac ggcgacgtaa acggccacaa gttcagcgtg tccggcgagg gcgagggcga
+      121 tgccacctac ggcaagctga ccctgaagtt catctgcacc accggcaagc tgcccgtgcc
+      181 ctggcccacc ctcgtgacca ccctgaccta cggcgtgcag tgcttcagcc gctaccccga
+      241 ccacatgaag cagcacgact tcttcaagtc cgccatgccc gaaggctacg tccaggagag
+      301 aaccatcttc ttcaaggacg acggcaacta caagacccgc gccgaggtga agttcgaggg
+      361 cgacaccctg gtgaaccgca tcgagctgaa gggcatcgac ttcaaggagg acggcaacat
+      421 cctggggcac aagctggagt acaactacaa cagccacaac gtctatatca tggccgacaa
+      481 gcagaagaac ggcatcaagg tgaacttcaa gatccgccac aacatcgagg acggcagcgt
+      541 gcagctcgcc gaccactacc agcagaacac ccccatcggc gacggccccg tgctgctgcc
+      601 cgacaaccac tacctgagca cccagtccgc cctgagcaaa gaccccaacg agaagcgcga
+      661 tcacatggtc ctgctggagt tcgtgaccgc cgccgggatc actctcggca tggacgagct
+      721 gtacaagtaa taa
+//
