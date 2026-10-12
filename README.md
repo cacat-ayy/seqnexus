@@ -1,10 +1,22 @@
 # SeqNexus
 
-A browser-based molecular biology sequence editor. Renders DNA sequences using
-Canvas 2D with annotation display, selection, inline editing, and zoom. Designed
-for genome-scale sequences; tested up to around 5 Mb, which is a limit of what
-has been exercised rather than of the data structures. Builds to a single
-self-contained HTML file.
+A molecular biology bench that runs in a browser tab. Open a plasmid, read a
+chromatogram, plan a cloning strategy, design primers and guides, align, map
+NGS reads and call variants, all computed on your own machine: there is no
+server, no account and no installation, and nothing you open leaves your
+device. It is free and open source (AGPL v3), and it reads and writes the
+files a lab already has: GenBank, FASTA, FASTQ, SnapGene, Geneious, AB1, SAM
+and BAM.
+
+Use it at [seqnexus.app](https://seqnexus.app). The editor is a single
+self-contained HTML file that keeps working offline once loaded, and handles
+sequences from a short oligo to a bacterial genome (tested to around 5 Mb).
+
+This README is the technical documentation: how the editor is built, and for
+every tool the algorithm, its parameters and defaults, the simplifications
+it makes, and the papers it follows. The
+[feature overview](https://seqnexus.app/features.html) on the site is the
+short version.
 
 ## Contents
 

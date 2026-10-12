@@ -1,0 +1,463 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Features: everything in SeqNexus</title>
+<meta name="description" content="Every tool in SeqNexus, with screenshots: sequence editor, plasmid map, annotation, proteins, primers, codon optimization, CRISPR, cloning, restriction analysis, virtual gel, alignment, BLAST, Sanger and NGS.">
+<meta name="author" content="Christopher Acatay">
+<meta name="theme-color" content="#0b5f58">
+<link rel="canonical" href="https://seqnexus.app/features.html">
+
+<meta property="og:type" content="website">
+<meta property="og:url" content="https://seqnexus.app/features.html">
+<meta property="og:title" content="Features: everything in SeqNexus">
+<meta property="og:description" content="Every tool in SeqNexus, with screenshots. Free, open source, and computed in your browser.">
+<meta property="og:image" content="https://seqnexus.app/og-image.png">
+<meta property="og:site_name" content="SeqNexus">
+<meta name="twitter:card" content="summary_large_image">
+
+<link rel="icon" href="assets/favicon.svg" type="image/svg+xml">
+<link rel="icon" href="assets/favicon-48x48.png" sizes="48x48" type="image/png">
+<link rel="icon" href="assets/favicon-96x96.png" sizes="96x96" type="image/png">
+<link rel="icon" href="assets/favicon-144x144.png" sizes="144x144" type="image/png">
+<link rel="icon" href="assets/favicon-192x192.png" sizes="192x192" type="image/png">
+<link rel="apple-touch-icon" href="assets/favicon-192x192.png">
+
+<script>
+// Apply the stored theme before first paint. Must stay inline and in <head>.
+(function () {
+  try {
+    var stored = localStorage.getItem('seqnexus-landing-dark');
+    var dark = stored !== null
+      ? stored === '1'
+      : window.matchMedia('(prefers-color-scheme: dark)').matches;
+    if (dark) document.documentElement.classList.add('dark');
+  } catch (e) {
+    // localStorage blocked, so stay on light.
+  }
+})();
+</script>
+
+<link rel="stylesheet" href="site.css">
+</head>
+<body>
+
+<header class="masthead">
+  <div class="masthead-inner">
+    <a class="brand" href="index.html">
+      <svg width="22" height="22" viewBox="-2 -2 28 28" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <circle cx="12" cy="12" r="13" stroke-width="1.5"/>
+        <g stroke-width="2">
+          <path d="m10 16 1.5 1.5"/><path d="m14 8-1.5-1.5"/>
+          <path d="M15 2c-1.798 1.998-2.518 3.995-2.807 5.993"/>
+          <path d="m16.5 10.5 1 1"/><path d="m17 6-2.891-2.891"/>
+          <path d="M2 15c6.667-6 13.333 0 20-6"/><path d="m20 9 .891.891"/>
+          <path d="M3.109 14.109 4 15"/><path d="m6.5 12.5 1 1"/>
+          <path d="m7 18 2.891 2.891"/>
+          <path d="M9 22c1.798-1.998 2.518-3.995 2.807-5.993"/>
+        </g>
+      </svg>
+      SeqNexus
+    </a>
+    <nav aria-label="Primary">
+      <a href="index.html">Overview</a>
+      <a class="hide-sm" href="features.html" aria-current="page">Features</a>
+      <a class="hide-sm" href="index.html#formats">Formats</a>
+      <a class="hide-sm" href="https://github.com/cacat-ayy/seqnexus">Source</a>
+      <a class="btn btn-small" href="app.html">Open the editor</a>
+      <button class="theme-toggle" id="theme-toggle" type="button" aria-label="Toggle dark mode" aria-pressed="false">
+        <svg class="icon-sun" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="5"/><path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/></svg>
+        <svg class="icon-moon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+      </button>
+    </nav>
+  </div>
+</header>
+
+<main>
+
+  <section class="page-head">
+    <div class="wrap">
+      <p class="label"><a class="back" href="index.html">&larr; Overview</a></p>
+      <h1 style="margin-top:14px">Everything in the bench.</h1>
+      <p class="lede">Every tool in SeqNexus, grouped by what you are doing with it. All of it is free, open source, and computed in your browser. The <a class="link" href="https://github.com/cacat-ayy/seqnexus#readme">README</a> has the algorithms, parameters and references behind each one.</p>
+    </div>
+  </section>
+
+  <div class="wrap feat-layout">
+
+    <aside class="toc" aria-label="Contents">
+      <p class="label group">A &middot; Sequences</p>
+      <ol>
+        <li><a href="#editor">Sequence editor</a></li>
+        <li><a href="#map">Plasmid map</a></li>
+        <li><a href="#annotation">Annotation</a></li>
+        <li><a href="#find">Find and ORFs</a></li>
+        <li><a href="#proteins">Proteins</a></li>
+      </ol>
+      <p class="label group">B &middot; Design</p>
+      <ol>
+        <li><a href="#primers">Primers</a></li>
+        <li><a href="#codon">Codon optimization</a></li>
+        <li><a href="#crispr">CRISPR guides</a></li>
+        <li><a href="#cloning">Cloning</a></li>
+      </ol>
+      <p class="label group">C &middot; Analysis</p>
+      <ol>
+        <li><a href="#enzymes">Restriction analysis</a></li>
+        <li><a href="#gel">Virtual gel</a></li>
+        <li><a href="#alignment">Alignment</a></li>
+        <li><a href="#blast">BLAST</a></li>
+      </ol>
+      <p class="label group">D &middot; Reads</p>
+      <ol>
+        <li><a href="#sanger">Sanger</a></li>
+        <li><a href="#ngs">NGS read sets</a></li>
+        <li><a href="#mapping">Mapping and assembly</a></li>
+      </ol>
+      <p class="label group">E &middot; In and out</p>
+      <ol>
+        <li><a href="#formats">Files and fetching</a></li>
+        <li><a href="#figures">Figures and PDF</a></li>
+      </ol>
+    </aside>
+
+    <div class="feat-list">
+
+      <!-- ================================================================ -->
+      <section class="feat-group" id="sequences">
+        <p class="label"><span class="num">A</span>Sequences</p>
+
+        <article class="feat" id="editor">
+          <div class="feat-head">
+            <h2>A sequence editor built for long sequences.</h2>
+            <p>DNA and protein in a canvas-rendered view that stays quick from a 20 bp oligo to a bacterial genome. Type, paste and delete in place, select several ranges at once, and read the translation, the complement and the melting temperature of whatever is selected.</p>
+          </div>
+          <figure class="shot" data-file="assets/features/editor.png">
+            <img src="assets/features/editor.png" data-light="assets/features/editor.png" data-dark="assets/features/editor-dark.png" alt="The sequence editor with features, translation and a selection" width="1440" height="900" loading="lazy" onerror="shotError(this)">
+          </figure>
+          <ul class="detail">
+            <li><b>Genome scale.</b> Tested to around 5 Mb; the canvas draws only what is on screen.</li>
+            <li><b>Three zoom modes.</b> Line, dots and letters across 21 levels, with linear, circular and split views.</li>
+            <li><b>Several ranges at once.</b> Ctrl-drag or Ctrl-click features; touching ranges merge and are copied, translated and annotated joined, as exons are.</li>
+            <li><b>Inline editing with undo.</b> Insert, replace and delete in place; features move with the sequence.</li>
+            <li><b>Command palette and shortcuts.</b> Every action reachable from the keyboard.</li>
+            <li><b>Ten themes.</b> Five light and five dark, with the sequence colours adjusted for each.</li>
+          </ul>
+        </article>
+
+        <article class="feat" id="map">
+          <div class="feat-head">
+            <h2>A plasmid map that keeps its names on the map.</h2>
+            <p>One scene drawn by two renderers: a canvas on screen and SVG or PDF on export, so the figure matches what you saw. Features, cut sites, ORFs and graph tracks sit on rings around the sequence, and the labels are placed so they never cross.</p>
+          </div>
+          <figure class="shot" data-file="assets/features/map.png">
+            <img src="assets/features/map.png" data-light="assets/features/map.png" data-dark="assets/features/map-dark.png" alt="A circular plasmid map with features, cut sites and labels" width="1440" height="900" loading="lazy" onerror="shotError(this)">
+          </figure>
+          <ul class="detail">
+            <li><b>Two layouts.</b> Names inside the ring, or features inside and every cut site named outside with its position.</li>
+            <li><b>Crowded spots stay readable.</b> A run of nearby sites is listed beside the circle with its leaders kept apart.</li>
+            <li><b>Rings and tracks.</b> Enzyme sites, ORFs, GC content and coverage as extra rings.</li>
+            <li><b>Work on the map.</b> Click a feature to select it, drag to select a range, right-click for the same actions as in the sequence.</li>
+          </ul>
+        </article>
+
+        <article class="feat" id="annotation">
+          <div class="feat-head">
+            <h2>Annotation that knows what a plasmid is made of.</h2>
+            <p>A feature panel grouped by type or sorted by position, with a filter that takes <code>type:</code>, <code>len&gt;</code> and <code>strand:</code> terms. Auto-annotation scans the sequence against a built-in library of origins, resistance genes, promoters, tags and other common parts and proposes what it finds.</p>
+          </div>
+          <figure class="shot" data-file="assets/features/annotation.png">
+            <img src="assets/features/annotation.png" data-light="assets/features/annotation.png" data-dark="assets/features/annotation-dark.png" alt="The feature panel beside the sequence with auto-annotation proposals" width="1440" height="900" loading="lazy" onerror="shotError(this)">
+          </figure>
+          <ul class="detail">
+            <li><b>CDS checks.</b> Every coding feature is checked for its frame, start and stop, and the problems are shown next to it.</li>
+            <li><b>Joined features.</b> Exons and other split features are one feature with several ranges, as GenBank writes them.</li>
+            <li><b>Follows the sequence.</b> The panel scrolls with the selection and the sequence scrolls with the panel.</li>
+            <li><b>Built-in library.</b> Hundreds of plasmid parts and protein tags, with the other versions of a part kept under their own names.</li>
+          </ul>
+        </article>
+
+        <article class="feat" id="find">
+          <div class="feat-head">
+            <h2>Find anything, in either alphabet, on either strand.</h2>
+            <p>Nucleotide search with IUPAC codes, mismatches and regular expressions; protein search translated in all six frames; and replace. The six-frame ORF finder takes its start codons and minimum length from you and turns the ORFs it finds into features.</p>
+          </div>
+          <figure class="shot" data-file="assets/features/find.png">
+            <img src="assets/features/find.png" data-light="assets/features/find.png" data-dark="assets/features/find-dark.png" alt="The find panel with a list of hits and the ORF finder" width="1440" height="900" loading="lazy" onerror="shotError(this)">
+          </figure>
+          <ul class="detail">
+            <li><b>Hits in context.</b> A list with strand, overlapping feature and flanking sequence; click to jump.</li>
+            <li><b>Up to three mismatches.</b> For primers and probes that do not match exactly.</li>
+            <li><b>ORFs as features.</b> Keep the ones you want; the rest disappear when you close the finder.</li>
+          </ul>
+        </article>
+
+        <article class="feat" id="proteins">
+          <div class="feat-head">
+            <h2>Proteins as documents of their own.</h2>
+            <p>FASTA and GenPept in and out, the same viewer with residue colour schemes, and everything a protein sequence can tell you: mass, pI and charge, extinction coefficient, domains and motifs, disulfides, cleavage sites, a predicted SDS-PAGE band, secondary structure, and the 3D structure from the PDB.</p>
+          </div>
+          <figure class="shot" data-file="assets/features/proteins.png">
+            <img src="assets/features/proteins.png" data-light="assets/features/proteins.png" data-dark="assets/features/proteins-dark.png" alt="A protein with its domain map, properties and 3D structure" width="1440" height="900" loading="lazy" onerror="shotError(this)">
+          </figure>
+          <ul class="detail">
+            <li><b>Linked to its codons.</b> Translate a coding feature and the protein stays linked back to the DNA.</li>
+            <li><b>Back-translation.</b> To a host's codon usage, with the result annotated.</li>
+            <li><b>UniProt and NCBI import.</b> With features, variants and cross-references.</li>
+            <li><b>3D structure.</b> PDB and AlphaFold models rendered with 3Dmol.js, coloured by the selection in the sequence.</li>
+          </ul>
+        </article>
+      </section>
+
+      <!-- ================================================================ -->
+      <section class="feat-group" id="design">
+        <p class="label"><span class="num">B</span>Design</p>
+
+        <article class="feat" id="primers">
+          <div class="feat-head">
+            <h2>Primers with the thermodynamics shown, not hidden.</h2>
+            <p>A docked design workbench with a candidate track, a per-primer inspector and live pair checks. Melting temperatures come from the nearest-neighbour model with salt and oligo corrections; hairpins and dimers are scored by their own Tm, so you can see why a candidate was rejected.</p>
+          </div>
+          <figure class="shot" data-file="assets/features/primers.png">
+            <img src="assets/features/primers.png" data-light="assets/features/primers.png" data-dark="assets/features/primers-dark.png" alt="The primer design workbench with candidates and pair checks" width="1440" height="900" loading="lazy" onerror="shotError(this)">
+          </figure>
+          <ul class="detail">
+            <li><b>Primers as oligos.</b> With 5' and 3' overhangs and mismatches; binding sites are found automatically on every sequence.</li>
+            <li><b>Pair search.</b> Product size, Tm difference and heterodimer limits you set.</li>
+            <li><b>Primer library.</b> Keep the ones you own and find where they bind.</li>
+            <li><b>Tm on selection.</b> Select any stretch and read its Tm in the tooltip.</li>
+          </ul>
+        </article>
+
+        <article class="feat" id="codon">
+          <div class="feat-head">
+            <h2>Codon optimization under the constraints you set.</h2>
+            <p>Nineteen genetic codes and host usage tables, built in or imported from EMBOSS cusp and GCG CodonFrequency. Avoid restriction sites, homopolymers, repeats and GC extremes while the protein stays exactly as it was, and read the CAI and GC profile before and after.</p>
+          </div>
+          <figure class="shot" data-file="assets/features/codon.png">
+            <img src="assets/features/codon.png" data-light="assets/features/codon.png" data-dark="assets/features/codon-dark.png" alt="The codon optimization dialog with constraints and metrics" width="1440" height="900" loading="lazy" onerror="shotError(this)">
+          </figure>
+          <ul class="detail">
+            <li><b>Greedy with backtracking.</b> Keeps the best codon wherever it can and steps back only where a constraint forces it.</li>
+            <li><b>Applied as an edit.</b> The optimized sequence replaces the coding feature in place, with undo.</li>
+          </ul>
+        </article>
+
+        <article class="feat" id="crispr">
+          <div class="feat-head">
+            <h2>Guide design from the cut to the readout.</h2>
+            <p>Protospacers for a dozen nucleases or one you describe yourself, scored in three separate columns: activity, the repair the break is likely to get, and the rules a spacer has to pass. Off-targets with mismatches and bulges over any sequence you name. Tasks for knocking out, deleting, knocking in, base editing and prime editing.</p>
+          </div>
+          <figure class="shot" data-file="assets/features/crispr.png">
+            <img src="assets/features/crispr.png" data-light="assets/features/crispr.png" data-dark="assets/features/crispr-dark.png" alt="The CRISPR guide designer with scored guides and the PAM and cut drawn on the sequence" width="1440" height="900" loading="lazy" onerror="shotError(this)">
+          </figure>
+          <ul class="detail">
+            <li><b>Drawn on the sequence.</b> Every guide with its PAM and cut site; the sequence view shows them in place.</li>
+            <li><b>Donors that stay cut-proof.</b> Knock-in donors are edited so the nuclease cannot cut them again.</li>
+            <li><b>Oligos to order.</b> With every added base marked, a screening amplicon and the enzyme that reads it out.</li>
+            <li><b>Read the edit back.</b> Take an edited chromatogram apart against its control, or count alleles in amplicon reads.</li>
+            <li><b>Guide library.</b> Keep the guides you use and find them on other sequences.</li>
+          </ul>
+        </article>
+
+        <article class="feat" id="cloning">
+          <div class="feat-head">
+            <h2>Cloning on real maps, with the product you will actually get.</h2>
+            <p>Each part is shown on its own plasmid map; click the sites to cut it and the reaction strip shows what goes into the ligation. Seamless assembly (HiFi, Gibson, In-Fusion, SLIC), Golden Gate with overhang fidelity, Gateway and TOPO follow the same path. The product keeps the vector's numbering and carries every feature across.</p>
+          </div>
+          <figure class="shot" data-file="assets/features/cloning.png">
+            <img src="assets/features/cloning.png" data-light="assets/features/cloning.png" data-dark="assets/features/cloning-dark.png" alt="The cloning workspace with a vector and an insert map and the reaction strip" width="1440" height="900" loading="lazy" onerror="shotError(this)">
+          </figure>
+          <ul class="detail">
+            <li><b>Ends and methylation.</b> Compatible ends are checked, and sites blocked by Dam, Dcm or CpG methylation are marked.</li>
+            <li><b>Oligos to order.</b> Primers with homology arms or Golden Gate flanks for every part that needs them.</li>
+            <li><b>Junctions and verification.</b> Each junction read out, and a diagnostic digest that tells the right clone from the wrong ones on the virtual gel.</li>
+            <li><b>Combinatorial libraries.</b> Several parts per slot give every product at once.</li>
+          </ul>
+        </article>
+      </section>
+
+      <!-- ================================================================ -->
+      <section class="feat-group" id="analysis">
+        <p class="label"><span class="num">C</span>Analysis</p>
+
+        <article class="feat" id="enzymes">
+          <div class="feat-head">
+            <h2>Restriction analysis across the REBASE set.</h2>
+            <p>Hundreds of enzymes with their sites, overhangs, methylation sensitivity and suppliers. Filter by cut count, overhang type and commercial availability, keep sets of the enzymes you own, and see every site drawn in the sequence view and on the map.</p>
+          </div>
+          <figure class="shot" data-file="assets/features/enzymes.png">
+            <img src="assets/features/enzymes.png" data-light="assets/features/enzymes.png" data-dark="assets/features/enzymes-dark.png" alt="The enzyme dialog with filters, and cut sites drawn in the sequence" width="1440" height="900" loading="lazy" onerror="shotError(this)">
+          </figure>
+          <ul class="detail">
+            <li><b>Sites in the sequence.</b> Per-line name rows, cut steps on both strands, and hover linking between the site and its name.</li>
+            <li><b>Saved enzyme sets.</b> Your freezer, as a filter.</li>
+          </ul>
+        </article>
+
+        <article class="feat" id="gel">
+          <div class="feat-head">
+            <h2>A virtual gel that migrates like a real one.</h2>
+            <p>Lanes from digests, PCR products and whole plasmids, run against the ladder you use on a migration model fitted to real gels. Bands carry their size and the fragment behind them, and the diagnostic digest designer finds the enzymes that tell your clones apart.</p>
+          </div>
+          <figure class="shot" data-file="assets/features/gel.png">
+            <img src="assets/features/gel.png" data-light="assets/features/gel.png" data-dark="assets/features/gel-dark.png" alt="A virtual agarose gel with a ladder and several digest lanes" width="1440" height="900" loading="lazy" onerror="shotError(this)">
+          </figure>
+          <ul class="detail">
+            <li><b>Ladders.</b> Common commercial ladders built in; add your own.</li>
+            <li><b>Looks and export.</b> Agarose percentage, stain and exposure; export as SVG or PNG for a figure.</li>
+          </ul>
+        </article>
+
+        <article class="feat" id="alignment">
+          <div class="feat-head">
+            <h2>Alignment with the real tools, running in the browser.</h2>
+            <p>Pairwise global and local alignment with the built-in aligner, and multiple alignment with MAFFT, MUSCLE and Kalign compiled to WebAssembly. The viewer shows conservation, lets you edit gaps, add sequences and realign, and exports Clustal, PHYLIP, NEXUS and figures.</p>
+          </div>
+          <figure class="shot" data-file="assets/features/alignment.png">
+            <img src="assets/features/alignment.png" data-light="assets/features/alignment.png" data-dark="assets/features/alignment-dark.png" alt="A multiple sequence alignment with conservation shading" width="1440" height="900" loading="lazy" onerror="shotError(this)">
+          </figure>
+          <ul class="detail">
+            <li><b>Automatic engine choice.</b> The built-in aligner for two sequences, MAFFT L-INS-i when it will finish within seconds, Kalign otherwise, with a warning before a long run.</li>
+            <li><b>Every row checked.</b> A tool that dropped or changed a residue cannot slip a wrong alignment through.</li>
+            <li><b>Hirschberg above a size limit.</b> Long pairwise alignments run in linear memory.</li>
+          </ul>
+        </article>
+
+        <article class="feat" id="blast">
+          <div class="feat-head">
+            <h2>BLAST from inside the editor, kept with the sequence.</h2>
+            <p>Search NCBI nucleotide and protein databases from the sequence or from a selection. Results are polled in the background, stored with the sequence so you can come back to them, filtered and sorted in a drawer under the view, and exported as a table.</p>
+          </div>
+          <figure class="shot" data-file="assets/features/blast.png">
+            <img src="assets/features/blast.png" data-light="assets/features/blast.png" data-dark="assets/features/blast-dark.png" alt="BLAST results in a drawer under the sequence" width="1440" height="900" loading="lazy" onerror="shotError(this)">
+          </figure>
+          <ul class="detail">
+            <li><b>blastp from a CDS.</b> Translate a coding feature and search with the protein.</li>
+            <li><b>Hits as features.</b> Keep a hit as an annotation, or fetch the hit sequence into the session.</li>
+          </ul>
+        </article>
+      </section>
+
+      <!-- ================================================================ -->
+      <section class="feat-group" id="reads">
+        <p class="label"><span class="num">D</span>Reads</p>
+
+        <article class="feat" id="sanger">
+          <div class="feat-head">
+            <h2>Sanger reads from the trace to the verified clone.</h2>
+            <p>AB1 and SCF chromatograms with quality scores, base editing and trimming. Assemble reads de novo or against a reference into contigs, and verify a whole plate of clones against several references at once, with every mismatch named.</p>
+          </div>
+          <figure class="shot" data-file="assets/features/sanger.png">
+            <img src="assets/features/sanger.png" data-light="assets/features/sanger.png" data-dark="assets/features/sanger-dark.png" alt="A Sanger assembly with chromatogram traces aligned to the reference" width="1440" height="900" loading="lazy" onerror="shotError(this)">
+          </figure>
+          <ul class="detail">
+            <li><b>Assemblies and contigs.</b> Reads grouped by name into contigs with the consensus and the trace under each base.</li>
+            <li><b>Plates of clones.</b> One page per plate, with each clone's verdict against its reference.</li>
+            <li><b>Overview figures.</b> Coverage and agreement across the construct, exported for the lab book.</li>
+          </ul>
+        </article>
+
+        <article class="feat" id="ngs">
+          <div class="feat-head">
+            <h2>NGS read sets, with the QC report built in.</h2>
+            <p>Import FASTQ and gzipped FASTQ with R1 and R2 paired automatically. A FastQC-style quality report with per-base quality, content, duplication and adapter charts and verdicts, then trimming and filtering with fastp in WebAssembly, and export of the result.</p>
+          </div>
+          <figure class="shot" data-file="assets/features/ngs.png">
+            <img src="assets/features/ngs.png" data-light="assets/features/ngs.png" data-dark="assets/features/ngs-dark.png" alt="The quality report for a read set with per-base quality charts" width="1440" height="900" loading="lazy" onerror="shotError(this)">
+          </figure>
+          <ul class="detail">
+            <li><b>Stored, not re-read.</b> Read sets are kept in the browser's database, indexed for the viewer.</li>
+            <li><b>Verdicts, not just charts.</b> Each QC module says pass, warn or fail and why.</li>
+          </ul>
+        </article>
+
+        <article class="feat" id="mapping">
+          <div class="feat-head">
+            <h2>Mapping, variants and de novo assembly, on your laptop.</h2>
+            <p>Map reads to a reference with minimap2, or assemble them first and map back. View a mapping from the whole genome down to single bases: coverage, reads coloured by strand or pair, soft-clip junctions. Call variants with live thresholds and technology presets, and read what each one does to every coding feature it falls in.</p>
+          </div>
+          <figure class="shot" data-file="assets/features/mapping.png">
+            <img src="assets/features/mapping.png" data-light="assets/features/mapping.png" data-dark="assets/features/mapping-dark.png" alt="A read mapping with coverage track, reads and called variants" width="1440" height="900" loading="lazy" onerror="shotError(this)">
+          </figure>
+          <ul class="detail">
+            <li><b>Coding effects as HGVS names them.</b> Spliced CDSs read through their exons, frameshifts followed to their new stop, lost stops read on to the next one.</li>
+            <li><b>Several samples per mapping.</b> A samples by variants matrix and clone verification per sample.</li>
+            <li><b>Amplicons.</b> Primer clipping so primer bases do not count as evidence.</li>
+            <li><b>Guided pipeline.</b> From FASTQ to consensus and VCF in one pass, with each step's result kept.</li>
+            <li><b>BAM in and out.</b> Mappings imported from and written to BAM with their index.</li>
+          </ul>
+        </article>
+      </section>
+
+      <!-- ================================================================ -->
+      <section class="feat-group" id="inout">
+        <p class="label"><span class="num">E</span>In and out</p>
+
+        <article class="feat" id="formats">
+          <div class="feat-head">
+            <h2>The files you already have, and the records you can fetch.</h2>
+            <p>GenBank and GenPept, FASTA and FASTQ, SnapGene and Geneious, AB1 and SCF, GFF3, SAM and BAM are read; GenBank, FASTA, FASTQ, SnapGene, SAM, BAM, VCF, GFF3, CSV, Clustal, PHYLIP, NEXUS, SVG and PDF are written. Records are fetched by accession from NCBI and UniProt.</p>
+          </div>
+          <figure class="shot" data-file="assets/features/formats.png">
+            <img src="assets/features/formats.png" data-light="assets/features/formats.png" data-dark="assets/features/formats-dark.png" alt="The fetch dialog and an imported Geneious folder in the explorer" width="1440" height="900" loading="lazy" onerror="shotError(this)">
+          </figure>
+          <ul class="detail">
+            <li><b>SnapGene and Geneious.</b> Parsers written for this project; features, primers, topology and methylation come across, and a Geneious folder export opens whole.</li>
+            <li><b>Streaming GenBank.</b> Large and multi-record files open without reading the whole file first.</li>
+            <li><b>Sessions.</b> Export everything in the explorer as one file and open it on another machine.</li>
+          </ul>
+        </article>
+
+        <article class="feat" id="figures">
+          <div class="feat-head">
+            <h2>Figures from every view, in a print palette.</h2>
+            <p>The plasmid map, the sequence with its features and enzymes, alignments, gels, assemblies and mappings all export as SVG or PDF. One painter draws the screen and the export, so the figure is the view you were looking at, in a fixed palette that does not follow the theme.</p>
+          </div>
+          <figure class="shot" data-file="assets/features/figures.png">
+            <img src="assets/features/figures.png" data-light="assets/features/figures.png" data-dark="assets/features/figures-dark.png" alt="A PDF export of a plasmid map and its feature table" width="1440" height="900" loading="lazy" onerror="shotError(this)">
+          </figure>
+          <ul class="detail">
+            <li><b>PDF with tables.</b> The sequence as the text view draws it, with an optional map page and feature and enzyme tables.</li>
+            <li><b>Editable SVG.</b> Text stays text, so the figure can be finished in Illustrator or Inkscape.</li>
+          </ul>
+        </article>
+      </section>
+
+    </div>
+  </div>
+
+  <section class="closing">
+    <div class="wrap">
+      <p class="label">Get started</p>
+      <h2 style="margin-top:14px">All of it is free. Open the tab and drag in a file.</h2>
+      <p>No installation, no account. Your sequences are stored on your own device and never uploaded.</p>
+      <div class="hero-actions">
+        <a class="btn" href="app.html">Open the editor &rarr;</a>
+        <a class="btn btn-ghost" href="index.html">Back to the overview</a>
+      </div>
+    </div>
+  </section>
+
+</main>
+
+<footer class="site-foot">
+  <div class="wrap">
+    <div class="foot-inner">
+      <p class="foot-author">SeqNexus, by Christopher Acatay</p>
+      <div class="foot-links">
+        <a href="app.html">Editor</a>
+        <a href="index.html">Overview</a>
+        <a href="https://github.com/cacat-ayy/seqnexus">GitHub</a>
+        <a href="mailto:contact@seqnexus.app">Contact</a>
+        <a href="impressum.html">Impressum</a>
+        <a href="datenschutz.html">Datenschutz</a>
+      </div>
+    </div>
+  </div>
+</footer>
+
+<script src="site.js"></script>
+</body>
+</html>
