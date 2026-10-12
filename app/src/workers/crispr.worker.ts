@@ -138,7 +138,14 @@ export function runRequest(
   return runOffTarget(request, onProgress)
 }
 
-self.onmessage = (e: MessageEvent<CrisprRequest>) => {
-  const response = runRequest(e.data, progress => self.postMessage(progress))
-  self.postMessage(response)
+// Only as a worker. This module is also imported on the page as the fallback
+// when a worker cannot start (crispr.ts), and the single-file build inlines
+// it there and runs this line at load: on the page, `self` is the window, and
+// the handler would answer every message posted to it (browser extensions
+// post plenty), each one a crash. A worker has no document.
+if (typeof document === 'undefined') {
+  self.onmessage = (e: MessageEvent<CrisprRequest>) => {
+    const response = runRequest(e.data, progress => self.postMessage(progress))
+    self.postMessage(response)
+  }
 }

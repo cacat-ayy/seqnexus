@@ -454,6 +454,8 @@ export interface SequencePaintScene {
   selectionHandles: boolean
   /** Null draws no search bands. */
   search: SearchState | null
+  /** Hinted stretches (a BLAST hit pointed at); start > end runs across the origin. Absent draws none. */
+  highlightRanges?: readonly { start: number; end: number }[]
   selTranslation: SelectionTranslation | null
   hoveredAnnotationId: string | null
   hoveredEnzymeGroup: GroupedCutSite | null
@@ -835,6 +837,33 @@ export function paintSequenceRows(
       for (const mi of searchSpan.wrapping) band(0, ms[mi].end - seqLen, mi)
     }
 
+    /**
+     * Hinted stretches: an accent wash with an accent line along its top and
+     * bottom, so it reads apart from the selection's band (a softer wash,
+     * edges at half strength) and from search hits (yellow).
+     */
+    const paintHighlightBands = () => {
+      const ranges = s.highlightRanges
+      if (!ranges?.length) return
+      const band = (from: number, to: number) => {
+        const hlStart = Math.max(from, rowStart)
+        const hlEnd = Math.min(to, rowEnd)
+        if (hlStart >= hlEnd) return
+        const x1 = baseX(hlStart, rowStart, L)
+        const x2 = baseX(hlEnd - 1, rowStart, L) + L.bpWidth
+        ctx.fillStyle = COLORS.caret
+        ctx.globalAlpha = 0.14
+        ctx.fillRect(x1, forwardY, x2 - x1, L.seqLineHeight)
+        ctx.globalAlpha = 1
+        ctx.fillRect(x1, forwardY - 1, x2 - x1, 1.5)
+        ctx.fillRect(x1, forwardY + L.seqLineHeight - 0.5, x2 - x1, 1.5)
+      }
+      for (const r of ranges) {
+        if (r.start <= r.end) band(r.start, r.end)
+        else { band(r.start, seqLen); band(0, r.end) }
+      }
+    }
+
     // Opaque per-base colour blocks are only painted in letters mode; in the
     // other modes the bases sit on the canvas background and the bands below
     // stay visible, so keep them under the sequence as before.
@@ -842,6 +871,7 @@ export function paintSequenceRows(
     if (!bandsOnTop) {
       paintSelectionBand(false)
       paintSearchBands(false)
+      paintHighlightBands()
     }
 
     // --- Row position label ---
@@ -991,6 +1021,7 @@ export function paintSequenceRows(
     if (bandsOnTop) {
       paintSelectionBand(true)
       paintSearchBands(true)
+      paintHighlightBands()
     }
 
     // The caret is a DOM element over the canvas (see placeCaret), so its

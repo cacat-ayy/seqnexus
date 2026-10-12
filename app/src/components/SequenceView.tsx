@@ -549,6 +549,7 @@ function SequenceView({ onFindRequest, onFindClose, onAnnotateRequest, onEditFea
   const search = useEditorStore(s => s.search)
   const zoomLevel = useEditorStore(s => s.zoomLevel)
   const hoveredAnnotationId = useEditorStore(s => s.hoveredAnnotationId)
+  const highlightRanges = useEditorStore(s => s.highlightRanges)
   const showEnzymes = useEditorStore(s => s.showEnzymes) && !isProtein
   const allEnzymeCutSites = useEditorStore(s => s.enzymeCutSites)
   const autoAnnotationPicks = useEditorStore(s => s.autoAnnotationPicks)
@@ -640,6 +641,7 @@ function SequenceView({ onFindRequest, onFindClose, onAnnotateRequest, onEditFea
   const annTreeRef = useRef(annTree)
   const zoomLevelRef = useRef(zoomLevel)
   const hoveredAnnotationIdRef = useRef(hoveredAnnotationId)
+  const highlightRangesRef = useRef(highlightRanges)
   const enzymeCutSitesRef = useRef(enzymeCutSites)
   const hoveredEnzymeGroupRef = useRef(hoveredEnzymeGroup)
   const showEnzymesRef = useRef(showEnzymes)
@@ -672,6 +674,7 @@ function SequenceView({ onFindRequest, onFindClose, onAnnotateRequest, onEditFea
   annTreeRef.current = annTree
   zoomLevelRef.current = zoomLevel
   hoveredAnnotationIdRef.current = hoveredAnnotationId
+  highlightRangesRef.current = highlightRanges
   enzymeCutSitesRef.current = enzymeCutSites
   hoveredEnzymeGroupRef.current = hoveredEnzymeGroup
   showEnzymesRef.current = showEnzymes
@@ -926,6 +929,7 @@ function SequenceView({ onFindRequest, onFindClose, onAnnotateRequest, onEditFea
       extraSelections,
       selectionHandles: true,
       search,
+      highlightRanges: highlightRangesRef.current,
       selTranslation,
       hoveredAnnotationId,
       hoveredEnzymeGroup,
@@ -2001,7 +2005,7 @@ function SequenceView({ onFindRequest, onFindClose, onAnnotateRequest, onEditFea
   // Redraw when any render-affecting state changes
   useEffect(() => {
     draw()
-  }, [doc, selection, extraSelections, search, annTree, zoomLevel, hoveredAnnotationId, enzymeCutSites, hoveredEnzymeGroup, showEnzymes, autoAnnotationPicks, orfPicks, motifPicks, graph, translationFrames, translationRows, translateSelection, translationCode, aminoAcidStyle, threeLetterAminoAcids, colorScheme, colorTarget, proteinColorScheme, draw])
+  }, [doc, selection, extraSelections, search, annTree, zoomLevel, hoveredAnnotationId, highlightRanges, enzymeCutSites, hoveredEnzymeGroup, showEnzymes, autoAnnotationPicks, orfPicks, motifPicks, graph, translationFrames, translationRows, translateSelection, translationCode, aminoAcidStyle, threeLetterAminoAcids, colorScheme, colorTarget, proteinColorScheme, draw])
 
   const showMinimap = doc.sequence.length >= MINIMAP_SEQ_THRESHOLD
 

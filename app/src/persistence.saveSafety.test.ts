@@ -17,6 +17,7 @@ const fake = vi.hoisted(() => {
     traces: new Map<string, unknown>(),
     aligns: new Map<string, unknown>(),
     undo: new Map<string, unknown>(),
+    blast: new Map<string, unknown>(),
     failSequenceReads: false,
     failTraceReads: false,
     /** When set, saveSequences waits for it: lets a test hold a save mid-flight. */
@@ -67,8 +68,14 @@ const fake = vi.hoisted(() => {
       loadUndoHistory: async (ids: string[]) => pick(state.undo, ids),
       deleteUndoHistory: async (ids: string[]) => { for (const id of ids) if (state.undo.has(id)) state.log.push(`undo-delete:${id}`); drop(state.undo, ids) },
       getAllStoredUndoIds: async () => [...state.undo.keys()],
+      saveBlastSearches: async (items: { tabId: string; data: unknown }[]) => {
+        for (const b of items) { state.blast.set(b.tabId, b.data); state.log.push(`blast:${b.tabId}`) }
+      },
+      loadBlastSearches: async (ids: string[]) => pick(state.blast, ids),
+      deleteBlastSearches: async (ids: string[]) => drop(state.blast, ids),
+      getAllStoredBlastIds: async () => [...state.blast.keys()],
       clearAll: async () => {
-        state.seqs.clear(); state.traces.clear(); state.aligns.clear(); state.undo.clear()
+        state.seqs.clear(); state.traces.clear(); state.aligns.clear(); state.undo.clear(); state.blast.clear()
       },
     },
   }
@@ -81,8 +88,10 @@ vi.mock('./storage/idb', async importOriginal => ({
 
 import {
   loadSession, saveSession, consumeLoadWarnings, savedStateChanged, markSessionSaved,
-  hasUnsavedChanges, flushSave, scheduleSave, importSessionFromJson,
+  hasUnsavedChanges, flushSave, scheduleSave, importSessionFromJson, exportSessionToJson,
 } from './persistence'
+import type { BlastSearch } from './blast/types'
+import { DEFAULT_SETTINGS } from './blast/params'
 import type { Ab1Data } from './io/ab1'
 import { useEditorStore } from './store'
 
@@ -116,7 +125,7 @@ function writeIndex(extra: Record<string, unknown> = {}) {
 
 beforeEach(() => {
   localStorage.clear()
-  db.seqs.clear(); db.traces.clear(); db.aligns.clear(); db.undo.clear()
+  db.seqs.clear(); db.traces.clear(); db.aligns.clear(); db.undo.clear(); db.blast.clear()
   db.failSequenceReads = false
   db.failTraceReads = false
   db.gate = null
@@ -356,5 +365,57 @@ describe('items whose data is missing (M4)', () => {
     expect(session.tabs).toHaveLength(1)
     expect(session.warnings?.join('\n')).toMatch(/1 sequence could not be restored \(not in the file\): pTwo/)
     expect(session.warnings?.join('\n')).toMatch(/read1/)
+  })
+})
+
+describe('BLAST searches', () => {
+  const search = (rid: string): BlastSearch => ({
+    rid, service: 'ebi', createdAt: 1, queryName: 'pA',
+    settings: DEFAULT_SETTINGS,
+    query: { label: 'Whole sequence', segments: [[0, 12]], seqLength: 12, fingerprint: '12:0' },
+    result: { program: 'blastn', database: 'core_nt', queryLen: 12, hits: [] },
+  })
+
+  it('are saved with their sequence, come back on load, and go when it is closed', async () => {
+    store().openDocument('pA', 'ACGTACGTACGT')
+    const tabId = store().activeTabId!
+    store().addBlastSearch(tabId, search('R1'))
+    await saveSession('light')
+    expect((db.blast.get(tabId) as BlastSearch[]).map(b => b.rid)).toEqual(['R1'])
+
+    const restored = await loadSession()
+    expect(restored?.tabs.find(t => t.id === tabId)?.blastSearches?.map(b => b.rid)).toEqual(['R1'])
+
+    // Unchanged searches are not written again.
+    db.log = []
+    markSessionSaved()
+    store().setCaret(3)
+    await saveSession('light')
+    expect(db.log.filter(l => l.startsWith('blast:'))).toEqual([])
+
+    store().closeTab(tabId)
+    await saveSession('light')
+    expect(db.blast.has(tabId)).toBe(false)
+  })
+
+  it('lose their storage when the last one is deleted', async () => {
+    store().openDocument('pA', 'ACGTACGTACGT')
+    const tabId = store().activeTabId!
+    store().addBlastSearch(tabId, search('R1'))
+    await saveSession('light')
+    store().removeBlastSearch(tabId, 'R1')
+    await saveSession('light')
+    expect(db.blast.has(tabId)).toBe(false)
+  })
+
+  it('travel with their sequence in a session file', async () => {
+    store().openDocument('pA', 'ACGTACGTACGT')
+    const tabId = store().activeTabId!
+    store().addBlastSearch(tabId, search('R1'))
+    store().addBlastSearch(tabId, search('R2'))
+    const blob = exportSessionToJson('light', { includeReads: false, includeAlignments: false, includeContigs: false })
+    const json = await new Promise<string>(resolve => { const fr = new FileReader(); fr.onload = () => resolve(fr.result as string); fr.readAsText(blob) })
+    const imported = importSessionFromJson(json)
+    expect(imported.tabs.find(t => t.id === tabId)?.blastSearches?.map(b => b.rid)).toEqual(['R2', 'R1'])
   })
 })

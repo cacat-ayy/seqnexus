@@ -83,6 +83,7 @@ import { DEFAULT_NUCLEASE_ID, resolveNuclease } from './crispr/nucleases'
 import { DEFAULT_OFFTARGET, type OffTargetReport, type OffTargetSettings } from './crispr/offtarget'
 import type { LoadedTargets, TargetScope } from './crispr/targets'
 import type { StructureRef } from './structure/model'
+import type { BlastSearch } from './blast/types'
 
 /** A digest's peptides drawn over the protein they came from. */
 export interface PeptideOverlay {
@@ -170,6 +171,12 @@ export interface DocumentTab {
   enzymeNames: string[]
   primerDesign: PrimerDesignState
   autoAnnotations: AnnotationMatch[]
+  /**
+   * The BLAST searches run on this document, newest first. Saved with the
+   * tab (see persistence.ts), outside its undo history: a search is a record
+   * of what NCBI answered, not an edit.
+   */
+  blastSearches: BlastSearch[]
 }
 
 /**
@@ -807,12 +814,19 @@ interface EditorStore {
   /** Show a sidebar tab (and, for Primers, a view), opening the sidebar. */
   openSidebar: (tab: SidebarTab, view?: PrimerView) => void
   /**
-   * Bumped to BLAST the current selection: App opens the BLAST dialog, which
-   * starts a new search on the selection. The feature panel uses it after
-   * selecting a feature.
+   * Keep a finished BLAST search with the document it was run on, newest
+   * first, the oldest dropped past MAX_BLAST_SEARCHES. Not undoable: a
+   * search is a record, not an edit. A tab closed meanwhile takes nothing.
    */
-  blastSelectionRequest: number
-  requestBlastSelection: () => void
+  addBlastSearch: (tabId: string, search: BlastSearch) => void
+  removeBlastSearch: (tabId: string, rid: string) => void
+  /**
+   * Stretches of the open sequence drawn as a hint over the sequence view and
+   * the map, [start, end) with start > end across the origin: a BLAST hit
+   * pointed at in the drawer. Transient, never saved; empty for none.
+   */
+  highlightRanges: readonly { start: number; end: number }[]
+  setHighlightRanges: (ranges: readonly { start: number; end: number }[]) => void
 
   // --- Auto-annotation (cross-view) ---
   // Proposals, not features: they are drawn on the sequence and only enter the
@@ -1016,7 +1030,7 @@ interface EditorStore {
 
   // Session restore (bulk-load tabs + folders + sequencing reads + alignments from persistence)
   restoreSession: (
-    tabs: { id: string; doc: DocumentState; createdAt?: number; modifiedAt?: number; viewMode: ViewMode; zoomLevel: number; hiddenAnnotationIds?: string[]; showOrfs?: boolean; showEnzymes?: boolean; showAutoAnnotations?: boolean; readOnly?: boolean; undoStack?: UndoSnapshot[]; redoStack?: UndoSnapshot[] }[],
+    tabs: { id: string; doc: DocumentState; createdAt?: number; modifiedAt?: number; viewMode: ViewMode; zoomLevel: number; hiddenAnnotationIds?: string[]; showOrfs?: boolean; showEnzymes?: boolean; showAutoAnnotations?: boolean; readOnly?: boolean; undoStack?: UndoSnapshot[]; redoStack?: UndoSnapshot[]; blastSearches?: BlastSearch[] }[],
     activeTabId: string | null,
     folders: ExplorerFolder[],
     seqReads?: { id: string; data: Ab1Data; createdAt?: number; trimStart: number; trimEnd: number; edits: BaseEdit[]; reversed?: boolean }[],
@@ -1033,7 +1047,7 @@ interface EditorStore {
 
   // Merge imported session into existing state (adds items alongside existing ones)
   mergeSession: (
-    tabs: { id: string; doc: DocumentState; createdAt?: number; modifiedAt?: number; viewMode: ViewMode; zoomLevel: number; hiddenAnnotationIds?: string[]; showOrfs?: boolean; showEnzymes?: boolean; showAutoAnnotations?: boolean; readOnly?: boolean }[],
+    tabs: { id: string; doc: DocumentState; createdAt?: number; modifiedAt?: number; viewMode: ViewMode; zoomLevel: number; hiddenAnnotationIds?: string[]; showOrfs?: boolean; showEnzymes?: boolean; showAutoAnnotations?: boolean; readOnly?: boolean; blastSearches?: BlastSearch[] }[],
     folders: ExplorerFolder[],
     seqReads?: { id: string; data: Ab1Data; createdAt?: number; trimStart: number; trimEnd: number; edits: BaseEdit[]; reversed?: boolean }[],
     savedAlignments?: SavedAlignment[],
@@ -1274,6 +1288,9 @@ const emptySearch: SearchState = {
 
 const DEFAULT_ZOOM = 14  // default zoom level - shows individual letters
 
+/** BLAST searches kept per document; the oldest goes when a new one would pass this. */
+export const MAX_BLAST_SEARCHES = 20
+
 function makeTab(doc: DocumentState): DocumentTab {
   const now = Date.now()
   return {
@@ -1299,6 +1316,7 @@ function makeTab(doc: DocumentState): DocumentTab {
     enzymeNames: [],
     primerDesign: EMPTY_DESIGN,
     autoAnnotations: [],
+    blastSearches: [],
   }
 }
 
@@ -2040,8 +2058,19 @@ export const useEditorStore = create<EditorStore>((set, get) => {
       get().setSidebarTab(tab)
       set(s => ({ sidebarRequest: s.sidebarRequest + 1, ...(view ? { primerView: view } : {}) }))
     },
-    blastSelectionRequest: 0,
-    requestBlastSelection: () => set(s => ({ blastSelectionRequest: s.blastSelectionRequest + 1 })),
+    addBlastSearch: (tabId, search) => set(s => ({
+      tabs: s.tabs.map(t => t.id !== tabId ? t : {
+        ...t,
+        blastSearches: [search, ...t.blastSearches.filter(b => b.rid !== search.rid)].slice(0, MAX_BLAST_SEARCHES),
+      }),
+    })),
+    highlightRanges: [],
+    setHighlightRanges: ranges => set(s => (
+      s.highlightRanges.length === 0 && ranges.length === 0 ? s : { highlightRanges: ranges }
+    )),
+    removeBlastSearch: (tabId, rid) => set(s => ({
+      tabs: s.tabs.map(t => t.id !== tabId ? t : { ...t, blastSearches: t.blastSearches.filter(b => b.rid !== rid) }),
+    })),
 
     // Auto-annotation proposals
     autoAnnotations: [],
@@ -3083,6 +3112,7 @@ export const useEditorStore = create<EditorStore>((set, get) => {
         enzymeNames: [],
         primerDesign: EMPTY_DESIGN,
         autoAnnotations: [],
+        blastSearches: rt.blastSearches ?? [],
       }))
       // Sync ID counters above all restored IDs to avoid collisions
       const syncId = (id: string, gen: ReturnType<typeof makeIdGenerator>, prefix: string) => {
@@ -3190,6 +3220,7 @@ export const useEditorStore = create<EditorStore>((set, get) => {
         enzymeNames: [],
         primerDesign: EMPTY_DESIGN,
         autoAnnotations: [],
+        blastSearches: rt.blastSearches ?? [],
       }))
 
       // Merge folders: match by name, add new items to existing folders

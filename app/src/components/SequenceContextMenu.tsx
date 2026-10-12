@@ -13,7 +13,7 @@
 
 import type { ReactNode } from 'react'
 import {
-  Atom, ClipboardPaste, Combine, Copy, Crosshair, Dna, ExternalLink, MoveLeft, MoveRight, PanelRight, Pencil, Replace,
+  Atom, ClipboardPaste, Combine, Copy, Crosshair, Dna, ExternalLink, Globe, MoveLeft, MoveRight, PanelRight, Pencil, Replace,
   SquareDashedMousePointer, Tag, TextSearch, Trash2, TriangleAlert, Undo2,
 } from 'lucide-react'
 import {
@@ -39,6 +39,8 @@ import { emptyDesign, METHOD_LABEL, partFromDoc, type CloningMethodId } from '..
 /** The methods offered straight from a selection. */
 const CLONING_METHODS: CloningMethodId[] = ['homology', 'restriction', 'golden-gate']
 import ContextMenuPopup, { MenuItem, MenuSeparator, Submenu } from './ContextMenuPopup'
+import { blastFeature, blastFeatureProtein } from './features/feature-actions'
+import { prepareSelectionSearch } from '../blast/session'
 import type { GroupedCutSite } from '../enzymes/grouping'
 import { threeLetter } from '../protein/variants'
 import { displayPosition } from '../models/Document'
@@ -332,6 +334,16 @@ export default function SequenceContextMenu({
             Translate to Protein
           </MenuItem>
         )}
+        <MenuItem icon={<Globe size={ICON} />} onSelect={act(() => blastFeature(ann))}
+          title="Open the BLAST drawer ready to search NCBI with this feature's sequence">
+          BLAST Feature…
+        </MenuItem>
+        {translatable && (
+          <MenuItem icon={<Globe size={ICON} />} onSelect={act(() => blastFeatureProtein(ann))}
+            title="Open the BLAST drawer ready to search NCBI's proteins with this feature's translation (blastp)">
+            BLAST Protein…
+          </MenuItem>
+        )}
         {isUserAnn && !readOnly && (
           <MenuItem icon={<Pencil size={ICON} />} shortcut="Double-click" onSelect={act(() => {
             useEditorStore.getState().setEditAnnotation(ann.id)
@@ -448,6 +460,14 @@ export default function SequenceContextMenu({
             useEditorStore.getState().translateToProtein({ start: s, end: e, reverse: selectionIsReverse(selection, doc.sequence.topology) })
           })} title="Translate the selection in frame from its first base, read in the direction it was dragged">
             Translate Selection to Protein
+          </MenuItem>
+        )}
+        {!multi && selectionLen >= 10 && (
+          <MenuItem icon={<Globe size={ICON} />} onSelect={act(() => {
+            const tabId = useEditorStore.getState().activeTabId
+            if (tabId) prepareSelectionSearch(tabId)
+          })} title="Open the BLAST drawer ready to search NCBI with the selection">
+            BLAST Selection…
           </MenuItem>
         )}
         {protein && linkedOpen && (

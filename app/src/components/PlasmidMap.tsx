@@ -60,6 +60,7 @@ function PlasmidMap(_props: PlasmidMapProps) {
   const setSelection = useEditorStore(s => s.setSelection)
   const setCaret = useEditorStore(s => s.setCaret)
   const hoveredAnnotationId = useEditorStore(s => s.hoveredAnnotationId)
+  const highlightRanges = useEditorStore(s => s.highlightRanges)
   const setHoveredAnnotation = useEditorStore(s => s.setHoveredAnnotation)
   const removeAnnotation = useEditorStore(s => s.removeAnnotation)
   const renameTab = useEditorStore(s => s.renameTab)
@@ -177,6 +178,8 @@ function PlasmidMap(_props: PlasmidMapProps) {
         .reduce((n, r) => n + selectionLength(r, 'circular', doc.sequence.length), 0),
       extraSelections,
       searchHits: search.matches,
+      // A BLAST hit pointed at in the drawer, on the backbone like a marked stretch.
+      regions: highlightRanges.map(r => ({ start: r.start, end: r.end, color: colors.accent })),
       currentSearchHit: search.currentMatch,
       methylation,
       gc: gcSeries,
@@ -188,6 +191,7 @@ function PlasmidMap(_props: PlasmidMapProps) {
     canvasSize, doc.sequence.length, doc.sequence.topology, doc.name, doc.metadata,
     style, layout, colors, rings, hoveredAnnotationId, proposalIds, pickedIds, sceneEnzymes,
     hoveredEnzymeKey, sceneGuides, hoveredGuideKey, selectedGuideKey, scenePrimers, selection, extraSelections, search, methylation, gcSeries, gcOverall, legend,
+    highlightRanges,
   ])
 
   const sceneRef = useRef<PlasmidScene | null>(null)

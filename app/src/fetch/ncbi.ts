@@ -7,9 +7,11 @@
  * See: https://www.ncbi.nlm.nih.gov/books/NBK25499/
  */
 
+import { CONTACT_EMAIL, TOOL_NAME } from './contact'
+
 const EFETCH_URL = 'https://eutils.ncbi.nlm.nih.gov/entrez/eutils/efetch.fcgi'
-const TOOL = 'SeqNexus'
-const EMAIL = 'seqnexus@plasmidstudio.app'
+const TOOL = TOOL_NAME
+const EMAIL = CONTACT_EMAIL
 
 const ESUMMARY_URL = 'https://eutils.ncbi.nlm.nih.gov/entrez/eutils/esummary.fcgi'
 
@@ -90,4 +92,24 @@ export async function fetchNCBI(accession: string, db: NcbiDatabase = 'nucleotid
   }
 
   return text
+}
+
+const ESEARCH_URL = 'https://eutils.ncbi.nlm.nih.gov/entrez/eutils/esearch.fcgi'
+
+/**
+ * The NCBI Taxonomy id of an organism named in words ("Escherichia coli"),
+ * for services that limit a search by taxid only. A scientific name is tried
+ * first, then any name NCBI knows the taxon by. Throws when there is none.
+ */
+export async function ncbiTaxid(name: string): Promise<string> {
+  const term = name.trim().replace(/"/g, '')
+  for (const field of ['[Scientific Name]', '']) {
+    const params = new URLSearchParams({ db: 'taxonomy', term: `${term}${field}`, retmode: 'json', tool: TOOL, email: EMAIL })
+    const res = await fetch(`${ESEARCH_URL}?${params}`)
+    if (!res.ok) throw new Error(`NCBI Taxonomy could not be reached (HTTP ${res.status})`)
+    const data = await res.json() as { esearchresult?: { idlist?: string[] } }
+    const id = data.esearchresult?.idlist?.[0]
+    if (id) return id
+  }
+  throw new Error(`NCBI Taxonomy knows no organism named "${term}". Try its scientific name or its taxid.`)
 }

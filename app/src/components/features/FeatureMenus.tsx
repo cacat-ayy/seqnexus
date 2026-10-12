@@ -16,7 +16,7 @@ import { defaultColorForType, type Annotation } from '../../models/Annotation'
 import { reverseComplement } from '../../models/complement'
 import { annotationBases, annotationProtein, canTranslateAnnotation } from '../../utils/annotation-sequence'
 import { copyText } from '../../utils/clipboard'
-import { blastFeature, duplicateFeature, selectAndCenterFeature, zoomToFeature } from './feature-actions'
+import { blastFeature, blastFeatureProtein, duplicateFeature, selectAndCenterFeature, zoomToFeature } from './feature-actions'
 
 const ICON = 13
 
@@ -87,10 +87,14 @@ export function FeatureContextMenu({ x, y, ann, hidden, readOnly, onClose, onEdi
           Open as Protein
         </MenuItem>
       )}
-      {!ann.spansOrigin() && (
-        <MenuItem icon={<Globe size={ICON} />} onSelect={act(() => blastFeature(ann))}
-          title="Search NCBI with this feature's sequence">
-          BLAST…
+      <MenuItem icon={<Globe size={ICON} />} onSelect={act(() => blastFeature(ann))}
+        title="Search NCBI with this feature's sequence">
+        BLAST…
+      </MenuItem>
+      {translatable && (
+        <MenuItem icon={<Globe size={ICON} />} onSelect={act(() => blastFeatureProtein(ann))}
+          title="Search NCBI's proteins with this feature's translation (blastp)">
+          BLAST protein…
         </MenuItem>
       )}
       <MenuSeparator />

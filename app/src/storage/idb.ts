@@ -9,7 +9,7 @@
 import { openDB, type IDBPDatabase } from 'idb'
 
 const DB_NAME = 'seqnexus'
-const DB_VERSION = 8
+const DB_VERSION = 9
 const STORE_NAME = 'sequences'
 const TRACE_STORE = 'traces'
 const ALIGN_STORE = 'alignments'
@@ -20,6 +20,8 @@ const USAGE_TABLE_STORE = 'codonUsageTables'
 const READ_CHUNK_STORE = 'readChunks'
 /** Structure coordinates (PDB or mmCIF text), keyed by StructureRef.key (see structure/model.ts). */
 const STRUCTURE_STORE = 'structures'
+/** A sequence's BLAST searches, keyed by its tab id (see blast/types.ts BlastSearch). */
+const BLAST_STORE = 'blastSearches'
 
 let _db: IDBPDatabase | null = null
 
@@ -50,6 +52,9 @@ async function getDB(): Promise<IDBPDatabase> {
       }
       if (!db.objectStoreNames.contains(STRUCTURE_STORE)) {
         db.createObjectStore(STRUCTURE_STORE)
+      }
+      if (!db.objectStoreNames.contains(BLAST_STORE)) {
+        db.createObjectStore(BLAST_STORE)
       }
     },
   })
@@ -206,6 +211,53 @@ export async function deleteTraces(readIds: string[]): Promise<void> {
 export async function getAllStoredTraceIds(): Promise<string[]> {
   const db = await getDB()
   const keys = await db.getAllKeys(TRACE_STORE)
+  return keys.map(k => String(k))
+}
+
+// ---- BLAST searches ----
+
+/** Save each tab's list of BLAST searches, keyed by tab id. */
+export async function saveBlastSearches(
+  entries: { tabId: string; data: unknown }[],
+): Promise<void> {
+  const db = await getDB()
+  const tx = db.transaction(BLAST_STORE, 'readwrite')
+  for (const { tabId, data } of entries) {
+    tx.store.put(data, tabId)
+  }
+  await tx.done
+}
+
+/** Load the BLAST searches of the given tabs; tabs with none are absent. */
+export async function loadBlastSearches(
+  tabIds: string[],
+): Promise<Map<string, unknown>> {
+  const db = await getDB()
+  const result = new Map<string, unknown>()
+  const tx = db.transaction(BLAST_STORE, 'readonly')
+  for (const id of tabIds) {
+    const val = await tx.store.get(id)
+    if (val !== undefined) result.set(id, val)
+  }
+  await tx.done
+  return result
+}
+
+/** Delete the BLAST searches of the given tabs. */
+export async function deleteBlastSearches(tabIds: string[]): Promise<void> {
+  if (tabIds.length === 0) return
+  const db = await getDB()
+  const tx = db.transaction(BLAST_STORE, 'readwrite')
+  for (const id of tabIds) {
+    tx.store.delete(id)
+  }
+  await tx.done
+}
+
+/** Get the ids of all tabs with BLAST searches stored. */
+export async function getAllStoredBlastIds(): Promise<string[]> {
+  const db = await getDB()
+  const keys = await db.getAllKeys(BLAST_STORE)
   return keys.map(k => String(k))
 }
 

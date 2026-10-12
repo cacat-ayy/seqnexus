@@ -336,8 +336,9 @@ of each build.
   base editing, trimming, mapping to a reference or de novo assembly kept as
   assemblies with their contigs, variants, clone verification; see
   [Sanger Assembly](#sanger-assembly)
-- **NCBI BLAST** - search NCBI databases directly from the editor; see
-  [BLAST](#blast)
+- **BLAST** - search ENA and UniProt at EMBL-EBI from a drawer under the
+  editor, or hand a search to NCBI, with each sequence keeping its searches;
+  see [BLAST](#blast)
 - **PDF export** of the sequence as the text view draws it, vector, on A4
 - **10 themes** (5 light, 5 dark), a **file explorer** with folders, tags,
   search and grouping, a **command palette**, keyboard shortcuts and
@@ -1365,7 +1366,7 @@ Proposals, picks and conversion work as for DNA.
 Protein documents appear in the alignment dialog, which already recognised
 protein letters and switches to BLOSUM62 and the protein colour schemes.
 BLAST offers blastp and tblastn for a protein query and swaps its saved
-program when the open document changes kind; hits of a protein search link
+program when the open document changes kind; hits in a protein database link
 to NCBI's protein records.
 
 ### Graph tracks
@@ -2529,31 +2530,191 @@ All alignment runs in a Web Worker to keep the UI responsive.
 
 ## BLAST
 
-BLAST Search (in the Analyse group, and from a feature's menu) sends the
-whole sequence, the selection or a feature to NCBI BLAST and shows the hits
-in the editor. It needs a network connection; nothing runs locally.
+BLAST (in the toolbar and the Analyse group, from a feature's menu, and
+from the sequence's context menu for a selection) searches with the whole
+sequence, the selection, a feature or a coding feature's protein and shows
+the hits in a drawer under the editor. Searches run at EMBL-EBI; a search
+can also be handed to NCBI's own site, and its result file brought back.
+It needs a network connection; nothing runs locally.
 
+- **Why EMBL-EBI, and NCBI by hand.** A web page may read another site's
+  answer only when that site allows it (CORS), and since August 2026 NCBI's
+  BLAST server allows only NCBI's own pages: its answers carry
+  `Vary: Origin` and an `Access-Control-Allow-Origin` naming
+  `https://www.ncbi.nlm.nih.gov` alone. Archived copies of the server's
+  answers show the change between 2 and 15 August 2026; before it they
+  carried no such rule, and the app searched NCBI directly. A search still
+  reaches NCBI (it is accepted and given a request id), but the browser
+  will not let the app read the answer. EMBL-EBI runs the same NCBI BLAST+
+  through its Job Dispatcher and answers any page (`*`), from a page
+  opened from disk as well, so searches run there with no server of ours.
+  Its nucleotide databases are ENA's, the European member of the INSDC,
+  which holds the same records under the same accessions as GenBank and
+  DDBJ; its protein databases are UniProt's and the structure archives'.
+  NCBI's own collections (core_nt, RefSeq, nr) are not there, so the
+  drawer can hand a search to NCBI's site instead (below). A server that
+  relayed requests to NCBI would also work, but would put every user's
+  queries through one address, under NCBI's per-address usage limits, and
+  need hosting; it is not built.
+- **Why a drawer.** A search is slow, and its results are read against the
+  sequence they came from. A dialog hides that sequence, and a side panel
+  (280 px by default, 500 at most) is too narrow for the hit table and a
+  60-column alignment, which needs about 520 px of monospace text. The
+  drawer spans the editor's width under the map and the sequence, so both
+  stay in view while a hit is read. It is resized by its top edge (or the
+  arrow keys on it), collapses to its header, can be maximized over the
+  views, and keeps its height. Its header is the search form; closing it
+  leaves a running search running.
+- **The query.** The whole sequence, the selection, or a coding feature's
+  translation. A selection across the origin of a circular sequence, or a
+  feature that crosses it, is sent as its two stretches joined in reading
+  order, the bases after the origin following the ones before it. A CDS's
+  protein is translated as the feature reads (through its exons, on its
+  strand, from its `/codon_start` and with its `/transl_table`), a trailing
+  stop removed and an internal one sent as X; it goes to blastp, and its
+  residues map back onto their codons (below).
 - **Programs and databases.** For a DNA query: megablast (fast, high
   similarity), blastn, blastx (translated query against a protein
-  database) and tblastx; for a protein query: blastp and tblastn. The
-  nucleotide databases offered are core_nt, nt, RefSeq RNA, RefSeq
-  representative genomes, RefSeq Select and wgs; the protein ones are nr,
-  Swiss-Prot, RefSeq protein and pdb. Opening the dialog from a protein
-  switches to blastp against nr, and from DNA back to megablast against
-  core_nt. The E-value threshold (10 by default) and the number of hits (25)
-  can be set. Settings are remembered between searches.
-- **How it runs.** The NCBI URL API's two-phase workflow: the search is
-  submitted and answered with a request id (RID), then its status is polled
-  every 15 seconds until it is ready and the result is fetched as JSON.
-  Requests use URL-encoded form bodies so the browser sends no CORS
-  preflight. A search still running after 15 minutes is given up on, with
-  the RID shown so it can be looked up at NCBI.
+  database) and tblastx; for a protein query: blastp and tblastn. EMBL-EBI
+  names the program for what is searched and the variant as its task, so
+  megablast is sent as blastn with the megablast task. Each program is
+  offered only the databases it can search: blastp and blastx search
+  protein databases (UniProtKB/Swiss-Prot by default, UniProtKB, UniRef90
+  and 50, UniProtKB by taxon, PDB, AlphaFold DB), and blastn, tblastn and
+  tblastx ENA (ENA standard, its annotated records, by default; ENA all,
+  with WGS and patents; ENA synthetic, the vectors and synthetic
+  constructs; ENA coding sequences; and ENA by taxon). A program or
+  database that does not fit the query, or each other, gives way to the
+  default of the right kind.
+- **Options.** Each is sent only when it differs from the default, so a
+  search left alone is the one EMBL-EBI's own page runs. *Exclude synthetic
+  constructs* leaves out NCBI Taxonomy's taxon 32630 (`negative_taxids`),
+  the vectors and synthetic genes that otherwise fill the top of a search
+  with any plasmid part; *Organism* limits the search to a taxon
+  (`taxids`): a taxid as typed, or a name looked up in NCBI Taxonomy
+  through E-utilities first, which do let pages read their answers. The
+  E-value threshold and the number of hits come from the values EMBL-EBI
+  accepts, as menus (1e-200 to 1000, 10 by default; 5 to 1,000 hits, 50
+  by default), so nothing typed can be refused. The scoring matrix for the
+  protein programs (BLOSUM62 by default, BLOSUM45 to 90, PAM30, 70 and 250)
+  and the low-complexity filter, forced on or off, complete them. Settings
+  are remembered as they are changed.
+- **How it runs.** The Job Dispatcher's REST workflow: the search is
+  submitted (`POST /run`, with the contact address EMBL-EBI requires;
+  it refuses one whose domain does not exist, and its reason is shown as
+  given), answered with a job id, then the job's status is checked until
+  it is `FINISHED` and its XML result fetched. EMBL-EBI publishes no
+  polling interval; its own sample clients check every 3 seconds. The
+  drawer checks after 5 seconds and then every 10, slowing to every 30 once
+  a job has queued for 10 minutes, since EMBL-EBI's queue can be long; it
+  stops following after two hours, with a link to the job. EMBL-EBI keeps a
+  job's results for seven days and allows 30 jobs at once per user; the
+  drawer runs one at a time. A status check that fails on the network is
+  retried at the next check; a result that fails to download is tried three
+  times, and one that cannot be read ends the search with a link to the
+  job. A search finished while the drawer is closed is announced, with a
+  button that shows it, and the toolbar marks it until it is seen.
+- **Reading EMBL-EBI's result.** Its XML (the EBI ApplicationResult
+  schema) gives each hit's accession, title and length and each
+  alignment's bit score, E-value, the aligned query, pattern and subject
+  with their start and end, and the strand or frame. Identity and positives
+  are counted from the aligned letters rather than read, so it does not
+  matter whether a report gives them as counts or percentages; a UniProt
+  title's organism is split out of its `OS=` field. Hits are built and
+  ranked by the same code as NCBI's, below.
+- **Searching at NCBI.** *Search at NCBI* posts the search to NCBI's site
+  in a new tab, as NCBI's own search form does (`CMD=Request`), so it
+  starts at once and leads to NCBI's usual results page; a form posted from
+  the page is a navigation, which the CORS rule does not touch. It searches
+  core_nt (nr for a protein database) with the same program, E-value,
+  number of hits, matrix and filter, and the organism and synthetic
+  construct limits as an Entrez query. On NCBI's results page, *Download
+  All*, then *Single-file JSON*, gives a file the drawer imports (Recent,
+  then *Import an NCBI result file*). The file says how long its query was
+  but not where it lay in the sequence, so it is matched to the latest
+  search handed to NCBI from that sequence with the same length, then to
+  the whole sequence, then to the selection; a file that matches none is
+  kept and read, but its hits are not placed on the sequence.
+- **Kept with the sequence.** A finished search (its settings, where its
+  query came from and the service's answer, alignments included) is kept
+  with the sequence it was run on, in the workspace's IndexedDB beside the
+  bases, and goes into a session export with it; it is not written into
+  GenBank or other sequence files. Each sequence keeps its last 20
+  searches. Its list is rewritten only when it changes and deleted with the
+  sequence. The drawer shows the open sequence's newest search; Recent
+  lists its earlier ones and the latest of every other sequence, and
+  picking one of those opens its sequence. The link to a job at EMBL-EBI
+  lasts while EMBL-EBI keeps it; the result in the drawer does not expire.
 - **Results.** A table of hits with accession, title, organism, E-value,
-  bit score, identity and coverage; each hit expands to its HSPs with the
-  aligned query, midline and subject. Checked hits can be added to the
-  document as features over the aligned query range in one undo step. The
-  last ten results are kept in the browser's localStorage and reopen
-  without a new search.
+  bit score, identity, coverage, aligned length and query range, with
+  identity and coverage drawn as thin bars as well. A hit's HSPs are
+  ordered best first (the highest bit score, NCBI's Max score, the lower
+  E-value on a tie), and every number in its row comes from that best HSP,
+  so the row describes one alignment; coverage alone counts all of them,
+  as NCBI's Query cover does. Hits are ordered by E-value, the higher score
+  first among equal ones (megablast gives many hits E = 0). Each hit
+  expands to its HSPs with the aligned query, midline and subject in the
+  sequence view's own base or residue colours, numbered at both ends of
+  every line the way NCBI numbers them. A side on the minus strand counts
+  down, and a translated side (the query of blastx, the subject of tblastn,
+  both for tblastx) moves three bases per residue: a line starts at the
+  first base of its first codon and ends at the last base of its last
+  codon. Each HSP names its orientation as NCBI does (Strand Plus/Minus for
+  blastn, the frame for the translated programs), and a hit that runs
+  against the query is marked in the table.
+- **Graphic summary.** Above the table, as NCBI's results page draws it:
+  a ruler over the
+  query, the query's own features on it (so a hit can be read against the
+  part it covers), and a line per hit with a bar for each HSP, joined by a
+  hairline when there are several. Score is the only colour channel: NCBI's
+  five bit-score bins (below 40, 40-50, 50-80, 80-200, 200 and above) on a
+  single-hue sequential ramp, the accent mixed into the surface at 30, 48,
+  66 and 84 % and full strength, lighter for weaker hits. A linear mix
+  between two colours is monotone in lightness, so the order reads in every
+  theme without a palette per theme. The first 30 hits are drawn, in the
+  table's filter; the table is the plot's table view, so the plot is left
+  to the pointer and the table carries the keyboard and screen readers.
+- **Linked to the sequence.** Pointing at a hit, in the plot or the table,
+  draws its HSPs over the sequence view (an accent wash edged in the
+  accent) and on the map's backbone; clicking it, or its query range,
+  selects its best HSP in the sequence and scrolls there. Both only while
+  the query still lines up with the sequence (below).
+- **Hits as features.** Checked hits, or one from its menu, become
+  `misc_feature`s over the aligned query range of their best HSP, in one
+  undo step, with the hit's description, E-value, identity, program and
+  database in a note and its accession as a `db_xref`. Query positions are
+  mapped back through the stretches the query was taken from, so a hit on a
+  query across the origin lands there, and one that crosses the joint
+  becomes a feature across the origin. A translation's residues map to
+  codons: residue r covers coding bases 3(r-1) to 3r-1, which run through
+  the coding parts in sequence order on the plus strand and from the far
+  end on the minus strand, and a hit across an intron spans it. A blastn
+  hit on the minus strand of its record matches the query's reverse
+  complement, so its feature is on the reverse strand; a blastx or tblastx
+  hit takes the strand of its query frame, a translation the strand of its
+  CDS; any other protein query's features stay forward.
+- **Whether the hits still line up.** A search records the stretches of
+  its query and a fingerprint of their bases (FNV-1a over the bases,
+  ignoring case, with the length). Its hits are placed, highlighted or
+  selected only while those stretches hold the same bases and the sequence
+  has the same length: an edit elsewhere that keeps both is harmless,
+  anything else would shift every hit, and the drawer says so.
+- **More from a hit.** Each hit's menu opens its record as a new document:
+  a nucleotide hit from NCBI (ENA's accessions are the same INSDC
+  accessions), a UniProt or AlphaFold DB hit from UniProt, a protein hit of
+  an NCBI search from NCBI; a record over 10 Mb, a chromosome, asks first,
+  as the Fetch dialog does, and a PDB entry is not opened as a sequence.
+  It aligns the query with the hit's aligned stretch in the alignment
+  workbench when both are the same kind of sequence (blastn, megablast and
+  blastp; a translated search has nothing to align letter for letter),
+  copies that stretch as FASTA or the accession, and opens the record
+  online (ENA, UniProt, PDBe, AlphaFold DB, or NCBI for an NCBI search). A
+  hit added as a feature records its accession as a `db_xref` of the
+  matching database (ENA, UniProtKB, PDB, AlphaFoldDB or NCBI). Export
+  downloads the hit table as CSV (accession, description, organism, max
+  score, E-value, identity, coverage, alignment length, query and subject
+  ranges, subject strand and length, number of HSPs) and the aligned
+  stretch of every hit, or of the checked ones, as FASTA.
 
 ---
 
@@ -5627,6 +5788,19 @@ print colours on white, whatever the app's theme.
 
 - NCBI. "BLAST URL API."
   https://blast.ncbi.nlm.nih.gov/doc/blast-help/urlapi.html
+
+- Madeira F, Madhusoodanan N, Lee J, et al. (2024). "The EMBL-EBI Job
+  Dispatcher sequence analysis tools framework in 2024." *Nucleic Acids
+  Res* 52:W521-W525.
+
+- EMBL-EBI. "Job Dispatcher web services."
+  https://www.ebi.ac.uk/jdispatcher/docs/webservices/
+
+- NCBI. "BLAST Developer Information" (usage guidelines for the URL API).
+  https://blast.ncbi.nlm.nih.gov/doc/blast-help/developerinfo.html
+
+- NCBI Taxonomy. "synthetic construct" (taxid 32630).
+  https://www.ncbi.nlm.nih.gov/Taxonomy/Browser/wwwtax.cgi?id=32630
 
 - NCBI. "Entrez Programming Utilities Help."
   https://www.ncbi.nlm.nih.gov/books/NBK25499/

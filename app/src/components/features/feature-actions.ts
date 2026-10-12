@@ -6,6 +6,9 @@
 import { useEditorStore } from '../../store'
 import type { Annotation } from '../../models/Annotation'
 import { notify } from '../../toast'
+import { prepareSelectionSearch, prepareTranslationSearch } from '../../blast/session'
+import { fingerprint, queryBases } from '../../blast/query'
+import { annotationProtein, codonStartOffset } from '../../utils/annotation-sequence'
 import { centerSequenceViewOn, zoomSequenceViewTo } from '../sequence-view-controls'
 
 /** Select a feature's span and scroll the sequence to it. */
@@ -66,13 +69,58 @@ export function zoomToFeature(ann: Annotation): void {
 }
 
 /**
- * BLAST the feature: select it and ask for a new search on the selection.
- * Not offered for a feature across the origin, which BLAST would read as the
- * rest of the sequence (the selection's query takes one stretch).
+ * BLAST the feature: select it and open the BLAST drawer ready to search the
+ * selection. A feature across the origin selects across it, and the query
+ * joins the two stretches in reading order.
  */
 export function blastFeature(ann: Annotation): void {
   selectFeature(ann)
-  useEditorStore.getState().requestBlastSelection()
+  const tabId = useEditorStore.getState().activeTabId
+  if (tabId) prepareSelectionSearch(tabId)
+}
+
+/**
+ * BLAST a coding feature's protein: translate it as the feature reads (its
+ * exons, strand, /codon_start and /transl_table) and open the BLAST drawer
+ * ready to send it to blastp. The search keeps the coding parts, so its hits
+ * can be mapped back onto their codons.
+ */
+export function blastFeatureProtein(ann: Annotation): void {
+  const state = useEditorStore.getState()
+  const tabId = state.activeTabId
+  if (!tabId) return
+  const seq = state.doc.sequence
+  const L = seq.length
+  // A trailing stop ends the protein; an internal one is sent as an unknown
+  // residue, which BLAST scores like any mismatch.
+  const protein = annotationProtein(ann, seq).replace(/\*+$/, '').replace(/\*/g, 'X')
+  if (protein.length < 10) {
+    notify.info(`${ann.name} is too short to BLAST as a protein`, { detail: 'A query needs at least 10 residues.' })
+    return
+  }
+  const strand: 1 | -1 = ann.strand === -1 ? -1 : 1
+  const segments: [number, number][] = ann.segments
+    ? ann.segments.map(([s, e]) => [s, e])
+    : ann.start > ann.end ? [[ann.start, L], [0, ann.end]] : [[ann.start, ann.end]]
+  // /codon_start skips bases at the coding start: the first base on the plus
+  // strand, the last on the minus strand, where the coding sequence begins.
+  const skip = codonStartOffset(ann)
+  if (skip) {
+    if (strand > 0) segments[0] = [segments[0][0] + skip, segments[0][1]]
+    else segments[segments.length - 1] = [segments[segments.length - 1][0], segments[segments.length - 1][1] - skip]
+  }
+  const label = `${ann.name} protein`
+  prepareTranslationSearch(tabId, {
+    label,
+    protein,
+    query: {
+      label,
+      segments,
+      translation: { strand, protein },
+      seqLength: L,
+      fingerprint: fingerprint(queryBases(seq, segments)),
+    },
+  })
 }
 
 /** The DOM id of a feature's row, for the list's aria-activedescendant. */

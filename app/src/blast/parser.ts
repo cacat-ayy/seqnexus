@@ -42,6 +42,9 @@ interface RawHsp {
   hit_to?: number
   query_frame?: number
   hit_frame?: number
+  /** blastn only: 'Plus' or 'Minus'. The translated programs give a frame instead. */
+  query_strand?: string
+  hit_strand?: string
   qseq?: string
   hseq?: string
   midline?: string
@@ -97,11 +100,6 @@ export function parseBlastJson(raw: unknown): BlastResult {
 
   const hits: BlastHit[] = rawHits.map((h) => {
     const desc = h.description?.[0] || {}
-    const accession = desc.accession || desc.id || ''
-    const description = desc.title || ''
-    const sciName = desc.sciname || ''
-    const length = h.len || 0
-
     const hsps: BlastHsp[] = (h.hsps || []).map((hsp) => ({
       bitScore: hsp.bit_score || 0,
       evalue: hsp.evalue ?? 0,
@@ -109,38 +107,21 @@ export function parseBlastJson(raw: unknown): BlastResult {
       positives: hsp.align_len ? (hsp.positive || 0) / hsp.align_len : 0,
       gaps: hsp.gaps || 0,
       alignLen: hsp.align_len || 0,
-      queryFrom: hsp.query_from || 0,
-      queryTo: hsp.query_to || 0,
-      hitFrom: hsp.hit_from || 0,
-      hitTo: hsp.hit_to || 0,
+      queryFrom: Math.min(hsp.query_from || 0, hsp.query_to || 0),
+      queryTo: Math.max(hsp.query_from || 0, hsp.query_to || 0),
+      hitFrom: Math.min(hsp.hit_from || 0, hsp.hit_to || 0),
+      hitTo: Math.max(hsp.hit_from || 0, hsp.hit_to || 0),
+      queryStrand: strandOf(hsp.query_strand, hsp.query_frame, hsp.query_from, hsp.query_to),
+      hitStrand: strandOf(hsp.hit_strand, hsp.hit_frame, hsp.hit_from, hsp.hit_to),
       queryFrame: hsp.query_frame || 0,
       hitFrame: hsp.hit_frame || 0,
       qseq: hsp.qseq || '',
       hseq: hsp.hseq || '',
       midline: hsp.midline || '',
     }))
-
-    // Best HSP for table display
-    const bestHsp = hsps.reduce((a, b) => (a.evalue <= b.evalue ? a : b), hsps[0])
-
-    // Query coverage: union of all HSP ranges / query length
-    const coverage = queryLen > 0 ? computeQueryCoverage(hsps, queryLen) : 0
-
-    return {
-      accession,
-      description,
-      sciName,
-      length,
-      hsps,
-      topScore: bestHsp?.bitScore || 0,
-      topEvalue: bestHsp?.evalue ?? 0,
-      topIdentity: bestHsp?.identity || 0,
-      queryCoverage: coverage,
-    }
+    return makeHit(desc.accession || desc.id || '', desc.title || '', desc.sciname || '', h.len || 0, hsps, queryLen)
   })
-
-  // Sort by E-value ascending
-  hits.sort((a, b) => a.topEvalue - b.topEvalue)
+  sortHits(hits)
 
   return {
     program: report.program || '',
@@ -149,6 +130,50 @@ export function parseBlastJson(raw: unknown): BlastResult {
     hits,
     message: search.message,
   }
+}
+
+/**
+ * A hit from its HSPs, the same way for every service: the best HSP first
+ * (the highest bit score, NCBI's Max score, the lower E-value on a tie), and
+ * every per-hit number in the table, and the feature a hit becomes, taken
+ * from that one HSP so they describe the same alignment; coverage alone
+ * counts them all, as NCBI's Query cover does.
+ */
+export function makeHit(
+  accession: string, description: string, sciName: string, length: number, hsps: BlastHsp[], queryLen: number,
+): BlastHit {
+  hsps.sort((a, b) => b.bitScore - a.bitScore || a.evalue - b.evalue)
+  const best = hsps[0]
+  return {
+    accession,
+    description,
+    sciName,
+    length,
+    hsps,
+    topScore: best?.bitScore || 0,
+    topEvalue: best?.evalue ?? 0,
+    topIdentity: best?.identity || 0,
+    queryCoverage: queryLen > 0 ? computeQueryCoverage(hsps, queryLen) : 0,
+  }
+}
+
+/** Hits by E-value, the higher score first among equal ones (megablast gives many hits E = 0). */
+export function sortHits(hits: BlastHit[]): void {
+  hits.sort((a, b) => a.topEvalue - b.topEvalue || b.topScore - a.topScore)
+}
+
+/**
+ * The strand one side of an HSP is read on. blastn names it ('Plus' or
+ * 'Minus'), the translated programs give a signed frame, and a protein side
+ * gives neither. Coordinates that run backwards also mean the minus strand,
+ * so a report that only orders them still reads right.
+ */
+export function strandOf(strand: string | undefined, frame: number | undefined, from = 0, to = 0): 1 | -1 {
+  const s = strand?.toLowerCase()
+  if (s === 'minus') return -1
+  if (s === 'plus') return 1
+  if (frame) return frame < 0 ? -1 : 1
+  return from > to ? -1 : 1
 }
 
 /** Compute query coverage as fraction of query covered by HSP ranges. */

@@ -17,7 +17,8 @@ export const STORAGE_KEYS = {
   /** Followed by the kind of view whose minimap is collapsed. */
   minimapCollapsedPrefix: 'seqnexus_minimap_collapsed_',
   blastSettings: 'seqnexus:blast-settings',
-  blastHistory: 'seqnexus:blast-history',
+  /** The BLAST drawer's height, as it was last dragged to. */
+  blastDrawerHeight: 'seqnexus:blast-drawer-height',
   primerTask: 'seqnexus:primer-task',
   crisprTask: 'seqnexus:crispr-task',
   primerDesign: 'seqnexus:primer-design',

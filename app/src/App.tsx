@@ -79,7 +79,8 @@ import {
   SlidersHorizontal, Atom,
   Crosshair,
 } from 'lucide-react'
-const BlastDialog = lazy(() => import('./components/BlastDialog'))
+const BlastDrawer = lazy(() => import('./components/blast/BlastDrawer'))
+import { useBlastStore, toggleDrawer, openDrawer as openBlastDrawer, clearAlignRequest as clearBlastAlignRequest } from './blast/session'
 const CommandPalette = lazy(() => import('./components/CommandPalette'))
 import type { Command } from './commands'
 import ExportDialog, { type ExportMode } from './components/ExportDialog'
@@ -345,10 +346,21 @@ export default function App() {
   const [propertiesModalOpen, setPropertiesModalOpen] = useState(false)
   const [cloningDropdownOpen, setCloningDropdownOpen] = useState(false)
   const cloningBtnRef = useRef<HTMLDivElement>(null)
-  const [blastModalOpen, setBlastModalOpen] = useState(false)
-  const [blastPhase, setBlastPhase] = useState<'input' | 'polling' | 'results'>('input')
+  const blastOpen = useBlastStore(s => s.open)
+  const blastMaximized = useBlastStore(s => s.maximized)
+  const blastRunning = useBlastStore(s => !!s.run)
+  const blastUnseen = useBlastStore(s => s.unseen)
+  const viewAndPanelsRef = useRef<HTMLDivElement>(null)
   const [alignModalOpen, setAlignModalOpen] = useState(false)
   const [alignInitialEntries, setAlignInitialEntries] = useState<import('./components/AlignmentDialog').AlignmentInitialEntry[] | undefined>(undefined)
+  // A BLAST hit sent to the alignment workbench, with its query.
+  const blastAlignRequest = useBlastStore(s => s.alignRequest)
+  useEffect(() => {
+    if (!blastAlignRequest) return
+    setAlignInitialEntries(blastAlignRequest.entries)
+    setAlignModalOpen(true)
+    clearBlastAlignRequest()
+  }, [blastAlignRequest])
 
   /**
    * Auto-annotation runs for the overlay and for the modal's list alike, so
@@ -552,11 +564,6 @@ export default function App() {
     if (sidebarRequest > 0) setFeaturesPanelOpen(true)
   }, [sidebarRequest])
 
-  // BLAST a feature from the feature panel: it selects the feature and asks.
-  const blastSelectionRequest = useEditorStore(s => s.blastSelectionRequest)
-  useEffect(() => {
-    if (blastSelectionRequest > 0) setBlastModalOpen(true)
-  }, [blastSelectionRequest])
 
   // A sequence the user just opened: say if primers in the library bind it,
   // with a way to add them. Session restores do not set lastOpenedTabId, so
@@ -1364,7 +1371,7 @@ export default function App() {
     { id: 'digest', label: 'Proteolytic Digest', group: 'Analyse', icon: Scissors, keywords: 'trypsin protease peptide mass spectrometry coverage', disabled: noDoc || !isProtein, run: () => setDigestOpen(true) },
     { id: 'primers', label: 'Design Primers', group: 'Analyse', icon: FlaskConical, keywords: 'pcr tm oligo', disabled: noDna, run: openPrimerDesign },
     { id: 'guides', label: 'Design CRISPR Guides', group: 'Analyse', icon: Crosshair, keywords: 'crispr cas9 cas12a guide rna sgrna pam protospacer knockout gene editing', disabled: noDna, run: () => openSidebar('guides') },
-    { id: 'blast', label: 'BLAST Search', group: 'Analyse', icon: Globe, keywords: 'ncbi homology', disabled: noDoc, run: () => setBlastModalOpen(true) },
+    { id: 'blast', label: 'BLAST Search', group: 'Analyse', icon: Globe, keywords: 'ncbi homology', disabled: noDoc, run: openBlastDrawer },
     { id: 'align', label: 'Align Sequences', group: 'Analyse', icon: AlignLeft, keywords: 'msa pairwise clustal', run: () => setAlignModalOpen(true) },
     { id: 'analyse-reads', label: 'Analyse NGS Reads…', group: 'Analyse', icon: Route, keywords: 'pipeline map variants trim fastq samples consensus', run: () => openAnalyse() },
     { id: 'assemble-reads', label: 'Assemble NGS Reads de novo…', group: 'Analyse', icon: Shapes, keywords: 'de novo assembly contig plasmid amplicon nanopore long reads whole plasmid sequencing', run: () => openAnalyse([], true) },
@@ -1617,15 +1624,15 @@ export default function App() {
               </div>
             )}
           </div>
-          <button className="tb" onClick={() => setBlastModalOpen(true)} disabled={noDoc} {...tip({
+          <button className={`tb ${blastOpen ? 'active' : ''}`} onClick={toggleDrawer} disabled={noDoc} aria-pressed={blastOpen} {...tip({
             label: 'BLAST',
             desc: isProtein ? 'Search NCBI for similar proteins or coding sequences' : 'Search NCBI for similar sequences',
-            status: blastPhase === 'polling' ? 'Search running…' : blastPhase === 'results' ? 'Results ready' : undefined,
+            status: blastRunning ? 'Search running…' : blastUnseen ? 'Results ready' : undefined,
             why: 'Open a sequence to use this',
           })}>
             <span className="tb-icon"><Globe size={14} /></span><span className="tb-text">BLAST</span>
-            {blastPhase === 'polling' && <span className="tb-badge tb-badge-pulse" />}
-            {blastPhase === 'results' && <span className="tb-badge tb-badge-done" />}
+            {blastRunning && <span className="tb-badge tb-badge-pulse" />}
+            {!blastRunning && blastUnseen && <span className="tb-badge tb-badge-done" />}
           </button>
           <button className="tb" onClick={() => setAlignModalOpen(true)} {...tip({ label: 'Align', desc: 'Pairwise and multiple sequence alignment' })}>
             <span className="tb-icon"><AlignLeft size={14} /></span><span className="tb-text">Align</span>
@@ -1870,10 +1877,12 @@ export default function App() {
               <div className="info-row"><span className="info-label">Source</span><span><a href="https://github.com/cacat-ayy/seqnexus" target="_blank" rel="noopener noreferrer">github.com/cacat-ayy/seqnexus</a></span></div>
               <hr />
               {/* The two questions users actually have. Only BLAST sends a
-                  sequence anywhere (blast/client.ts); NCBI, UniProt, RCSB and
-                  AlphaFold fetches only send an id. Keep this true if that changes. */}
+                  sequence anywhere: to EMBL-EBI (blast/ebi.ts), or to NCBI when
+                  the user hands a search to NCBI's site (blast/session.ts
+                  searchAtNcbi). NCBI, UniProt, RCSB and AlphaFold fetches only
+                  send an id. Keep this true if that changes. */}
               <div className="info-notice">
-                <p><strong>Your data stays here.</strong> Sequences are kept in this browser and never uploaded, except to NCBI when you run a BLAST search. Fetching a record or a structure sends only its id.</p>
+                <p><strong>Your data stays here.</strong> Sequences are kept in this browser and never uploaded, except to EMBL-EBI when you run a BLAST search, or to NCBI when you choose Search at NCBI. Fetching a record or a structure sends only its id.</p>
                 <p>Figures you make may be used freely in publications, theses and commercial work.</p>
               </div>
               <hr />
@@ -2284,7 +2293,7 @@ export default function App() {
               </div>
 
               {/* View area */}
-                <div className="view-and-panels">
+                <div ref={viewAndPanelsRef} className={`view-and-panels${blastOpen && blastMaximized ? ' blast-maximized' : ''}`}>
                   <div className="view-area">
                     <FindDialog open={showFind} focusRequest={findRequest} preset={findPreset} onClose={handleCloseFind} />
                     {/* Empty state hints for active panels with no results */}
@@ -2366,7 +2375,11 @@ export default function App() {
                       </div>
                     )}
                   </div>
-
+                  {blastOpen && (
+                    <Suspense fallback={null}>
+                      <BlastDrawer containerRef={viewAndPanelsRef} />
+                    </Suspense>
+                  )}
                 </div>
 
               {/* Status bar */}
@@ -2580,12 +2593,6 @@ export default function App() {
       <SequencePropertiesDialog
         open={propertiesModalOpen}
         onClose={() => setPropertiesModalOpen(false)}
-      />
-      <BlastDialog
-        open={blastModalOpen}
-        onClose={() => setBlastModalOpen(false)}
-        onPhaseChange={setBlastPhase}
-        selectionRequest={blastSelectionRequest}
       />
       <AlignmentDialog
         open={alignModalOpen}

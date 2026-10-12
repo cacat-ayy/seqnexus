@@ -11,6 +11,7 @@ import { sanitizeWorkspace, type GelWorkspaceState } from './gel/workspace'
 import { sanitizeDesign, type CloningDesign } from './cloning/design'
 import type { Ab1Data } from './io/ab1'
 import type { AlignmentResult } from './alignment/types'
+import type { BlastSearch } from './blast/types'
 import type { ContigDoc } from './assembly/types'
 import { sanitizeContigView } from './assembly/view'
 import { linkAssemblies, sanitizeAssembly, type AssemblyRecord } from './assembly/container'
@@ -43,6 +44,10 @@ import {
   loadUndoHistory,
   deleteUndoHistory,
   getAllStoredUndoIds,
+  saveBlastSearches,
+  loadBlastSearches,
+  deleteBlastSearches,
+  getAllStoredBlastIds,
   getStoredReadSetIds,
   deleteReadChunks,
 } from './storage/idb'
@@ -360,6 +365,7 @@ function buildSessionData(theme: string): {
   traces: { readId: string; data: Ab1Data }[]
   alignmentData: { alignId: string; data: AlnDoc | AlignmentResult | ContigDoc }[]
   undoEntries: { tabId: string; data: SerializedUndoHistory }[]
+  blastData: { tabId: string; data: BlastSearch[] }[]
 } {
   const state = useEditorStore.getState()
   const sequences: { tabId: string; bases: string }[] = []
@@ -474,7 +480,21 @@ function buildSessionData(theme: string): {
     traces,
     alignmentData: [...alignmentData, ...contigData],
     undoEntries,
+    // BLAST searches: in IndexedDB beside the bases, one list per tab, only
+    // for tabs that have any. They can be large (every alignment is kept).
+    blastData: state.tabs.filter(t => t.blastSearches.length > 0).map(t => ({ tabId: t.id, data: t.blastSearches })),
   }
+}
+
+/**
+ * A tab's stored BLAST searches, as read back: the ones with what the drawer
+ * needs (a request id, settings, a query and a result), anything else left out.
+ */
+function blastSearchList(raw: unknown): BlastSearch[] | undefined {
+  if (!Array.isArray(raw)) return undefined
+  const ok = raw.filter((b: Partial<BlastSearch> | null) =>
+    !!b && typeof b.rid === 'string' && !!b.settings && Array.isArray(b.query?.segments) && Array.isArray(b.result?.hits))
+  return ok.length > 0 ? ok : undefined
 }
 
 // ---- Data the store doesn't hold but storage must keep ----
@@ -578,9 +598,11 @@ interface Written {
   tabs: Map<string, WrittenTab>
   traces: Map<string, unknown>
   alignments: Map<string, unknown>
+  /** Each tab's list of BLAST searches, for tabs that have any. */
+  blast: Map<string, unknown>
 }
 
-const emptyWritten = (): Written => ({ tabs: new Map(), traces: new Map(), alignments: new Map() })
+const emptyWritten = (): Written => ({ tabs: new Map(), traces: new Map(), alignments: new Map(), blast: new Map() })
 let written = emptyWritten()
 let lastSaveFailed = false
 
@@ -594,6 +616,7 @@ function writtenFrom(state: EditorState): Written {
       redo: t.redoStack,
       hasHistory: t.undoStack.length > 0 || t.redoStack.length > 0,
     })
+    if (t.blastSearches.length > 0) w.blast.set(t.id, t.blastSearches)
   }
   for (const r of state.sequencingReads) w.traces.set(r.id, r.data)
   for (const a of state.alignments) w.alignments.set(a.id, a.doc)
@@ -630,7 +653,8 @@ export function savedStateChanged(state: EditorState, prev: EditorState): boolea
         a.id !== b.id || a.doc !== b.doc || a.undoStack !== b.undoStack || a.redoStack !== b.redoStack ||
         a.viewMode !== b.viewMode || a.zoomLevel !== b.zoomLevel || a.hiddenAnnotationIds !== b.hiddenAnnotationIds ||
         a.showOrfs !== b.showOrfs || a.showEnzymes !== b.showEnzymes || a.showAutoAnnotations !== b.showAutoAnnotations ||
-        a.readOnly !== b.readOnly || a.createdAt !== b.createdAt || a.modifiedAt !== b.modifiedAt
+        a.readOnly !== b.readOnly || a.createdAt !== b.createdAt || a.modifiedAt !== b.modifiedAt ||
+        a.blastSearches !== b.blastSearches
       ) return true
     }
   }
@@ -694,7 +718,7 @@ export function saveSession(theme: string): Promise<void> {
 }
 
 async function writeSession(theme: string): Promise<void> {
-  const { meta, sequences, traces, alignmentData, undoEntries } = buildSessionData(theme)
+  const { meta, sequences, traces, alignmentData, undoEntries, blastData } = buildSessionData(theme)
   // Same tick as buildSessionData, so it describes exactly what is written.
   const next = writtenFrom(useEditorStore.getState())
   carryUnrestored(meta)
@@ -734,6 +758,12 @@ async function writeSession(theme: string): Promise<void> {
       const historyGone = [...next.tabs].filter(([id, t]) => !t.hasHistory && prev.tabs.get(id)?.hasHistory !== false).map(([id]) => id)
       if (historyGone.length > 0) await deleteUndoHistory(historyGone)
 
+      const dirtyBlast = blastData.filter(b => prev.blast.get(b.tabId) !== b.data)
+      if (dirtyBlast.length > 0) await saveBlastSearches(dirtyBlast)
+      // A tab whose last search was deleted keeps none in storage either.
+      const blastGone = [...prev.blast.keys()].filter(id => next.tabs.has(id) && !next.blast.has(id))
+      if (blastGone.length > 0) await deleteBlastSearches(blastGone)
+
       const keeps = cleanupKeeps()
       if (keeps) {
         // Clean up orphaned IndexedDB entries (sequences)
@@ -762,6 +792,11 @@ async function writeSession(theme: string): Promise<void> {
         const storedUndoIds = await getAllStoredUndoIds()
         const undoOrphans = storedUndoIds.filter(id => !currentIds.has(id))
         if (undoOrphans.length > 0) await deleteUndoHistory(undoOrphans)
+
+        // Clean up orphaned IndexedDB entries (BLAST searches of closed tabs)
+        const storedBlastIds = await getAllStoredBlastIds()
+        const blastOrphans = storedBlastIds.filter(id => !currentIds.has(id))
+        if (blastOrphans.length > 0) await deleteBlastSearches(blastOrphans)
       }
 
       // Write metadata (without bases/traces/alignment results) to localStorage
@@ -796,7 +831,7 @@ export interface RestoredSeqRead {
 }
 
 export interface RestoredSession {
-  tabs: { id: string; doc: DocumentState; createdAt?: number; modifiedAt?: number; viewMode: ViewMode; zoomLevel: number; hiddenAnnotationIds?: string[]; showOrfs?: boolean; showEnzymes?: boolean; showAutoAnnotations?: boolean; readOnly?: boolean; undoStack?: UndoSnapshot[]; redoStack?: UndoSnapshot[] }[]
+  tabs: { id: string; doc: DocumentState; createdAt?: number; modifiedAt?: number; viewMode: ViewMode; zoomLevel: number; hiddenAnnotationIds?: string[]; showOrfs?: boolean; showEnzymes?: boolean; showAutoAnnotations?: boolean; readOnly?: boolean; undoStack?: UndoSnapshot[]; redoStack?: UndoSnapshot[]; blastSearches?: BlastSearch[] }[]
   activeTabId: string | null
   folders: ExplorerFolder[]
   /** Favourites and notes, keyed by explorer uid. */
@@ -918,6 +953,14 @@ async function loadV2(data: SerializedSessionV2): Promise<RestoredSession | null
     // Not surfaced: no user data is lost, only the ability to undo past edits.
   }
 
+  let blastMap = new Map<string, unknown>()
+  try {
+    blastMap = await loadBlastSearches(tabIds)
+  } catch {
+    // The searches stay in storage (a save only rewrites a tab's list when
+    // it changes), so a failed read loses nothing; they show next time.
+  }
+
   const tabs: RestoredSession['tabs'] = []
   const droppedTabs: string[] = []
   for (const st of data.tabs) {
@@ -986,6 +1029,7 @@ async function loadV2(data: SerializedSessionV2): Promise<RestoredSession | null
       readOnly: st.readOnly,
       undoStack,
       redoStack,
+      blastSearches: blastSearchList(blastMap.get(st.id)),
     })
   }
 
@@ -1231,6 +1275,8 @@ interface SessionExportEnvelope {
   sequences: { tabId: string; bases: string }[]
   traces?: { readId: string; data: Ab1Data }[]
   alignmentData?: { alignId: string; data: AlnDoc | AlignmentResult | ContigDoc }[]
+  /** Each sequence's BLAST searches, by tab id. Always included: they belong to their sequence. */
+  blastData?: { tabId: string; data: BlastSearch[] }[]
 }
 
 /**
@@ -1264,6 +1310,9 @@ export function estimateExportSize(opts: SessionExportOptions): number {
   if (opts.includeContigs) {
     for (const c of state.contigs) size += JSON.stringify(c.doc).length
   }
+  for (const tab of state.tabs) {
+    if (tab.blastSearches.length > 0) size += JSON.stringify(tab.blastSearches).length
+  }
   // Gels are small and always included
   size += JSON.stringify(serializeGels(state.gels) ?? []).length
   size += JSON.stringify(serializeClones(state.clones) ?? []).length
@@ -1272,7 +1321,7 @@ export function estimateExportSize(opts: SessionExportOptions): number {
 
 /** Export the current session as a JSON Blob. */
 export function exportSessionToJson(theme: string, opts: SessionExportOptions): Blob {
-  const { meta, sequences, traces, alignmentData } = buildSessionData(theme)
+  const { meta, sequences, traces, alignmentData, blastData } = buildSessionData(theme)
 
   // Strip undo history from the serialized session (not included in export)
   // buildSessionData already produces undoEntries separately, we just don't include them
@@ -1341,11 +1390,13 @@ export function exportSessionToJson(theme: string, opts: SessionExportOptions): 
     sequences,
     traces: opts.includeReads ? traces : undefined,
     alignmentData: alignmentData.filter(ad => alignIds.has(ad.alignId) || contigIds.has(ad.alignId)),
+    blastData,
   }
 
   // Remove empty optional fields to reduce size
   if (!envelope.traces?.length) delete envelope.traces
   if (!envelope.alignmentData?.length) delete envelope.alignmentData
+  if (!envelope.blastData?.length) delete envelope.blastData
 
   const json = JSON.stringify(envelope)
   return new Blob([json], { type: 'application/json' })
@@ -1396,6 +1447,8 @@ export function importSessionFromJson(json: string): RestoredSession {
     }
   }
 
+  const blastMap = new Map<string, unknown>((envelope.blastData ?? []).map(b => [b.tabId, b.data]))
+
   // Reconstruct tabs
   const tabs: RestoredSession['tabs'] = []
   for (const st of data.tabs) {
@@ -1413,6 +1466,7 @@ export function importSessionFromJson(json: string): RestoredSession {
       showOrfs: st.showOrfs, showEnzymes: st.showEnzymes,
       showAutoAnnotations: st.showAutoAnnotations,
       readOnly: st.readOnly,
+      blastSearches: blastSearchList(blastMap.get(st.id)),
     })
   }
 
