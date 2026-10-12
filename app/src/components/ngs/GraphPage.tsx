@@ -173,9 +173,12 @@ export default function GraphPage({ assembly, onShowReads }: { assembly: Assembl
   const openSegment = (i: number) => {
     const s = g.segments[i]
     const title = `${assembly.name} ${s.name}`
-    useEditorStore.getState().openDocument(title, g.sequences[i], s.circular ? 'circular' : 'linear',
+    // Opened beside the assembly, which stays on screen, as a consensus is.
+    const store = useEditorStore.getState()
+    const id = store.openDocument(title, g.sequences[i], s.circular ? 'circular' : 'linear',
       `${s.name} of the assembly graph of ${assembly.name}`, 'consensus')
-    notify.success(`Opened ${title}`)
+    store.setActiveAssembly(assembly.id)
+    notify.success(`Opened ${title}`, { action: { label: 'Show', onClick: () => useEditorStore.getState().setActiveTab(id) } })
   }
 
   const onWheel = (e: React.WheelEvent) => {

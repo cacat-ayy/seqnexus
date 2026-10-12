@@ -4,14 +4,16 @@
  *
  * The old panel had a single `+` button, in the Sequencing section header,
  * so reads could be imported from the explorer but sequences could not. Both
- * now start from the same menu.
+ * now start from the same menu, and it is the File menu's New and Import
+ * groups, drawn as a context menu.
  */
 
 import { useRef, useState, type MouseEvent, type MutableRefObject, type ReactNode } from 'react'
 import {
-  Plus, FolderPlus, PanelLeftClose, Rows3, Dna, FileUp, FolderUp, Globe,
-  Group, ArrowDownUp, Check, ArrowUp, ArrowDown, Network, MoveRight,
+  Plus, FolderPlus, PanelLeftClose, Rows3,
+  Group, ArrowDownUp, Check, ArrowUp, ArrowDown, Network,
 } from 'lucide-react'
+import MenuGroups, { type MenuGroup } from '../MenuGroups'
 import { usePopoverDismiss } from '../../hooks/usePopoverDismiss'
 import { useClampedPosition } from '../../hooks/useClampedPosition'
 import {
@@ -64,20 +66,16 @@ interface Props {
   onGroupBy: (mode: GroupBy) => void
   onSort: (by: SortBy, dir: SortDir) => void
   onToggleNestDerived: () => void
-  onNewSequence: () => void
-  /** Paste or import oligos into the primer library. */
-  onAddOligos: () => void
+  /** The New and Import groups, shared with the File menu. */
+  addMenu: MenuGroup[]
   onNewFolder: () => void
-  onFetch: () => void
-  onPickFiles: () => void
-  onPickFolder: () => void
   onCollapse: () => void
 }
 
 export default function ExplorerToolbar({
   density, groupBy, sortBy, sortDir, nestDerived,
   onCycleDensity, onGroupBy, onSort, onToggleNestDerived,
-  onNewSequence, onAddOligos, onNewFolder, onFetch, onPickFiles, onPickFolder, onCollapse,
+  addMenu, onNewFolder, onCollapse,
 }: Props) {
   const [menu, setMenu] = useState<OpenMenu>(null)
   const [anchor, setAnchor] = useState({ x: 0, y: 0 })
@@ -99,7 +97,7 @@ export default function ExplorerToolbar({
 
       <button
         className={`ex-hbtn ${menu === 'add' ? 'active' : ''}`}
-        title="Add to the explorer"
+        title="New or import"
         aria-haspopup="menu"
         aria-expanded={menu === 'add'}
         onClick={toggle('add')}
@@ -145,21 +143,7 @@ export default function ExplorerToolbar({
 
       {menu === 'add' && (
         <ToolbarMenu x={anchor.x} y={anchor.y} menuRef={menuRef}>
-          <button className="ctx-menu-item" role="menuitem" onClick={run(onNewSequence)}>
-            <Dna size={13} /> New sequence…
-          </button>
-          <button className="ctx-menu-item" role="menuitem" onClick={run(onPickFiles)}>
-            <FileUp size={13} /> Import files…
-          </button>
-          <button className="ctx-menu-item" role="menuitem" onClick={run(onPickFolder)}>
-            <FolderUp size={13} /> Import folder…
-          </button>
-          <button className="ctx-menu-item" role="menuitem" onClick={run(onFetch)}>
-            <Globe size={13} /> Fetch from NCBI…
-          </button>
-          <button className="ctx-menu-item" role="menuitem" onClick={run(onAddOligos)}>
-            <MoveRight size={13} /> Add oligos to library…
-          </button>
+          <MenuGroups groups={addMenu} variant="ctx" onPicked={() => setMenu(null)} />
         </ToolbarMenu>
       )}
 

@@ -3,6 +3,7 @@
  * states stay distinct, and that starring round-trips through the store.
  */
 import { render, act, cleanup, fireEvent } from '@testing-library/react'
+import { Plus } from 'lucide-react'
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import ExplorerPanel from './ExplorerPanel'
 import { useEditorStore } from '../../store'
@@ -57,6 +58,31 @@ describe('ExplorerPanel', () => {
     localStorage.removeItem('seqnexus:explorer-settings')
   })
   afterEach(cleanup)
+
+  it('imports files dropped on a folder into it, and offers New Sequence and Import Here on its menu', async () => {
+    const id = store().openDocument('pIn', 'ATGC')
+    const folderId = store().createFolder('Plasmids')
+    store().moveTabToFolder(id, folderId)
+    const onImportFiles = vi.fn()
+    const onImportInto = vi.fn()
+    const onNewSequenceIn = vi.fn()
+    render(<ExplorerPanel open onCollapse={noop} onExpand={noop} onImportFiles={onImportFiles}
+      onImportInto={onImportInto} onNewSequenceIn={onNewSequenceIn} />)
+    const folder = [...document.querySelectorAll<HTMLElement>('.ex-folder')].find(el => el.textContent?.includes('Plasmids'))!
+
+    const dropped = new File(['>a\nACGT'], 'a.fasta')
+    fireEvent.drop(folder, { dataTransfer: { types: ['Files'], files: [dropped] } })
+    await vi.waitFor(() => expect(onImportFiles).toHaveBeenCalledWith([dropped], { paths: expect.any(Map), into: folderId }))
+    // Once: the panel saw the drop was handled and did not import it again at the top level.
+    expect(onImportFiles).toHaveBeenCalledTimes(1)
+
+    fireEvent.contextMenu(folder)
+    fireEvent.click([...document.querySelectorAll<HTMLElement>('.ctx-menu-item')].find(el => el.textContent?.includes('New Sequence Here'))!)
+    expect(onNewSequenceIn).toHaveBeenCalledWith(folderId)
+    fireEvent.contextMenu(folder)
+    fireEvent.click([...document.querySelectorAll<HTMLElement>('.ctx-menu-item')].find(el => el.textContent?.includes('Import Files Here'))!)
+    expect(onImportInto).toHaveBeenCalledWith(folderId)
+  })
 
   it('shows only Sequences when there is nothing but sequences', () => {
     store().openDocument('pTest', 'ATGC')
@@ -169,10 +195,19 @@ describe('ExplorerPanel', () => {
     expect(document.querySelector('.ex-no-matches')).toBeTruthy()
   })
 
-  it('offers a way in when the explorer is empty', () => {
-    renderPanel()
-    expect(document.querySelector('.ex-blank')).toBeTruthy()
-    expect(document.querySelectorAll('.ex-blank-btn')).toHaveLength(3)
+  it('points to the + menu when the explorer is empty, and the menu draws the shared groups', () => {
+    const run = vi.fn()
+    render(<ExplorerPanel open onCollapse={noop} onExpand={noop} onImportFiles={noop} addMenu={[
+      { label: 'New', actions: [{ id: 'a', label: 'Sequence…', icon: Plus, run }] },
+      { label: 'Import', actions: [{ id: 'b', label: 'Files…', icon: Plus, shortcut: 'Ctrl+O', run: noop }] },
+    ]} />)
+    expect(document.querySelector('.ex-blank')?.textContent).toMatch(/use \+ above/)
+    fireEvent.click(document.querySelector('[title="New or import"]')!)
+    const labels = [...document.querySelectorAll('.menu-group-label')].map(el => el.textContent)
+    expect(labels).toEqual(['New', 'Import'])
+    fireEvent.click([...document.querySelectorAll('.ctx-menu-item')].find(el => el.textContent === 'Sequence…')!)
+    expect(run).toHaveBeenCalled()
+    expect(document.querySelector('.menu-group-label')).toBeNull()
   })
 })
 

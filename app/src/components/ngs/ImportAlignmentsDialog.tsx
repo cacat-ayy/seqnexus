@@ -12,10 +12,11 @@
 
 import './ReadSetWorkspace.css'
 import '../alignment/AlignmentWorkspace.css'
-import '../sanger/ReadWorkspace.css'
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { Layers, X } from 'lucide-react'
+import { X } from 'lucide-react'
 import { useEditorStore } from '../../store'
+import { toUid } from '../../explorer/types'
+import type { Place } from '../../import/folders'
 import { notify } from '../../toast'
 import { useFocusTrap } from '../../hooks/useFocusTrap'
 import { readAlignmentHeader, type AlignmentFileHeader } from '../../ngs/alignmentImport'
@@ -27,13 +28,15 @@ import { tabReference } from '../../assembly/features'
 
 interface Props {
   file: File
+  /** Where the mapping goes: the folder of the directory the file came from, or the one it was dropped on. */
+  place?: Place
   onClose: () => void
 }
 
 const nf = new Intl.NumberFormat()
 const norm = (s: string) => s.trim().toLowerCase().replace(/\s+/g, '_')
 
-export default function ImportAlignmentsDialog({ file, onClose }: Props) {
+export default function ImportAlignmentsDialog({ file, place, onClose }: Props) {
   const tabs = useEditorStore(s => s.tabs)
   const [header, setHeader] = useState<AlignmentFileHeader | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -89,6 +92,8 @@ export default function ImportAlignmentsDialog({ file, onClose }: Props) {
         unplaced: [],
         samples: [{ readSetId: null, readSetName: file.name.replace(/\.(bam|sam)$/i, ''), storageId: id, report }],
       })
+      const folder = place?.()
+      if (folder) useEditorStore.getState().moveItemToFolder(toUid('assembly', id), folder)
       notify.success(`Imported ${nf.format(report.mapped + report.supplementary)} alignments from ${file.name}`)
       onClose()
     }).catch(err => {
@@ -105,13 +110,19 @@ export default function ImportAlignmentsDialog({ file, onClose }: Props) {
   }
 
   return (
-    <div className="aw-figure-backdrop" onMouseDown={e => { if (e.target === e.currentTarget && !running) onClose() }}>
-      <div className="aw-figure ngs-trim" ref={ref} role="dialog" aria-modal="true" aria-label="Import alignments">
-        <div className="aw-popover-head">
-          <Layers size={14} /> <span>Import {file.name}</span>
-          <button className="aw-icon-btn" onClick={cancel} aria-label="Close"><X size={14} /></button>
+    <div
+      className="modal-backdrop"
+      onMouseDown={e => { if (e.target === e.currentTarget && !running) onClose() }}
+      // Escape stops an import that is running, and closes the dialog otherwise.
+      onKeyDown={e => { if (e.key === 'Escape') { e.stopPropagation(); cancel() } }}
+    >
+      <div className="modal-dialog ngs-import ngs-import-narrow" ref={ref} role="dialog" aria-modal="true" aria-labelledby="ngs-aln-import-title">
+        <div className="modal-header">
+          <h3 className="modal-title" id="ngs-aln-import-title">Import Read Alignments</h3>
+          <button className="modal-close" onClick={cancel} aria-label="Close"><X size={16} /></button>
         </div>
-        <div className="ngs-trim-body aw-stack">
+        <div className="modal-body ngs-import-body">
+          <p className="ngs-import-file">{file.name}</p>
           {error && <p className="aw-note ngs-warn-note">{error}</p>}
           {!header && !error && <p className="aw-note">Reading the header…</p>}
           {header && (
@@ -150,12 +161,12 @@ export default function ImportAlignmentsDialog({ file, onClose }: Props) {
               <div style={{ width: `${Math.round(progress! * 100)}%` }} />
             </div>
           )}
-          <div className="tw-trim-actions">
-            <button className="btn btn-sm" onClick={cancel}>{running ? 'Stop' : 'Cancel'}</button>
-            <button className="btn btn-sm btn-primary" disabled={running || !header || given === 0} onClick={run}>
-              {running ? 'Importing…' : 'Import'}
-            </button>
-          </div>
+        </div>
+        <div className="modal-footer">
+          <button className="btn" onClick={cancel}>{running ? 'Stop' : 'Cancel'}</button>
+          <button className="btn btn-primary" disabled={running || !header || given === 0} onClick={run}>
+            {running ? 'Importing…' : 'Import'}
+          </button>
         </div>
       </div>
     </div>

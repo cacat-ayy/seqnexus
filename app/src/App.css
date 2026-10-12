@@ -1201,6 +1201,27 @@
   margin: var(--space-1) var(--space-2);
 }
 
+/* Shared by the File menu and the explorer's + menu (MenuGroups). */
+.menu-group-label {
+  padding: var(--space-1-5) var(--space-3) var(--space-0-5);
+  font-size: var(--text-2xs);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-muted);
+}
+.menu-item-label { flex: 1; }
+.menu-kbd {
+  margin-left: var(--space-4);
+  font-family: var(--font-mono);
+  font-size: var(--text-2xs);
+  color: var(--text-muted);
+  background: var(--input-bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-xs);
+  padding: 0 var(--space-1);
+}
+
 /* === Main Area (sidebar + center) === */
 .main-area {
   display: flex;
@@ -1592,29 +1613,31 @@
 }
 
 
-/* --- Parse progress overlay --- */
+/* --- Parse progress: a card at the foot of the window, whatever is on
+   screen. It used to sit inside the sequence view, so a first file opened
+   into an empty workspace, or behind an alignment, showed no progress. The
+   parse runs in a worker, so nothing is blocked while it shows. --- */
 .parse-progress-overlay {
-  position: absolute;
-  inset: 0;
+  position: fixed;
+  left: 50%;
+  bottom: var(--space-6);
+  transform: translateX(-50%);
   z-index: var(--z-popover);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: var(--backdrop);
+  pointer-events: none;
 }
 
 .parse-progress-box {
   background: var(--bg);
   border: 1px solid var(--border);
-  border-radius: var(--radius-input);
-  padding: var(--space-6) 32px;
+  border-radius: var(--radius-popover);
+  padding: var(--space-4) var(--space-5);
   min-width: 280px;
   text-align: center;
   box-shadow: var(--shadow-popover);
 }
 
 .parse-progress-label {
-  font-size: var(--text-lg);
+  font-size: var(--text-md);
   font-weight: 600;
   margin-bottom: var(--space-3);
   color: var(--text);

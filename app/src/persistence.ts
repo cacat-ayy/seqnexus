@@ -1548,6 +1548,34 @@ function newId(): string {
   return Math.random().toString(36).slice(2, 10) + Date.now().toString(36)
 }
 
+/** "a", "a and b", "a, b and c". */
+const listed = (parts: string[]) => parts.length < 2 ? parts.join('') : `${parts.slice(0, -1).join(', ')} and ${parts[parts.length - 1]}`
+const count = (n: number, one: string, many: string) => `${n.toLocaleString()} ${n === 1 ? one : many}`
+
+/**
+ * What a session holds, in words: "3 sequences, 2 chromatograms and 1 gel".
+ * Every kind is counted, so a session of gels alone does not read as empty.
+ * Empty string when it holds nothing.
+ */
+export function describeSession(s: RestoredSession): string {
+  const proteins = s.tabs.filter(t => t.doc.sequence.alphabet === 'protein').length
+  const parts: [number, string, string][] = [
+    [s.tabs.length - proteins, 'sequence', 'sequences'],
+    [proteins, 'protein', 'proteins'],
+    [s.sequencingReads.length, 'chromatogram', 'chromatograms'],
+    [s.alignments.length, 'alignment', 'alignments'],
+    [s.assemblies.length, 'assembly', 'assemblies'],
+    // Contigs filed under an assembly are counted with it.
+    [s.contigs.filter(c => !s.assemblies.some(a => a.id === c.assemblyId)).length, 'contig', 'contigs'],
+    [s.gels.length, 'gel', 'gels'],
+    [s.clones.length, 'cloning design', 'cloning designs'],
+    [s.oligos.length, 'oligo', 'oligos'],
+    [s.guides?.length ?? 0, 'guide', 'guides'],
+    [s.enzymeSets?.length ?? 0, 'enzyme set', 'enzyme sets'],
+  ]
+  return listed(parts.filter(([n]) => n > 0).map(([n, one, many]) => count(n, one, many)))
+}
+
 /**
  * Remap all IDs in a RestoredSession to avoid collisions during merge.
  * Returns a new session with fresh IDs and updated cross-references.
@@ -1701,5 +1729,12 @@ export function remapSessionIds(session: RestoredSession): RestoredSession {
     activeContigId: session.activeContigId ? (contigIdMap.get(session.activeContigId) ?? session.activeContigId) : null,
     orfParams: session.orfParams,
     enzymeParams: session.enzymeParams,
+    // Left out before, so a merge brought in neither the guide library nor
+    // the saved enzyme sets. Enzyme sets have no ids to remap; a guide's
+    // provenance follows the sequence it was designed on.
+    enzymeSets: session.enzymeSets,
+    guides: session.guides?.map(g => (g.origin?.documentId
+      ? { ...g, origin: { ...g.origin, documentId: tabIdMap.get(g.origin.documentId) ?? g.origin.documentId } }
+      : g)),
   }
 }

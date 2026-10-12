@@ -71,33 +71,19 @@
   20%, 60% { background: color-mix(in srgb, var(--accent) 35%, transparent); color: var(--accent); transform: scale(1.1); }
 }
 
-/* Empty state */
-.empty-state {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  height: 100%;
-  color: var(--text-muted);
-  gap: var(--space-3);
-}
-
-.empty-state-icon { font-size: 3rem; opacity: 0.3; }
-.empty-state-text { font-size: var(--text-md); }
-.empty-state-hint { font-size: var(--text-sm); color: var(--text-faint); }
-
-/* Drop overlay */
+/* Drop overlay. The page behind is dimmed and blurred and a card says what
+   a drop will do; the old see-through tint let the text collide with
+   whatever was under it. Over the explorer the explorer's own highlight
+   shows instead, so there is one cue at a time. */
 .drop-overlay {
   position: absolute;
   inset: 0;
-  background: var(--accent-bg);
-  border: 3px dashed var(--accent);
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: var(--text-xl);
-  font-weight: 600;
-  color: var(--accent);
+  background: color-mix(in srgb, var(--bg) 70%, transparent);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
   z-index: var(--z-popover);
   pointer-events: none;
   animation: drop-overlay-in var(--dur-fast) ease;
@@ -108,10 +94,47 @@
   to   { opacity: 1; }
 }
 
-.drop-overlay.drop-error {
-  background: var(--danger-bg);
-  border-color: var(--danger);
+.drop-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 320px;
+  padding: var(--space-6) var(--space-6) var(--space-5);
+  text-align: center;
+  background: var(--bg-alt);
+  border: 2px dashed var(--accent);
+  border-radius: var(--radius-card);
+  box-shadow: var(--shadow-popover);
+}
+
+.drop-card-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 48px;
+  height: 48px;
+  margin-bottom: var(--space-1);
+  color: var(--accent);
+  background: var(--accent-bg);
+  border-radius: var(--radius-pill);
+}
+
+.drop-card-title {
+  font-size: var(--text-lg);
+  font-weight: 600;
+  color: var(--text);
+}
+
+.drop-card-sub {
+  font-size: var(--text-sm);
+  color: var(--text-muted);
+}
+
+.drop-overlay.drop-error .drop-card { border-color: var(--danger); }
+.drop-overlay.drop-error .drop-card-icon {
   color: var(--danger);
+  background: var(--danger-bg);
 }
 
 /* Right properties panel (inside center) */

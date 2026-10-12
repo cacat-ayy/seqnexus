@@ -2,9 +2,9 @@ import { describe, it, expect } from 'vitest'
 import { readFasta } from './fasta'
 
 describe('readFasta (M8)', () => {
-  it('reads multi-record FASTA, naming records by the first word of the header', () => {
+  it('reads multi-record FASTA, naming records by the first word of the header and keeping the rest', () => {
     const r = readFasta('>seq1 a description\nacgt\nACGT\n>seq2\nGGCC\n', 'file')
-    expect(r.records).toEqual([{ name: 'seq1', bases: 'ACGTACGT' }, { name: 'seq2', bases: 'GGCC' }])
+    expect(r.records).toEqual([{ name: 'seq1', bases: 'ACGTACGT', description: 'a description' }, { name: 'seq2', bases: 'GGCC' }])
   })
 
   it('accepts plain RNA', () => {

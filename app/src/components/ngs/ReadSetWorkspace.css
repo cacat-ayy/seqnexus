@@ -134,9 +134,29 @@
 }
 .ngs-tip-head { font-weight: 600; color: var(--text); }
 
-/* ---- Import dialog ---- */
+/* ---- Import dialogs (reads, and BAM/SAM) ----
+   Standard modals, as the other ways in (New Sequence, Import by Accession,
+   Import Session) are: they open from the same import, so they look alike. */
 .ngs-import { width: min(980px, 95vw); max-height: min(720px, 92vh); }
-.ngs-import-body { flex: 1; min-height: 0; overflow: auto; padding: var(--space-3); display: flex; flex-direction: column; gap: var(--space-2); }
+.ngs-import-narrow { width: min(520px, 94vw); }
+.ngs-import-file { margin: 0; font-size: var(--text-md); font-weight: 600; color: var(--text); overflow-wrap: anywhere; }
+.ngs-import-body { min-height: 0; display: flex; flex-direction: column; gap: var(--space-3); }
+.ngs-import-body > .aw-note { margin: 0; }
+.ngs-remove-col { width: 28px; }
+.ngs-remove {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  color: var(--text-muted);
+  background: none;
+  border: none;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+}
+.ngs-remove:hover { color: var(--danger); background: var(--danger-bg); }
 .ngs-import-table td { vertical-align: top; }
 .ngs-name-input { width: 180px; }
 .ngs-files { white-space: normal; font-size: var(--text-xs); }
@@ -148,13 +168,10 @@
 .ngs-progress { height: 4px; margin-top: var(--space-2); border-radius: var(--radius-pill); background: var(--border); overflow: hidden; }
 .ngs-progress > div { height: 100%; background: var(--accent); transition: width var(--dur-fast) var(--ease-out); }
 .ngs-import-foot {
-  display: flex;
   align-items: center;
-  gap: var(--space-2);
-  padding: var(--space-2) var(--space-3);
-  border-top: 1px solid var(--border);
   font-size: var(--text-xs);
 }
+.ngs-import-foot .aw-muted { margin-right: auto; }
 
 /* ---- Trim dialog ---- */
 /* Sized to the content, not the figure dialog's fixed height. */

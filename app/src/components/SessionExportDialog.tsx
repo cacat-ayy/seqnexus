@@ -2,11 +2,19 @@
  * Modal for exporting the entire session as a .seqnexus.json file.
  *
  * Shows checkboxes for each data category with item counts and
- * an estimated file size. Sequences are always included.
+ * an estimated file size. Sequences are always included, and so are the
+ * small kinds (gels, cloning designs, oligos, guides, enzyme sets), which
+ * are listed so the file's contents are not a guess.
+ *
+ * NGS read sets are never written: their reads can run to hundreds of
+ * megabytes. The dialog says so and lists them, each a click from its own
+ * view, where Export as FASTQ keeps a copy. The option once called
+ * "Sequencing reads" counted Sanger chromatograms only, so with read sets
+ * open it showed 0 and was greyed out with no word about why.
  */
 
 import { useState, useMemo, useRef, useEffect, useCallback } from 'react'
-import { X, Download } from 'lucide-react'
+import { X, Download, Info } from 'lucide-react'
 import { useEditorStore } from '../store'
 import { useExitAnimation } from '../hooks/useExitAnimation'
 import { useFocusTrap } from '../hooks/useFocusTrap'
@@ -26,6 +34,21 @@ export default function SessionExportDialog({ open, onClose, onExport }: Props) 
   const reads = useEditorStore(s => s.sequencingReads)
   const alignments = useEditorStore(s => s.alignments)
   const contigs = useEditorStore(s => s.contigs)
+  const readSets = useEditorStore(s => s.readSets)
+  const gels = useEditorStore(s => s.gels)
+  const clones = useEditorStore(s => s.clones)
+  const oligos = useEditorStore(s => s.oligos)
+  const guides = useEditorStore(s => s.guideLibrary)
+  const enzymeSets = useEditorStore(s => s.enzymeSets)
+  const assemblies = useEditorStore(s => s.assemblies)
+  /**
+   * The "contigs" option writes assemblies and their contigs together. It
+   * counted contigs alone, so a workspace of NGS mappings (assemblies with
+   * no contigs) had the option greyed out and the mappings left out.
+   */
+  /** NGS mappings: their mapped reads are stored in this browser, as a read set's are. */
+  const ngsMappings = assemblies.filter(a => a.samples?.some(sample => sample.storageId)).length
+  const assemblyCount = assemblies.length + contigs.filter(c => !assemblies.some(a => a.id === c.assemblyId)).length
 
   const [includeReads, setIncludeReads] = useState(true)
   const [includeAlignments, setIncludeAlignments] = useState(true)
@@ -37,10 +60,10 @@ export default function SessionExportDialog({ open, onClose, onExport }: Props) 
     if (open) {
       setIncludeReads(reads.length > 0)
       setIncludeAlignments(alignments.length > 0)
-      setIncludeContigs(contigs.length > 0)
+      setIncludeContigs(assemblyCount > 0)
       setFilename('session.seqnexus.json')
     }
-  }, [open, reads.length, alignments.length, contigs.length])
+  }, [open, reads.length, alignments.length, assemblyCount])
 
   const filenameRef = useRef<HTMLInputElement>(null)
   useEffect(() => {
@@ -72,6 +95,20 @@ export default function SessionExportDialog({ open, onClose, onExport }: Props) 
 
   if (!visible) return null
 
+  const count = (n: number, one: string, many: string) => `${n.toLocaleString()} ${n === 1 ? one : many}`
+  /** Written whatever the checkboxes say. */
+  const always = ([
+    [gels.length, 'gel', 'gels'],
+    [clones.length, 'cloning design', 'cloning designs'],
+    [oligos.length, 'oligo', 'oligos'],
+    [guides.length, 'guide', 'guides'],
+    [enzymeSets.length, 'enzyme set', 'enzyme sets'],
+  ] as const).filter(([n]) => n > 0).map(([n, one, many]) => count(n, one, many))
+  // Anything at all to write. Sequences used to be required, so a workspace
+  // of reads, gels or assemblies could not be backed up.
+  const empty = tabs.length + reads.length + alignments.length + contigs.length + assemblies.length
+    + gels.length + clones.length + oligos.length + guides.length + enzymeSets.length === 0
+
   return (
     <div className={closing ? 'modal-backdrop closing' : 'modal-backdrop'} onAnimationEnd={onAnimationEnd} ref={backdropRef} onMouseDown={handleBackdropClickDown} onClick={handleBackdropClick} onKeyDown={handleKeyDown} tabIndex={-1}>
       <div className="modal-dialog session-dialog" role="dialog" aria-modal="true" aria-labelledby="session-export-modal-title">
@@ -99,7 +136,7 @@ export default function SessionExportDialog({ open, onClose, onExport }: Props) 
               disabled={reads.length === 0}
               onChange={e => setIncludeReads(e.target.checked)}
             />
-            <span>Sequencing reads ({reads.length})</span>
+            <span>Sanger chromatograms ({reads.length})</span>
             {reads.length > 0 && <span className="session-option-hint">includes trace data</span>}
           </label>
 
@@ -113,15 +150,47 @@ export default function SessionExportDialog({ open, onClose, onExport }: Props) 
             <span>Alignments ({alignments.length})</span>
           </label>
 
-          <label className={contigs.length === 0 ? 'session-option is-empty' : 'session-option'}>
+          <label className={assemblyCount === 0 ? 'session-option is-empty' : 'session-option'}>
             <input
               type="checkbox"
               checked={includeContigs}
-              disabled={contigs.length === 0}
+              disabled={assemblyCount === 0}
               onChange={e => setIncludeContigs(e.target.checked)}
             />
-            <span>Contigs ({contigs.length})</span>
+            <span>Assemblies and mappings ({assemblyCount})</span>
           </label>
+
+          {always.length > 0 && (
+            <p className="session-note">Also included: {always.join(', ')}.</p>
+          )}
+
+          {(readSets.length > 0 || ngsMappings > 0) && (
+            <div className="session-readsets" role="note">
+              <div className="session-readsets-title">
+                <Info size={14} />
+                {readSets.length === 0 ? 'NGS reads stay' : readSets.length === 1 ? '1 NGS read set stays' : `${readSets.length} NGS read sets stay`} in this browser
+              </div>
+              <p className="session-readsets-text">
+                NGS reads can run to hundreds of megabytes, so session files leave them out.
+                {readSets.length > 0 && ' To keep a copy of a read set, open it and use Export as FASTQ.'}
+                {ngsMappings > 0 && ` The reads behind ${ngsMappings === 1 ? 'the NGS mapping' : `the ${ngsMappings} NGS mappings`} are stored the same way: the file keeps ${ngsMappings === 1 ? 'its' : 'each'} record, not ${ngsMappings === 1 ? 'its' : 'their'} reads.`}
+              </p>
+              {readSets.length > 0 && <ul className="session-readsets-list">
+                {readSets.map(rs => (
+                  <li key={rs.id}>
+                    <span className="session-readsets-name">{rs.name}</span>
+                    <span className="session-option-hint">{rs.discardedAt ? 'reads deleted' : formatBytes(rs.storedBytes)}</span>
+                    <button
+                      className="session-link"
+                      onClick={() => { onClose(); useEditorStore.getState().setActiveReadSet(rs.id) }}
+                    >
+                      Open
+                    </button>
+                  </li>
+                ))}
+              </ul>}
+            </div>
+          )}
 
           <div className="session-filename">
             <div className="session-size">
@@ -143,7 +212,7 @@ export default function SessionExportDialog({ open, onClose, onExport }: Props) 
 
         <div className="modal-footer">
           <button className="btn" onClick={onClose}>Cancel</button>
-          <button className="btn btn-primary" onClick={handleExport} disabled={tabs.length === 0}>
+          <button className="btn btn-primary" onClick={handleExport} disabled={empty}>
             <Download size={14} />
             Export
           </button>

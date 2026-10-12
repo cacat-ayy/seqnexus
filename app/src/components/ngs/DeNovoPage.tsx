@@ -92,9 +92,12 @@ export default function DeNovoPage({ assembly, onShowReads }: { assembly: Assemb
       const c = d.contigs[i]
       const b = await bases(i)
       const title = d.contigs.length === 1 ? assembly.name : `${assembly.name} ${c.name}`
-      useEditorStore.getState().openDocument(title, b, c.circular ? 'circular' : 'linear',
+      // Opened beside the assembly, which stays on screen, as a consensus is.
+      const store = useEditorStore.getState()
+      const id = store.openDocument(title, b, c.circular ? 'circular' : 'linear',
         `Assembled de novo from ${sample?.readSetName ?? 'reads'} (${c.circular ? 'circular' : 'linear'})`, 'consensus')
-      notify.success(`Opened ${title}`)
+      store.setActiveAssembly(assembly.id)
+      notify.success(`Opened ${title}`, { action: { label: 'Show', onClick: () => useEditorStore.getState().setActiveTab(id) } })
     } catch (err) {
       notify.error('Could not open the contig', { detail: err instanceof Error ? err.message : String(err) })
     }

@@ -63,6 +63,8 @@ export interface TreeHandlers {
   onFolderRenameSubmit: (folderId: string, name: string) => void
   onStartFolderRename: (folderId: string) => void
   onDropOnFolder: (folderId: string | null) => void
+  /** Files from outside dropped on a folder: imported into it. Called during the drop event. */
+  onDropFilesOnFolder: (folderId: string, dt: DataTransfer) => void
   /** Reports which row started the drag; the panel widens it to the selection. */
   onDragStart: (uid: string) => void
   onHover: (item: ExplorerItem, e: React.MouseEvent) => void
@@ -335,18 +337,29 @@ export default function ExplorerTree({
                 onToggle={() => handlers.onToggleFolder(node.folder.id)}
                 onContextMenu={e => handlers.onFolderContextMenu(e, node.folder.id, node.folder.name)}
                 onDragOver={e => {
-                  if (!isInternal(e)) return
+                  // Files from outside are taken too: dropped on a folder, they import into it.
+                  const files = !isInternal(e) && e.dataTransfer.types.includes('Files')
+                  if (!isInternal(e) && !files) return
                   e.preventDefault()
-                  e.dataTransfer.dropEffect = 'move'
+                  e.dataTransfer.dropEffect = files ? 'copy' : 'move'
                   setDragOverFolder(node.folder.id)
                 }}
                 onDragLeave={() => setDragOverFolder(null)}
                 onDrop={e => {
-                  if (!isInternal(e)) return
+                  if (isInternal(e)) {
+                    e.preventDefault()
+                    e.stopPropagation()
+                    handlers.onDropOnFolder(node.folder.id)
+                    handleDragEnd()
+                    return
+                  }
+                  if (!e.dataTransfer.types.includes('Files')) return
+                  // Not stopped: the panel and the window still see the drop
+                  // and put their highlights away; preventDefault tells them
+                  // it was handled.
                   e.preventDefault()
-                  e.stopPropagation()
-                  handlers.onDropOnFolder(node.folder.id)
-                  handleDragEnd()
+                  setDragOverFolder(null)
+                  handlers.onDropFilesOnFolder(node.folder.id, e.dataTransfer)
                 }}
                 onDragStart={e => {
                   e.dataTransfer.setData(DRAG_MIME, node.folder.id)

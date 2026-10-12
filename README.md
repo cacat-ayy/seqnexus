@@ -204,6 +204,8 @@ short version.
   - [SAM and BAM](#sam-and-bam)
 - [Fetching from NCBI and UniProt](#fetching-from-ncbi-and-uniprot)
 - [File Format Support](#file-format-support)
+  - [Opening files](#opening-files)
+  - [EMBL and GFF3](#embl-and-gff3)
   - [Geneious files](#geneious-files)
 - [PDF Export](#pdf-export)
   - [One painter, two outputs](#one-painter-two-outputs)
@@ -471,6 +473,17 @@ design and oligo. Each kind has its own icon; topology (circular or linear)
 is a pip on the icon and a word in the metadata line, so a plasmid and an
 alignment can be told apart at a glance.
 
+- **New and Import.** The + at the top of the explorer and the File menu
+  offer the same two groups, defined once: New (sequence, protein, oligos,
+  alignment, cloning design, gel, folder) and Import (files, a folder, the
+  clipboard, an accession). The File menu adds Export and Session. With
+  nothing open, the editor shows a start screen with the main ways in as
+  cards, the other things to make, an example plasmid and the list of
+  formats. Files dragged over the window get a card saying what a drop will
+  do; over the explorer, the explorer's own highlight shows instead, and a
+  folder under the pointer lights up: a drop there imports into it. A
+  folder's menu has New Sequence Here and Import Files Here. See
+  [Opening files](#opening-files).
 - **Folders and grouping.** Items live in folders you make (drag to move,
   or file a selection from the bulk bar). How the list is shaped is a
   presentation choice, separate from the folders: group by folder, by kind,
@@ -550,6 +563,7 @@ a fixed print palette, so a figure looks the same whoever exports it.
 | Keys | Action |
 |------|--------|
 | Ctrl+K | Command palette |
+| Ctrl+O | Import files |
 | Ctrl+F | Find and replace |
 | Ctrl+G | Go to position |
 | Ctrl+Z, Ctrl+Y | Undo, redo |
@@ -574,12 +588,19 @@ when site data is cleared. The copy that survives that is a session file.
 
 **Export Session** writes one JSON file (format `seqnexus-session`, version
 1) with every sequence, protein, primer, enzyme set, gel and cloning design,
-and optionally the Sanger reads, alignments and contigs, which can be large.
-NGS read sets are never included, since their reads would make the file
-huge; they stay in the browser. **Import Session** merges a file into the
-current session, giving everything fresh ids and rewriting the references
-between items, so a session can be imported twice or into another session
-without collisions.
+and optionally the Sanger chromatograms, alignments, and assemblies and
+mappings with their contigs, which can be large. NGS reads are never
+included, since they would make the file huge: read sets, and the reads
+behind an NGS mapping (the file keeps the mapping's record), stay in the
+browser. The dialog says so and lists the read sets, each a click from its
+own view, where Export as FASTQ keeps a copy. **Import Session** offers two ways in.
+**Merge**, the default, adds the file to the current session, giving
+everything fresh ids and rewriting the references between items, so a
+session can be imported twice or into another session without collisions.
+A folder with the same name as one already under the same parent becomes
+that folder, its subfolders following it, and the guide library and saved
+enzyme sets join the ones here. **Replace** clears the current session
+first, and says how many items that removes.
 
 The status bar keeps track of when the last complete export was made (one
 that left out reads, alignments or contigs does not count) and whether
@@ -1236,7 +1257,13 @@ topology word.
   (`LOCUS name 142 aa linear date`, no molecule type, residues in lowercase
   blocks of ten), so a protein exported as "GenBank" is a GenPept file that
   NCBI's own tools read.
-- **Plain text and the clipboard** go through the FASTA reader.
+- **Plain text and the clipboard** go through the FASTA reader. Every
+  letter is an amino-acid code, so a run of words would pass as a protein;
+  text without a FASTA header that reads as words is refused instead.
+  Sequence is written in one case per run of letters and, when broken into
+  blocks, in blocks of one length (the last on a line aside), while words
+  mix cases ("Hello") or vary in length ("the quick brown fox"). Soft-masked
+  DNA, which does mix cases, reads as DNA before this test is made.
 - **Export:** GenPept, FASTA, GFF3 and the feature CSV, and the PDF of the
   sequence view. SnapGene's `.dna` is a DNA format and is not offered for a
   protein; in a bulk export it falls back to GenPept.
@@ -5101,7 +5128,7 @@ never one string.
 ## Fetching from NCBI and UniProt
 
 Import by Accession (in the File group) downloads a record straight into the
-session: NCBI Nucleotide and NCBI Protein (as GenPept) through the Entrez
+session, or several, separated by commas or spaces, into a folder: NCBI Nucleotide and NCBI Protein (as GenPept) through the Entrez
 E-utilities, and UniProtKB through its REST service. The source is guessed
 from the shape of the accession as it is typed and can be overridden: RefSeq
 proteins (NP_, XP_, WP_, YP_, AP_), GenBank proteins (three letters and five
@@ -5126,30 +5153,118 @@ failed every time; the dialog now says how to get their files in instead.
 Genome links listed by an imported Geneious file open this dialog with the
 accession filled in (see [Geneious files](#geneious-files)).
 
+A single accession is looked up as it is typed, once typing pauses for
+half a second: the record's title and length show under the box (from
+NCBI's summary, or UniProt's name, organism and length fields), and an
+accession that does not exist says so before anything is downloaded.
+Several accessions, separated by commas or spaces, are fetched one after
+another into a folder; those that fail stay in the box with their errors.
+The last eight accessions fetched are kept in this browser and offered as
+chips while the box is empty. A record identical to an open one is shown
+rather than opened again.
+
 ---
 
 ## File Format Support
 
 | Format | Read | Write | Notes |
 |--------|------|-------|-------|
-| GenBank (.gb, .gbk) | Yes | Yes | Streaming parser for large files (>1 MB). Handles multi-record files. |
+| GenBank (.gb, .gbk, .gbff) | Yes | Yes | Streaming parser for large files (>1 MB). Handles multi-record files. |
+| ApE (.ape) | Yes | - | ApE writes GenBank, so its files go through the GenBank reader. |
+| EMBL (.embl) | Yes | - | Read through the GenBank reader. See [EMBL and GFF3](#embl-and-gff3). |
 | GenPept (.gp, .gpt) | Yes | Yes | Protein records in GenBank's layout ("aa" on the LOCUS line). See [Proteins](#proteins). |
-| FASTA (.fasta, .fa, .faa) | Yes | Yes | Multi-sequence support. Each record is sorted into DNA or protein by its letters; a .faa file is all protein. |
+| FASTA (.fasta, .fa, .faa) | Yes | Yes | Multi-sequence support. Each record is sorted into DNA or protein by its letters; a .faa file is all protein. A header's first word names the record and the rest of the line is kept as its description. |
 | SnapGene (.dna) | Yes | Yes | Binary TLV format. Handles sequence, features, primers, topology, methylation. |
 | Geneious (.geneious) | Yes | - | A Geneious folder export: every sequence, protein and sequence list in it, with features and primers, and its oligos into the primer library. See [Geneious files](#geneious-files). |
 | AB1 (.ab1) | Yes | - | Sanger chromatogram traces with quality scores. |
 | SCF (.scf) | Yes | - | Sanger chromatogram traces. |
-| GFF3 (.gff, .gff3) | Yes | - | Feature annotations with embedded FASTA. |
+| GFF3 (.gff, .gff3) | Yes | Yes | Features. A file with a ##FASTA section opens its sequences; one without adds its features to the open sequences it names. See [EMBL and GFF3](#embl-and-gff3). |
 | BAM (.bam, .bai) | Yes | Yes | Read alignments, imported as a mapping onto open sequences; written with its index. See [SAM and BAM](#sam-and-bam). |
 | SAM (.sam) | Yes | Yes | The same as text. |
 | Clustal (.aln) | - | Yes | Alignment export. |
 | PDF (.pdf) | - | Yes | The sequence as the text view draws it, with an optional map page and feature and enzyme tables. See [PDF Export](#pdf-export). |
 | CSV | - | Yes | Feature table export. |
 | Plain text | Yes | Yes | Raw sequence. |
+| Gzipped (.gz) | Yes | - | GenBank, EMBL, GFF3 and FASTA files gzipped, as NCBI and Ensembl serve them, and gzipped reads. |
+
+### Opening files
+
+Files dropped together, or a folder opened with Import Folder, are sorted
+by name: chromatograms import as one batch, reads to the read set dialog,
+BAM and SAM to the mapping dialog, everything else to its reader. Files an
+operating system leaves in folders (`.DS_Store`, `Thumbs.db`) are passed
+over, the rest that cannot be opened are named in one notice rather than a
+notice each, and the `.seq` file an ABI sequencer writes beside each
+chromatogram is left out when its trace is there, since it holds the
+trace's base calls and would put every read in twice.
+
+- **Folders keep their shape.** A folder opened with Import Folder, or
+  dropped on the window, comes in as explorer folders: each directory a
+  folder inside its parent's, named as it was, made only when something in
+  it opens. A plate of chromatograms in a directory goes straight into that
+  directory's folder; a file of several records gets a folder of its own
+  inside it. Read sets and BAM mappings made from files in a directory are
+  filed there when their import finishes.
+- **Into a folder.** Files dropped on a folder in the explorer go into it,
+  and a folder's menu has Import Files Here and New Sequence Here.
+- **One summary.** Several files report once, when the last is done:
+  "Opened 12 items from 5 files", with anything that went wrong listed
+  underneath. A toast per file used to bury the result under its own
+  noise. Chromatograms keep their plate summary with its QC counts.
+- **Already open.** A sequence identical to an open one (same name,
+  molecule and bases) is not opened again. A single one is shown instead,
+  and the notice offers Open a Copy; a version with other bases opens as
+  usual.
+- **Gzipped FASTA.** A `.fa.gz` can be a reference genome or a file of
+  reads. One of at most 30 MB holding no more than 20 records in its first
+  half megabyte (decompressed) opens as sequences; anything else goes to the
+  read set import, as before. Gzipped GenBank, EMBL and GFF3 are unpacked
+  and read as themselves.
+- **Paste.** Ctrl+V on the start screen, or with the explorer focused,
+  imports what was copied through the same reader as a text file: FASTA,
+  GenBank, EMBL, GFF3, an alignment or bare sequence. With a sequence open
+  and focused, a paste still edits it.
 
 SnapGene and Geneious parsers are reverse-engineered from the binary/XML
 formats. SnapGene uses a TLV (type-length-value) packet structure; Geneious
 uses ZIP-compressed Java XMLSerializable format.
+
+### EMBL and GFF3
+
+**EMBL** (ENA's flat file) carries the same INSDC feature table as GenBank:
+the same feature keys, location syntax and qualifiers. Only the line
+prefixes differ, so an EMBL file is rewritten in GenBank's layout and read
+by the GenBank reader. A feature line `FT   CDS             join(..)` has
+its `FT` replaced by two spaces, which gives GenBank's columns exactly; ID
+becomes LOCUS (name, topology, length, and `AA` for a protein), DE becomes
+DEFINITION, SQ becomes ORIGIN. A second parser could only approximate what
+the GenBank reader already does for joins, origin-spanning features and
+qualifier quoting. Cross-references, references and the organism lines are
+left out, as their GenBank counterparts are.
+
+**GFF3** is read by the specification's rules:
+
+- Coordinates go from 1-based inclusive to 0-based half-open.
+- Lines that share an ID are one feature in several parts (the exons of a
+  CDS) and become one feature with segments.
+- Sequence Ontology terms are mapped to the GenBank keys the app draws
+  (`five_prime_UTR` to 5'UTR, `origin_of_replication` to rep_origin,
+  `primer_binding_site` to primer_bind, `region` and `sequence_feature`
+  to misc_feature, and so on); a term not mapped is kept as written.
+- Column 9 attributes become qualifiers (`Note` as note, `Dbxref` as
+  db_xref); ID, Name, Parent and color are structure, not qualifiers. A
+  feature is named by its Name, then gene, then product, then ID.
+- A region spanning a whole sequence is that sequence's source, not a
+  feature; its `Is_circular=true` makes the sequence circular.
+- What the writer marks as crossing the origin (`Is_circular=true` with
+  `circular_end`) is put back across the origin, so a GFF3 export reads
+  back as it was written.
+
+A file with a `##FASTA` section opens its sequences with their features.
+Without one, each seqid's features are added to the open sequence of that
+name (or of that name with underscores for spaces, as the writer spells
+it), one undo step per sequence; seqids with no open sequence are named in
+the notice.
 
 ### Geneious files
 
@@ -5816,6 +5931,13 @@ print colours on white, whatever the app's theme.
 
 - NCBI. "Entrez Programming Utilities Help."
   https://www.ncbi.nlm.nih.gov/books/NBK25499/
+
+- EMBL-EBI. "European Nucleotide Archive: Annotated/Assembled Sequences,
+  User Manual" (the EMBL flat file format).
+  https://ftp.ebi.ac.uk/pub/databases/embl/doc/usrman.txt
+
+- The Sequence Ontology. "Generic Feature Format Version 3 (GFF3)."
+  https://github.com/The-Sequence-Ontology/Specifications/blob/master/gff3.md
 
 - Thermo Fisher Scientific. "Gateway Technology" manual (att site
   sequences).

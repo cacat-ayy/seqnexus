@@ -23,7 +23,7 @@ import ExplorerContextMenu, {
   type ExplorerMenuTarget, type SelectionCapabilities,
 } from './ExplorerContextMenu'
 import ExplorerNoteDialog from './ExplorerNoteDialog'
-import { OligoExportDialog, OligoImportDialog } from '../primers/OligoDialogs'
+import { OligoExportDialog } from '../primers/OligoDialogs'
 import ExplorerTagEditor from './ExplorerTagEditor'
 import ExplorerBulkBar from './ExplorerBulkBar'
 import ExplorerFolderPicker from './ExplorerFolderPicker'
@@ -46,22 +46,27 @@ import {
   loadExplorerSettings, saveExplorerSettings, clampWidth, SIDEBAR_MIN,
 } from '../../utils/explorer-settings'
 import type { ExportItemKind } from '../ExportDialog'
-import { ALN_EXTENSIONS } from '../../msa/formats'
+import type { MenuGroup } from '../MenuGroups'
+import type { ImportOptions } from '../../hooks/useFileImport'
+import { droppedFiles } from '../../import/dropped'
 
 interface Props {
   open: boolean
   onCollapse: () => void
   onExpand: () => void
-  onImportFiles?: (files: File[]) => void
+  onImportFiles?: (files: File[], opts?: ImportOptions) => void
+  /** Import Files Here, from a folder's menu. */
+  onImportInto?: (folderId: string) => void
+  /** New Sequence Here, from a folder's menu. */
+  onNewSequenceIn?: (folderId: string) => void
   onOpenProperties?: () => void
-  onNewSequence?: () => void
-  onFetch?: () => void
+  /** The New and Import groups, shared with the File menu. */
+  addMenu?: MenuGroup[]
   onAlignToRef?: (readIds: string | string[]) => void
   onQuickAlign?: (tabIds: string[], readIds?: string[]) => void
   onExportItems?: (items: Partial<Record<ExportItemKind, string[]>>) => void
 }
 
-const IMPORT_ACCEPT = ['.gb', '.gbk', '.genbank', '.fasta', '.fa', '.fna', '.fastq', '.fq', '.gz', '.txt', '.dna', '.geneious', '.ab1', '.abi', '.abif', '.scf', '.bam', '.sam', ...ALN_EXTENSIONS].join(',')
 
 /** Stable empty array, so an untagged row's props keep their identity. */
 const EMPTY_TAGS: string[] = []
@@ -88,7 +93,7 @@ function gelLanesAtRisk(
 }
 
 function ExplorerPanel({
-  open, onCollapse, onExpand, onImportFiles, onOpenProperties, onNewSequence, onFetch,
+  open, onCollapse, onExpand, onImportFiles, onImportInto, onNewSequenceIn, onOpenProperties, addMenu,
   onAlignToRef, onQuickAlign, onExportItems,
 }: Props) {
   const folders = useEditorStore(s => s.folders)
@@ -135,8 +140,6 @@ function ExplorerPanel({
     onResult: (value: string | null) => void
   } | null>(null)
 
-  const fileInputRef = useRef<HTMLInputElement>(null)
-  const folderInputRef = useRef<HTMLInputElement>(null)
   const fileDragDepth = useRef(0)
 
   const starred = useMemo(
@@ -374,9 +377,12 @@ function ExplorerPanel({
   }, [patchSettings])
 
   // --- Imports ---
-  const importFiles = useCallback((files: FileList | null) => {
-    if (!files || !onImportFiles) return
-    onImportFiles(Array.from(files))
+  /** A drop's files, folders walked, imported into `into`. Call during the drop event. */
+  const importDrop = useCallback((dt: DataTransfer, into: string | null) => {
+    if (!onImportFiles) return
+    void droppedFiles(dt).then(({ files, paths }) => {
+      if (files.length > 0) onImportFiles(files, { paths, into })
+    })
   }, [onImportFiles])
 
   // --- Deleting folders ---
@@ -417,7 +423,6 @@ function ExplorerPanel({
 
   // --- Primer library ---
   const libraryOligos = useEditorStore(s => s.oligos)
-  const [oligoImportOpen, setOligoImportOpen] = useState(false)
   const [oligoExportIds, setOligoExportIds] = useState<string[] | null>(null)
 
   // --- Export ---
@@ -531,6 +536,7 @@ function ExplorerPanel({
       setRenamingKey(null)
     },
     onStartFolderRename: folderId => setRenamingKey(folderId),
+    onDropFilesOnFolder: (folderId, dt) => importDrop(dt, folderId),
     onDropOnFolder: folderId => {
       // A dragged folder is re-parented; dragged items are filed. Folders
       // hold every kind now, so nothing needs filtering out.
@@ -557,7 +563,7 @@ function ExplorerPanel({
   }), [
     actions, handleItemClick, itemUids, selectedIds, settings.collapsedGroups, patchSettings,
     toggleFolder, renameFolder, moveItemToFolder, setFolderParent, draggingUids, draggingFolderId,
-    showHover, hideHover,
+    showHover, hideHover, importDrop,
   ])
 
   // Clear the context menu when the underlying item disappears, so a delete
@@ -628,9 +634,10 @@ function ExplorerPanel({
       onDrop={e => {
         fileDragDepth.current = 0
         setFileDragOver(false)
-        if (!e.dataTransfer.files?.length) return
+        // A folder row imported them into itself already.
+        if (e.defaultPrevented || !e.dataTransfer.types.includes('Files')) return
         e.preventDefault()
-        importFiles(e.dataTransfer.files)
+        importDrop(e.dataTransfer, null)
       }}
     >
       <ExplorerToolbar
@@ -646,12 +653,8 @@ function ExplorerPanel({
         onGroupBy={mode => patchSettings({ groupBy: mode })}
         onSort={(by, dir) => patchSettings({ sortBy: by, sortDir: dir })}
         onToggleNestDerived={() => patchSettings({ nestDerived: !settings.nestDerived })}
-        onNewSequence={() => onNewSequence?.()}
-        onAddOligos={() => setOligoImportOpen(true)}
+        addMenu={addMenu ?? []}
         onNewFolder={() => useEditorStore.getState().createFolder('New Folder')}
-        onFetch={() => onFetch?.()}
-        onPickFiles={() => fileInputRef.current?.click()}
-        onPickFolder={() => folderInputRef.current?.click()}
         onCollapse={onCollapse}
       />
 
@@ -690,37 +693,17 @@ function ExplorerPanel({
         />
       )}
 
-      <input
-        ref={fileInputRef}
-        type="file"
-        accept={IMPORT_ACCEPT}
-        multiple
-        style={{ display: 'none' }}
-        onChange={e => { importFiles(e.target.files); e.target.value = '' }}
-      />
-      <input
-        ref={folderInputRef}
-        type="file"
-        /* @ts-expect-error webkitdirectory is non-standard but widely supported */
-        webkitdirectory=""
-        multiple
-        style={{ display: 'none' }}
-        onChange={e => { importFiles(e.target.files); e.target.value = '' }}
-      />
-
       <ExplorerRecentlyDeleted
         collapsed={recentCollapsed}
         onToggle={() => setRecentCollapsed(c => !c)}
       />
 
       {isEmpty ? (
+        // The ways to start are on the start screen beside this; repeating
+        // them here as a second set of buttons only competed with it.
         <div className="ex-blank">
-          <div className="ex-blank-text">Nothing open yet.<br />Drop files here, or:</div>
-          <div className="ex-blank-actions">
-            <button className="ex-blank-btn" onClick={() => fileInputRef.current?.click()}>Import files</button>
-            <button className="ex-blank-btn" onClick={() => onFetch?.()}>Fetch from NCBI</button>
-            <button className="ex-blank-btn" onClick={() => onNewSequence?.()}>New sequence</button>
-          </div>
+          <Upload size={16} className="ex-blank-icon" />
+          <div className="ex-blank-text">Nothing here yet.<br />Drop files here, or use + above.</div>
         </div>
       ) : noMatches ? (
         <div className="ex-no-matches">No matches</div>
@@ -762,7 +745,9 @@ function ExplorerPanel({
         />
       )}
 
-      {hoverTarget && !ctxMenu && (
+      {/* Only while its item exists: a row deleted under the pointer never
+          gets the mouseleave that would have hidden its card. */}
+      {hoverTarget && !ctxMenu && byUid.has(hoverTarget.item.uid) && (
         <ExplorerHoverCard
           item={hoverTarget.item}
           x={hoverTarget.x}
@@ -774,7 +759,7 @@ function ExplorerPanel({
       )}
 
       {fileDragOver && (
-        <div className="ex-drop-overlay"><Upload size={14} /> Drop to import</div>
+        <div className="ex-drop-overlay"><span className="ex-drop-hint"><Upload size={13} /> Drop to import, or onto a folder</span></div>
       )}
 
       <div
@@ -799,7 +784,11 @@ function ExplorerPanel({
             exportItems: !!onExportItems,
             alignToRef: !!onAlignToRef,
             quickAlign: !!onQuickAlign,
+            importHere: !!onImportInto,
+            newSequenceHere: !!onNewSequenceIn,
           }}
+          onImportHere={() => { if (ctxMenu.type === 'folder') onImportInto?.(ctxMenu.folderId); setCtxMenu(null) }}
+          onNewSequenceHere={() => { if (ctxMenu.type === 'folder') onNewSequenceIn?.(ctxMenu.folderId); setCtxMenu(null) }}
           onClose={() => setCtxMenu(null)}
           onRename={() => {
             setRenamingKey(ctxMenu.type === 'folder' ? ctxMenu.folderId : menuItem?.uid ?? null)
@@ -882,17 +871,6 @@ function ExplorerPanel({
         onResult={confirmState?.onResult ?? (() => {})}
       />
 
-      <OligoImportDialog
-        open={oligoImportOpen}
-        onClose={() => setOligoImportOpen(false)}
-        onImport={list => {
-          setOligoImportOpen(false)
-          const ids = useEditorStore.getState().addLibraryOligos(list)
-          notify.success(ids.length === list.length
-            ? `Added ${ids.length} oligo${ids.length === 1 ? '' : 's'} to the library`
-            : `Added ${ids.length}; ${list.length - ids.length} were already in the library`)
-        }}
-      />
       <OligoExportDialog
         open={oligoExportIds !== null}
         onClose={() => setOligoExportIds(null)}

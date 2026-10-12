@@ -11,6 +11,7 @@ import { parseAb1, autoTrim } from '../io/ab1'
 import { parseScf } from '../io/scf'
 import type { TraceData } from '../io/trace'
 import { useEditorStore } from '../store'
+import { toUid } from '../explorer/types'
 import { notify } from '../toast'
 import { readQc } from './qc'
 
@@ -62,8 +63,13 @@ export function batchFolderName(reads: TraceData[], now = new Date()): string {
   return `Sanger reads ${now.toISOString().slice(0, 10)}`
 }
 
-/** Parse and add trace files. Resolves with the new read ids. */
-export async function importTraceFiles(files: File[]): Promise<string[]> {
+/**
+ * Parse and add trace files. Resolves with the new read ids.
+ *
+ * `folder`, when given, is where the reads go instead of a folder of their
+ * own: a plate imported as a directory is already that directory's folder.
+ */
+export async function importTraceFiles(files: File[], opts: { folder?: () => string | null } = {}): Promise<string[]> {
   const results = await Promise.all(files.map(async f => {
     try {
       return { file: f.name, data: await parseTraceFile(f) }
@@ -81,14 +87,19 @@ export async function importTraceFiles(files: File[]): Promise<string[]> {
   for (const f of failed) notify.error(`Could not read "${f.file}"`, { detail: f.error })
   if (parsed.length === 0) return []
 
-  const folder = parsed.length > 1 ? batchFolderName(parsed) : undefined
-  const ids = useEditorStore.getState().addSequencingReads(
+  const target = opts.folder?.() ?? null
+  const store = useEditorStore.getState()
+  const folder = target
+    ? store.folders.find(f => f.id === target)?.name
+    : parsed.length > 1 ? batchFolderName(parsed) : undefined
+  const ids = store.addSequencingReads(
     parsed.map(data => {
       const [trimStart, trimEnd] = initialTrim(data)
       return { data, trimStart, trimEnd }
     }),
-    folder,
+    target ? undefined : folder,
   )
+  if (target) for (const id of ids) useEditorStore.getState().moveItemToFolder(toUid('read', id), target)
 
   const verdicts = parsed.map(d => readQc(d).verdict)
   const bad = verdicts.filter(v => v === 'fail').length

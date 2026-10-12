@@ -353,6 +353,47 @@ export function folderSubtree(folders: ExplorerFolder[], rootId: string): Set<st
 }
 
 /**
+ * Fold imported folders into the existing tree. An imported folder with the
+ * same name as one already under the same parent takes its place, and its
+ * items join that folder; any other folder is added. Parents are resolved
+ * before their children, so a subfolder follows its parent into the folder
+ * it merged with instead of pointing at an id that no longer exists (which
+ * left it, and everything in it, out of the explorer). Existing folders are
+ * replaced, never changed in place.
+ */
+export function mergeFolderTrees(existing: ExplorerFolder[], imported: ExplorerFolder[]): ExplorerFolder[] {
+  const byId = new Map(imported.map(f => [f.id, f]))
+  const depth = new Map<string, number>()
+  const depthOf = (f: ExplorerFolder, seen = new Set<string>()): number => {
+    const known = depth.get(f.id)
+    if (known !== undefined) return known
+    const parent = f.parentId ? byId.get(f.parentId) : undefined
+    const d = parent && !seen.has(parent.id) ? depthOf(parent, seen.add(f.id)) + 1 : 0
+    depth.set(f.id, d)
+    return d
+  }
+  const ordered = [...imported].sort((a, b) => depthOf(a) - depthOf(b))
+
+  const out = [...existing]
+  /** Where each imported folder ended up: its own id, or the folder it merged into. */
+  const placed = new Map<string, string>()
+  for (const f of ordered) {
+    const parentId = f.parentId ? (placed.get(f.parentId) ?? null) : null
+    const at = out.findIndex(e => e.name === f.name && (e.parentId ?? null) === parentId)
+    if (at >= 0) {
+      const target = out[at]
+      const have = new Set(target.itemUids)
+      out[at] = { ...target, itemUids: [...target.itemUids, ...f.itemUids.filter(u => !have.has(u))] }
+      placed.set(f.id, target.id)
+    } else {
+      out.push({ ...f, parentId })
+      placed.set(f.id, f.id)
+    }
+  }
+  return out
+}
+
+/**
  * Pick a colour for a new tag: the first preset not already in use, so tags
  * created one after another stay distinguishable. Falls back to walking the
  * palette once every colour is taken.
@@ -1055,6 +1096,7 @@ interface EditorStore {
     itemMeta?: Record<string, ItemMeta>,
     tagColors?: Record<string, string>,
     oligos?: LibraryOligo[],
+    guides?: GuideRecord[],
   ) => void
 
   // Legacy compat
@@ -1498,6 +1540,19 @@ export const useEditorStore = create<EditorStore>((set, get) => {
   function getActiveTab(): DocumentTab | null {
     const { tabs, activeTabId } = get()
     return tabs.find(t => t.id === activeTabId) ?? null
+  }
+
+  /**
+   * Add a new tab and show it. Through setActiveTab, so whatever was on
+   * screen (an alignment, a read, an assembly) gives way to it and the
+   * outgoing tab keeps its analysis results. Only clearing the gel and the
+   * cloning design left a new sequence hidden behind an open alignment.
+   */
+  function openTab(tab: DocumentTab): string {
+    set(s => ({ tabs: [...s.tabs, tab] }))
+    get().setActiveTab(tab.id)
+    set({ lastOpenedTabId: tab.id })
+    return tab.id
   }
 
   /**
@@ -2655,33 +2710,7 @@ export const useEditorStore = create<EditorStore>((set, get) => {
         annotations: [],
         metadata: origin ? { origin } : undefined,
       }
-      const tab = makeTab(doc)
-      set(state => ({
-        tabs: [...state.tabs, tab],
-        activeTabId: tab.id,
-        activeGelId: null,
-        activeCloneId: null,
-        doc: tab.doc,
-        selection: tab.selection,
-        search: tab.search,
-        viewMode: tab.viewMode,
-        zoomLevel: tab.zoomLevel,
-        readOnly: tab.readOnly,
-        hiddenAnnotationIds: tab.hiddenAnnotationIds,
-        showOrfs: tab.showOrfs,
-        showEnzymes: tab.showEnzymes,
-        showAutoAnnotations: tab.showAutoAnnotations,
-        autoAnnotations: [],
-        autoAnnotationPicks: new Set<string>(),
-        orfPicks: new Set<string>(),
-        showMotifs: tab.showMotifs,
-        showGuides: tab.showGuides,
-        motifResults: [],
-        motifPicks: new Set<string>(),
-        lastOpenedTabId: tab.id,
-        primerDesign: tab.primerDesign,
-      }))
-      return tab.id
+      return openTab(makeTab(doc))
     },
 
     setStructure(ref) {
@@ -2770,33 +2799,7 @@ export const useEditorStore = create<EditorStore>((set, get) => {
     },
 
     openDocumentState(state) {
-      const tab = makeTab(state)
-      set(s => ({
-        tabs: [...s.tabs, tab],
-        activeTabId: tab.id,
-        activeGelId: null,
-        activeCloneId: null,
-        doc: tab.doc,
-        selection: tab.selection,
-        search: tab.search,
-        viewMode: tab.viewMode,
-        zoomLevel: tab.zoomLevel,
-        readOnly: tab.readOnly,
-        hiddenAnnotationIds: tab.hiddenAnnotationIds,
-        showOrfs: tab.showOrfs,
-        showEnzymes: tab.showEnzymes,
-        showAutoAnnotations: tab.showAutoAnnotations,
-        autoAnnotations: [],
-        autoAnnotationPicks: new Set<string>(),
-        orfPicks: new Set<string>(),
-        showMotifs: tab.showMotifs,
-        showGuides: tab.showGuides,
-        motifResults: [],
-        motifPicks: new Set<string>(),
-        lastOpenedTabId: tab.id,
-        primerDesign: tab.primerDesign,
-      }))
-      return tab.id
+      return openTab(makeTab(state))
     },
 
     closeTab(tabId) {
@@ -3193,7 +3196,7 @@ export const useEditorStore = create<EditorStore>((set, get) => {
       })
     },
 
-    mergeSession(mergedTabs, mergedFolders, seqReads, savedAlignments, savedContigs, importedItemMeta, importedTagColors, importedOligos) {
+    mergeSession(mergedTabs, mergedFolders, seqReads, savedAlignments, savedContigs, importedItemMeta, importedTagColors, importedOligos, importedGuides) {
       const state = get()
 
       // Convert imported tabs to DocumentTab objects
@@ -3223,21 +3226,7 @@ export const useEditorStore = create<EditorStore>((set, get) => {
         blastSearches: rt.blastSearches ?? [],
       }))
 
-      // Merge folders: match by name, add new items to existing folders
-      const existingFoldersByName = new Map(state.folders.map(f => [f.name, f]))
-      const finalFolders = [...state.folders]
-      for (const importedFolder of mergedFolders) {
-        const existing = existingFoldersByName.get(importedFolder.name)
-        if (existing) {
-          // Add item uids to the existing folder, avoiding duplicates
-          const existingIds = new Set(existing.itemUids)
-          for (const uid of importedFolder.itemUids) {
-            if (!existingIds.has(uid)) existing.itemUids.push(uid)
-          }
-        } else {
-          finalFolders.push(importedFolder)
-        }
-      }
+      const finalFolders = mergeFolderTrees(state.folders, mergedFolders)
 
       // Merge sequencing reads
       const newReads: SequencingRead[] = (seqReads ?? []).map(sr => ({
@@ -3252,9 +3241,17 @@ export const useEditorStore = create<EditorStore>((set, get) => {
         ...(sr.reversed ? { reversed: true } : {}),
       }))
 
+      // Guides take ids from the library's own counter, and a name already
+      // in the library gets a number, as an added guide does.
+      const guideLibrary = [...state.guideLibrary]
+      for (const g of importedGuides ?? []) {
+        guideLibrary.push({ ...g, id: newGuideId.next(), name: freeName(g.name, guideLibrary) })
+      }
+
       set({
         tabs: [...state.tabs, ...newTabs],
         folders: finalFolders,
+        guideLibrary,
         sequencingReads: [...state.sequencingReads, ...newReads],
         alignments: [...state.alignments, ...(savedAlignments ?? [])],
         contigs: [...state.contigs, ...(savedContigs ?? [])],

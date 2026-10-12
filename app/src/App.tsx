@@ -35,16 +35,14 @@ import {
 } from './store'
 import { editedRead, toFasta, toFastq } from './sanger/edits'
 import { displayPosition, internalPosition } from './models/Document'
-import { readFasta } from './io/fasta'
 import ConfirmDialog from './components/ConfirmDialog'
-import { parseGenBankMulti, writeGenBank } from './io/genbank'
+import { writeGenBank } from './io/genbank'
 import { writeSnapGene } from './io/snapgene'
 import { writeGff3 } from './io/gff3'
 import { writeCsv } from './io/csv'
 import { getTraceView, subscribeTraceView, updateTraceView, ZOOM_WIDTHS } from './sanger/view'
 import { CONTIG_ZOOM } from './assembly/view'
 import { closeAnalyse, openAnalyse, useAnalyseRequest } from './components/ngs/analyseRequest'
-import { isReadFile } from './ngs/detect'
 import { libraryMatches } from './primers/library'
 import { notify } from './toast'
 import { METHOD_BLURB, METHOD_LABEL, type CloningMethodId } from './cloning/design'
@@ -63,6 +61,14 @@ import { proposalsFrom, matchKey } from './utils/auto-annotations'
 import { convertibleOrfs, orfKey } from './utils/orf-features'
 import ConvertActions from './components/ConvertActions'
 import Toaster from './components/Toaster'
+import MenuGroups, { type MenuGroup } from './components/MenuGroups'
+import StartScreen from './components/StartScreen'
+import { OligoImportDialog } from './components/primers/OligoDialogs'
+import { demoDocument } from './demo'
+import { droppedFiles } from './import/dropped'
+import { openTwin } from './import/duplicates'
+import { directReporter } from './import/report'
+import type { Place } from './import/folders'
 import { PinnedCardHost } from './components/HoverCard'
 import StorageIndicator from './components/StorageIndicator'
 import { useBasesPerRow, formatBasesPerRow, fitSequenceView } from './components/sequence-view-controls'
@@ -77,7 +83,7 @@ import {
   SunMoon, Info, List, Lock, LockOpen, Tag, Globe, GalleryVertical, AlignLeft, ArrowLeft, Wand2, Route, Shapes,
   Combine,
   SlidersHorizontal, Atom,
-  Crosshair,
+  Crosshair, MoveRight, FileDown, Files, Archive, ArchiveRestore, Upload,
 } from 'lucide-react'
 const BlastDrawer = lazy(() => import('./components/blast/BlastDrawer'))
 import { useBlastStore, toggleDrawer, openDrawer as openBlastDrawer, clearAlignRequest as clearBlastAlignRequest } from './blast/session'
@@ -87,7 +93,7 @@ import ExportDialog, { type ExportMode } from './components/ExportDialog'
 import { type ExportFormat, type ExportItemKind, defaultFormatForKind, formatsForKind } from './components/exportFormats'
 import SessionExportDialog from './components/SessionExportDialog'
 import SessionImportDialog from './components/SessionImportDialog'
-import { exportSessionToJson, importSessionFromJson, remapSessionIds, type SessionExportOptions } from './persistence'
+import { describeSession, exportSessionToJson, importSessionFromJson, remapSessionIds, type SessionExportOptions } from './persistence'
 import FilenamePrompt from './components/FilenamePrompt'
 import SequencePdfDialog from './components/SequencePdfDialog'
 import { isFocusTrapActive } from './hooks/useFocusTrap'
@@ -111,10 +117,10 @@ const ImportAlignmentsDialog = lazy(() => import('./components/ngs/ImportAlignme
 
 import type { AlnDoc } from './msa/model'
 import { contigToAlignment } from './assembly/export'
-import { ALN_EXTENSIONS, writeAlignment, type AlnFormatId } from './msa/formats'
+import { writeAlignment, type AlnFormatId } from './msa/formats'
 import { STORAGE_KEYS } from './storage/keys'
 import { THEMES, type ThemeName } from './theme'
-import { useFileImport, SUPPORTED_EXTENSIONS, errorDetail, reportFastaSkips, reportGenBankWarnings, MANY_RECORDS } from './hooks/useFileImport'
+import { useFileImport, OPEN_ACCEPT, canOpen, errorDetail, MANY_RECORDS } from './hooks/useFileImport'
 
 /**
  * Detail line for the "can't open this" error. Kept out of the headline: the
@@ -122,7 +128,6 @@ import { useFileImport, SUPPORTED_EXTENSIONS, errorDetail, reportFastaSkips, rep
  * second.
  */
 /** Everything the Open dialog offers: sequences, reads and alignments. */
-const OPEN_ACCEPT = ['.gb', '.gbk', '.genbank', '.gp', '.gpt', '.genpept', '.fasta', '.fa', '.fna', '.faa', '.fastq', '.fq', '.gz', '.seq', '.txt', '.dna', '.geneious', '.ab1', '.abi', '.abif', '.scf', '.bam', '.sam', '.pdb', '.ent', '.cif', '.mmcif', ...ALN_EXTENSIONS].join(',')
 
 /** Export dialog format ids to alignment writers. */
 const ALN_EXPORT_FORMAT: Partial<Record<string, AlnFormatId>> = {
@@ -203,7 +208,6 @@ function gelKindFor(s: ReturnType<typeof useEditorStore.getState>): GelKind {
 export default function App() {
   const activeTabId = useEditorStore(s => s.activeTabId)
   const selectedExportableCount = useEditorStore(s => countSelectable(s.explorerSelectedIds))
-  const openDocument = useEditorStore(s => s.openDocument)
   const openDocumentState = useEditorStore(s => s.openDocumentState)
   const activeSequencingReadIds = useEditorStore(s => s.activeSequencingReadIds)
   const alignments = useEditorStore(s => s.alignments)
@@ -282,6 +286,10 @@ export default function App() {
   const traceReadSet = useSyncExternalStore(subscribeTraceView, () => getTraceView().readSet, () => getTraceView().readSet)
 
   const [dragOver, setDragOver] = useState(false)
+  /** How many files are being dragged, for the drop card; 0 when the browser does not say. */
+  const [dragCount, setDragCount] = useState(0)
+  /** The drag is over the explorer, which shows its own drop highlight. */
+  const [dragOverExplorer, setDragOverExplorer] = useState(false)
   const [dropError, setDropError] = useState<string | null>(null)
   const dragCounterRef = useRef(0)
   const [theme, setTheme] = useState<ThemeName>(() => {
@@ -337,6 +345,12 @@ export default function App() {
   const displayBtnRef = useRef<HTMLDivElement>(null)
   const [fileMenuOpen, setFileMenuOpen] = useState(false)
   const [newSeqModalOpen, setNewSeqModalOpen] = useState(false)
+  /** The molecule the New Sequence dialog starts as: New Protein opens it as a protein. */
+  const [newSeqAlphabet, setNewSeqAlphabet] = useState<'dna' | 'protein'>('dna')
+  /** The folder New Sequence Here files into; null for the top level. */
+  const [newSeqInto, setNewSeqInto] = useState<string | null>(null)
+  /** Pasting or importing oligos into the primer library, from the New menu. */
+  const [oligoImportOpen, setOligoImportOpen] = useState(false)
   const [orfModalOpen, setOrfModalOpen] = useState(false)
   const [motifPanelOpen, setMotifPanelOpen] = useState(false)
   const [digestOpen, setDigestOpen] = useState(false)
@@ -528,6 +542,11 @@ export default function App() {
   const fileInputRef = useRef<HTMLInputElement>(null)
   const folderInputRef = useRef<HTMLInputElement>(null)
   const sessionImportInputRef = useRef<HTMLInputElement>(null)
+  /** The folder the next picked files go into: set by Import Files Here, used once. */
+  const pickInto = useRef<string | null>(null)
+  /** The file pickers, with no folder to go into unless one was asked for. */
+  const pickFiles = useCallback(() => { pickInto.current = null; fileInputRef.current?.click() }, [])
+  const pickFolder = useCallback(() => { pickInto.current = null; folderInputRef.current?.click() }, [])
 
   // Undo/redo flash feedback
   const lastUndoRedoAction = useEditorStore(s => s.lastUndoRedoAction)
@@ -836,14 +855,27 @@ export default function App() {
   }, [sessionLoadWarnings])
 
   // --- File handling ---
-  const { handleFilesOpen, parseProgress, manyRecords, closeManyRecords } = useFileImport({
+  /**
+   * Where the items made from a file handed to an import dialog go: the
+   * folder of the directory it came from, or the folder it was dropped on.
+   */
+  const importPlaces = useRef(new Map<File, Place>())
+  const placeOfImport = useCallback((f: File) => importPlaces.current.get(f), [])
+  const { handleFilesOpen, openPastedText, parseProgress, manyRecords, closeManyRecords } = useFileImport({
     onSessionFile: (filename, json, session) => {
       setSessionImportData({ filename, json })
       sessionImportParsedRef.current = session
       setSessionImportOpen(true)
     },
-    onReadFiles: files => setReadImportFiles(files),
-    onAlignmentFiles: files => setAlignmentImports(q => [...q, ...files]),
+    // Files dropped while the dialog is open join it; replacing the list lost them.
+    onReadFiles: (files, placeOf) => {
+      for (const f of files) importPlaces.current.set(f, placeOf(f))
+      setReadImportFiles(open => (open ? [...open, ...files.filter(f => !open.includes(f))] : files))
+    },
+    onAlignmentFiles: (files, placeOf) => {
+      for (const f of files) importPlaces.current.set(f, placeOf(f))
+      setAlignmentImports(q => [...q, ...files])
+    },
     onGenomeLinks: (source, links) => setGenomeLinks({ source, links }),
   })
 
@@ -857,13 +889,86 @@ export default function App() {
 
   const handleNewSequence = useCallback(() => {
     setFileMenuOpen(false)
+    setNewSeqInto(null)
+    setNewSeqAlphabet('dna')
     setNewSeqModalOpen(true)
   }, [])
 
+  /** The same dialog, starting as a protein. */
+  const handleNewProtein = useCallback(() => {
+    setFileMenuOpen(false)
+    setNewSeqInto(null)
+    setNewSeqAlphabet('protein')
+    setNewSeqModalOpen(true)
+  }, [])
+
+  /** The start screen's example: the plasmid shown on first launch. */
+  const handleOpenExample = useCallback(() => {
+    useEditorStore.getState().openDocumentState(demoDocument())
+  }, [])
+  /** Whether the explorer lists anything, for the start screen's wording. */
+  const explorerHasItems = useEditorStore(s => s.tabs.length + s.sequencingReads.length + s.alignments.length
+    + s.assemblies.length + s.contigs.length + s.gels.length + s.clones.length + s.readSets.length + s.oligos.length > 0)
+
+  // Ctrl/Cmd+V with nothing to paste into imports what was copied: on the
+  // start screen, or with focus in the explorer. Text fields, dialogs and an
+  // open sequence (which takes a paste as an edit) keep their own pastes.
+  useEffect(() => {
+    const onPaste = (e: ClipboardEvent) => {
+      if (e.defaultPrevented || isFocusTrapActive()) return
+      const target = e.target instanceof Element ? e.target : null
+      if (target?.closest('input, textarea, select, [contenteditable="true"]')) return
+      const inExplorer = target?.closest('.explorer-sidebar') != null
+      const onStart = document.querySelector('.start') !== null && (target === null || target === document.body || target.closest('.start') != null)
+      if (!inExplorer && !onStart) return
+      const text = e.clipboardData?.getData('text') ?? ''
+      if (!text.trim()) return
+      e.preventDefault()
+      openPastedText(text)
+    }
+    window.addEventListener('paste', onPaste)
+    return () => window.removeEventListener('paste', onPaste)
+  }, [openPastedText])
+
+  // Ctrl/Cmd+O imports files, as Open does in a desktop app. Ctrl+N cannot
+  // be had: the browser keeps it for a new window.
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && !e.shiftKey && !e.altKey && (e.key === 'o' || e.key === 'O')) {
+        e.preventDefault()
+        pickFiles()
+      }
+    }
+    window.addEventListener('keydown', handler)
+    return () => window.removeEventListener('keydown', handler)
+  }, [pickFiles])
+
   const handleNewSequenceSubmit = useCallback((result: NewSequenceResult) => {
-    openDocument(result.name, result.sequence, result.topology, result.description, 'new', result.alphabet)
+    const tabIds = result.docs.map(d => openDocumentState({ ...d, metadata: { ...d.metadata, origin: 'new' } }))
+    const store = useEditorStore.getState()
+    // New Sequence Here files into that folder; several records get a folder inside it.
+    const into = newSeqInto && store.folders.some(f => f.id === newSeqInto) ? newSeqInto : null
+    if (tabIds.length > 1) {
+      const folderId = store.createFolder(result.folderName, into)
+      for (const id of tabIds) store.moveTabToFolder(id, folderId)
+    } else if (into) {
+      for (const id of tabIds) store.moveTabToFolder(id, into)
+    }
     setNewSeqModalOpen(false)
-  }, [openDocument])
+  }, [openDocumentState, newSeqInto])
+
+  /** New Sequence Here, from a folder's menu in the explorer. */
+  const handleNewSequenceIn = useCallback((folderId: string) => {
+    setNewSeqAlphabet('dna')
+    setNewSeqInto(folderId)
+    setNewSeqModalOpen(true)
+  }, [])
+
+  /** Import Files Here, from a folder's menu: the picked files go into that folder. */
+  const handlePickFilesInto = useCallback((folderId: string) => {
+    pickInto.current = folderId
+    fileInputRef.current?.click()
+  }, [])
 
   const handleNewFolder = useCallback(() => {
     useEditorStore.getState().createFolder('New Folder')
@@ -871,62 +976,49 @@ export default function App() {
   }, [])
 
   const handleMenuImportFiles = useCallback((files: FileList | null) => {
+    const into = pickInto.current
+    pickInto.current = null
     if (!files) return
-    handleFilesOpen(Array.from(files))
+    handleFilesOpen(Array.from(files), { into })
     setFileMenuOpen(false)
   }, [handleFilesOpen])
 
   const handleImportClipboard = useCallback(async () => {
-    try {
-      const text = await navigator.clipboard.readText()
-      if (!text.trim()) return
-      if (text.trimStart().startsWith('LOCUS')) {
-        // Multi-record GenBank
-        const warnings: string[] = []
-        const docs = parseGenBankMulti(text, warnings)
-        reportGenBankWarnings('clipboard', warnings)
-        const tabIds: string[] = []
-        for (const d of docs) {
-          tabIds.push(openDocumentState({ ...d, metadata: { ...d.metadata, origin: 'paste' } }))
-        }
-        if (docs.length > 1) {
-          const folderId = useEditorStore.getState().createFolder('Pasted sequences')
-          for (const id of tabIds) useEditorStore.getState().moveTabToFolder(id, folderId)
-          notify.success(`Pasted ${docs.length} sequences from clipboard`)
-        }
-      } else {
-        // Multi-record FASTA or plain text
-        const read = readFasta(text, 'Pasted')
-        reportFastaSkips('clipboard', read)
-        const tabIds: string[] = []
-        for (const rec of read.records) tabIds.push(openDocument(rec.name, rec.bases, 'linear', undefined, 'paste'))
-        for (const rec of read.proteins) tabIds.push(openDocument(rec.name, rec.bases, 'linear', undefined, 'paste', 'protein'))
-        if (tabIds.length > 1) {
-          const folderId = useEditorStore.getState().createFolder('Pasted sequences')
-          for (const id of tabIds) useEditorStore.getState().moveTabToFolder(id, folderId)
-          notify.success(`Pasted ${tabIds.length} sequences from clipboard`)
-        }
-      }
-    } catch {
-      // Clipboard API not available or permission denied
-    }
     setFileMenuOpen(false)
-  }, [openDocument, openDocumentState])
+    let text: string
+    try {
+      text = await navigator.clipboard.readText()
+    } catch (err) {
+      // Not available, or permission refused: say so, where this used to
+      // do nothing at all.
+      notify.error('Could not read the clipboard', {
+        detail: `${errorDetail(err) ?? 'The browser did not allow it.'} Paste into New Sequence instead.`,
+      })
+      return
+    }
+    if (!text.trim()) {
+      notify.info('The clipboard is empty')
+      return
+    }
+    openPastedText(text)
+  }, [openPastedText])
 
   const handleDrop = useCallback((e: React.DragEvent) => {
     if (!e.dataTransfer.types.includes('Files')) return // internal drag, ignore
     e.preventDefault()
-    const files = Array.from(e.dataTransfer.files)
-    const unsupported = files.filter(f => !SUPPORTED_EXTENSIONS.test(f.name) && !isReadFile(f.name))
-    if (unsupported.length > 0 && unsupported.length === files.length) {
-      // All files unsupported: show a brief error on the overlay
-      const exts = unsupported.map(f => `.${f.name.split('.').pop()}`).join(', ')
-      setDropError(`Unsupported format: ${exts}`)
-      setTimeout(() => { setDropError(null); setDragOver(false) }, 1500)
-    } else {
-      setDragOver(false)
-      handleFilesOpen(files)
-    }
+    // Folders are walked, so a dropped folder opens with its subfolders.
+    void droppedFiles(e.dataTransfer).then(({ files, paths }) => {
+      const unsupported = files.filter(f => !canOpen(f.name))
+      if (unsupported.length > 0 && unsupported.length === files.length && paths.size === 0) {
+        // All files unsupported: show a brief error on the overlay
+        const exts = unsupported.map(f => `.${f.name.split('.').pop()}`).join(', ')
+        setDropError(`Unsupported format: ${exts}`)
+        setTimeout(() => { setDropError(null); setDragOver(false) }, 1500)
+      } else {
+        setDragOver(false)
+        handleFilesOpen(files, { paths })
+      }
+    })
   }, [handleFilesOpen])
 
 
@@ -941,7 +1033,7 @@ export default function App() {
     const s = useEditorStore.getState()
     const complete = (opts.includeReads || s.sequencingReads.length === 0)
       && (opts.includeAlignments || s.alignments.length === 0)
-      && (opts.includeContigs || s.contigs.length === 0)
+      && (opts.includeContigs || (s.contigs.length === 0 && s.assemblies.length === 0))
     if (complete) useBackupStore.getState().noteBackup()
   }, [theme])
 
@@ -989,7 +1081,7 @@ export default function App() {
     setSessionImportOpen(false)
     setSessionImportData(null)
     sessionImportParsedRef.current = null
-    notify.success(`Replaced session (${session.tabs.length} sequences)`)
+    notify.success(`Replaced the session with ${describeSession(session) || 'an empty one'}`)
     reportImportWarnings(session.warnings)
   }, [])
 
@@ -1004,6 +1096,7 @@ export default function App() {
       session.sequencingReads, session.alignments,
       session.contigs, session.itemMeta, session.tagColors,
       session.oligos,
+      session.guides,
     )
     useEditorStore.getState().mergeEnzymeSets(session.enzymeSets ?? [])
     useEditorStore.getState().mergeAssemblies(session.assemblies)
@@ -1012,7 +1105,7 @@ export default function App() {
     setSessionImportOpen(false)
     setSessionImportData(null)
     sessionImportParsedRef.current = null
-    notify.success(`Merged ${session.tabs.length} sequences into session`)
+    notify.success(`Merged ${describeSession(session) || 'an empty session'} into this one`)
     reportImportWarnings(warnings)
   }, [])
 
@@ -1302,6 +1395,47 @@ export default function App() {
   // Redo is Shift+Cmd+Z on a Mac; Cmd+Y is not a Mac convention.
   const redoKey = isMac ? '⌘⇧Z' : 'Ctrl+Y'
 
+  // Everything that makes or brings in an item, in one place: the File
+  // menu, the explorer's + menu and the start screen all draw from it, so
+  // they cannot drift apart again. Stable, because the explorer is memo'd.
+  const addGroups = useMemo<MenuGroup[]>(() => [
+    { label: 'New', actions: [
+      { id: 'new-sequence', label: 'Sequence…', icon: Dna, run: handleNewSequence },
+      { id: 'new-protein', label: 'Protein…', icon: Atom, run: handleNewProtein },
+      { id: 'new-oligos', label: 'Oligos…', icon: MoveRight, title: 'Paste or import oligos into the primer library', run: () => setOligoImportOpen(true) },
+      { id: 'new-alignment', label: 'Alignment…', icon: AlignLeft, run: () => setAlignModalOpen(true) },
+      { id: 'new-cloning', label: 'Cloning Design', icon: Combine, run: () => useEditorStore.getState().createClone() },
+      { id: 'new-gel', label: 'Gel', icon: GalleryVertical, run: () => useEditorStore.getState().createGel() },
+      { id: 'new-folder', label: 'Folder', icon: FolderPlus, run: handleNewFolder },
+    ] },
+    { label: 'Import', actions: [
+      { id: 'import-files', label: 'Files…', icon: FileUp, shortcut: `${mod}O`, run: pickFiles },
+      { id: 'import-folder', label: 'Folder…', icon: FolderUp, run: pickFolder },
+      { id: 'import-clipboard', label: 'From Clipboard', icon: ClipboardPaste, run: () => { void handleImportClipboard() } },
+      { id: 'import-accession', label: 'By Accession…', icon: Globe, title: 'NCBI Nucleotide, NCBI Protein or UniProt', run: handleOpenFetch },
+    ] },
+  ], [mod, handleNewSequence, handleNewProtein, handleNewFolder, handleImportClipboard, handleOpenFetch, pickFiles, pickFolder])
+
+  /** The start screen's cards and links, from the same actions with fuller names. */
+  const startActions = useMemo(() => {
+    const find = (id: string) => addGroups.flatMap(g => g.actions).find(a => a.id === id)!
+    return {
+      primary: [
+        { ...find('new-sequence'), label: 'New Sequence', description: 'Type or paste DNA or protein, FASTA or GenBank.' },
+        { ...find('import-files'), label: 'Import Files', description: 'GenBank, SnapGene, FASTA, chromatograms, reads, alignments.' },
+        { ...find('import-accession'), label: 'Import by Accession', description: 'Fetch a record from NCBI or UniProt.' },
+        { ...find('import-clipboard'), label: 'Paste from Clipboard', description: 'Open the sequences or alignment you copied.' },
+      ],
+      more: [
+        { ...find('new-protein'), label: 'New Protein' },
+        { ...find('new-alignment'), label: 'Align Sequences' },
+        { ...find('new-cloning'), label: 'New Cloning Design' },
+        { ...find('new-gel'), label: 'New Gel' },
+        { ...find('import-folder'), label: 'Import a Folder' },
+      ],
+    }
+  }, [addGroups])
+
   // Shared by the Undo/Redo buttons and their palette entries, so the two
   // cannot disagree about whether there is anything to step to.
   // A gel or an alignment on screen keeps its own history.
@@ -1346,15 +1480,17 @@ export default function App() {
   const commands = useMemo<Command[]>(() => [
     // --- File ---
     { id: 'new-sequence', label: 'New Sequence', group: 'File', icon: Dna, keywords: 'create blank', run: handleNewSequence },
+    { id: 'new-protein', label: 'New Protein', group: 'File', icon: Atom, keywords: 'create peptide amino acid', run: handleNewProtein },
+    { id: 'add-oligos', label: 'Add Oligos to Library…', group: 'File', icon: MoveRight, keywords: 'primers paste import csv', run: () => setOligoImportOpen(true) },
     { id: 'new-folder', label: 'New Folder', group: 'File', icon: FolderPlus, run: handleNewFolder },
-    { id: 'import-file', label: 'Import File…', group: 'File', icon: FileUp, keywords: 'open load genbank fasta', run: () => fileInputRef.current?.click() },
-    { id: 'import-folder', label: 'Import Folder…', group: 'File', icon: FolderUp, run: () => folderInputRef.current?.click() },
+    { id: 'import-file', label: 'Import Files…', group: 'File', icon: FileUp, shortcut: `${mod}O`, keywords: 'open load genbank fasta', run: pickFiles },
+    { id: 'import-folder', label: 'Import Folder…', group: 'File', icon: FolderUp, run: pickFolder },
     { id: 'import-clipboard', label: 'Import from Clipboard', group: 'File', icon: ClipboardPaste, run: handleImportClipboard },
     { id: 'fetch', label: 'Import by Accession…', group: 'File', icon: Globe, keywords: 'fetch download ncbi uniprot genpept accession', run: () => setFetchModalOpen(true) },
     { id: 'export', label: 'Export…', group: 'File', icon: Save, shortcut: `${mod}⇧S`, disabled: noDoc, run: () => { setBulkExportItems({}); setExportModalOpen(true) } },
     { id: 'export-pdf', label: 'Export PDF…', group: 'File', icon: FileText, shortcut: `${mod}P`, keywords: 'print figure publication', disabled: !sequenceShown, run: openPdfExport },
-    { id: 'session-export', label: 'Export Session', group: 'File', run: () => setSessionExportOpen(true) },
-    { id: 'session-import', label: 'Import Session', group: 'File', run: () => sessionImportInputRef.current?.click() },
+    { id: 'session-export', label: 'Export Session…', group: 'File', icon: Archive, run: () => setSessionExportOpen(true) },
+    { id: 'session-import', label: 'Import Session…', group: 'File', icon: ArchiveRestore, run: () => sessionImportInputRef.current?.click() },
 
     // --- Edit ---
     { id: 'undo', label: 'Undo', group: 'Edit', icon: Undo2, shortcut: `${mod}Z`, disabled: undoDisabled, run: runUndo },
@@ -1405,8 +1541,8 @@ export default function App() {
     { id: 'theme', label: 'Change Theme', group: 'View', icon: SunMoon, keywords: 'dark light appearance', run: () => setThemeOpen(true) },
     { id: 'about', label: 'About SeqNexus', group: 'View', icon: Info, keywords: 'help version', run: () => setInfoOpen(true) },
   ], [
-    mod, redoKey, noDoc, noDna, isProtein, sequenceShown, openPdfExport, undoDisabled, redoDisabled, handleOpenFind, handleNewSequence, handleNewFolder, openGel, openCloning, runUndo, runRedo,
-    handleImportClipboard, toggleOrfs, toggleMotifs, toggleGuides, toggleEnzymes, setViewMode, openSidebar, openPrimerDesign, toggleAutoAnnotations,
+    mod, redoKey, noDoc, noDna, isProtein, sequenceShown, openPdfExport, undoDisabled, redoDisabled, handleOpenFind, handleNewSequence, handleNewProtein, handleNewFolder, openGel, openCloning, runUndo, runRedo,
+    handleImportClipboard, pickFiles, pickFolder, toggleOrfs, toggleMotifs, toggleGuides, toggleEnzymes, setViewMode, openSidebar, openPrimerDesign, toggleAutoAnnotations,
     viewMode,
   ])
 
@@ -1426,11 +1562,14 @@ export default function App() {
           e.preventDefault()
           dragCounterRef.current++
           setDragOver(true)
+          setDragCount(Array.from(e.dataTransfer.items ?? []).filter(i => i.kind === 'file').length)
         }
       }}
       onDragOver={e => {
         if (e.dataTransfer.types.includes('Files')) {
           e.preventDefault()
+          const over = e.target instanceof Element && e.target.closest('.explorer-sidebar') !== null
+          if (over !== dragOverExplorer) setDragOverExplorer(over)
         }
       }}
       onDragLeave={e => {
@@ -1454,64 +1593,32 @@ export default function App() {
           </button>
           {fileMenuOpen && (
             <div className="file-menu" role="menu">
-              <button className="file-menu-item" role="menuitem" onClick={handleNewSequence}>
-                <span className="file-menu-icon"><Dna size={14} /></span>
-                New Sequence…
-              </button>
-              <button className="file-menu-item" role="menuitem" onClick={handleNewFolder}>
-                <span className="file-menu-icon"><FolderPlus size={14} /></span>
-                New Folder
-              </button>
-              <div className="file-menu-sep" />
-              <button className="file-menu-item" role="menuitem" onClick={() => { fileInputRef.current?.click() }}>
-                <span className="file-menu-icon"><FileUp size={14} /></span>
-                Import Files…
-              </button>
-              <button className="file-menu-item" role="menuitem" onClick={() => { folderInputRef.current?.click() }}>
-                <span className="file-menu-icon"><FolderUp size={14} /></span>
-                Import Folder…
-              </button>
-              <button className="file-menu-item" role="menuitem" onClick={handleImportClipboard}>
-                <span className="file-menu-icon"><ClipboardPaste size={14} /></span>
-                Import from Clipboard
-              </button>
-              <button className="file-menu-item" role="menuitem" onClick={() => { setFetchModalOpen(true); setFileMenuOpen(false) }}>
-                <span className="file-menu-icon"><Globe size={14} /></span>
-                Import by Accession…
-              </button>
-              <div className="file-menu-sep" />
-              <button className="file-menu-item" role="menuitem" onClick={() => {
-                setBulkExportItems({})
-                setExportModalOpen(true)
-                setFileMenuOpen(false)
-              }} disabled={!activeTabId && activeSequencingReadIds.length === 0 && !activeAlignmentId && !activeContigId && !activeAssembly}>
-                <span className="file-menu-icon"><Save size={14} /></span>
-                Export…
-              </button>
-              <button className="file-menu-item" role="menuitem" onClick={() => {
-                setBulkExportItems(exportSelection(useEditorStore.getState().explorerSelectedIds, id => useEditorStore.getState().assemblies.find(a => a.id === id)?.contigIds ?? []))
-                setExportModalOpen(true)
-                setFileMenuOpen(false)
-              }} disabled={selectedExportableCount < 2}>
-                <span className="file-menu-icon"><Save size={14} /></span>
-                Export Selected…
-              </button>
-              <button className="file-menu-item" role="menuitem" onClick={() => {
-                setFileMenuOpen(false)
-                openPdfExport()
-              }} disabled={!sequenceShown}>
-                <span className="file-menu-icon"><FileText size={14} /></span>
-                Export PDF…
-              </button>
-              <div className="file-menu-sep" />
-              <button className="file-menu-item" role="menuitem" onClick={() => { setSessionExportOpen(true); setFileMenuOpen(false) }}>
-                <span className="file-menu-icon"><Save size={14} /></span>
-                Export Session…
-              </button>
-              <button className="file-menu-item" role="menuitem" onClick={() => { sessionImportInputRef.current?.click(); setFileMenuOpen(false) }}>
-                <span className="file-menu-icon"><FileUp size={14} /></span>
-                Import Session…
-              </button>
+              <MenuGroups
+                variant="file"
+                onPicked={() => setFileMenuOpen(false)}
+                groups={[
+                  ...addGroups,
+                  { label: 'Export', actions: [
+                    {
+                      id: 'export', label: 'Export…', icon: FileDown, shortcut: `${mod}⇧S`,
+                      disabled: !activeTabId && activeSequencingReadIds.length === 0 && !activeAlignmentId && !activeContigId && !activeAssembly,
+                      run: () => { setBulkExportItems({}); setExportModalOpen(true) },
+                    },
+                    {
+                      id: 'export-selected', label: 'Export Selected…', icon: Files, disabled: selectedExportableCount < 2,
+                      run: () => {
+                        setBulkExportItems(exportSelection(useEditorStore.getState().explorerSelectedIds, id => useEditorStore.getState().assemblies.find(a => a.id === id)?.contigIds ?? []))
+                        setExportModalOpen(true)
+                      },
+                    },
+                    { id: 'export-pdf', label: 'Export PDF…', icon: FileText, shortcut: `${mod}P`, disabled: !sequenceShown, run: openPdfExport },
+                  ] },
+                  { label: 'Session', actions: [
+                    { id: 'session-export', label: 'Export Session…', icon: Archive, run: () => setSessionExportOpen(true) },
+                    { id: 'session-import', label: 'Import Session…', icon: ArchiveRestore, run: () => sessionImportInputRef.current?.click() },
+                  ] },
+                ]}
+              />
             </div>
           )}
           <input
@@ -1916,8 +2023,9 @@ export default function App() {
           onExpand={handleShowSidebar}
           onImportFiles={handleFilesOpen}
           onOpenProperties={handleOpenProperties}
-          onNewSequence={handleNewSequence}
-          onFetch={handleOpenFetch}
+          addMenu={addGroups}
+          onImportInto={handlePickFilesInto}
+          onNewSequenceIn={handleNewSequenceIn}
           onAlignToRef={openRefPicker}
           onExportItems={handleExportItems}
           onQuickAlign={handleQuickAlign}
@@ -2014,11 +2122,12 @@ export default function App() {
               )
             })()
           ) : !activeTabId ? (
-            <div className="empty-state">
-              <div className="empty-state-icon"><Dna size={48} /></div>
-              <div className="empty-state-text">No sequence open</div>
-              <div className="empty-state-hint">Use + in the sidebar to import files, or drag & drop</div>
-            </div>
+            <StartScreen
+              primary={startActions.primary}
+              more={startActions.more}
+              hasItems={explorerHasItems}
+              onOpenExample={handleOpenExample}
+            />
           ) : (
             <>
               {/* View mode tabs. A protein's map is its linear domain map,
@@ -2310,24 +2419,6 @@ export default function App() {
                         <EmptyState icon={Tag} message="No features to suggest" actionLabel="adjust similarity" onAction={handleOpenAnnotatePanel} />
                       )}
                     </div>
-                    {parseProgress && (
-                      <div className="parse-progress-overlay">
-                        <div className="parse-progress-box">
-                          <div className="parse-progress-label">
-                            Parsing GenBank file…
-                          </div>
-                          <div className="parse-progress-bar-track">
-                            <div
-                              className="parse-progress-bar-fill"
-                              style={{ width: `${parseProgress.totalBytes > 0 ? Math.round((parseProgress.bytesRead / parseProgress.totalBytes) * 100) : 0}%` }}
-                            />
-                          </div>
-                          <div className="parse-progress-detail">
-                            {(parseProgress.bytesRead / 1024 / 1024).toFixed(1)} / {(parseProgress.totalBytes / 1024 / 1024).toFixed(1)} MB
-                          </div>
-                        </div>
-                      </div>
-                    )}
                     {(viewMode === 'linear' || (viewMode === 'structure' && !isProtein)) && <SequenceView onFindRequest={handleOpenFind} onFindClose={handleCloseFind} onAnnotateRequest={handleAnnotateRequest} onEditFeature={handleOpenFeaturesPanel} onFindInDna={handleFindInDna} />}
                     {viewMode === 'structure' && isProtein && (
                       <div
@@ -2515,7 +2606,39 @@ export default function App() {
 
       <Toaster />
       <PinnedCardHost />
-      {dragOver && <div className={`drop-overlay${dropError ? ' drop-error' : ''}`}>{dropError ?? 'Drop files to open'}</div>}
+      {parseProgress && (
+        <div className="parse-progress-overlay" role="status">
+          <div className="parse-progress-box">
+            <div className="parse-progress-label">
+              {parseProgress.files > 1 ? `Reading ${parseProgress.files} GenBank files…` : 'Reading GenBank file…'}
+            </div>
+            <div className="parse-progress-bar-track">
+              <div
+                className="parse-progress-bar-fill"
+                style={{ width: `${parseProgress.totalBytes > 0 ? Math.round((parseProgress.bytesRead / parseProgress.totalBytes) * 100) : 0}%` }}
+              />
+            </div>
+            <div className="parse-progress-detail">
+              {(parseProgress.bytesRead / 1024 / 1024).toFixed(1)} / {(parseProgress.totalBytes / 1024 / 1024).toFixed(1)} MB
+            </div>
+          </div>
+        </div>
+      )}
+      {dragOver && (dropError || !dragOverExplorer) && (
+        <div className={`drop-overlay${dropError ? ' drop-error' : ''}`} role="status">
+          <div className="drop-card">
+            <span className="drop-card-icon">{dropError ? <X size={22} /> : <Upload size={22} />}</span>
+            <div className="drop-card-title">
+              {dropError ?? (dragCount > 1 ? `Drop ${dragCount} files to open them` : 'Drop to open')}
+            </div>
+            <div className="drop-card-sub">
+              {dropError
+                ? 'SeqNexus opens sequences, chromatograms, reads, alignments, structures and sessions.'
+                : 'Sequences, chromatograms, reads, alignments, structures and sessions'}
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Mounted only while open: the palette is summoned rarely, and keeping
           it out of the tree costs nothing to reach via Ctrl/Cmd+K. */}
@@ -2525,8 +2648,21 @@ export default function App() {
         </Suspense>
       )}
 
+      <OligoImportDialog
+        open={oligoImportOpen}
+        onClose={() => setOligoImportOpen(false)}
+        onImport={list => {
+          setOligoImportOpen(false)
+          const ids = useEditorStore.getState().addLibraryOligos(list)
+          notify.success(ids.length === list.length
+            ? `Added ${ids.length} oligo${ids.length === 1 ? '' : 's'} to the library`
+            : `Added ${ids.length}; ${list.length - ids.length} were already in the library`)
+        }}
+      />
+
       <NewSequenceDialog
         open={newSeqModalOpen}
+        initialAlphabet={newSeqAlphabet}
         onClose={() => setNewSeqModalOpen(false)}
         onSubmit={handleNewSequenceSubmit}
       />
@@ -2607,12 +2743,13 @@ export default function App() {
       {alignmentImports.length > 0 && (
         <Suspense fallback={null}>
           <ImportAlignmentsDialog key={`${alignmentImports[0].name}:${alignmentImports.length}`} file={alignmentImports[0]}
+            place={placeOfImport(alignmentImports[0])}
             onClose={() => setAlignmentImports(q => q.slice(1))} />
         </Suspense>
       )}
       {readImportFiles && (
         <Suspense fallback={null}>
-          <ImportReadsDialog files={readImportFiles} onClose={() => setReadImportFiles(null)} />
+          <ImportReadsDialog files={readImportFiles} placeOf={placeOfImport} onClose={() => setReadImportFiles(null)} />
         </Suspense>
       )}
       {analyseRequest && (
@@ -2638,10 +2775,26 @@ export default function App() {
         open={fetchModalOpen}
         initialQuery={fetchQuery}
         onClose={() => { setFetchModalOpen(false); setFetchQuery(undefined) }}
-        onFetched={(doc) => {
+        onFetched={(fetched) => {
           // A UniProt entry arrives with its origin set; NCBI records get theirs here.
-          openDocumentState({ ...doc, metadata: { ...doc.metadata, origin: doc.metadata?.origin ?? 'ncbi' } })
-          setFetchModalOpen(false)
+          const all = fetched.map(doc => ({ ...doc, metadata: { ...doc.metadata, origin: doc.metadata?.origin ?? 'ncbi' } }))
+          // A record already open is shown rather than opened a second time.
+          const open = useEditorStore.getState().tabs
+          const twins = all.filter(doc => openTwin(doc, open))
+          const docs = all.filter(doc => !twins.includes(doc))
+          if (twins.length > 0) {
+            if (docs.length === 0 && twins.length === 1) useEditorStore.getState().setActiveTab(openTwin(twins[0], open)!.id)
+            directReporter.duplicates(twins, () => { for (const doc of twins) openDocumentState(doc) })
+          }
+          const tabIds = docs.map(doc => openDocumentState(doc))
+          // The dialog closes itself, unless some accessions failed and stay
+          // in it to be corrected.
+          if (tabIds.length > 1) {
+            const store = useEditorStore.getState()
+            const folderId = store.createFolder('Fetched records')
+            for (const id of tabIds) store.moveTabToFolder(id, folderId)
+            notify.success(`Fetched ${tabIds.length} records`)
+          }
         }}
       />
       <SessionExportDialog
@@ -2652,9 +2805,7 @@ export default function App() {
       <SessionImportDialog
         open={sessionImportOpen}
         filename={sessionImportData?.filename ?? ''}
-        tabCount={sessionImportParsedRef.current?.tabs.length ?? 0}
-        readCount={sessionImportParsedRef.current?.sequencingReads.length ?? 0}
-        alignmentCount={sessionImportParsedRef.current?.alignments.length ?? 0}
+        session={sessionImportParsedRef.current}
         onClose={() => { setSessionImportOpen(false); setSessionImportData(null); sessionImportParsedRef.current = null }}
         onReplace={handleSessionReplace}
         onMerge={handleSessionMerge}

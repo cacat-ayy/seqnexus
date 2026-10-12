@@ -52,6 +52,20 @@
   border: 1px solid color-mix(in srgb, var(--danger) 25%, transparent);
   border-radius: var(--radius-sm);
   line-height: 1.4;
+  /* One line per accession that failed. */
+  white-space: pre-line;
+}
+
+/* A record large enough to ask about first: a caution, not a failure. */
+.fetch-warning {
+  padding: var(--space-2) var(--space-2-5);
+  margin-bottom: var(--space-3);
+  font-size: var(--text-sm);
+  color: var(--text);
+  background: var(--warning-bg);
+  border: 1px solid color-mix(in srgb, var(--warning) 35%, transparent);
+  border-radius: var(--radius-sm);
+  line-height: 1.4;
 }
 
 /* Hint under the input */
@@ -97,3 +111,57 @@
   opacity: 0.6;
   cursor: default;
 }
+
+/* What the typed accession is, looked up before anything is downloaded. */
+.fetch-preview {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2);
+  margin-top: var(--space-1-5);
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+  min-width: 0;
+}
+.fetch-preview-loading { align-items: center; }
+.fetch-preview-found .fetch-preview-title {
+  color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+.fetch-preview-len {
+  flex-shrink: 0;
+  font-weight: 600;
+  color: var(--accent);
+}
+.fetch-preview-missing { color: var(--warning); }
+.fetch-spinner-sm { width: 11px; height: 11px; border-width: 1.5px; }
+
+/* Accessions fetched lately, offered while the box is empty. */
+.fetch-recent {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-1);
+  margin-top: var(--space-2);
+}
+.fetch-recent-label {
+  margin-right: var(--space-0-5);
+  font-size: var(--text-2xs);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-muted);
+}
+.fetch-recent-chip {
+  padding: var(--space-0-5) var(--space-2);
+  font-family: var(--font-mono);
+  font-size: var(--text-2xs);
+  color: var(--text-secondary);
+  background: var(--input-bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-pill);
+  cursor: pointer;
+}
+.fetch-recent-chip:hover { color: var(--accent); border-color: var(--accent); }

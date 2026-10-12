@@ -173,3 +173,27 @@ export async function fetchUniProtEntry(query: string): Promise<UniProtEntry> {
 export async function fetchUniProt(query: string): Promise<DocumentState> {
   return uniprotDocument(await fetchUniProtEntry(query))
 }
+
+/**
+ * An entry's name, organism and length without its features, for the
+ * Fetch dialog's preview. Null when there is no such entry; throws when
+ * UniProt cannot be reached.
+ */
+export async function uniProtSummary(query: string): Promise<{ title: string; length: number } | null> {
+  const id = query.trim()
+  const fields = 'protein_name,organism_name,length'
+  const res = await fetch(`${ENTRY_URL}${encodeURIComponent(id)}?fields=${fields}&format=json`, { headers: { Accept: 'application/json' } })
+  if (res.status === 404 || res.status === 400) return null
+  if (!res.ok) throw new Error(`UniProt answered HTTP ${res.status}`)
+  const data = await res.json() as {
+    primaryAccession?: string
+    proteinDescription?: { recommendedName?: { fullName?: { value?: string } }; submissionNames?: { fullName?: { value?: string } }[] }
+    organism?: { scientificName?: string }
+    sequence?: { length?: number }
+  }
+  if (!data.primaryAccession) return null
+  const name = data.proteinDescription?.recommendedName?.fullName?.value
+    ?? data.proteinDescription?.submissionNames?.[0]?.fullName?.value ?? data.primaryAccession
+  const organism = data.organism?.scientificName
+  return { title: organism ? `${name}, ${organism}` : name, length: data.sequence?.length ?? 0 }
+}

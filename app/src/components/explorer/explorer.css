@@ -569,25 +569,7 @@
   line-height: 1.5;
 }
 
-.ex-blank-actions {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-1);
-  width: 100%;
-  max-width: 160px;
-}
-
-.ex-blank-btn {
-  font-size: var(--text-xs);
-  padding: var(--space-1) var(--space-2);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-  background: var(--bg-alt);
-  color: var(--text);
-  cursor: pointer;
-  transition: border-color var(--dur-fast), color var(--dur-fast);
-}
-.ex-blank-btn:hover { border-color: var(--accent); color: var(--accent); }
+.ex-blank-icon { color: var(--text-faint); }
 
 .ex-no-matches {
   padding: var(--space-5) var(--space-3);
@@ -596,23 +578,35 @@
   text-align: center;
 }
 
-/* --- Drop overlay: shown while a file drag is anywhere over the panel --- */
+/* --- Drop overlay: shown while a file drag is anywhere over the panel ---
+   An outline, not a cover: the folders stay visible, since a drop on one
+   files the import into it, and the folder under the pointer lights up. */
 
 .ex-drop-overlay {
   position: absolute;
   inset: var(--space-1);
   z-index: var(--z-dropdown);
   display: flex;
-  align-items: center;
+  align-items: flex-end;
   justify-content: center;
-  gap: var(--space-1-5);
-  font-size: var(--text-xs);
-  font-weight: 600;
-  color: var(--accent);
-  background: color-mix(in srgb, var(--accent) 10%, var(--bg-sidebar));
+  padding-bottom: var(--space-3);
+  background: color-mix(in srgb, var(--accent) 4%, transparent);
   border: 2px dashed var(--accent);
   border-radius: var(--radius-input);
   pointer-events: none;
+}
+
+.ex-drop-hint {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1-5);
+  padding: var(--space-1) var(--space-2-5);
+  font-size: var(--text-xs);
+  font-weight: 600;
+  color: var(--on-accent);
+  background: var(--accent);
+  border-radius: var(--radius-pill);
+  box-shadow: var(--shadow-popover);
 }
 
 /* --- Hover card --- */

@@ -7,7 +7,7 @@
 
 import { useRef } from 'react'
 import {
-  Pencil, Copy, Trash2, Download, AlignLeft, Layers, Dna, Star, StickyNote, Tag, Combine,
+  Pencil, Copy, Trash2, Download, AlignLeft, Layers, Dna, Star, StickyNote, Tag, Combine, FileUp,
 } from 'lucide-react'
 import ContextMenuPopup from '../ContextMenuPopup'
 import { usePopoverDismiss } from '../../hooks/usePopoverDismiss'
@@ -44,14 +44,18 @@ interface Props {
   onAlignToRef: () => void
   onAlignSelected: () => void
   onJoinAlignments: () => void
+  /** A folder's: pick files to import into it. */
+  onImportHere: () => void
+  /** A folder's: a new sequence filed into it. */
+  onNewSequenceHere: () => void
   selection: SelectionCapabilities
   /** Whether the host wired up each optional action. */
-  has: { properties: boolean; exportItems: boolean; alignToRef: boolean; quickAlign: boolean }
+  has: { properties: boolean; exportItems: boolean; alignToRef: boolean; quickAlign: boolean; importHere: boolean; newSequenceHere: boolean }
 }
 
 export default function ExplorerContextMenu({
   target, starred, onClose, onRename, onDuplicate, onProperties, onExport, onDelete,
-  onToggleStar, onEditNote, onEditTags, onAlignToRef, onAlignSelected, onJoinAlignments, selection, has,
+  onToggleStar, onEditNote, onEditTags, onAlignToRef, onAlignSelected, onJoinAlignments, onImportHere, onNewSequenceHere, selection, has,
 }: Props) {
   const ref = useRef<HTMLDivElement>(null)
   usePopoverDismiss(true, onClose, ref)
@@ -88,6 +92,17 @@ export default function ExplorerContextMenu({
           </>
         ) : target.type === 'folder' ? (
           <>
+            {has.newSequenceHere && (
+              <button className="ctx-menu-item" onClick={onNewSequenceHere}>
+                <Dna size={13} /> New Sequence Here…
+              </button>
+            )}
+            {has.importHere && (
+              <button className="ctx-menu-item" onClick={onImportHere}>
+                <FileUp size={13} /> Import Files Here…
+              </button>
+            )}
+            {(has.newSequenceHere || has.importHere) && <div className="ctx-menu-sep" />}
             <button className="ctx-menu-item" onClick={onRename}>
               <Pencil size={13} /> Rename
             </button>
