@@ -37,7 +37,7 @@
 .gp-ramp-high { background: linear-gradient(to right, var(--accent), var(--success)); }
 .gp-swatch { display: inline-block; width: 14px; height: 6px; border-radius: var(--radius-pill); margin-left: var(--space-1); }
 .gp-swatch-contig { background: var(--accent); }
-.gp-swatch-piece { background: var(--text-faint); }
+.gp-swatch-piece { background: var(--text-soft); }
 .gp-side {
   width: 290px;
   flex-shrink: 0;

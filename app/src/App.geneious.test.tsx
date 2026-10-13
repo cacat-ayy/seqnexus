@@ -169,7 +169,7 @@ describe('opening a Geneious file', () => {
     act(() => { lastToast().action!.onClick() })
     const dialog = await screen.findByRole('dialog', { name: 'Genome links in "Plants.geneious"' })
     expect(within(dialog).getByText('NC_008405')).toBeInTheDocument()
-    expect(within(dialog).getByText('27.76 Mbp')).toBeInTheDocument()
+    expect(within(dialog).getByText('27.76 Mb')).toBeInTheDocument()
 
     fireEvent.click(within(dialog).getByRole('button', { name: 'Fetch…' }))
     const fetch = await screen.findByRole('dialog', { name: 'Import by Accession' })

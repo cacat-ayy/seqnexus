@@ -9,7 +9,7 @@ import { writeReportPdf, type ReportBlock } from '../../pdf/report-pdf'
 import { describeChange, describeDifference, STATUS_LABEL, type VerifyReport } from '../../assembly/verify'
 import { allCoding, codingLabel } from '../../assembly/effects'
 
-const nf = new Intl.NumberFormat()
+const nf = new Intl.NumberFormat('en-US')
 const pct = (x: number) => `${(x * 100).toFixed(x === 1 || x === 0 ? 0 : 1)}%`
 
 export function verifyReportPdf(r: VerifyReport, readsName: string, date = new Date()): Uint8Array {

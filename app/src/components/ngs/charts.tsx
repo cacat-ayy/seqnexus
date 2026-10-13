@@ -14,7 +14,7 @@ import { useWidth } from './useWidth'
 import type { Histogram, PositionQuality } from '../../ngs/types'
 import { niceTicks } from '../../utils/ticks'
 
-const nf = new Intl.NumberFormat()
+const nf = new Intl.NumberFormat('en-US')
 const compact = new Intl.NumberFormat('en', { notation: 'compact', maximumFractionDigits: 1 })
 
 /** A bar with its top corners rounded and its base square. */

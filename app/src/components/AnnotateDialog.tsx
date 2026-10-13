@@ -14,7 +14,7 @@ import './AnnotateDialog.css'
  */
 
 import { useState, useMemo, useCallback, useRef } from 'react'
-import { X, Search, Loader2, ChevronDown, ChevronRight, Upload, Trash2, Database } from 'lucide-react'
+import { X, Search, Loader2, Upload, Trash2, Database } from 'lucide-react'
 import { useEditorStore } from '../store'
 import { FEATURE_CATEGORIES } from '../features/common-features'
 import { getScanReferences, sourceIdForMatch, customCategories } from '../features/feature-sources'
@@ -26,6 +26,8 @@ import type { AnnotationMatch } from '../workers/annotate-list'
 import { useExitAnimation } from '../hooks/useExitAnimation'
 import { useFocusTrap } from '../hooks/useFocusTrap'
 import { useBackdropDismiss } from '../hooks/useBackdropDismiss'
+import Chevron from './Chevron'
+import SkeletonRows from './SkeletonRows'
 
 interface Props {
   open: boolean
@@ -318,7 +320,7 @@ export default function AnnotateDialog({ open, onClose }: Props) {
               {/* Results */}
               <div className="ann-results-header">
                 {scanning ? (
-                  <span className="ann-scanning"><Loader2 size={14} className="ann-spin" /> Scanning…</span>
+                  <span className="ann-scanning"><Loader2 size={14} className="spinner" /> Scanning…</span>
                 ) : (
                   <span>
                     {filtered.length} suggestion{filtered.length !== 1 ? 's' : ''}
@@ -336,6 +338,7 @@ export default function AnnotateDialog({ open, onClose }: Props) {
               </div>
 
               <div className="ann-results-list">
+                {scanning && filtered.length === 0 && <SkeletonRows label="Scanning for features" />}
                 {!scanning && filtered.length === 0 && (
                   <div className="re-no-results">
                     {matches.length > 0
@@ -369,7 +372,7 @@ export default function AnnotateDialog({ open, onClose }: Props) {
                         onClick={() => handleToggleGroup(name)}
                       >
                         <span className="ann-result-chevron">
-                          {isCollapsed ? <ChevronRight size={14} /> : <ChevronDown size={14} />}
+                          <Chevron open={!isCollapsed} size={14} />
                         </span>
                         <span className="ann-swatch ann-match-swatch" style={{ backgroundColor: matchList[0].color }} />
                         <span>{name}</span>

@@ -35,7 +35,7 @@ import { downloadText } from '../../utils/download'
 
 const CompareDialog = lazy(() => import('./CompareDialog'))
 
-const nf = new Intl.NumberFormat()
+const nf = new Intl.NumberFormat('en-US')
 const pct = (x: number) => `${(x * 100).toFixed(1)}%`
 
 const fastaName = (name: string) => name.replace(/\s+/g, '_')

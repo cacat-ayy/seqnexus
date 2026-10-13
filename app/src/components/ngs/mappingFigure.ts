@@ -104,7 +104,7 @@ export function buildMappingFigure(p: MappingFigureInput, o: MappingFigureOption
     if (o.strands) out.push(`<path d="${area(c => depth[c].mean * Math.max(0, depth[c].forward))}" fill="${theme.good}" fill-opacity="0.6"/>`)
     out.push(`<path d="M${GUTTER} ${r1(y + h)}H${r1(GUTTER + o.width)}" class="g"/>`)
     label(PAD, y + 10, 'Coverage', ' class="l"')
-    label(PAD, y + 22, `0 to ${top.toLocaleString()}×`, ' class="m"')
+    label(PAD, y + 22, `0 to ${top.toLocaleString('en-US')}×`, ' class="m"')
     if (o.strands) {
       out.push(`<rect x="${PAD}" y="${r1(y + 28)}" width="8" height="6" fill="${theme.good}" fill-opacity="0.6"/>`)
       label(PAD + 11, y + 34, 'forward', ' class="m"')
@@ -203,7 +203,7 @@ export function buildMappingFigure(p: MappingFigureInput, o: MappingFigureOption
     if (p.layout.rows.length > shown) label(PAD, top0 + 21, `${shown} of ${p.layout.rows.length} rows`, ' class="m"')
     y = top0 + shown * (ROW + ROW_GAP) + 6
   } else if (o.tracks.reads && span > MAX_READ_SPAN) {
-    label(GUTTER, y + 10, `Reads are drawn for stretches of ${MAX_READ_SPAN.toLocaleString()} bases or less.`, ' class="m"')
+    label(GUTTER, y + 10, `Reads are drawn for stretches of ${MAX_READ_SPAN.toLocaleString('en-US')} bases or less.`, ' class="m"')
     y += 18
   }
 

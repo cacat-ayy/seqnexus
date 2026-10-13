@@ -38,7 +38,7 @@ interface Props {
   onClose: () => void
 }
 
-const nf = new Intl.NumberFormat()
+const nf = new Intl.NumberFormat('en-US')
 const pct = (x: number, digits = 1) => `${(x * 100).toFixed(digits)}%`
 const PREVIEW = 20
 
@@ -174,7 +174,7 @@ export default function ReadSetWorkspace({ readSet: rs, onClose }: Props) {
         <span className="aw-chip">{TECHNOLOGY_LABEL[rs.technology]}</span>
         <span className="aw-chip">{rs.paired ? 'Paired' : 'Single reads'}</span>
         <span className="aw-muted">{rs.paired ? `${compactCount(s.reads / 2)} pairs` : `${compactCount(s.reads)} reads`} · {formatBp(s.bases)} · {readShape(rs)}</span>
-        <div className="aw-seg mv-switch" role="radiogroup" aria-label="Page">
+        <div className="seg seg-sm aw-seg mv-switch" role="radiogroup" aria-label="Page">
           <button role="radio" aria-checked={page === 'summary'} className={page === 'summary' ? 'active' : ''} onClick={() => setPage('summary')}
             title="The QC verdict, headline figures, charts, first reads and storage">Summary</button>
           <button role="radio" aria-checked={page === 'report'} className={`qr-switch${page === 'report' ? ' active' : ''}`} onClick={() => setPage('report')}

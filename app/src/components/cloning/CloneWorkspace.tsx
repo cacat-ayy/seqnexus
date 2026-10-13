@@ -287,9 +287,9 @@ export default function CloneWorkspace({ clone, onClose }: Props) {
           aria-label="Design name"
           onChange={e => renameClone(clone.id, e.target.value)}
         />
-        <div className="cw-modes" role="tablist" aria-label="What to build">
+        <div className="seg cw-modes" role="tablist" aria-label="What to build">
           <button
-            className={`cw-mode ${mode === 'one' ? 'active' : ''}`}
+            className={mode === 'one' ? 'active' : ''}
             role="tab"
             aria-selected={mode === 'one'}
             onClick={() => setMode('one')}
@@ -297,7 +297,7 @@ export default function CloneWorkspace({ clone, onClose }: Props) {
             One construct
           </button>
           <button
-            className={`cw-mode ${mode === 'library' ? 'active' : ''}`}
+            className={mode === 'library' ? 'active' : ''}
             role="tab"
             aria-selected={mode === 'library'}
             onClick={openLibrary}
@@ -306,49 +306,52 @@ export default function CloneWorkspace({ clone, onClose }: Props) {
             Library
           </button>
         </div>
-        <span className="cw-spacer" />
-        <button
-          className="cw-btn"
-          onClick={() => useEditorStore.getState().createClone()}
-          title="Start another design from the sequence you were viewing"
-        >
-          <FilePlus2 size={13} /> New
-        </button>
-        <button
-          className={`cw-btn ${aside === 'junctions' ? 'active' : ''}`}
-          onClick={() => setAside(a => (a === 'junctions' ? 'none' : 'junctions'))}
-          disabled={!chosen || chosen.junctions.length === 0}
-          title={chosen ? 'Look at each junction base by base' : 'Nothing to look at yet'}
-        >
-          Junctions
-        </button>
-        <button
-          className={`cw-btn ${aside === 'oligos' ? 'active' : ''}`}
-          onClick={() => setAside(a => (a === 'oligos' ? 'none' : 'oligos'))}
-          disabled={!needsOligos(design)}
-          title="Primers to order for this design"
-        >
-          Oligos
-        </button>
-        <button
-          className="cw-btn"
-          onClick={checkOnGel}
-          disabled={!chosen}
-          title="Open the construct and run a diagnostic digest on a gel"
-        >
-          Check on a gel
-        </button>
-        <button
-          className="cw-btn primary"
-          onClick={openProduct}
-          disabled={!chosen}
-          title={chosen ? 'Open the selected product as a sequence' : 'Nothing to open yet'}
-        >
-          Open product
-        </button>
-        <button className="cw-close" onClick={onClose} aria-label="Close">
-          <X size={16} />
-        </button>
+        {/* One group, so on a narrow pane it wraps to its own line, still at
+            the right, instead of breaking labels over several lines. */}
+        <div className="cw-actions">
+          <button
+            className="cw-btn"
+            onClick={() => useEditorStore.getState().createClone()}
+            title="Start another design from the sequence you were viewing"
+          >
+            <FilePlus2 size={13} /> New
+          </button>
+          <button
+            className={`cw-btn ${aside === 'junctions' ? 'active' : ''}`}
+            onClick={() => setAside(a => (a === 'junctions' ? 'none' : 'junctions'))}
+            disabled={!chosen || chosen.junctions.length === 0}
+            title={chosen ? 'Look at each junction base by base' : 'Nothing to look at yet'}
+          >
+            Junctions
+          </button>
+          <button
+            className={`cw-btn ${aside === 'oligos' ? 'active' : ''}`}
+            onClick={() => setAside(a => (a === 'oligos' ? 'none' : 'oligos'))}
+            disabled={!needsOligos(design)}
+            title="Primers to order for this design"
+          >
+            Oligos
+          </button>
+          <button
+            className="cw-btn"
+            onClick={checkOnGel}
+            disabled={!chosen}
+            title="Open the construct and run a diagnostic digest on a gel"
+          >
+            Check on a gel
+          </button>
+          <button
+            className="cw-btn primary"
+            onClick={openProduct}
+            disabled={!chosen}
+            title={chosen ? 'Open the selected product as a sequence' : 'Nothing to open yet'}
+          >
+            Open product
+          </button>
+          <button className="cw-close" onClick={onClose} aria-label="Close">
+            <X size={16} />
+          </button>
+        </div>
       </div>
 
       <div className="cw-body">

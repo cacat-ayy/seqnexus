@@ -149,7 +149,7 @@ export default function LibraryPanel({ design, bins, onBinsChange, onOpenRow, on
 
       {total > LIMIT && (
         <p className="cw-blurb">
-          These positions describe {total.toLocaleString()} constructs; the first {LIMIT} will be built.
+          These positions describe {total.toLocaleString('en-US')} constructs; the first {LIMIT} will be built.
         </p>
       )}
 

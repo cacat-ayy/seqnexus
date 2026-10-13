@@ -93,7 +93,7 @@ export default function DesignTrack({ result, excluded, circular, picked, onPick
     return <rect className={cls} x={x(a)} y={y} width={Math.max(2, x(b) - x(a))} height={4} />
   }
 
-  const fmt = (pos: number) => (((pos % n) + n) % n + 1).toLocaleString()
+  const fmt = (pos: number) => (((pos % n) + n) % n + 1).toLocaleString('en-US')
 
   return (
     <div className="wb-track">

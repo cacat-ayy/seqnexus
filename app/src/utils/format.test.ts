@@ -14,10 +14,10 @@ describe('formatBp', () => {
     expect(formatBp(12_345)).toBe('12.3 kb')
   })
 
-  it('switches to Mbp with two decimals at a million, and Gbp at a billion', () => {
-    expect(formatBp(1_400_000)).toBe('1.40 Mbp')
-    expect(formatBp(248_956_422)).toBe('248.96 Mbp')
-    expect(formatBp(3_200_000_000)).toBe('3.20 Gbp')
+  it('switches to Mb with two decimals at a million, and Gb at a billion', () => {
+    expect(formatBp(1_400_000)).toBe('1.40 Mb')
+    expect(formatBp(248_956_422)).toBe('248.96 Mb')
+    expect(formatBp(3_200_000_000)).toBe('3.20 Gb')
   })
 })
 

@@ -6,7 +6,7 @@
  */
 
 import { useState, useMemo, useEffect, useCallback, useRef } from 'react'
-import { X, ChevronDown, ChevronRight } from 'lucide-react'
+import { X } from 'lucide-react'
 import { useEditorStore } from '../store'
 import { findORFs, orfColor } from '../workers/orf-finder'
 import type { ORFResult, ORFOptions } from '../workers/orf-finder'
@@ -14,6 +14,7 @@ import { orfKey, convertibleOrfs } from '../utils/orf-features'
 import { useExitAnimation } from '../hooks/useExitAnimation'
 import { useFocusTrap } from '../hooks/useFocusTrap'
 import { useBackdropDismiss } from '../hooks/useBackdropDismiss'
+import Chevron from './Chevron'
 
 const FRAME_LABELS: Record<string, string> = {
   '1_0': '+1',
@@ -198,7 +199,7 @@ export default function ORFPanel({ open, onClose }: Props) {
                   onChange={e => setMinCodonsInput(Math.max(1, parseInt(e.target.value) || 1))}
                 />
                 {/* Codons, stop included, so the bases are three times that. */}
-                <span>codons, {(minCodonsInput * 3).toLocaleString()} bp</span>
+                <span>codons, {(minCodonsInput * 3).toLocaleString('en-US')} bp</span>
               </div>
             </div>
 
@@ -266,7 +267,7 @@ export default function ORFPanel({ open, onClose }: Props) {
                       })}
                     >
                       <span className="ann-result-chevron">
-                        {isCollapsed ? <ChevronRight size={14} /> : <ChevronDown size={14} />}
+                        <Chevron open={!isCollapsed} size={14} />
                       </span>
                       <span
                         className="ann-swatch"

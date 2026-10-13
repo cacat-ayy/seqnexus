@@ -22,7 +22,7 @@ import {
 } from '../../assembly/variants'
 import { allCoding, codingLabel, EFFECT_ORDER, effectSeverity } from '../../assembly/effects'
 
-const nf = new Intl.NumberFormat()
+const nf = new Intl.NumberFormat('en-US')
 const ROW_H = 24
 
 export type CallState = { kind: 'none' } | { kind: 'running'; progress: number } | { kind: 'ready' } | { kind: 'error'; message: string }

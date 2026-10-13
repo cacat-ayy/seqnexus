@@ -207,14 +207,14 @@ export default function LaneInspector({
         </button>
       </div>
 
-      <div className="gw-kinds" role="radiogroup" aria-label="Sample type">
+      <div className="seg seg-sm gw-kinds" role="radiogroup" aria-label="Sample type">
         {(protein ? PROTEIN_KINDS : DNA_KINDS).map(k => (
           <button
             key={k.kind}
             role="radio"
             aria-checked={sample.kind === k.kind}
             title={k.title}
-            className={`gw-kind ${sample.kind === k.kind ? 'active' : ''}`}
+            className={sample.kind === k.kind ? 'active' : ''}
             onClick={() => switchKind(k.kind)}
           >
             {k.label}

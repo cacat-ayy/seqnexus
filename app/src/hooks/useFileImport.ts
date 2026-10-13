@@ -140,7 +140,7 @@ function looksLikeAlignmentFile(text: string, fileName: string): boolean {
 
 /** "a", "a and b", "a, b and c". */
 const listed = (parts: string[]) => parts.length < 2 ? parts.join('') : `${parts.slice(0, -1).join(', ')} and ${parts[parts.length - 1]}`
-const count = (k: number, one: string, many: string) => `${k.toLocaleString()} ${k === 1 ? one : many}`
+const count = (k: number, one: string, many: string) => `${k.toLocaleString('en-US')} ${k === 1 ? one : many}`
 
 /** Parser and reader failures, reduced to something fit for a detail line. */
 export const errorDetail = (err: unknown): string | undefined =>
@@ -288,7 +288,7 @@ export function useFileImport(h: FileImportHandlers) {
     openRecordsAsking(source, fresh.length, n => {
       const tabIds = placeTabs(fresh.slice(0, n), folderName, place)
       report.opened(tabIds.length)
-      if (tabIds.length > 1) report.success(`Opened ${tabIds.length.toLocaleString()} ${noun} from ${from}`)
+      if (tabIds.length > 1) report.success(`Opened ${tabIds.length.toLocaleString('en-US')} ${noun} from ${from}`)
     })
   }, [openRecordsAsking, placeTabs])
 

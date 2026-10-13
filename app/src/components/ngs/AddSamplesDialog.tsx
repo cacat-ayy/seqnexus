@@ -24,7 +24,7 @@ import type { MappingReport } from '../../ngs/builder'
 import PrimerClipField from './PrimerClipField'
 import { usePrimerClip } from './usePrimerClip'
 
-const nf = new Intl.NumberFormat()
+const nf = new Intl.NumberFormat('en-US')
 
 export default function AddSamplesDialog({ assembly, onClose }: { assembly: Assembly; onClose: () => void }) {
   const first = assembly.samples![0]

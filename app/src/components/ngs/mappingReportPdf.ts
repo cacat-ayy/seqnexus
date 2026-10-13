@@ -11,7 +11,7 @@ import { formatBytes } from '../../utils/format'
 import { MIN_BASE_QUALITY, MIN_INDEL_FRACTION, MIN_SNV_FRACTION } from '../../ngs/pileup'
 import { writeReportPdf, type ReportBlock, type ReportTile } from '../../pdf/report-pdf'
 
-const nf = new Intl.NumberFormat()
+const nf = new Intl.NumberFormat('en-US')
 const pct = (x: number) => `${(x * 100).toFixed(1)}%`
 
 /** The program that aligned the reads, as the report states it. */

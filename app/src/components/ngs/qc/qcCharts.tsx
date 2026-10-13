@@ -13,7 +13,7 @@ import { useEffect, useRef, useState } from 'react'
 import type { PositionQuality } from '../../../ngs/types'
 import { niceTicks } from '../../../utils/ticks'
 
-const nf = new Intl.NumberFormat()
+const nf = new Intl.NumberFormat('en-US')
 const compact = new Intl.NumberFormat('en', { notation: 'compact', maximumFractionDigits: 1 })
 
 const H = 220

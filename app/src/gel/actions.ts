@@ -73,7 +73,7 @@ export function extractFragment(sourceId: string, enzymeNames: string[], f: Frag
   const state: DocumentState = {
     name: `${doc.name} ${ends} ${formatBp(size)}`,
     description: [
-      `Extracted from a virtual gel: ${doc.name} cut with ${enzymeNames.join(' + ')}, ${size.toLocaleString()} bp.`,
+      `Extracted from a virtual gel: ${doc.name} cut with ${enzymeNames.join(' + ')}, ${size.toLocaleString('en-US')} bp.`,
       `Left end: ${describeEnd(f.leftEnzyme, fragment.overhang5, fragment.overhang5Type)}.`,
       `Right end: ${describeEnd(f.rightEnzyme, fragment.overhang3, fragment.overhang3Type)}.`,
     ].join('\n'),

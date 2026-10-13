@@ -235,11 +235,11 @@ export default function ExportDialog({ open, defaultName, annotationCount, itemK
           {modes.length > 1 && (
             <>
               <div className="export-filename-label">Output</div>
-              <div className="toggle-group export-mode-toggle">
+              <div className="seg export-mode-toggle">
                 {modes.map(m => (
                   <button
                     key={m}
-                    className={`toggle-btn ${effectiveMode === m ? 'active' : ''}`}
+                    className={effectiveMode === m ? 'active' : ''}
                     onClick={() => setMode(m)}
                     title={MODE_HINT[m]}
                   >

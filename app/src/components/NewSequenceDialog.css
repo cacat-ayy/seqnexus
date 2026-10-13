@@ -31,12 +31,6 @@
   color: var(--text-secondary);
 }
 
-.nsm-optional {
-  margin-left: var(--space-1);
-  font-weight: 400;
-  color: var(--text-faint);
-}
-
 .nsm-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -58,7 +52,7 @@
   line-height: 1.5;
 }
 
-/* Molecule and topology toggles: shared .toggle-group / .toggle-btn from App.css */
+/* Molecule and topology toggles: shared .seg from App.css */
 
 /* What the pasted text was read as. */
 .nsm-detected {
@@ -98,4 +92,4 @@
 .nsm-footer-hint .menu-kbd { margin-left: 0; margin-right: var(--space-1); }
 
 /* A toggle keeps its own width in a column. */
-.nsm-field > .toggle-group { align-self: flex-start; }
+.nsm-field > .seg { align-self: flex-start; }

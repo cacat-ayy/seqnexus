@@ -8,7 +8,7 @@ import './ReadQcSummary.css'
 import { runLine, type TraceData } from '../../io/trace'
 import { readQc, VERDICT_LABEL } from '../../sanger/qc'
 
-const nf = new Intl.NumberFormat()
+const nf = new Intl.NumberFormat('en-US')
 
 export default function ReadQcSummary({ data, compact = false }: { data: TraceData; compact?: boolean }) {
   const qc = readQc(data)

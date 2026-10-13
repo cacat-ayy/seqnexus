@@ -44,7 +44,7 @@ export default function DeletionTask({ candidates, nuclease }: Props) {
 
   const openResult = (pair: DeletionPair) => {
     openDocumentState(deletionDocument(doc, pair, nuclease.name))
-    notify.success(`${pair.length.toLocaleString()} bp removed in a new sequence`)
+    notify.success(`${pair.length.toLocaleString('en-US')} bp removed in a new sequence`)
   }
 
   return (
@@ -85,7 +85,7 @@ export default function DeletionTask({ candidates, nuclease }: Props) {
               <span className="gp-seq"><span className="gp-spacer-seq">{pair.junction}</span></span>
             </div>
             <div className="gp-scores">
-              <span className="gp-score-strong">{pair.length.toLocaleString()} bp</span>
+              <span className="gp-score-strong">{pair.length.toLocaleString('en-US')} bp</span>
               <span title="Lost beyond the region asked for, left and right">
                 +{pair.overshoot.left}/{pair.overshoot.right}
               </span>

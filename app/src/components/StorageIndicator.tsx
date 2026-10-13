@@ -137,6 +137,8 @@ export default function StorageIndicator({ refreshKey, onBackup }: StorageIndica
         }}
       >
         <HardDrive size={11} style={{ opacity: 0.7 }} />
+        {/* A bar and a percentage alone do not say what is filling up. */}
+        <span className="storage-indicator-name" aria-hidden="true">Storage</span>
         <span className="storage-indicator-bar-bg">
           <span
             className="storage-indicator-bar-fill"

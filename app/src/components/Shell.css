@@ -86,13 +86,9 @@
   -webkit-backdrop-filter: blur(6px);
   z-index: var(--z-popover);
   pointer-events: none;
-  animation: drop-overlay-in var(--dur-fast) ease;
+  animation: fade-in var(--dur-fast) var(--ease-out);
 }
 
-@keyframes drop-overlay-in {
-  from { opacity: 0; }
-  to   { opacity: 1; }
-}
 
 .drop-card {
   display: flex;

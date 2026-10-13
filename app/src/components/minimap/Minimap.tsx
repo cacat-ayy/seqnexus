@@ -61,7 +61,7 @@ const MIN_VIEWPORT_PX = 3
 
 const STORAGE_PREFIX = STORAGE_KEYS.minimapCollapsedPrefix
 
-const defaultFormat = (pos: number) => (Math.floor(pos) + 1).toLocaleString()
+const defaultFormat = (pos: number) => (Math.floor(pos) + 1).toLocaleString('en-US')
 
 function loadCollapsed(kind: string): boolean {
   try { return localStorage.getItem(STORAGE_PREFIX + kind) === '1' } catch { return false }

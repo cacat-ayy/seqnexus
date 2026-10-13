@@ -205,7 +205,7 @@ function selectionTouches(t: SelectionTranslation, rs: number, re: number): bool
 
 /** "1..120" in display positions, joined for split features. */
 function locationText(ann: Annotation, seqLen: number, origin: number): string {
-  const dp = (p: number) => displayPosition(p, origin, seqLen).toLocaleString()
+  const dp = (p: number) => displayPosition(p, origin, seqLen).toLocaleString('en-US')
   const parts = ann.segments ?? [[ann.start, ann.end]]
   return parts.map(([s, e]) => `${dp(s)}..${dp((e - 1 + seqLen) % seqLen)}`).join(', ')
 }
@@ -253,7 +253,7 @@ function columnXs(columns: TableColumn[], x0: number, width: number): { x: numbe
 function buildTables(src: SequencePdfSource, segs: [number, number][], contentW: number): PdfPlan['tables'] {
   const seqLen = src.doc.sequence.length
   const origin = (src.doc.sequence.topology === 'circular' ? src.doc.metadata?.displayOrigin : 0) || 0
-  const dp = (p: number) => displayPosition(p, origin, seqLen).toLocaleString()
+  const dp = (p: number) => displayPosition(p, origin, seqLen).toLocaleString('en-US')
   const CELL_PAD = 4
 
   const featureColumns: TableColumn[] = [
@@ -267,7 +267,7 @@ function buildTables(src: SequencePdfSource, segs: [number, number][], contentW:
     .map(a => {
       const cells = [
         a.name || '(unnamed)', a.type, locationText(a, seqLen, origin),
-        `${a.span(seqLen).toLocaleString()} bp`,
+        `${a.span(seqLen).toLocaleString('en-US')} bp`,
         a.strand === 1 ? 'forward' : a.strand === -1 ? 'reverse' : '',
       ].map((t, i) => fit(t, tableFont(), fx[i].w - CELL_PAD * 2 - (i === 0 ? 10 : 0)))
       return { cells, swatch: a.color, lines: [cells[cells.length - 1]], height: TABLE_LINE + TABLE_ROW_PAD }
@@ -559,9 +559,9 @@ export function renderPdfPage(ctx: CanvasRenderingContext2D, plan: PdfPlan, page
     const whole = rangeLength(opts.range, seqLen) === seqLen
     const segs = rangeSegments(opts.range, seqLen)
     const origin = (doc.sequence.topology === 'circular' ? doc.metadata?.displayOrigin : 0) || 0
-    const dp = (p: number) => displayPosition(p, origin, seqLen).toLocaleString()
+    const dp = (p: number) => displayPosition(p, origin, seqLen).toLocaleString('en-US')
     const facts = [
-      `${seqLen.toLocaleString()} bp`,
+      `${seqLen.toLocaleString('en-US')} bp`,
       doc.sequence.topology,
       whole || segs.length === 0 ? '' : `bases ${dp(segs[0][0])}-${dp(segs[segs.length - 1][1] - 1)}`,
     ].filter(Boolean).join(' · ')

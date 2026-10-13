@@ -50,7 +50,7 @@ export default function AnalysisResult({ analysis }: Props) {
       <p className="gi-caveat">
         {analysis.source.description}
         {analysis.kind === 'reads' && analysis.sample.sampled && (
-          <> {analysis.sample.used.toLocaleString()} reads of {analysis.sample.available.toLocaleString()} were looked at.</>
+          <> {analysis.sample.used.toLocaleString('en-US')} reads of {analysis.sample.available.toLocaleString('en-US')} were looked at.</>
         )}
       </p>
 
@@ -116,7 +116,7 @@ export default function AnalysisResult({ analysis }: Props) {
                         ? `${allele.indel > 0 ? '+' : ''}${allele.indel}${allele.frameshift ? ', shifts' : ''}`
                         : `${allele.substitutions} substituted`}
                   </td>
-                  <td>{allele.reads.toLocaleString()}</td>
+                  <td>{allele.reads.toLocaleString('en-US')}</td>
                   <td className="gi-mh ca-window">{allele.sequence.slice(0, 24)}</td>
                 </tr>
               ))}
@@ -124,8 +124,8 @@ export default function AnalysisResult({ analysis }: Props) {
           </table>
           {(analysis.table.skipped.tooShort > 0 || analysis.table.skipped.unaligned > 0) && (
             <p className="gi-caveat">
-              {analysis.table.skipped.tooShort.toLocaleString()} reads did not span the window and{' '}
-              {analysis.table.skipped.unaligned.toLocaleString()} did not match the amplicon. Neither was counted.
+              {analysis.table.skipped.tooShort.toLocaleString('en-US')} reads did not span the window and{' '}
+              {analysis.table.skipped.unaligned.toLocaleString('en-US')} did not match the amplicon. Neither was counted.
             </p>
           )}
         </div>
@@ -149,7 +149,7 @@ export default function AnalysisResult({ analysis }: Props) {
                         .map(([base, share]) => `${base} ${(share * 100).toFixed(1)}%`)
                         .join(', ')}
                     </td>
-                    <td>{row.depth.toLocaleString()} deep</td>
+                    <td>{row.depth.toLocaleString('en-US')} deep</td>
                   </tr>
                 ))}
             </tbody>

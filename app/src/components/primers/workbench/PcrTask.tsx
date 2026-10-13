@@ -142,7 +142,7 @@ export default function PcrTask({ settings, onSettings }: {
           {problem ?? (busy ? 'Designing…'
             : result?.error ?? (result
               ? `${result.counts.forward} forward · ${result.counts.reverse} reverse candidates · ${result.pairs.length} pairs`
-              : target ? '' : 'Select a region on the sequence to design primers around it.'))}
+              : ''))}
         </div>
         {result && !problem && (result.forward.length > 0 || result.reverse.length > 0) && (
           <DesignTrack

@@ -186,10 +186,6 @@
   gap: var(--space-1-5);
 }
 
-.ann-spin {
-  animation: spin 1s linear infinite;
-}
-
 .ann-add-all-btn {
   display: flex;
   align-items: center;

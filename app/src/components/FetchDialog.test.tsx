@@ -45,7 +45,7 @@ describe('FetchDialog', () => {
     ncbi.summary.mockResolvedValue({ length: 248_956_422, title: 'Homo sapiens chromosome 1' })
     const onFetched = open()
     fireEvent.click(screen.getByRole('button', { name: 'Fetch' }))
-    const confirm = await screen.findByRole('button', { name: /Download 248\.96 Mbp anyway/ })
+    const confirm = await screen.findByRole('button', { name: /Download 248\.96 Mb anyway/ })
     expect(ncbi.fetch).not.toHaveBeenCalled()
 
     fireEvent.click(confirm)

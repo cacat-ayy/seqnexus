@@ -20,7 +20,7 @@ export interface GcPoint {
   depth: number
 }
 
-const nf = new Intl.NumberFormat()
+const nf = new Intl.NumberFormat('en-US')
 const PAD = { left: 52, right: 16, top: 12, bottom: 34 }
 const HEIGHT = 240
 

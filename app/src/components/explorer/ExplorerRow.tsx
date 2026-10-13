@@ -40,6 +40,9 @@ export interface ExplorerRowProps {
   onHoverEnd: () => void
 }
 
+/** How recent an item has to be for its row to light up on appearing. */
+const FRESH_MS = 1500
+
 function ExplorerRow({
   index, focused, item, depth, density, top, height, selected, dragging, starred, tags, tagColors, renaming,
   onClick, onContextMenu, onToggleStar, onOpenMenu,
@@ -48,6 +51,9 @@ function ExplorerRow({
   const Icon = KIND_ICON[item.kind]
   const stats = item.stats.join(' · ')
   const [draft, setDraft] = useState(item.name)
+  // An item made a moment ago (an import, a new gel or design) is lit up
+  // once, so the eye finds where it landed in the tree.
+  const [fresh] = useState(() => Date.now() - item.createdAt < FRESH_MS)
   const inputRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
@@ -64,6 +70,7 @@ function ExplorerRow({
     item.isOpen ? 'open' : '',
     selected ? 'selected' : '',
     dragging ? 'dragging' : '',
+    fresh ? 'fresh' : '',
   ].filter(Boolean).join(' ')
 
   return (
@@ -119,7 +126,10 @@ function ExplorerRow({
           {density === 'comfortable' ? (
             <>
               <span className="ex-name-text">{item.name}</span>
-              <span className="ex-stats-inline">{stats}</span>
+              {/* The first figure only: the rest (topology, counts) is in the pip,
+                  the hover card and the relaxed density, and would be cut off
+                  in a sidebar of ordinary width. */}
+              <span className="ex-stats-inline">{item.stats[0]}</span>
             </>
           ) : item.name}
         </span>

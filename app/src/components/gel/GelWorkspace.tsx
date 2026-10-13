@@ -440,14 +440,14 @@ export default function GelWorkspace({ gel, onClose, onExportPrompt }: Props) {
         />
         <aside className="gw-inspector" aria-label="Gel inspector">
           <div className="gw-tabs" role="tablist">
-            <button role="tab" aria-selected={panel === 'lane'} className={`gw-tab ${panel === 'lane' ? 'active' : ''}`} onClick={() => setPanel('lane')}>
+            <button role="tab" aria-selected={panel === 'lane'} className={`panel-tab gw-tab ${panel === 'lane' ? 'active' : ''}`} onClick={() => setPanel('lane')}>
               {lane ? `Lane ${selectedLane! + 1}` : 'Lane'}
             </button>
-            <button role="tab" aria-selected={panel === 'gel'} className={`gw-tab ${panel === 'gel' ? 'active' : ''}`} onClick={() => setPanel('gel')}>
+            <button role="tab" aria-selected={panel === 'gel'} className={`panel-tab gw-tab ${panel === 'gel' ? 'active' : ''}`} onClick={() => setPanel('gel')}>
               Gel &amp; image
             </button>
             {!isProteinGel(conditions) && (
-            <button role="tab" aria-selected={panel === 'design'} className={`gw-tab ${panel === 'design' ? 'active' : ''}`} onClick={() => setPanel('design')}>
+            <button role="tab" aria-selected={panel === 'design'} className={`panel-tab gw-tab ${panel === 'design' ? 'active' : ''}`} onClick={() => setPanel('design')}>
               Design
             </button>
             )}

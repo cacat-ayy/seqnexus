@@ -62,6 +62,6 @@ export function headlineOf(analysis: EditingAnalysis): { label: string; value: s
     { label: 'Edited', value: `${(t.edited * 100).toFixed(1)}%`, title: 'Reads that are not the reference across the window' },
     { label: 'Frameshift', value: `${(t.frameshift * 100).toFixed(1)}%` },
     ...(t.donor > 0 ? [{ label: 'Donor', value: `${(t.donor * 100).toFixed(1)}%` }] : []),
-    { label: 'Reads', value: t.counted.toLocaleString(), title: 'Reads that spanned the window and were counted' },
+    { label: 'Reads', value: t.counted.toLocaleString('en-US'), title: 'Reads that spanned the window and were counted' },
   ]
 }

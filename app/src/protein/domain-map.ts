@@ -107,7 +107,7 @@ export function buildDomainMapScene(input: DomainMapInput): PlasmidScene {
   // Title, with the length and description under it, cut to the width
   // (the export button sits in the top right corner on screen).
   items.push({ kind: 'text', x: MARGIN, y: MARGIN, text: input.name, font: `600 ${style.centreNameSize}px ${style.fontFamily}`, fill: colors.text, align: 'left', baseline: 'top' })
-  let meta = `${seqLen.toLocaleString()} aa${input.description ? ` · ${input.description}` : ''}`
+  let meta = `${seqLen.toLocaleString('en-US')} aa${input.description ? ` · ${input.description}` : ''}`
   const metaMax = innerW - 40
   if (measureText(meta, smallFont) > metaMax) {
     let lo = 0
@@ -137,7 +137,7 @@ export function buildDomainMapScene(input: DomainMapInput): PlasmidScene {
     // A residue's tick sits at its centre.
     const x = xOf(num - first + 0.5)
     items.push({ kind: 'line', x1: x, y1: chainY + CHAIN_H, x2: x, y2: chainY + CHAIN_H + 4, stroke: colors.tickMinor, width: 1 })
-    if (style.showTickLabels) items.push({ kind: 'text', x, y: chainY + CHAIN_H + 6, text: num.toLocaleString(), font: smallFont, fill: colors.textMuted, align: 'center', baseline: 'top' })
+    if (style.showTickLabels) items.push({ kind: 'text', x, y: chainY + CHAIN_H + 6, text: num.toLocaleString('en-US'), font: smallFont, fill: colors.textMuted, align: 'center', baseline: 'top' })
   }
   if (seqLen > 0) {
     tick(first)

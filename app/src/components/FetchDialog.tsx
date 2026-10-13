@@ -303,11 +303,11 @@ export default function FetchDialog({ open, onClose, onFetched, initialQuery }: 
             />
             {preview && (
               <div className={`fetch-preview fetch-preview-${preview.status}`} role="status" aria-live="polite">
-                {preview.status === 'loading' && <><span className="fetch-spinner fetch-spinner-sm" /> Looking up {preview.accession}…</>}
+                {preview.status === 'loading' && <><span className="spinner fetch-spinner fetch-spinner-sm" /> Looking up {preview.accession}…</>}
                 {preview.status === 'found' && (
                   <>
                     <span className="fetch-preview-title">{preview.title || preview.accession}</span>
-                    {preview.length > 0 && <span className="fetch-preview-len">{preview.unit === 'bp' ? formatBp(preview.length) : `${preview.length.toLocaleString()} aa`}</span>}
+                    {preview.length > 0 && <span className="fetch-preview-len">{preview.unit === 'bp' ? formatBp(preview.length) : `${preview.length.toLocaleString('en-US')} aa`}</span>}
                   </>
                 )}
                 {preview.status === 'missing' && <>No record {preview.accession} in {preview.where}</>}
@@ -353,7 +353,7 @@ export default function FetchDialog({ open, onClose, onFetched, initialQuery }: 
           {/* Loading */}
           {loading && (
             <div className="fetch-loading">
-              <div className="fetch-spinner" />
+              <div className="spinner fetch-spinner" />
               Fetching {accessions.length > 1 ? `${accessions.length} records` : `from ${sourceInfo.label}`}…
             </div>
           )}

@@ -98,7 +98,7 @@ export function getLayout(
   const z = Math.max(0, Math.min(20, zoomLevel))
   const mode = getRenderMode(z)
   // Dynamic left margin based on the widest position label
-  const maxLabel = seqLen > 0 ? seqLen.toLocaleString() : '99,999'
+  const maxLabel = seqLen > 0 ? seqLen.toLocaleString('en-US') : '99,999'
   // ~7.5px per char at 12px monospace + 16px padding (8px gap to sequence + 8px left edge)
   const labelW = maxLabel.length * 7.5 + 16
   const leftMargin = mode === 'letters' ? Math.max(70, Math.ceil(labelW)) : Math.max(50, Math.ceil(labelW))

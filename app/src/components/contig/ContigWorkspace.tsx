@@ -65,7 +65,7 @@ interface Props {
   onFindClosed?: () => void
 }
 
-const nf = new Intl.NumberFormat()
+const nf = new Intl.NumberFormat('en-US')
 /** Most columns of margin kept for trimmed ends past the contig's edges. */
 const MAX_MARGIN = 1500
 const BASE_KEY = /^[ACGTNRYSWKMBDHV]$/

@@ -672,7 +672,7 @@ const NameColumn = memo(function NameColumn({
 function rowTitle(row: AlnRow): string {
   let n = 0
   for (let i = 0; i < row.seq.length; i++) if (row.seq.charCodeAt(i) !== 45) n++
-  const parts = [row.name, `${n.toLocaleString()} residues`]
+  const parts = [row.name, `${n.toLocaleString('en-US')} residues`]
   if (row.source && row.source.name !== row.name) parts.push(`from ${row.source.name}${row.source.reversed ? ' (reverse complement)' : ''}`)
   return parts.join('\n')
 }

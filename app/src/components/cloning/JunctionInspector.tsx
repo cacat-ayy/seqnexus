@@ -121,7 +121,7 @@ export default function JunctionInspector({ product, flank = 12 }: Props) {
             </div>
 
             <p className="cw-seam-note">
-              At {seam.at.toLocaleString()}
+              At {seam.at.toLocaleString('en-US')}
               {seam.overlap > 0 && <> · the first {seam.overlap} bases after the seam are shared by both parts</>}
               {codon && <> · reading straight through: {codon}</>}
             </p>

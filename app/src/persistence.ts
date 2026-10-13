@@ -94,6 +94,8 @@ interface SerializedTabV2 {
   hiddenAnnotationIds?: string[]
   showOrfs?: boolean
   showEnzymes?: boolean
+  /** The enzymes picked for the map, so their sites come back with the tab. */
+  enzymeNames?: string[]
   showAutoAnnotations?: boolean
   readOnly?: boolean
 }
@@ -402,6 +404,7 @@ function buildSessionData(theme: string): {
       hiddenAnnotationIds: tab.hiddenAnnotationIds.length > 0 ? tab.hiddenAnnotationIds : undefined,
       showOrfs: tab.showOrfs || undefined,
       showEnzymes: tab.showEnzymes || undefined,
+      enzymeNames: tab.enzymeNames.length > 0 ? tab.enzymeNames : undefined,
       showAutoAnnotations: tab.showAutoAnnotations || undefined,
       readOnly: tab.readOnly || undefined,
     })
@@ -655,7 +658,7 @@ export function savedStateChanged(state: EditorState, prev: EditorState): boolea
       if (
         a.id !== b.id || a.doc !== b.doc || a.undoStack !== b.undoStack || a.redoStack !== b.redoStack ||
         a.viewMode !== b.viewMode || a.zoomLevel !== b.zoomLevel || a.hiddenAnnotationIds !== b.hiddenAnnotationIds ||
-        a.showOrfs !== b.showOrfs || a.showEnzymes !== b.showEnzymes || a.showAutoAnnotations !== b.showAutoAnnotations ||
+        a.showOrfs !== b.showOrfs || a.showEnzymes !== b.showEnzymes || a.enzymeNames !== b.enzymeNames || a.showAutoAnnotations !== b.showAutoAnnotations ||
         a.readOnly !== b.readOnly || a.createdAt !== b.createdAt || a.modifiedAt !== b.modifiedAt ||
         a.blastSearches !== b.blastSearches
       ) return true
@@ -834,7 +837,7 @@ export interface RestoredSeqRead {
 }
 
 export interface RestoredSession {
-  tabs: { id: string; doc: DocumentState; createdAt?: number; modifiedAt?: number; viewMode: ViewMode; zoomLevel: number; hiddenAnnotationIds?: string[]; showOrfs?: boolean; showEnzymes?: boolean; showAutoAnnotations?: boolean; readOnly?: boolean; undoStack?: UndoSnapshot[]; redoStack?: UndoSnapshot[]; blastSearches?: BlastSearch[] }[]
+  tabs: { id: string; doc: DocumentState; createdAt?: number; modifiedAt?: number; viewMode: ViewMode; zoomLevel: number; hiddenAnnotationIds?: string[]; showOrfs?: boolean; showEnzymes?: boolean; enzymeNames?: string[]; showAutoAnnotations?: boolean; readOnly?: boolean; undoStack?: UndoSnapshot[]; redoStack?: UndoSnapshot[]; blastSearches?: BlastSearch[] }[]
   activeTabId: string | null
   folders: ExplorerFolder[]
   /** Favourites and notes, keyed by explorer uid. */
@@ -1030,6 +1033,7 @@ async function loadV2(data: SerializedSessionV2): Promise<RestoredSession | null
       hiddenAnnotationIds: st.hiddenAnnotationIds,
       showOrfs: st.showOrfs,
       showEnzymes: st.showEnzymes,
+      enzymeNames: st.enzymeNames,
       showAutoAnnotations: st.showAutoAnnotations,
       readOnly: st.readOnly,
       undoStack,
@@ -1515,7 +1519,7 @@ export function importSessionFromJson(json: string): RestoredSession {
       id: st.id, doc, createdAt: st.createdAt, modifiedAt: st.modifiedAt,
       viewMode: st.viewMode, zoomLevel: st.zoomLevel,
       hiddenAnnotationIds: st.hiddenAnnotationIds,
-      showOrfs: st.showOrfs, showEnzymes: st.showEnzymes,
+      showOrfs: st.showOrfs, showEnzymes: st.showEnzymes, enzymeNames: st.enzymeNames,
       showAutoAnnotations: st.showAutoAnnotations,
       readOnly: st.readOnly,
       blastSearches: blastSearchList(blastMap.get(st.id)),
@@ -1603,7 +1607,7 @@ function newId(): string {
 
 /** "a", "a and b", "a, b and c". */
 const listed = (parts: string[]) => parts.length < 2 ? parts.join('') : `${parts.slice(0, -1).join(', ')} and ${parts[parts.length - 1]}`
-const count = (n: number, one: string, many: string) => `${n.toLocaleString()} ${n === 1 ? one : many}`
+const count = (n: number, one: string, many: string) => `${n.toLocaleString('en-US')} ${n === 1 ? one : many}`
 
 /**
  * What a session holds, in words: "3 sequences, 2 chromatograms and 1 gel".

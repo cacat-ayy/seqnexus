@@ -3,9 +3,13 @@
  *
  * Both the ORF overlay and the auto-annotation overlay draw candidates the
  * user can pick with Ctrl-click and then convert into real features. The
- * buttons sit in the panel bar next to the toggle that produced them, because
- * picking happens on the canvas: sending the user to a modal to commit what
- * they just picked there would break the loop.
+ * buttons sit in the panel bar right after the toggle that produced them, as
+ * one group, because picking happens on the canvas: sending the user to a
+ * modal to commit what they just picked there would break the loop.
+ *
+ * "Add all" is a quiet button: it is a bulk write offered beside a display
+ * toggle, and should not be the loudest thing in the bar. Only "Add picked",
+ * which follows a deliberate pick, is filled.
  */
 
 interface Props {
@@ -25,8 +29,7 @@ export default function ConvertActions({
 }: Props) {
   if (total === 0) return null
   return (
-    <>
-      <div className="panel-bar-sep" />
+    <span className="panel-bar-actions">
       {showHint && <span className="panel-bar-hint">Ctrl-click to pick</span>}
       {picked > 0 && (
         <button
@@ -37,13 +40,9 @@ export default function ConvertActions({
           Add picked ({picked})
         </button>
       )}
-      <button
-        className={`panel-bar-btn ${picked === 0 ? 'panel-bar-btn-accent' : ''}`}
-        onClick={onAddAll}
-        title={addAllTitle}
-      >
+      <button className="panel-bar-btn panel-bar-btn-quiet" onClick={onAddAll} title={addAllTitle}>
         Add all ({total})
       </button>
-    </>
+    </span>
   )
 }

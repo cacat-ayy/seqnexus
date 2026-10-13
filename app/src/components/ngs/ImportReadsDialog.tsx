@@ -166,7 +166,7 @@ export default function ImportReadsDialog({ files, placeOf, onClose }: Props) {
     setRunning(false)
     if (made.length) {
       const reads = made.reduce((n, r) => n + r.stats.reads, 0)
-      notify.success(`Imported ${made.length} ${made.length === 1 ? 'read set' : 'read sets'} (${new Intl.NumberFormat().format(reads)} reads)`)
+      notify.success(`Imported ${made.length} ${made.length === 1 ? 'read set' : 'read sets'} (${new Intl.NumberFormat('en-US').format(reads)} reads)`)
     }
     // Samples dropped in while this ran are still to do, so the dialog stays.
     const queued = new Set(queue.map(q => q.id))

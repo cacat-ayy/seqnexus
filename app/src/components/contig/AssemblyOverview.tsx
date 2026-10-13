@@ -48,7 +48,7 @@ interface Props {
   onExportPrompt?: (defaultName: string, onConfirm: (name: string) => void) => void
 }
 
-const nf = new Intl.NumberFormat()
+const nf = new Intl.NumberFormat('en-US')
 const pct = (x: number) => `${Math.round(x * 100)}%`
 
 export default function AssemblyOverview({ assembly, onClose, onExportPrompt }: Props) {
@@ -143,7 +143,7 @@ export default function AssemblyOverview({ assembly, onClose, onExportPrompt }: 
             : <>{nf.format(contigs.length)} {unit} · {nf.format(placed)} of {nf.format(inputCount || placed)} reads placed</>}
         </span>
         {ngs && (
-          <div className="aw-seg mv-switch" role="radiogroup" aria-label="Page">
+          <div className="seg seg-sm aw-seg mv-switch" role="radiogroup" aria-label="Page">
             {(assembly.denovo ? ['contigs', 'graph', 'reads', 'report', 'samples'] as const : ['reads', 'report', 'samples'] as const).map(pg => (
               <button key={pg} role="radio" aria-checked={page === pg} className={page === pg ? 'active' : ''} disabled={pg === 'reads' && !viewable}
                 onClick={() => showMapping({ page: pg })}

@@ -24,8 +24,9 @@ import {
 import { geneticCode, translateWith } from '../codon/genetic-codes'
 import { displayPosition } from '../models/Document'
 import { notify } from '../toast'
+import Chevron from './Chevron'
 import {
-  Search, ChevronUp, ChevronDown, ChevronRight, X, ArrowLeftRight, Regex, Replace, ReplaceAll,
+  Search, ChevronUp, ChevronDown, X, ArrowLeftRight, Regex, Replace, ReplaceAll,
 } from 'lucide-react'
 
 /** A search handed to the panel from elsewhere, such as a peptide to find in a DNA document. */
@@ -292,7 +293,7 @@ export default function FindDialog({ open, focusRequest, preset, onClose }: Find
     if (!visible) return []
     const code = geneticCode(translationCodeId)
     const basesIn = (s: number, e: number) => doc.sequence.basesIn(s, e)
-    const dp = (p: number) => displayPosition(((p % seqLen) + seqLen) % seqLen, origin, seqLen).toLocaleString()
+    const dp = (p: number) => displayPosition(((p % seqLen) + seqLen) % seqLen, origin, seqLen).toLocaleString('en-US')
     const isProtein = search.options.mode === 'protein' && !residues
     return search.matches.slice(winStart, winStart + LIST_WINDOW).map((m, k) => {
       const ctx = matchContext(m, FLANK, seqLen, circular, basesIn)
@@ -325,8 +326,8 @@ export default function FindDialog({ open, focusRequest, preset, onClose }: Find
   if (!visible) return null
 
   // ---- Status ----
-  const total = `${n.toLocaleString()}${search.truncated ? '+' : ''}`
-  const count = !search.query || search.error ? '' : n === 0 ? 'No matches' : `${(cur + 1).toLocaleString()} / ${total}`
+  const total = `${n.toLocaleString('en-US')}${search.truncated ? '+' : ''}`
+  const count = !search.query || search.error ? '' : n === 0 ? 'No matches' : `${(cur + 1).toLocaleString('en-US')} / ${total}`
 
   const nucleotideRegex = options.isRegex && !protein
   const strandsTitle = nucleotideRegex
@@ -345,9 +346,9 @@ export default function FindDialog({ open, focusRequest, preset, onClose }: Find
   const doReplaceAll = () => {
     const { replaced, skipped } = replaceAllMatches(replaceText)
     if (replaced === 0) return
-    const what = `Replaced ${replaced.toLocaleString()} match${replaced === 1 ? '' : 'es'}`
+    const what = `Replaced ${replaced.toLocaleString('en-US')} match${replaced === 1 ? '' : 'es'}`
     notify.success(skipped > 0
-      ? `${what}. ${skipped.toLocaleString()} overlapping hit${skipped === 1 ? ' was' : 's were'} left as they were.`
+      ? `${what}. ${skipped.toLocaleString('en-US')} overlapping hit${skipped === 1 ? ' was' : 's were'} left as they were.`
       : what)
   }
 
@@ -398,7 +399,7 @@ export default function FindDialog({ open, focusRequest, preset, onClose }: Find
       {/* Options: the same controls in both modes, only enabled or not */}
       <div className="find-options">
         {!residues && (
-          <div className="find-seg" role="group" aria-label="Search as">
+          <div className="seg seg-sm find-seg" role="group" aria-label="Search as">
             <button className={!protein ? 'active' : ''} aria-pressed={!protein} onClick={() => updateOption('mode', 'nucleotide')}>DNA</button>
             <button className={protein ? 'active' : ''} aria-pressed={protein} onClick={() => updateOption('mode', 'protein')}>Protein</button>
           </div>
@@ -433,7 +434,7 @@ export default function FindDialog({ open, focusRequest, preset, onClose }: Find
         </button>
         <div className="find-mismatch" role="group" aria-label="Mismatches allowed" title={mismatchTitle}>
           <span className="find-mismatch-label">Mismatches</span>
-          <div className="find-seg find-seg-small">
+          <div className="seg seg-sm find-seg find-seg-small">
             {Array.from({ length: MAX_MISMATCHES + 1 }, (_, k) => (
               <button
                 key={k}
@@ -455,7 +456,7 @@ export default function FindDialog({ open, focusRequest, preset, onClose }: Find
       ) : n > 0 && (
         <div className="find-hits" ref={listRef} role="listbox" aria-label="Hits">
           {winStart > 0 && (
-            <div className="find-hits-more">{winStart.toLocaleString()} earlier hit{winStart === 1 ? '' : 's'}</div>
+            <div className="find-hits-more">{winStart.toLocaleString('en-US')} earlier hit{winStart === 1 ? '' : 's'}</div>
           )}
           {rows.map(r => (
             <div
@@ -494,10 +495,10 @@ export default function FindDialog({ open, focusRequest, preset, onClose }: Find
             </div>
           ))}
           {winStart + rows.length < n && (
-            <div className="find-hits-more">+ {(n - winStart - rows.length).toLocaleString()} more</div>
+            <div className="find-hits-more">+ {(n - winStart - rows.length).toLocaleString('en-US')} more</div>
           )}
           {search.truncated && (
-            <div className="find-hits-more">Only the first {n.toLocaleString()} hits are kept</div>
+            <div className="find-hits-more">Only the first {n.toLocaleString('en-US')} hits are kept</div>
           )}
         </div>
       )}
@@ -505,10 +506,10 @@ export default function FindDialog({ open, focusRequest, preset, onClose }: Find
       {/* Replace */}
       <div className="find-replace">
         <button className="find-replace-toggle" aria-expanded={showReplace} onClick={() => setShowReplace(v => !v)}>
-          {showReplace ? <ChevronDown size={13} /> : <ChevronRight size={13} />} Replace
+          <Chevron open={showReplace} size={13} /> Replace
         </button>
         {showReplace && (
-          <div className="find-replace-body">
+          <div className="find-replace-body disclose">
             <input
               type="text"
               className={`find-replace-input${replacement.error ? ' invalid' : ''}`}

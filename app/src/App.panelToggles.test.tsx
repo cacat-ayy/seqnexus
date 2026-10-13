@@ -1,7 +1,7 @@
 /**
  * Panel-bar toggle state.
  *
- * The ORFs / REs / Primers / Features switches carry their on-state purely
+ * The ORFs / Enzymes / Primers / Features switches carry their on-state purely
  * through an `active` class. That makes it possible to break the indicator
  * without breaking anything a type-check or a behavioural test would notice,
  * which is exactly what happened once: an edit dropped the `${...}` out of the
@@ -17,7 +17,7 @@ const store = () => useEditorStore.getState()
 const TOGGLES = [
   ['Toggle feature sidebar', 'Features'],
   ['Toggle ORF display', 'ORFs'],
-  ['Toggle restriction enzyme display', 'REs'],
+  ['Toggle restriction enzyme display', 'Enzymes'],
   ['Toggle the primers sidebar', 'Primers'],
   ['Toggle auto-annotation suggestions', 'Auto'],
 ] as const

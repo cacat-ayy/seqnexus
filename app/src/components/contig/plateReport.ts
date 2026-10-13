@@ -11,7 +11,7 @@ import { describeChange, STATUS_LABEL } from '../../assembly/verify'
 import { codingLabel } from '../../assembly/effects'
 import { describeGrouping, type NameGrouping } from '../../assembly/groups'
 
-const nf = new Intl.NumberFormat()
+const nf = new Intl.NumberFormat('en-US')
 const pct = (x: number) => `${(x * 100).toFixed(x === 1 || x === 0 ? 0 : 1)}%`
 
 export function plateReportPdf(o: {

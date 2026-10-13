@@ -24,7 +24,7 @@ import { downloadBlob, saveText } from '../../utils/download'
 import { plateReportPdf } from './plateReport'
 import { notifyFigureSaved } from '../../utils/cite-notice'
 
-const nf = new Intl.NumberFormat()
+const nf = new Intl.NumberFormat('en-US')
 const pct = (x: number) => `${(x * 100).toFixed(x === 1 || x === 0 ? 0 : 1)}%`
 const FILTER_LABEL: Record<PlateFilter, string> = { all: 'All', verified: 'Verified', differences: 'Differences', incomplete: 'Not fully covered' }
 
@@ -92,7 +92,7 @@ export default function ClonesSection({ assembly, contigs }: Props) {
     <section className="ao-section" aria-label="Clones">
       <div className="ao-clones-head">
         <h3 className="ao-title">{assembly.grouping ? 'Clones' : 'Contigs'}</h3>
-        <div className="aw-seg" role="radiogroup" aria-label="Show">
+        <div className="seg seg-sm aw-seg" role="radiogroup" aria-label="Show">
           {(['all', 'verified', 'differences', 'incomplete'] as PlateFilter[]).map(f => (
             <button key={f} role="radio" aria-checked={filter === f} className={filter === f ? 'active' : ''} onClick={() => setFilter(f)}
               disabled={f !== 'all' && counts[f] === 0 && filter !== f}>

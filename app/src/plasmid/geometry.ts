@@ -126,17 +126,21 @@ export interface PlannedTick {
  * Stepping through display positions and converting back with
  * `internalPosition()` keeps the labels round and puts each one exactly where
  * that base is drawn, which is what the status bar and the linear view show.
+ *
+ * The labels are 1 at the top and then the multiples of the interval (500,
+ * 1000, 1500), as the minimap's ruler and other map viewers number them,
+ * rather than 501, 1001, 1501.
  */
 export function planTicks(seqLen: number, displayOrigin: number): PlannedTick[] {
   if (seqLen <= 0) return []
   const { major, minor } = getTickIntervals(seqLen)
-  const ticks: PlannedTick[] = []
-  for (let label = 1; label <= seqLen; label += minor) {
+  const ticks: PlannedTick[] = [{ pos: internalPosition(1, displayOrigin, seqLen), label: 1, major: true }]
+  // Stops half a step short of the end, where a number would sit against the 1.
+  for (let label = minor; label < seqLen - minor / 2; label += minor) {
     ticks.push({
       pos: internalPosition(label, displayOrigin, seqLen),
       label,
-      // `label` is 1-based, so the round numbers are 1, major+1, 2*major+1.
-      major: (label - 1) % major === 0,
+      major: label % major === 0,
     })
   }
   return ticks

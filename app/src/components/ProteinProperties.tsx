@@ -9,11 +9,11 @@
  */
 
 import { useMemo, useState } from 'react'
-import { ChevronDown, ChevronRight } from 'lucide-react'
 import { useEditorStore, selectionSegments, extraSelectionsOf, selectedRanges, joinedSegments } from '../store'
 import type { DocumentState } from '../models/Document'
 import { displayPosition } from '../models/Document'
 import { residueColorFor } from '../utils/residue-colors'
+import Chevron from './Chevron'
 import {
   PKA_SETS, pkaSet, proteinProperties, netCharge, chargeCurve, formatFormula, formatMass,
   type PkaSetId,
@@ -42,7 +42,7 @@ function countResidues(residues: string): { counts: Map<string, number>; other: 
 
 const fmt = (v: number | null, digits = 2) => (v === null ? '-' : v.toFixed(digits))
 const signed = (v: number) => (v > 0 ? `+${v.toFixed(1)}` : v.toFixed(1))
-const eps = (v: number) => `${v.toLocaleString()} M⁻¹cm⁻¹`
+const eps = (v: number) => `${v.toLocaleString('en-US')} M⁻¹cm⁻¹`
 
 /** Net charge against pH, with the pI and the chosen pH marked. */
 function ChargeChart({ curve, pI, pH }: { curve: { pH: number; charge: number }[]; pI: number | null; pH: number }) {
@@ -107,7 +107,7 @@ export default function ProteinProperties({ doc }: { doc: DocumentState }) {
   const composition = useMemo(() => countResidues(residues), [residues])
 
   const origin = doc.metadata?.displayOrigin || 0
-  const dp = (p: number) => displayPosition(p, origin, seqLen).toLocaleString()
+  const dp = (p: number) => displayPosition(p, origin, seqLen).toLocaleString('en-US')
   const selectionLabel = hasSelection
     ? `${dp(segs[0][0])}..${dp(segs[segs.length - 1][1] - 1)}`
     : ''
@@ -133,7 +133,7 @@ export default function ProteinProperties({ doc }: { doc: DocumentState }) {
         )}
         <div className="stats-row">
           <span>Length</span>
-          <span>{props.length.toLocaleString()} aa</span>
+          <span>{props.length.toLocaleString('en-US')} aa</span>
         </div>
       </div>
 
@@ -141,17 +141,17 @@ export default function ProteinProperties({ doc }: { doc: DocumentState }) {
         <div className="stats-section-title">MASS</div>
         <div className="stats-row stats-row-tip">
           <span>Average</span>
-          <span>{formatMass(props.mass.average)} <span className="stats-muted">{props.mass.average.toLocaleString(undefined, { maximumFractionDigits: 1 })} Da</span></span>
+          <span>{formatMass(props.mass.average)} <span className="stats-muted">{props.mass.average.toLocaleString('en-US', { maximumFractionDigits: 1 })} Da</span></span>
           <div className="stats-tip">Sum of the average residue masses plus one water. Ambiguous residues take the mean of what they stand for.</div>
         </div>
         <div className="stats-row stats-row-tip">
           <span>Monoisotopic</span>
-          <span>{props.mass.monoisotopic.toLocaleString(undefined, { maximumFractionDigits: 2 })} Da</span>
+          <span>{props.mass.monoisotopic.toLocaleString('en-US', { maximumFractionDigits: 2 })} Da</span>
           <div className="stats-tip">The mass with the most abundant isotope of every atom, as a mass spectrometer reports it.</div>
         </div>
         <div className="stats-row">
           <span>Formula</span>
-          <span className="pp-formula">{formatFormula(props.formula) || '-'} <span className="stats-muted">{props.formula.atoms.toLocaleString()} atoms</span></span>
+          <span className="pp-formula">{formatFormula(props.formula) || '-'} <span className="stats-muted">{props.formula.atoms.toLocaleString('en-US')} atoms</span></span>
         </div>
       </div>
 
@@ -234,9 +234,9 @@ export default function ProteinProperties({ doc }: { doc: DocumentState }) {
 
       <div className="stats-section">
         <button className="stats-collapse-btn" onClick={() => setCompositionOpen(v => !v)}>
-          {compositionOpen ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
+          <Chevron open={compositionOpen} size={12} />
           <span className="stats-section-title" style={{ marginBottom: 0 }}>COMPOSITION</span>
-          <span className="stats-collapse-count">{n.toLocaleString()} residues</span>
+          <span className="stats-collapse-count">{n.toLocaleString('en-US')} residues</span>
         </button>
         {n > 0 && (
           <div className="stats-nuc-bar">
@@ -251,13 +251,13 @@ export default function ProteinProperties({ doc }: { doc: DocumentState }) {
               <span className="stats-nuc-dot" style={{ background: residueColorFor(scheme, aa, 'currentColor') }} />
               {aa} <span className="stats-muted">{AA_NAMES[aa]}</span>
             </span>
-            <span>{k.toLocaleString()} ({n > 0 ? (k / n * 100).toFixed(1) : '0.0'}%)</span>
+            <span>{k.toLocaleString('en-US')} ({n > 0 ? (k / n * 100).toFixed(1) : '0.0'}%)</span>
           </div>
         ))}
         {compositionOpen && composition.other > 0 && (
           <div className="stats-row">
             <span className="stats-nuc-label">Other (X, U, O, stops)</span>
-            <span>{composition.other.toLocaleString()}</span>
+            <span>{composition.other.toLocaleString('en-US')}</span>
           </div>
         )}
       </div>

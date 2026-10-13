@@ -120,7 +120,7 @@ export default function AnalyseTask({ candidates, nuclease }: Props) {
       setAnalysis({
         kind: 'reads',
         source: {
-          description: `${sample.reads.length.toLocaleString()} reads against ${doc.name}, cut at ${at(cut)}.`,
+          description: `${sample.reads.length.toLocaleString('en-US')} reads against ${doc.name}, cut at ${at(cut)}.`,
           cut,
           ...(candidate ? { spacer: candidate.site.spacer } : {}),
           when: Date.now(),

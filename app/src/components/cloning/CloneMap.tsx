@@ -244,7 +244,7 @@ function CloneMap({
           ...at,
           lines: [
             site.label,
-            `at ${(site.position + 1).toLocaleString()}${site.cuts > 1 ? `, one of ${site.cuts} sites` : ', its only site'}`,
+            `at ${(site.position + 1).toLocaleString('en-US')}${site.cuts > 1 ? `, one of ${site.cuts} sites` : ', its only site'}`,
             ...(site.methEffect ? [`blocked by methylation${site.methEffect === 'impaired' ? ' (in part)' : ''}`] : []),
             ...(hint ? [hint] : []),
           ],
@@ -260,7 +260,7 @@ function CloneMap({
       if (f) {
         setTip({
           ...at,
-          lines: [f.name, `${f.type} · ${(f.start + 1).toLocaleString()}..${f.end.toLocaleString()}`],
+          lines: [f.name, `${f.type} · ${(f.start + 1).toLocaleString('en-US')}..${f.end.toLocaleString('en-US')}`],
         })
       }
     } else {
@@ -346,7 +346,7 @@ function CloneMap({
       <canvas
         ref={canvasRef}
         role="img"
-        aria-label={`${name}, ${bases.length.toLocaleString()} bp ${topology}`}
+        aria-label={`${name}, ${bases.length.toLocaleString('en-US')} bp ${topology}`}
         onMouseMove={onMouseMove}
         onMouseLeave={onMouseLeave}
         onMouseDown={onMouseDown}

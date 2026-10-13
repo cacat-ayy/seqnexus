@@ -25,7 +25,7 @@
   color: var(--text-secondary);
 }
 
-/* Mode toggle: uses shared .toggle-group / .toggle-btn from App.css */
+/* Mode toggle: uses the shared .seg from App.css */
 
 /* Sequence type toggle */
 .align-type-row {

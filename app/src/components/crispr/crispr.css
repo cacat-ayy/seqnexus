@@ -153,7 +153,7 @@
   top: 2px;
   left: var(--space-1);
   font-size: var(--text-2xs);
-  color: var(--text-faint);
+  color: var(--text-soft);
   pointer-events: none;
 }
 
@@ -191,9 +191,13 @@
   border-top: 1px solid var(--border-light);
 }
 
+/* The site has the row's first line to itself, so a 20 nt spacer and its PAM
+   are shown whole in a sidebar of ordinary width; the scores and any flags
+   share the second line, so a flagged row is no taller than the rest. A
+   task's own line (.gp-why) comes after, across the row. */
 .gp-row {
   display: grid;
-  grid-template-columns: 1fr auto;
+  grid-template-columns: auto minmax(0, 1fr);
   gap: var(--space-1) var(--space-2);
   padding: var(--space-1-5) var(--space-2-5);
   border-bottom: 1px solid var(--border-light);
@@ -213,11 +217,15 @@
 }
 
 .gp-row-main {
+  grid-column: 1 / -1;
   display: flex;
   align-items: baseline;
   gap: var(--space-1-5);
   min-width: 0;
 }
+
+.gp-row > .gp-scores { grid-row: 2; grid-column: 1; }
+.gp-row > .gp-chips { grid-row: 2; grid-column: 2; }
 
 .gp-pos {
   font-size: var(--text-2xs);
@@ -525,7 +533,7 @@
 }
 
 .gi-ot-same {
-  color: var(--text-faint);
+  color: var(--text-soft);
 }
 
 .gi-ot-diff {
@@ -584,7 +592,7 @@
 .gp-section-hint {
   margin-left: auto;
   font-size: var(--text-2xs);
-  color: var(--text-faint);
+  color: var(--text-soft);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -602,35 +610,21 @@
 
 /* --- Task tabs --- */
 
+/* Nine tasks: a 3 by 3 grid of equal cells on the segmented track, rather
+   than a row of words that wraps wherever the sidebar width happens to
+   break it. */
 .gp-tasks {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--space-0-5);
-  padding: var(--space-1-5) var(--space-2) var(--space-1);
-  border-bottom: 1px solid var(--border-light);
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  margin: var(--space-1-5) var(--space-2-5) var(--space-1);
 }
 
-.gp-tasks button {
-  font-size: var(--text-xs);
-  padding: var(--space-1) var(--space-1-5);
-  border: 1px solid transparent;
-  border-radius: var(--radius-sm);
-  background: none;
-  color: var(--text-secondary);
-  cursor: pointer;
-  white-space: nowrap;
-}
-
-.gp-tasks button:hover {
-  background: var(--bg-hover);
-  color: var(--text);
-}
-
-.gp-tasks button.active {
-  background: var(--accent-bg);
-  border-color: var(--accent-ring);
-  color: var(--accent);
-  font-weight: 600;
+.gp-tasks > button {
+  display: block;
+  min-width: 0;
+  text-align: center;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 /* --- What a task says about a row --- */
@@ -661,7 +655,7 @@
 }
 
 .gp-faint {
-  color: var(--text-faint);
+  color: var(--text-soft);
 }
 
 .gp-range-pair {
@@ -744,7 +738,7 @@
 }
 
 .gp-oligo-len {
-  color: var(--text-faint);
+  color: var(--text-soft);
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
 }
@@ -886,7 +880,7 @@
   display: flex;
   justify-content: space-between;
   font-size: var(--text-2xs);
-  color: var(--text-faint);
+  color: var(--text-soft);
   font-variant-numeric: tabular-nums;
 }
 

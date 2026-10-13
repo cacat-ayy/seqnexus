@@ -41,7 +41,7 @@ export default function FeatureListOptions({
       }}
     >
       <div className="fs-options-label">Show</div>
-      <div className="fs-segmented fs-options-seg" role="radiogroup" aria-label="List layout">
+      <div className="seg seg-sm fs-segmented fs-options-seg" role="radiogroup" aria-label="List layout">
         <button role="radio" aria-checked={view === 'type'} className={view === 'type' ? 'active' : ''} onClick={() => onViewChange('type')}>
           By Type
         </button>

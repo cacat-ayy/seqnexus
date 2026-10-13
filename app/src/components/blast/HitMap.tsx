@@ -110,11 +110,11 @@ export default function HitMap({ search, order, hoveredIdx, onHover, onPick, can
         <div className="bd-map-axis">
           {ticks(len).map(t => (
             <span key={t} className="bd-map-tick" style={{ left: pct(t - 1) }}>
-              <span className={`bd-map-tick-label${t === 1 ? ' bd-first' : t === len ? ' bd-last' : ''}`}>{t.toLocaleString()}</span>
+              <span className={`bd-map-tick-label${t === 1 ? ' bd-first' : t === len ? ' bd-last' : ''}`}>{t.toLocaleString('en-US')}</span>
             </span>
           ))}
         </div>
-        <div className="bd-map-query" title={`${query.label}: ${len.toLocaleString()} ${query.translation ? 'aa' : 'bp'}`} />
+        <div className="bd-map-query" title={`${query.label}: ${len.toLocaleString('en-US')} ${query.translation ? 'aa' : 'bp'}`} />
 
         {lanes.map((lane, li) => (
           <div key={li} className="bd-map-lane">
@@ -160,7 +160,7 @@ export default function HitMap({ search, order, hoveredIdx, onHover, onPick, can
         </div>
       </div>
 
-      {more > 0 && <div className="bd-map-more">{more.toLocaleString()} more {more === 1 ? 'hit' : 'hits'} in the table</div>}
+      {more > 0 && <div className="bd-map-more">{more.toLocaleString('en-US')} more {more === 1 ? 'hit' : 'hits'} in the table</div>}
 
       {tip && tipHit && (
         <MapTip x={tip.x} y={tip.y}>
@@ -168,7 +168,7 @@ export default function HitMap({ search, order, hoveredIdx, onHover, onPick, can
           {tipHit.sciName && <div className="bd-map-tip-sci">{tipHit.sciName}</div>}
           <div className="bd-map-tip-meta">
             Score {Math.round(tipHit.topScore)} · E {formatEvalue(tipHit.topEvalue)} · {(tipHit.topIdentity * 100).toFixed(1)}% identity
-            {' · '}query {tipHit.hsps[0].queryFrom.toLocaleString()}..{tipHit.hsps[0].queryTo.toLocaleString()}
+            {' · '}query {tipHit.hsps[0].queryFrom.toLocaleString('en-US')}..{tipHit.hsps[0].queryTo.toLocaleString('en-US')}
             {tipHit.hsps.length > 1 && ` and ${tipHit.hsps.length - 1} more`}
           </div>
           {canPick && <div className="bd-map-tip-hint">Click to select it in the sequence</div>}

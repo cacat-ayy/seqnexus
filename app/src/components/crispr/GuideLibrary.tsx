@@ -14,13 +14,14 @@
  */
 
 import { useState } from 'react'
-import { ChevronDown, ChevronRight, ClipboardCopy, Copy, Crosshair, Plus, Trash2, X } from 'lucide-react'
+import { ClipboardCopy, Copy, Crosshair, Plus, Trash2, X } from 'lucide-react'
 import { useEditorStore } from '../../store'
 import { useLibraryMatches, libraryCsv } from '../../crispr/library'
 import { customScaffold, SCAFFOLDS } from '../../crispr/scaffolds'
 import { builtInNuclease } from '../../crispr/nucleases'
 import { displayPosition } from '../../models/Document'
 import { notify } from '../../toast'
+import Chevron from '../Chevron'
 
 export default function GuideLibrary() {
   const guides = useEditorStore(s => s.guideLibrary)
@@ -164,7 +165,7 @@ export default function GuideLibrary() {
                 aria-expanded={openScaffold === s.id}
                 title="Show the sequence"
               >
-                {openScaffold === s.id ? <ChevronDown size={9} /> : <ChevronRight size={9} />}
+                <Chevron open={openScaffold === s.id} size={9} />
                 {s.name}
               </button>
               {s.custom && (

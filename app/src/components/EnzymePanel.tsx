@@ -1,6 +1,6 @@
 import './EnzymePanel.css'
 /**
- * Restriction Analysis modal.
+ * Restriction Enzymes modal.
  *
  * Enzyme subset selection, cut count/position filters, results list.
  */
@@ -227,7 +227,7 @@ export default function EnzymePanel({ open, onClose }: Props) {
     <div className={closing ? 'modal-backdrop closing' : 'modal-backdrop'} onAnimationEnd={onAnimationEnd} ref={backdropRef} onMouseDown={handleBackdropDown} onClick={handleBackdrop} onKeyDown={handleKeyDown} tabIndex={-1}>
       <div className="modal-dialog enzyme-modal" role="dialog" aria-modal="true" aria-labelledby="enzyme-panel-title">
         <div className="modal-header">
-          <h3 className="modal-title" id="enzyme-panel-title">Restriction Analysis</h3>
+          <h3 className="modal-title" id="enzyme-panel-title">Restriction Enzymes</h3>
           <button className="modal-close" onClick={onClose} aria-label="Close">
             <X size={16} />
           </button>
@@ -237,7 +237,7 @@ export default function EnzymePanel({ open, onClose }: Props) {
           {/* Settings */}
           <div className="re-settings">
             <div className="re-field">
-              <label className="re-field-label">Candidate Enzymes:</label>
+              <label className="re-field-label">Candidate enzymes</label>
               <select
                 className="select re-select"
                 value={subset}
@@ -260,7 +260,7 @@ export default function EnzymePanel({ open, onClose }: Props) {
             </div>
 
             <div className="re-field">
-              <label className="re-field-label">Search:</label>
+              <label className="re-field-label">Search</label>
               <input
                 className="input re-search-input"
                 type="text"
@@ -271,37 +271,42 @@ export default function EnzymePanel({ open, onClose }: Props) {
               />
             </div>
 
-            <label className="re-check">
-              <input
-                type="checkbox"
-                checked={filterByCount}
-                onChange={e => setFilterByCount(e.target.checked)}
-              />
-              Enzymes must match:
-            </label>
-            {filterByCount && (
-              <div className="re-range-row">
+            {/* The count filter reads as one sentence on one line: "Cutting 1 to 1 times". */}
+            <div className="re-range-row">
+              <label className="re-check">
                 <input
-                  type="number"
-                  className="re-num"
-                  min={0}
-                  value={minCuts}
-                  onChange={e => setMinCuts(Math.max(0, parseInt(e.target.value) || 0))}
+                  type="checkbox"
+                  checked={filterByCount}
+                  onChange={e => setFilterByCount(e.target.checked)}
                 />
-                <span>to</span>
-                <input
-                  type="number"
-                  className="re-num"
-                  min={0}
-                  value={maxCuts}
-                  onChange={e => setMaxCuts(Math.max(0, parseInt(e.target.value) || 0))}
-                />
-                <span>times</span>
-              </div>
-            )}
+                Cutting
+              </label>
+              {filterByCount ? (
+                <>
+                  <input
+                    type="number"
+                    className="re-num"
+                    min={0}
+                    value={minCuts}
+                    aria-label="Fewest cuts"
+                    onChange={e => setMinCuts(Math.max(0, parseInt(e.target.value) || 0))}
+                  />
+                  <span>to</span>
+                  <input
+                    type="number"
+                    className="re-num"
+                    min={0}
+                    value={maxCuts}
+                    aria-label="Most cuts"
+                    onChange={e => setMaxCuts(Math.max(0, parseInt(e.target.value) || 0))}
+                  />
+                  <span>times</span>
+                </>
+              ) : <span>any number of times</span>}
+            </div>
 
             <div className="re-field">
-              <label className="re-field-label">Cut position range:</label>
+              <label className="re-field-label">Cut positions</label>
               <div className="re-range-row">
                 <input
                   type="number"
@@ -325,7 +330,7 @@ export default function EnzymePanel({ open, onClose }: Props) {
           </div>
 
           {/* Status */}
-          <div className="re-results-header" style={{ marginTop: 12 }}>
+          <div className="re-results-header re-results-status">
             {scanning ? 'Scanning…' : `${sitesByEnzyme.size} enzyme${sitesByEnzyme.size !== 1 ? 's' : ''}, ${matchCount} site${matchCount !== 1 ? 's' : ''}`}
           </div>
 
@@ -351,6 +356,19 @@ export default function EnzymePanel({ open, onClose }: Props) {
                       </span>
                       <span className="re-enzyme-overhang">{ovLabel}</span>
                       {methEffect && <span className={`re-methyl-tag re-methyl-tag-${methEffect}`}>{methEffect === 'blocked' ? 'blocked' : 'impaired'}</span>}
+                      {/* The positions sit in the enzyme's row, not a line of their own. */}
+                      <div className="re-site-badges">
+                        {sites.map((site, i) => (
+                          <span
+                            key={i}
+                            className="re-site-badge"
+                            onClick={() => handleSiteClick(site)}
+                            title={`${site.enzyme.name} at ${site.position + 1}`}
+                          >
+                            {site.position + 1}
+                          </span>
+                        ))}
+                      </div>
                       <button
                         className="re-gel-btn"
                         title={`Run a ${name} digest on a virtual gel`}
@@ -359,18 +377,6 @@ export default function EnzymePanel({ open, onClose }: Props) {
                       >
                         <GalleryVertical size={12} />
                       </button>
-                    </div>
-                    <div className="re-site-badges">
-                      {sites.map((site, i) => (
-                        <span
-                          key={i}
-                          className="re-site-badge"
-                          onClick={() => handleSiteClick(site)}
-                          title={`${site.enzyme.name} at ${site.position + 1}`}
-                        >
-                          {site.position + 1}
-                        </span>
-                      ))}
                     </div>
                   </li>
                   )

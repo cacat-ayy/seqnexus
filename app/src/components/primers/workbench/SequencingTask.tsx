@@ -59,7 +59,7 @@ export default function SequencingTask({ settings }: { settings: DesignSettings 
     })
   }
 
-  const fmt = (pos: number) => ((pos % n) + 1).toLocaleString()
+  const fmt = (pos: number) => ((pos % n) + 1).toLocaleString('en-US')
 
   return (
     <section className="wb-section">

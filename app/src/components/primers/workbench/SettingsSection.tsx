@@ -5,7 +5,7 @@
  */
 
 import { useState } from 'react'
-import { ChevronDown, ChevronRight } from 'lucide-react'
+import Chevron from '../../Chevron'
 import {
   BUFFERS, applyBuffer, editSettings, type DesignSettings, type BufferId,
 } from '../../../primers/design/settings'
@@ -23,7 +23,7 @@ export function SettingsSection({ settings, onChange, product = true, probe = tr
   return (
     <section className="wb-section">
       <button className="wb-disclosure" onClick={() => setOpen(v => !v)} aria-expanded={open}>
-        {open ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
+        <Chevron open={open} size={12} />
         Settings
         <span className="wb-disclosure-summary">
           Tm {settings.minTm}-{settings.maxTm} · {settings.minLen}-{settings.maxLen} nt
@@ -31,7 +31,7 @@ export function SettingsSection({ settings, onChange, product = true, probe = tr
         </span>
       </button>
       {open && (
-        <div className="wb-settings">
+        <div className="wb-settings disclose">
           <RangeField label="Tm °C" min={settings.minTm} max={settings.maxTm} opt={settings.optTm}
             onMin={v => set({ minTm: v })} onMax={v => set({ maxTm: v })} onOpt={v => set({ optTm: v })} />
           <RangeField label="Length" min={settings.minLen} max={settings.maxLen}

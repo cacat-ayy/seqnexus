@@ -5,11 +5,13 @@ import './SequenceStatsPopover.css'
  */
 
 import { useMemo, useRef, useEffect, useState } from 'react'
-import { X, ChevronRight, ChevronDown } from 'lucide-react'
+import { X } from 'lucide-react'
 import { useEditorStore } from '../store'
 import type { Annotation } from '../models/Annotation'
 import { codonUsage } from '../utils/codon-usage'
+import { baseColorFor, type ColorSchemeId } from '../utils/base-colors'
 import ProteinProperties from './ProteinProperties'
+import Chevron from './Chevron'
 
 const AA_NAMES: Record<string, string> = {
   A:'Ala',C:'Cys',D:'Asp',E:'Glu',F:'Phe',G:'Gly',H:'His',I:'Ile',
@@ -19,11 +21,22 @@ const AA_NAMES: Record<string, string> = {
 
 // --- Nucleotide colors ---
 
-const NUC_COLORS = {
-  A: '#3b82f6',
-  T: '#f59e0b',
-  G: '#22c55e',
-  C: '#ef4444',
+type Nuc = 'A' | 'T' | 'G' | 'C'
+
+/**
+ * The composition bar's colours: those of the sequence's own scheme, so a
+ * base reads the same here as in the view. A scheme that does not tell the
+ * four bases apart (none, GC vs AT, purine vs pyrimidine) falls back to the
+ * default Nucleotide one.
+ */
+function nucColors(scheme: ColorSchemeId): Record<Nuc, string> {
+  const pick = (s: ColorSchemeId) => ({
+    A: baseColorFor(s, 'A', ''), T: baseColorFor(s, 'T', ''),
+    G: baseColorFor(s, 'G', ''), C: baseColorFor(s, 'C', ''),
+  })
+  const own = pick(scheme)
+  const values = Object.values(own)
+  return values.every(Boolean) && new Set(values).size === 4 ? own : pick('nucleotide')
 }
 
 // --- Computation helpers ---
@@ -74,7 +87,7 @@ function formatMW(daltons: number): string {
 function formatExtCoeff(val: number): string {
   if (val >= 1e7) return `${(val / 1e7).toFixed(2)} × 10⁷ M⁻¹cm⁻¹`
   if (val >= 1e6) return `${(val / 1e6).toFixed(2)} × 10⁶ M⁻¹cm⁻¹`
-  return `${val.toLocaleString()} M⁻¹cm⁻¹`
+  return `${val.toLocaleString('en-US')} M⁻¹cm⁻¹`
 }
 
 /** Compute annotation coverage as fraction of sequence covered by at least one annotation. */
@@ -124,6 +137,8 @@ interface Props {
 
 export default function SequenceStatsPopover({ anchorRef, onClose }: Props) {
   const doc = useEditorStore(s => s.doc)
+  const colorScheme = useEditorStore(s => s.colorScheme)
+  const baseColors = nucColors(colorScheme)
   const popRef = useRef<HTMLDivElement>(null)
 
   // Close on outside click (full click: mousedown + mouseup both outside)
@@ -244,7 +259,7 @@ export default function SequenceStatsPopover({ anchorRef, onClose }: Props) {
         <div className="stats-section-title">SEQUENCE</div>
         <div className="stats-row">
           <span>Length</span>
-          <span>{seqLen.toLocaleString()} bp</span>
+          <span>{seqLen.toLocaleString('en-US')} bp</span>
         </div>
         <div className="stats-row">
           <span>GC content</span>
@@ -258,20 +273,20 @@ export default function SequenceStatsPopover({ anchorRef, onClose }: Props) {
         {/* Horizontal nucleotide color bar */}
         {seqLen > 0 && (
           <div className="stats-nuc-bar">
-            <div className="stats-nuc-bar-seg" style={{ width: `${counts.A / seqLen * 100}%`, background: NUC_COLORS.A }} />
-            <div className="stats-nuc-bar-seg" style={{ width: `${counts.T / seqLen * 100}%`, background: NUC_COLORS.T }} />
-            <div className="stats-nuc-bar-seg" style={{ width: `${counts.G / seqLen * 100}%`, background: NUC_COLORS.G }} />
-            <div className="stats-nuc-bar-seg" style={{ width: `${counts.C / seqLen * 100}%`, background: NUC_COLORS.C }} />
+            <div className="stats-nuc-bar-seg" style={{ width: `${counts.A / seqLen * 100}%`, background: baseColors.A }} />
+            <div className="stats-nuc-bar-seg" style={{ width: `${counts.T / seqLen * 100}%`, background: baseColors.T }} />
+            <div className="stats-nuc-bar-seg" style={{ width: `${counts.G / seqLen * 100}%`, background: baseColors.G }} />
+            <div className="stats-nuc-bar-seg" style={{ width: `${counts.C / seqLen * 100}%`, background: baseColors.C }} />
           </div>
         )}
 
         {(['A', 'T', 'G', 'C'] as const).map(nuc => (
           <div className="stats-row" key={nuc}>
             <span className="stats-nuc-label">
-              <span className="stats-nuc-dot" style={{ background: NUC_COLORS[nuc] }} />
+              <span className="stats-nuc-dot" style={{ background: baseColors[nuc] }} />
               {nuc}
             </span>
-            <span>{counts[nuc].toLocaleString()} ({seqLen > 0 ? (counts[nuc] / seqLen * 100).toFixed(1) : '0.0'}%)</span>
+            <span>{counts[nuc].toLocaleString('en-US')} ({seqLen > 0 ? (counts[nuc] / seqLen * 100).toFixed(1) : '0.0'}%)</span>
           </div>
         ))}
       </div>
@@ -286,7 +301,7 @@ export default function SequenceStatsPopover({ anchorRef, onClose }: Props) {
         </div>
         <div className="stats-row stats-row-tip" data-tooltip={tmTooltip}>
           <span>Est. Tm</span>
-          <span>{stats.tm !== null ? `${stats.tm.toFixed(1)} °C` : 'N/A (>10 kbp)'}</span>
+          <span>{stats.tm !== null ? `${stats.tm.toFixed(1)} °C` : 'N/A (>10 kb)'}</span>
           <div className="stats-tip">{tmTooltip}</div>
         </div>
         <div className="stats-row stats-row-tip" data-tooltip={extTooltip}>
@@ -321,12 +336,12 @@ export default function SequenceStatsPopover({ anchorRef, onClose }: Props) {
       {codonRows && (
         <div className="stats-section">
           <button className="stats-collapse-btn" onClick={() => setCodonOpen(v => !v)}>
-            {codonOpen ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
+            <Chevron open={codonOpen} size={12} />
             <span className="stats-section-title" style={{ marginBottom: 0 }}>CODON USAGE</span>
             <span className="stats-collapse-count">{codonRows.length} codons</span>
           </button>
           {codonOpen && (
-            <div className="stats-codon-table">
+            <div className="stats-codon-table disclose">
               <div className="stats-codon-header">
                 <span>Codon</span>
                 <span>AA</span>

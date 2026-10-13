@@ -40,6 +40,16 @@ export function keptFragment(part: DesignPart, fragments: readonly Fragment[]): 
   return chosenFragment(part, fragments.filter(f => f.id.startsWith(`${part.id}:`)))
 }
 
+/**
+ * With one part there is nothing to join it to yet. That is where every design
+ * starts, not a problem, so it is said once as guidance on the map: the part
+ * still missing ("an insert"), or null when the design is past that point.
+ */
+export function missingPart(design: CloningDesign): string | null {
+  if (design.parts.length !== 1 || design.method === 'gateway' || design.method === 'topo') return null
+  return design.parts[0].role === 'vector' ? 'an insert' : 'the vector'
+}
+
 /** What a product is, in the words someone would use at the bench. */
 export function productLabel(product: Assembly, design: CloningDesign): string {
   if (isIntended(product)) return 'The construct'

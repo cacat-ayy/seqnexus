@@ -66,7 +66,7 @@ export default function MapFigureDialog({ name, sizes, defaultSize, hasHighlight
           </div>
           <div className="aw-figure-options aw-stack">
             <div className="aw-section-label">Size</div>
-            <div className="aw-seg" role="radiogroup" aria-label="Size">
+            <div className="seg seg-sm aw-seg" role="radiogroup" aria-label="Size">
               {sizes.map((s, i) => (
                 <button key={s} role="radio" aria-checked={size === s} className={size === s ? 'active' : ''} onClick={() => setSize(s)} title={`${s} px across`}>
                   {SIZE_NAMES[i] ?? `${s} px`}
@@ -74,7 +74,7 @@ export default function MapFigureDialog({ name, sizes, defaultSize, hasHighlight
               ))}
             </div>
             <div className="aw-section-label">Colours</div>
-            <div className="aw-seg" role="radiogroup" aria-label="Colours">
+            <div className="seg seg-sm aw-seg" role="radiogroup" aria-label="Colours">
               <button role="radio" aria-checked={print} className={print ? 'active' : ''} onClick={() => setPrint(true)}>Print</button>
               <button role="radio" aria-checked={!print} className={!print ? 'active' : ''} onClick={() => setPrint(false)}>App theme</button>
             </div>

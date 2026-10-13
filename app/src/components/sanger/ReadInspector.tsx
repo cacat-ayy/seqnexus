@@ -41,16 +41,16 @@ interface Props {
   actions: ReadActions
 }
 
-const nf = new Intl.NumberFormat()
+const nf = new Intl.NumberFormat('en-US')
 
 function ReadInspector({ model, view, selection, caret, tab, onTab, actions }: Props) {
   return (
     <aside className="aw-inspector" aria-label="Read inspector">
       <div className="aw-tabs" role="tablist">
-        <button role="tab" aria-selected={tab === 'read'} className={`aw-tab ${tab === 'read' ? 'active' : ''}`} onClick={() => onTab('read')}>
+        <button role="tab" aria-selected={tab === 'read'} className={`panel-tab aw-tab ${tab === 'read' ? 'active' : ''}`} onClick={() => onTab('read')}>
           Read
         </button>
-        <button role="tab" aria-selected={tab === 'selection'} className={`aw-tab ${tab === 'selection' ? 'active' : ''}`} onClick={() => onTab('selection')}>
+        <button role="tab" aria-selected={tab === 'selection'} className={`panel-tab aw-tab ${tab === 'selection' ? 'active' : ''}`} onClick={() => onTab('selection')}>
           Selection
         </button>
       </div>

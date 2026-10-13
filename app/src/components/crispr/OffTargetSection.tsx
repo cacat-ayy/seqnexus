@@ -9,12 +9,13 @@
  */
 
 import { useRef, useState } from 'react'
-import { ChevronDown, ChevronRight, Crosshair, FileUp, X } from 'lucide-react'
+import { Crosshair, FileUp, X } from 'lucide-react'
 import { useEditorStore } from '../../store'
 import { useOffTargetRun } from '../../hooks/useOffTargetRun'
 import { loadTargetFile, SCOPE_LABEL, type TargetScope } from '../../crispr/targets'
 import { MAX_MISMATCHES } from '../../crispr/offtarget'
 import { notify } from '../../toast'
+import Chevron from '../Chevron'
 
 interface Props {
   /** Guide keys the user has picked, searched together when there are any. */
@@ -65,13 +66,13 @@ export default function OffTargetSection({ pickedKeys, hasSelection }: Props) {
         onClick={() => setOpen(v => !v)}
         aria-expanded={open}
       >
-        {open ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
+        <Chevron open={open} size={12} />
         <span className="gp-section-title">Off-targets</span>
         <span className="gp-section-hint">{SCOPE_LABEL[scope]}{progress ? ', searching' : ''}</span>
       </button>
 
       {!open ? null : (
-        <>
+        <div className="disclose">
       <div className="gp-settings gp-settings-tight">
         <div className="gp-field gp-field-wide">
           <label htmlFor="gp-scope">Search in</label>
@@ -175,7 +176,7 @@ export default function OffTargetSection({ pickedKeys, hasSelection }: Props) {
           </span>
         )}
       </div>
-        </>
+        </div>
       )}
     </div>
   )

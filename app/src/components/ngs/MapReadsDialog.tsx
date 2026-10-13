@@ -36,7 +36,7 @@ interface Props {
   onClose: () => void
 }
 
-const nf = new Intl.NumberFormat()
+const nf = new Intl.NumberFormat('en-US')
 
 /** A reference on offer: an open sequence, or the copy a mapping kept. */
 interface Choice {

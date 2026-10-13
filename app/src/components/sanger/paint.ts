@@ -253,7 +253,7 @@ export function paintRuler(ctx: CanvasRenderingContext2D, theme: AlnTheme, track
     ctx.fillStyle = theme.grid
     ctx.fillRect(Math.round(x), g.y0 + y1 - 5, 1, 4)
     ctx.fillStyle = theme.muted
-    ctx.fillText(num.toLocaleString(), x, g.y0 + y0 + 11)
+    ctx.fillText(num.toLocaleString('en-US'), x, g.y0 + y0 + 11)
   }
   // Minor ticks when there is room.
   const minor = step / 5

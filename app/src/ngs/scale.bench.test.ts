@@ -130,7 +130,7 @@ describe.skipIf(!RUN)('bacterial scale', () => {
     })
     const mmSec = (performance.now() - t0) / 1000
     expect(mm.exitCode).toBe(0)
-    console.log(`minimap2 (SIMD) on ${SAMPLE_PAIRS.toLocaleString()} pairs ${mmSec.toFixed(1)} s, index included; all ${PAIRS.toLocaleString()} pairs about ${(mmSec * PAIRS / SAMPLE_PAIRS / 60).toFixed(1)} min at most`)
+    console.log(`minimap2 (SIMD) on ${SAMPLE_PAIRS.toLocaleString('en-US')} pairs ${mmSec.toFixed(1)} s, index included; all ${PAIRS.toLocaleString('en-US')} pairs about ${(mmSec * PAIRS / SAMPLE_PAIRS / 60).toFixed(1)} min at most`)
 
     // ---- Storing the mapping ----
     const storage = memoryStorage()
@@ -166,7 +166,7 @@ describe.skipIf(!RUN)('bacterial scale', () => {
     const src = new MappingSource(storage, 'm', [{ name: 'genome', length: G, circular: false }])
     await time('open: index, reference, coverage, summaries', async () => { await src.index(); await src.reference(0); await src.coverage(0); await src.summaries(0) })
     const reads = await time('load 300 kb around a 100 kb view', () => src.load(0, 2_400_000, 2_700_000))
-    await time(`pileup of the ${reads.length.toLocaleString()} loaded reads`, () => windowPileup(reads, { bases: ref, circular: false }, 2_400_000, 2_700_000))
+    await time(`pileup of the ${reads.length.toLocaleString('en-US')} loaded reads`, () => windowPileup(reads, { bases: ref, circular: false }, 2_400_000, 2_700_000))
     const layout = await time('downsample and lay out in rows', () => layoutReads(reads, { softClips: false, downsample: DEFAULT_DOWNSAMPLE, minMapq: 0, gap: 3, maxRows: 3000 }))
     console.log(`  ${layout.rows.length} rows, ${layout.sampledOut} downsampled`)
   }, 3_600_000)

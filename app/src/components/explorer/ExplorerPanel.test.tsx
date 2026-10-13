@@ -125,11 +125,11 @@ describe('ExplorerPanel', () => {
     ])
   })
 
-  it('draws the metadata line next to the name', () => {
+  it('draws the size next to the name', () => {
     store().openDocument('pTest', 'ATGC'.repeat(1000), 'circular')
     renderPanel()
     const stats = document.querySelector('.ex-stats-inline')
-    expect(stats?.textContent).toBe('4.0 kb · circular · 0 features')
+    expect(stats?.textContent).toBe('4.0 kb')
   })
 
   // The hover card is the row's tooltip. A title attribute as well put a
@@ -225,7 +225,7 @@ describe('ExplorerPanel', () => {
       { label: 'Import', actions: [{ id: 'b', label: 'Files…', icon: Plus, shortcut: 'Ctrl+O', run: noop }] },
     ]} />)
     expect(document.querySelector('.ex-blank')?.textContent).toMatch(/use \+ above/)
-    fireEvent.click(document.querySelector('[title="New or import"]')!)
+    fireEvent.click(document.querySelector('[data-tip="New or import"]')!)
     const labels = [...document.querySelectorAll('.menu-group-label')].map(el => el.textContent)
     expect(labels).toEqual(['New', 'Import'])
     fireEvent.click([...document.querySelectorAll('.ctx-menu-item')].find(el => el.textContent === 'Sequence…')!)
@@ -345,8 +345,10 @@ describe('a cloning design in the explorer', () => {
     const row = container.querySelector<HTMLElement>(`[data-uid="${toUid('clone', id)}"]`)!
     act(() => { fireEvent.click(row.querySelector('button[title="More actions"]')!) })
     const items = [...document.querySelectorAll<HTMLElement>('.ctx-menu-item')]
-    expect(items.map(b => b.textContent?.trim())).toContain('Delete')
-    act(() => { fireEvent.click(items.find(b => b.textContent?.trim() === 'Delete')!) })
+    // The item carries its key, Del, after the label.
+    const del = items.find(b => /^Delete/.test(b.textContent?.trim() ?? ''))
+    expect(del).toBeTruthy()
+    act(() => { fireEvent.click(del!) })
     expect(store().clones).toHaveLength(0)
   })
 

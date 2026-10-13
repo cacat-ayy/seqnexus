@@ -331,10 +331,10 @@ export default function StructurePanel({ onExportPrompt }: {
             {chainsWithProtein.map(c => <option key={c.id} value={c.id}>Chain {c.id} ({c.residues.length} aa)</option>)}
           </select>
         )}
-        <div className="toggle-group sp-toggle" role="radiogroup" aria-label="Drawing style">
+        <div className="seg seg-sm sp-toggle" role="radiogroup" aria-label="Drawing style">
           {(['cartoon', 'sticks', 'surface'] as DrawStyle[]).map(s => (
             <button key={s} role="radio" aria-checked={drawStyle === s}
-              className={`toggle-btn ${drawStyle === s ? 'active' : ''}`} onClick={() => setDrawStyle(s)}>
+              className={drawStyle === s ? 'active' : ''} onClick={() => setDrawStyle(s)}>
               {s[0].toUpperCase() + s.slice(1)}
             </button>
           ))}

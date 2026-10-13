@@ -76,11 +76,11 @@ export default function FigureDialog({ pm, selection, name, onClose, onExportPro
           <div className="aw-figure-preview">
             {preview
               ? <img src={preview} alt="Figure preview" width={fig!.width} height={fig!.height} />
-              : <p className="aw-note">This region has {cells.toLocaleString()} residues; select up to {MAX_FIGURE_CELLS.toLocaleString()} for a figure.</p>}
+              : <p className="aw-note">This region has {cells.toLocaleString('en-US')} residues; select up to {MAX_FIGURE_CELLS.toLocaleString('en-US')} for a figure.</p>}
           </div>
           <div className="aw-figure-options aw-stack">
             <div className="aw-section-label">Region</div>
-            <div className="aw-seg" role="radiogroup" aria-label="Region">
+            <div className="seg seg-sm aw-seg" role="radiogroup" aria-label="Region">
               <button role="radio" aria-checked={region === 'selection'} className={region === 'selection' ? 'active' : ''} disabled={!hasSel} onClick={() => setRegion('selection')} title={hasSel ? undefined : 'Select a block in the alignment first'}>Selection</button>
               <button role="radio" aria-checked={region === 'all'} className={region === 'all' ? 'active' : ''} onClick={() => setRegion('all')}>Whole alignment</button>
             </div>

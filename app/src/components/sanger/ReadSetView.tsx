@@ -43,7 +43,7 @@ interface Props {
 
 type SortKey = 'name' | 'verdict' | 'well' | 'length' | 'kept' | 'score' | 'crl' | 'qv20' | 'mixed' | 'edits'
 
-const nf = new Intl.NumberFormat()
+const nf = new Intl.NumberFormat('en-US')
 const collator = new Intl.Collator(undefined, { numeric: true, sensitivity: 'base' })
 const VERDICT_ORDER: Record<QcVerdict, number> = { fail: 0, check: 1, good: 2 }
 
@@ -236,7 +236,7 @@ function ViewSwitch({ value, onChange }: { value: TraceView['readSet']; onChange
     { value: 'table', label: 'QC table', title: 'One row per read with its quality figures, sortable' },
   ] as const
   return (
-    <div className="aw-seg" role="radiogroup" aria-label="Show the reads as">
+    <div className="seg seg-sm aw-seg" role="radiogroup" aria-label="Show the reads as">
       {opts.map(o => (
         <button key={o.value} role="radio" aria-checked={value === o.value} className={value === o.value ? 'active' : ''} title={o.title} onClick={() => onChange(o.value)}>
           {o.label}

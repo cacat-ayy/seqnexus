@@ -31,6 +31,7 @@ import { isPrimerItemId, type PrimerItem } from '../primers/display'
 import { drawPrimerItem } from './primer-draw'
 import { isGuideId } from '../utils/guide-features'
 import { drawGuideItem } from './guide-draw'
+import { truncate } from './tracks/draw'
 import type { GuideItem } from '../crispr/display'
 import { COMPLEMENT, reverseComplement as reverseComplementStr } from '../models/complement'
 import { translateCodon } from '../utils/codon'
@@ -606,7 +607,7 @@ export function paintSequenceRows(
     // so the ruler starts labelling at the next tick.
     if (L.bpWidth * tickInterval > 30) {
       for (let i = rowStart + tickInterval; i < rowEnd; i += tickInterval) {
-        ctx.fillText(displayPosition(i, dispOrigin, seqLen).toLocaleString(), baseX(i, rowStart, L), cy)
+        ctx.fillText(displayPosition(i, dispOrigin, seqLen).toLocaleString('en-US'), baseX(i, rowStart, L), cy)
       }
     }
     ctx.strokeStyle = COLORS.rulerTick
@@ -882,7 +883,7 @@ export function paintSequenceRows(
     ctx.textAlign = 'right'
     ctx.textBaseline = 'middle'
     ctx.fillText(
-      displayPosition(rowStart, dispOrigin, seqLen).toLocaleString(),
+      displayPosition(rowStart, dispOrigin, seqLen).toLocaleString('en-US'),
       L.leftMargin - 8,
       cy + (L.mode === 'letters' ? 8 : L.seqLineHeight / 2),
     )
@@ -1351,13 +1352,12 @@ export function paintSequenceRows(
         // Text fits: no clipping needed (fast path)
         ctx.fillText(a.ann.name, (clipLeft + clipRight) / 2, a.cy + h / 2)
       } else if (availW > 12) {
-        // Text overflows: clip (slow path, only when necessary)
-        ctx.save()
-        ctx.beginPath()
-        ctx.rect(clipLeft, a.cy, availW, h)
-        ctx.clip()
-        ctx.fillText(a.ann.name, (clipLeft + clipRight) / 2, a.cy + h / 2)
-        ctx.restore()
+        // Too long for the bar (slow path, only when necessary): shortened
+        // with an ellipsis, so a short piece of a feature at a line end reads
+        // "lacZ…" rather than a name cut through on both sides. A bar with
+        // room for no letter before the ellipsis goes unlabelled.
+        const text = truncate(ctx, a.ann.name, availW)
+        if (text.length > 1) ctx.fillText(text, (clipLeft + clipRight) / 2, a.cy + h / 2)
       }
     }
     ctx.textAlign = 'left'

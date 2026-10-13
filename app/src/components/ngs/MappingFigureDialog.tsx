@@ -13,7 +13,7 @@ import { figureFile } from '../alignment/figure'
 import { buildMappingFigure, MAX_READ_SPAN, type MappingFigureInput } from './mappingFigure'
 import type { ColorBy } from './mappingPaint'
 
-const nf = new Intl.NumberFormat()
+const nf = new Intl.NumberFormat('en-US')
 
 interface Props {
   input: MappingFigureInput
@@ -76,7 +76,7 @@ export default function MappingFigureDialog({ input, view, loaded, colorBy, stra
           </div>
           <div className="aw-figure-options aw-stack">
             <div className="aw-section-label">Stretch of {input.refName}</div>
-            <div className="aw-seg" role="radiogroup" aria-label="Stretch">
+            <div className="seg seg-sm aw-seg" role="radiogroup" aria-label="Stretch">
               <button role="radio" aria-checked={region === 'view'} className={region === 'view' ? 'active' : ''} onClick={() => setRegion('view')}>The view</button>
               <button role="radio" aria-checked={region === 'custom'} className={region === 'custom' ? 'active' : ''} onClick={() => setRegion('custom')}>From … to …</button>
             </div>

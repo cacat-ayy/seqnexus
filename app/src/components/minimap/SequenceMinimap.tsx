@@ -48,7 +48,7 @@ export default function SequenceMinimap({
   const origin = (sequence.topology === 'circular' ? displayOrigin : 0) || 0
 
   const formatPosition = useCallback(
-    (pos: number) => displayPosition(Math.min(seqLen - 1, Math.max(0, Math.floor(pos))), origin, seqLen).toLocaleString(),
+    (pos: number) => displayPosition(Math.min(seqLen - 1, Math.max(0, Math.floor(pos))), origin, seqLen).toLocaleString('en-US'),
     [origin, seqLen],
   )
   const formatRange = useCallback(

@@ -14,6 +14,8 @@ import {
   Group, ArrowDownUp, Check, ArrowUp, ArrowDown, Network,
 } from 'lucide-react'
 import MenuGroups, { type MenuGroup } from '../MenuGroups'
+import { tip } from '../toolbarTip'
+import { ToolbarTooltip } from '../ToolbarTooltip'
 import { usePopoverDismiss } from '../../hooks/usePopoverDismiss'
 import { useClampedPosition } from '../../hooks/useClampedPosition'
 import {
@@ -97,7 +99,7 @@ export default function ExplorerToolbar({
 
       <button
         className={`ex-hbtn ${menu === 'add' ? 'active' : ''}`}
-        title="New or import"
+        {...tip({ label: 'New or import' })}
         aria-haspopup="menu"
         aria-expanded={menu === 'add'}
         onClick={toggle('add')}
@@ -105,13 +107,13 @@ export default function ExplorerToolbar({
         <Plus size={14} />
       </button>
 
-      <button className="ex-hbtn" title="New folder" onClick={onNewFolder}>
+      <button className="ex-hbtn" {...tip({ label: 'New folder' })} onClick={onNewFolder}>
         <FolderPlus size={14} />
       </button>
 
       <button
         className={`ex-hbtn ${menu === 'group' ? 'active' : ''}`}
-        title="Group by"
+        {...tip({ label: 'Group by' })}
         aria-haspopup="menu"
         aria-expanded={menu === 'group'}
         onClick={toggle('group')}
@@ -121,7 +123,7 @@ export default function ExplorerToolbar({
 
       <button
         className={`ex-hbtn ${menu === 'sort' ? 'active' : ''}`}
-        title="Sort"
+        {...tip({ label: 'Sort' })}
         aria-haspopup="menu"
         aria-expanded={menu === 'sort'}
         onClick={toggle('sort')}
@@ -131,15 +133,17 @@ export default function ExplorerToolbar({
 
       <button
         className="ex-hbtn"
-        title={`Row density: ${DENSITY_LABEL[density]}`}
+        {...tip({ label: 'Row density', desc: DENSITY_LABEL[density] })}
         onClick={onCycleDensity}
       >
         <Rows3 size={14} />
       </button>
 
-      <button className="ex-hbtn" title="Hide sidebar" onClick={onCollapse}>
+      <button className="ex-hbtn" {...tip({ label: 'Hide sidebar' })} onClick={onCollapse}>
         <PanelLeftClose size={14} />
       </button>
+      {/* The icons name themselves the way the main toolbar's do. */}
+      <ToolbarTooltip container={barRef} />
 
       {menu === 'add' && (
         <ToolbarMenu x={anchor.x} y={anchor.y} menuRef={menuRef}>

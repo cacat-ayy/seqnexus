@@ -27,7 +27,7 @@ import { fastqcDataText } from '../../../ngs/qcreport/fastqcData'
 import { downloadBlob, downloadMany } from '../../../utils/download'
 import { notifyFigureSaved } from '../../../utils/cite-notice'
 
-const nf = new Intl.NumberFormat()
+const nf = new Intl.NumberFormat('en-US')
 const pct = (v: number) => `${v.toFixed(v > 0 && v < 1 ? 2 : 1)}%`
 
 const STATUS_LABEL: Record<ModuleStatus, string> = { pass: 'Passed', warn: 'Warning', fail: 'Failed', skip: 'Not run' }
@@ -224,7 +224,7 @@ export default function QualityReport({ readSet: rs }: { readSet: ReadSet }) {
               )}
             </div>
             {report.mates.length === 2 && (
-              <div className="aw-seg" role="radiogroup" aria-label="Mate">
+              <div className="seg seg-sm aw-seg" role="radiogroup" aria-label="Mate">
                 {['R1', 'R2'].map((label, i) => (
                   <button key={label} role="radio" aria-checked={mate === i} className={mate === i ? 'active' : ''} onClick={() => setMate(i)}
                     title={`The report of the ${i ? 'second' : 'first'} reads of the pairs${rs.files.length === 2 ? ` (${rs.files[i].name})` : ''}`}>

@@ -35,6 +35,7 @@ import HitTable from './HitTable'
 import HitMap from './HitMap'
 import { centerSequenceViewOn } from '../sequence-view-controls'
 import { formatEvalue, hitMatches, timeAgo } from '../../blast/format'
+import SkeletonRows from '../SkeletonRows'
 import {
   alignmentEntries, canAlignWithQuery, canOpenRecord, copyHitFasta, downloadHitsCsv, downloadHitsFasta, importNcbiResultFile,
   openHitRecord,
@@ -137,7 +138,9 @@ function Drawer({ containerRef }: { containerRef: React.RefObject<HTMLElement | 
         <div className="bd-body">
           {search
             ? <Results key={search.rid} tabId={tabId} search={search} />
-            : <Intro tabId={tabId} hasSearches={searches.length > 0} protein={doc.sequence.alphabet === 'protein'} selectionLength={selectionSegments(selection, doc.sequence.topology, doc.sequence.length).reduce((n, [s, e]) => n + e - s, 0)} />}
+            : run?.tabId === tabId
+              ? <SkeletonRows label="Searching" count={6} />
+              : <Intro tabId={tabId} hasSearches={searches.length > 0} protein={doc.sequence.alphabet === 'protein'} selectionLength={selectionSegments(selection, doc.sequence.topology, doc.sequence.length).reduce((n, [s, e]) => n + e - s, 0)} />}
         </div>
       )}
     </section>
@@ -203,7 +206,7 @@ function SearchHeader({ tabId, searches, search }: { tabId: string; searches: Bl
     } else {
       const segments: [number, number][] = source === 'selection' ? selSegments.map(([s, e]) => [s, e]) : [[0, seqLen]]
       sequence = queryBases(doc.sequence, segments)
-      const disp = (n: number) => n.toLocaleString()
+      const disp = (n: number) => n.toLocaleString('en-US')
       const label = source === 'selection'
         ? `Selection ${disp(segments[0][0] + 1)}..${disp(segments[segments.length - 1][1])}`
         : 'Whole sequence'
@@ -239,24 +242,23 @@ function SearchHeader({ tabId, searches, search }: { tabId: string; searches: Bl
       </div>
 
       <div className="bd-form" role="group" aria-label="Search settings">
-        <div className="bd-seg" role="radiogroup" aria-label="Query">
-          <button role="radio" aria-checked={source === 'whole'} className="bd-seg-btn" onClick={() => setQuerySource('whole')}>
-            Whole sequence <span className="bd-seg-count">{seqLen.toLocaleString()} {doc.sequence.alphabet === 'protein' ? 'aa' : 'bp'}</span>
+        <div className="seg seg-sm bd-seg" role="radiogroup" aria-label="Query">
+          <button role="radio" aria-checked={source === 'whole'} onClick={() => setQuerySource('whole')}>
+            Whole sequence <span className="bd-seg-count">{seqLen.toLocaleString('en-US')} {doc.sequence.alphabet === 'protein' ? 'aa' : 'bp'}</span>
           </button>
           <button
             role="radio"
             aria-checked={source === 'selection'}
-            className="bd-seg-btn"
             disabled={selLength === 0}
             title={selLength === 0 ? 'Select a range in the sequence to search it' : undefined}
             onClick={() => setQuerySource('selection')}
           >
-            Selection <span className="bd-seg-count">{selLength > 0 ? `${selLength.toLocaleString()} ${doc.sequence.alphabet === 'protein' ? 'aa' : 'bp'}` : 'none'}</span>
+            Selection <span className="bd-seg-count">{selLength > 0 ? `${selLength.toLocaleString('en-US')} ${doc.sequence.alphabet === 'protein' ? 'aa' : 'bp'}` : 'none'}</span>
           </button>
           {translation && (
-            <span className="bd-seg-btn bd-seg-translation" role="radio" aria-checked={source === 'translation'}>
+            <span className="bd-seg-translation" role="radio" aria-checked={source === 'translation'}>
               <button className="bd-seg-inner" onClick={() => setQuerySource('translation')}>
-                {translation.label} <span className="bd-seg-count">{translation.protein.length.toLocaleString()} aa</span>
+                {translation.label} <span className="bd-seg-count">{translation.protein.length.toLocaleString('en-US')} aa</span>
               </button>
               <button className="bd-seg-x" aria-label="Stop searching the translation" onClick={() => setQuerySource('whole')}><X size={11} /></button>
             </span>
@@ -508,7 +510,7 @@ function RunStrip({ tabId }: { tabId: string }) {
   if (run.tabId !== tabId) {
     return (
       <div className="bd-run bd-run-elsewhere">
-        <Loader2 size={13} className="bd-spin" aria-hidden="true" />
+        <Loader2 size={13} className="spinner" aria-hidden="true" />
         <span>Searching <strong>{run.queryName}</strong> with {run.program}</span>
         <button className="bd-link-btn" onClick={() => useEditorStore.getState().setActiveTab(run.tabId)}>Show</button>
       </div>
@@ -518,7 +520,7 @@ function RunStrip({ tabId }: { tabId: string }) {
   const next = run.nextCheckAt ? Math.max(0, Math.ceil((run.nextCheckAt - now) / 1000)) : null
   return (
     <div className="bd-run">
-      <Loader2 size={13} className="bd-spin" aria-hidden="true" />
+      <Loader2 size={13} className="spinner" aria-hidden="true" />
       <span className="bd-run-status" aria-live="polite">{run.status}</span>
       <span className="bd-run-meta">{run.queryLabel} · {run.program}</span>
       <span className="bd-run-meta">{clock(elapsed)}{next !== null && ` · next check in ${next} s`}</span>
@@ -657,9 +659,9 @@ function Results({ tabId, search }: { tabId: string; search: BlastSearch }) {
     <div className="bd-results">
       <div className="bd-summary">
         <div className="bd-summary-main">
-          <span className="bd-summary-count">{hits.toLocaleString()} {hits === 1 ? 'hit' : 'hits'}</span>
+          <span className="bd-summary-count">{hits.toLocaleString('en-US')} {hits === 1 ? 'hit' : 'hits'}</span>
           <span>{search.service === 'ncbi' ? 'NCBI' : 'EMBL-EBI'} · {programOf(search)} · {databaseLabel(result.database || settings.database)}</span>
-          <span>{search.query.label} · {result.queryLen.toLocaleString()} {search.query.translation || PROTEIN_QUERY_PROGRAMS.includes(programOf(search)) ? 'aa' : 'bp'}</span>
+          <span>{search.query.label} · {result.queryLen.toLocaleString('en-US')} {search.query.translation || PROTEIN_QUERY_PROGRAMS.includes(programOf(search)) ? 'aa' : 'bp'}</span>
           {limits && <span>{limits}</span>}
           <span title={new Date(search.createdAt).toLocaleString()}>{timeAgo(search.createdAt)}</span>
           {result.message && <span className="bd-muted">{result.message}</span>}

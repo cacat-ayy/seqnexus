@@ -69,7 +69,7 @@ import { readAlnTheme, useThemeVersion } from '../alignment/theme'
 import { drawCaption } from '../minimap/theme'
 import { reverseComplement } from '../../models/complement'
 
-const nf = new Intl.NumberFormat()
+const nf = new Intl.NumberFormat('en-US')
 
 interface Display {
   colorBy: ColorBy
@@ -687,7 +687,7 @@ export default function MappingViewer({ ngs, assemblyId, name, refIndex, onRefIn
                 )}
                 <InView layout={shownLayout} loaded={loaded} state={readState} />
                 <div className="aw-section-label">Display</div>
-                <div className="aw-seg" role="radiogroup" aria-label="Rows">
+                <div className="seg seg-sm aw-seg" role="radiogroup" aria-label="Rows">
                   {(['expanded', 'squished'] as const).map(m => (
                     <button key={m} role="radio" aria-checked={display.rowMode === m} className={display.rowMode === m ? 'active' : ''}
                       onClick={() => setDisplay(d => ({ ...d, rowMode: m }))}
@@ -707,7 +707,7 @@ export default function MappingViewer({ ngs, assemblyId, name, refIndex, onRefIn
                   </select>
                 </div>
                 {display.bases !== 'off' && (
-                  <div className="aw-seg" role="radiogroup" aria-label="Disagreements with">
+                  <div className="seg seg-sm aw-seg" role="radiogroup" aria-label="Disagreements with">
                     {(['reference', 'consensus'] as const).map(m => (
                       <button key={m} role="radio" aria-checked={display.compareTo === m} className={display.compareTo === m ? 'active' : ''}
                         onClick={() => setDisplay(d => ({ ...d, compareTo: m }))}

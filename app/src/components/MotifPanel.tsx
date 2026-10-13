@@ -7,7 +7,7 @@ import './MotifPanel.css'
  */
 
 import { useState, useMemo, useCallback, useRef } from 'react'
-import { X, ChevronDown, ChevronRight } from 'lucide-react'
+import { X } from 'lucide-react'
 import { useEditorStore } from '../store'
 import { MOTIF_CATEGORIES, MOTIF_LIBRARY, motifDefinition, type MotifHit } from '../protein/motifs'
 import { TM_MOTIF_ID, CF_HELIX_ID, CF_STRAND_ID } from '../hooks/useMotifScan'
@@ -17,6 +17,7 @@ import { useExitAnimation } from '../hooks/useExitAnimation'
 import { useFocusTrap } from '../hooks/useFocusTrap'
 import { displayPosition } from '../models/Document'
 import { useBackdropDismiss } from '../hooks/useBackdropDismiss'
+import Chevron from './Chevron'
 
 interface Props {
   open: boolean
@@ -166,7 +167,7 @@ export default function MotifPanel({ open, onClose }: Props) {
                             })}
                           >
                             <span className="ann-result-chevron">
-                              {isCollapsed ? <ChevronRight size={14} /> : <ChevronDown size={14} />}
+                              <Chevron open={!isCollapsed} size={14} />
                             </span>
                             <span className="ann-swatch" style={{ backgroundColor: first.color }} />
                             {first.name}

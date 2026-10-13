@@ -57,10 +57,6 @@
   max-width: 200px;
 }
 
-.sp-toggle .toggle-btn {
-  font-size: var(--text-xs);
-}
-
 .sp-spacer {
   flex: 1;
 }
@@ -285,7 +281,7 @@
 .sp-privacy {
   margin: 0;
   font-size: var(--text-2xs);
-  color: var(--text-faint);
+  color: var(--text-soft);
   line-height: 1.5;
 }
 

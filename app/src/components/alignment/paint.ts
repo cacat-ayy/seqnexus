@@ -248,7 +248,7 @@ function paintRuler(ctx: CanvasRenderingContext2D, pm: PaintModel, theme: AlnThe
     if (n % step === 0 || n === 1) {
       ctx.fillStyle = theme.muted
       ctx.fillRect(Math.round(x), t.y + t.h - 6, 1, 5)
-      ctx.fillText(n.toLocaleString(), x, t.y + t.h - 8)
+      ctx.fillText(n.toLocaleString('en-US'), x, t.y + t.h - 8)
     } else if (minor && n % minor === 0) {
       ctx.fillStyle = theme.grid
       ctx.fillRect(Math.round(x), t.y + t.h - 4, 1, 3)

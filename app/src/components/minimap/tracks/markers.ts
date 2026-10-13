@@ -53,7 +53,7 @@ export function markerTrack(id: string, layers: readonly MarkerLayer[]): Minimap
       const near = nearest(layer.positions, pos - w / 2)
       if (near === null || Math.abs(near + w / 2 - pos) > slop + w / 2) return null
       const total = layer.positions.length
-      return { label: layer.label, detail: `${total.toLocaleString()} in total`, color: layer.color(theme) }
+      return { label: layer.label, detail: `${total.toLocaleString('en-US')} in total`, color: layer.color(theme) }
     },
   }
 }

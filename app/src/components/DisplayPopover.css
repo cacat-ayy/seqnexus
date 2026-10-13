@@ -19,13 +19,9 @@
   border: 1px solid var(--border-hover);
   border-radius: var(--radius-popover);
   box-shadow: var(--shadow-popover);
-  animation: dp-in var(--dur-fast) var(--ease-out);
+  animation: pop-down var(--dur-fast) var(--ease-out);
 }
 
-@keyframes dp-in {
-  from { opacity: 0; transform: translateY(-4px) scale(.98); }
-  to   { opacity: 1; transform: translateY(0) scale(1); }
-}
 
 .dp-section { padding: 0 var(--space-2); }
 
@@ -222,41 +218,11 @@
 }
 
 .dp-target {
-  display: inline-flex;
-  padding: 1px;
   margin-bottom: var(--space-1);
-  background: var(--input-bg);
-  border: 1px solid var(--input-border);
-  border-radius: var(--radius-sm);
-}
-
-.dp-target-btn {
-  padding: 1px var(--space-1-5);
-  border: none;
-  border-radius: var(--radius-xs);
-  background: transparent;
-  color: var(--text-secondary);
-  font-family: inherit;
-  font-size: var(--text-2xs);
-  font-weight: 600;
-  /* Two-word choices such as "Sites outside" stay on one line. */
-  white-space: nowrap;
-  cursor: pointer;
-  transition: background-color var(--dur-fast) var(--ease-out),
-              color var(--dur-fast) var(--ease-out);
 }
 
 /* A section title beside a choice keeps to one line and gives way to it. */
 .dp-target-row > .dp-section-label { white-space: nowrap; }
-
-.dp-target-btn:hover:not(:disabled) { color: var(--text); }
-
-.dp-target-btn.active {
-  background: var(--accent);
-  color: var(--on-accent);
-}
-
-.dp-target-btn:disabled { opacity: .4; cursor: default; }
 
 /* Amino acid previews: one chip per residue, as the sequence view draws
    them. A plain residue sits on the same faint block the canvas uses. */

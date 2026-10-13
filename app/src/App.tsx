@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, useCallback, useMemo, lazy, Suspense, useSyncExternalStore } from 'react'
+import { flushSync } from 'react-dom'
 import { formatAa, formatBp } from './utils/format'
 import { gcPercent } from './primers/thermodynamics'
 import './App.css'
@@ -36,7 +37,7 @@ const GelWorkspace = lazy(() => import('./components/gel/GelWorkspace'))
 const CloneWorkspace = lazy(() => import('./components/cloning/CloneWorkspace'))
 import {
   useEditorStore, isOriginSpanningSelection, selectionSegments, extraSelectionsOf, selectedRanges, joinedSegments,
-  gelSourceTabId, type SequencingRead, type SidebarTab,
+  gelSourceTabId, type SequencingRead, type SidebarTab, type ViewMode,
 } from './store'
 import { editedRead } from './sanger/edits'
 import { displayPosition, internalPosition, type DocumentState } from './models/Document'
@@ -52,6 +53,7 @@ import { useBackupReminder } from './hooks/useBackupReminder'
 import { useBackupStore } from './backup/backup'
 import { usePopoverDismiss } from './hooks/usePopoverDismiss'
 import { useToolbarDensity } from './hooks/useToolbarDensity'
+import { useSlidingIndicators } from './hooks/useSlidingIndicators'
 import { ToolbarTooltip } from './components/ToolbarTooltip'
 import { tip } from './components/toolbarTip'
 import { useAutoAnnotateScan } from './hooks/useAutoAnnotateScan'
@@ -62,7 +64,7 @@ import { proposalsFrom, matchKey } from './utils/auto-annotations'
 import { convertibleOrfs, orfKey } from './utils/orf-features'
 import ConvertActions from './components/ConvertActions'
 import Toaster from './components/Toaster'
-import MenuGroups, { type MenuGroup } from './components/MenuGroups'
+import MenuGroups, { type MenuAction, type MenuGroup } from './components/MenuGroups'
 import StartScreen from './components/StartScreen'
 import { OligoExportDialog, OligoImportDialog } from './components/primers/OligoDialogs'
 import { demoDocument } from './demo'
@@ -84,7 +86,7 @@ import {
   SunMoon, Info, List, Lock, LockOpen, Tag, Globe, GalleryVertical, AlignLeft, ArrowLeft, Wand2, Route, Shapes,
   Combine,
   SlidersHorizontal, Atom,
-  Crosshair, MoveRight, FileDown, Files, Archive, ArchiveRestore, Upload,
+  Crosshair, MoveRight, FileDown, Files, Archive, ArchiveRestore, Upload, Wrench,
 } from 'lucide-react'
 const BlastDrawer = lazy(() => import('./components/blast/BlastDrawer'))
 import { useBlastStore, toggleDrawer, openDrawer as openBlastDrawer, clearAlignRequest as clearBlastAlignRequest } from './blast/session'
@@ -373,6 +375,19 @@ export default function App() {
     return 'light'
   })
 
+  /**
+   * Linear, Circular and Split cross-fade into each other rather than swap
+   * in one frame. Only the view area takes part (view-transition-name in
+   * App.css); without the View Transition API, or with reduced motion, the
+   * view just switches.
+   */
+  const switchView = useCallback((mode: ViewMode) => {
+    const doc = document as Document & { startViewTransition?: (update: () => void) => unknown }
+    const reduced = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches
+    if (reduced || typeof doc.startViewTransition !== 'function') { setViewMode(mode); return }
+    doc.startViewTransition(() => flushSync(() => setViewMode(mode)))
+  }, [setViewMode])
+
   /** Smooth theme switch - uses View Transition API when available, CSS fallback otherwise */
   const switchTheme = useCallback((next: ThemeName) => {
     const prefersReduced = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches
@@ -434,6 +449,8 @@ export default function App() {
   const [codonModalOpen, setCodonModalOpen] = useState(false)
   const [propertiesModalOpen, setPropertiesModalOpen] = useState(false)
   const [cloningDropdownOpen, setCloningDropdownOpen] = useState(false)
+  const [toolsMenuOpen, setToolsMenuOpen] = useState(false)
+  const toolsMenuRef = useRef<HTMLDivElement>(null)
   const cloningBtnRef = useRef<HTMLDivElement>(null)
   const blastOpen = useBlastStore(s => s.open)
   const blastMaximized = useBlastStore(s => s.maximized)
@@ -540,6 +557,14 @@ export default function App() {
   /** The text view or map is what the workspace shows, so a sequence PDF makes sense. */
   const sequenceShown = !!activeTabId && !activeClone && !activeGel && !activeContigId && !activeAssembly && !activeReadSet
     && activeSequencingReadIds.length === 0 && !activeAlignmentId
+  /**
+   * Another workspace is in front (a gel, a cloning design, an alignment,
+   * reads): the sequence tools have nothing to act on there, so the toolbar
+   * leaves them out rather than showing a row of disabled buttons. With
+   * nothing open at all they stay, disabled, to say what the app does.
+   */
+  const otherWorkspace = !sequenceShown && !!(activeGel || activeClone || activeAln || activeContig || activeAssembly
+    || activeReadSet || activeSequencingReadIds.length > 0)
   // For the key handlers registered once, on window.
   const sequenceShownRef = useRef(sequenceShown)
   sequenceShownRef.current = sequenceShown
@@ -693,21 +718,27 @@ export default function App() {
   // Debounced to avoid expensive rescans on every keystroke.
   const enzymeScanGen = useRef(0)
   const enzymeScanTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  // The "no sites" hint waits for the scan, or a restored tab would flash it
+  // before its sites are found.
+  const [enzymeScanPending, setEnzymeScanPending] = useState(false)
   useEffect(() => {
-    if (enzymeNames.length === 0 || seqLength === 0 || isProtein) return
+    if (enzymeNames.length === 0 || seqLength === 0 || isProtein) { setEnzymeScanPending(false); return }
     if (enzymeScanTimer.current) clearTimeout(enzymeScanTimer.current)
+    setEnzymeScanPending(true)
     enzymeScanTimer.current = setTimeout(() => {
       const gen = ++enzymeScanGen.current
       const enzymes = enzymeNames
         .map(name => getEnzyme(name))
         .filter((e): e is RestrictionEnzyme => e != null)
-      if (enzymes.length === 0) return
+      if (enzymes.length === 0) { setEnzymeScanPending(false); return }
       const bases = doc.sequence.bases
       const topology = doc.sequence.topology
       findEnzymeSitesAsync(bases, enzymes, topology).then(sites => {
         if (gen !== enzymeScanGen.current) return // stale
         setEnzymeCutSites(sites)
+        setEnzymeScanPending(false)
       }).catch(e => {
+        setEnzymeScanPending(false)
         // Silently returning no sites is indistinguishable from a sequence
         // that genuinely has none, which is a misleading thing to show.
         notify.warning('Restriction site scan failed', {
@@ -832,10 +863,12 @@ export default function App() {
   // anchor. Density is measured rather than guessed; see the hook.
   const toolbarRef = useRef<HTMLDivElement>(null)
   const toolbarFit = useToolbarDensity(toolbarRef)
+  useSlidingIndicators()
   const toolbarClass = [
     'toolbar',
     toolbarFit.density !== 'full' && 'is-tight',
-    toolbarFit.density === 'icons' && 'is-icons',
+    (toolbarFit.density === 'icons' || toolbarFit.density === 'collapsed') && 'is-icons',
+    toolbarFit.density === 'collapsed' && 'is-collapsed',
     toolbarFit.wrapped && 'is-wrap',
   ].filter(Boolean).join(' ')
 
@@ -857,6 +890,7 @@ export default function App() {
   usePopoverDismiss(themeOpen, () => setThemeOpen(false), themePopRef, themeBtnRef)
   usePopoverDismiss(infoOpen, () => setInfoOpen(false), infoPopRef, infoBtnRef)
   usePopoverDismiss(cloningDropdownOpen, () => setCloningDropdownOpen(false), cloningBtnRef)
+  usePopoverDismiss(toolsMenuOpen, () => setToolsMenuOpen(false), toolsMenuRef)
 
   // --- PDF export of the sequence ---
   const [pdfOpen, setPdfOpen] = useState(false)
@@ -1362,6 +1396,8 @@ export default function App() {
   // command a user knows exists is still findable, just inert.
   const isMac = typeof navigator !== 'undefined' && /Mac|iPhone|iPad/.test(navigator.platform)
   const mod = isMac ? '⌘' : 'Ctrl+'
+  // Glyphs on a Mac, words elsewhere, never a mix such as "Ctrl+⇧S".
+  const shift = isMac ? '⇧' : 'Shift+'
   const noDoc = !activeTabId
   // Redo is Shift+Cmd+Z on a Mac; Cmd+Y is not a Mac convention.
   const redoKey = isMac ? '⌘⇧Z' : 'Ctrl+Y'
@@ -1458,7 +1494,7 @@ export default function App() {
     { id: 'import-folder', label: 'Import Folder…', group: 'File', icon: FolderUp, run: pickFolder },
     { id: 'import-clipboard', label: 'Import from Clipboard', group: 'File', icon: ClipboardPaste, run: handleImportClipboard },
     { id: 'fetch', label: 'Import by Accession…', group: 'File', icon: Globe, keywords: 'fetch download ncbi uniprot genpept accession', run: () => setFetchModalOpen(true) },
-    { id: 'export', label: 'Export…', group: 'File', icon: Save, shortcut: `${mod}⇧S`, disabled: noDoc, run: () => { setBulkExportItems(activeExportItems(useEditorStore.getState())); setExportModalOpen(true) } },
+    { id: 'export', label: 'Export…', group: 'File', icon: Save, shortcut: `${mod}${shift}S`, disabled: noDoc, run: () => { setBulkExportItems(activeExportItems(useEditorStore.getState())); setExportModalOpen(true) } },
     { id: 'export-pdf', label: 'Export PDF…', group: 'File', icon: FileText, shortcut: `${mod}P`, keywords: 'print figure publication', disabled: !sequenceShown, run: openPdfExport },
     { id: 'session-export', label: 'Export Session…', group: 'File', icon: Archive, run: () => setSessionExportOpen(true) },
     { id: 'session-import', label: 'Import Session…', group: 'File', icon: ArchiveRestore, run: () => sessionImportInputRef.current?.click() },
@@ -1512,10 +1548,25 @@ export default function App() {
     { id: 'theme', label: 'Change Theme', group: 'View', icon: SunMoon, keywords: 'dark light appearance', run: () => setThemeOpen(true) },
     { id: 'about', label: 'About SeqNexus', group: 'View', icon: Info, keywords: 'help version', run: () => setInfoOpen(true) },
   ], [
-    mod, redoKey, noDoc, noDna, isProtein, sequenceShown, openPdfExport, undoDisabled, redoDisabled, handleOpenFind, handleNewSequence, handleNewProtein, handleNewFolder, openGel, openCloning, runUndo, runRedo,
+    mod, shift, redoKey, noDoc, noDna, isProtein, sequenceShown, openPdfExport, undoDisabled, redoDisabled, handleOpenFind, handleNewSequence, handleNewProtein, handleNewFolder, openGel, openCloning, runUndo, runRedo,
     handleImportClipboard, pickFiles, pickFolder, toggleOrfs, toggleMotifs, toggleGuides, toggleEnzymes, setViewMode, openSidebar, openPrimerDesign, toggleAutoAnnotations,
     viewMode,
   ])
+
+  // The toolbar's tools as one menu, for a window too narrow even for their
+  // icons: the same commands as the buttons, taken from the palette's list so
+  // the two cannot drift apart.
+  const toolsMenu = useMemo<MenuGroup[]>(() => {
+    const ids = otherWorkspace
+      ? ['clone', 'align', 'gel']
+      : ['annotate', isProtein ? 'motifs' : 'orfs', isProtein ? 'digest' : 'enzymes', 'primers', 'clone', 'blast', 'align', 'gel', 'codon-optimize']
+    const actions: MenuAction[] = []
+    for (const id of ids) {
+      const c = commands.find(cmd => cmd.id === id)
+      if (c?.icon) actions.push({ id: c.id, label: c.label, icon: c.icon, shortcut: c.shortcut, disabled: c.disabled, run: c.run })
+    }
+    return [{ label: 'Tools', actions }]
+  }, [commands, otherWorkspace, isProtein])
 
   return (
     <div
@@ -1571,7 +1622,7 @@ export default function App() {
                   ...addGroups,
                   { label: 'Export', actions: [
                     {
-                      id: 'export', label: 'Export…', icon: FileDown, shortcut: `${mod}⇧S`,
+                      id: 'export', label: 'Export…', icon: FileDown, shortcut: `${mod}${shift}S`,
                       disabled: !activeTabId && activeSequencingReadIds.length === 0 && !activeAlignmentId && !activeContigId && !activeAssembly,
                       run: () => { setBulkExportItems(activeExportItems(useEditorStore.getState())); setExportModalOpen(true) },
                     },
@@ -1640,7 +1691,8 @@ export default function App() {
           </button>
         </div>
 
-        <div className="toolbar-group">
+        <div className="toolbar-group toolbar-tools">
+          {!otherWorkspace && (<>
           <button className="tb" onClick={() => setAnnotateModalOpen(true)} disabled={noDoc} {...tip({ label: 'Annotate features', desc: isProtein ? 'Detect tags, fusion partners, protease sites, linkers and signals' : 'Detect known features such as promoters, markers and origins', why: 'Open a sequence to use this' })}>
             <span className="tb-icon"><Tag size={14} /></span><span className="tb-text">Annotate</span>
           </button>
@@ -1670,6 +1722,7 @@ export default function App() {
           <button className="tb" onClick={openPrimerDesign} disabled={noDna} {...tip({ label: 'Primers', desc: 'Design primers and manage the primer library', why: needsSequence })}>
             <span className="tb-icon"><FlaskConical size={14} /></span><span className="tb-text">Primers</span>
           </button>
+          </>)}
           <div className="tb-split" ref={cloningBtnRef}>
             <button className={`tb ${activeClone ? 'active' : ''}`} onClick={openCloning} {...tip({ label: 'Cloning', desc: 'Design a construct and see what the reaction gives' })}>
               <span className="tb-icon"><Combine size={14} /></span><span className="tb-text">Cloning</span>
@@ -1699,6 +1752,7 @@ export default function App() {
               </div>
             )}
           </div>
+          {!otherWorkspace && (
           <button className={`tb ${blastOpen ? 'active' : ''}`} onClick={toggleDrawer} disabled={noDoc} aria-pressed={blastOpen} {...tip({
             label: 'BLAST',
             desc: isProtein ? 'Search NCBI for similar proteins or coding sequences' : 'Search NCBI for similar sequences',
@@ -1709,6 +1763,7 @@ export default function App() {
             {blastRunning && <span className="tb-badge tb-badge-pulse" />}
             {!blastRunning && blastUnseen && <span className="tb-badge tb-badge-done" />}
           </button>
+          )}
           <button className="tb" onClick={() => setAlignModalOpen(true)} {...tip({ label: 'Align', desc: 'Pairwise and multiple sequence alignment' })}>
             <span className="tb-icon"><AlignLeft size={14} /></span><span className="tb-text">Align</span>
           </button>
@@ -1765,11 +1820,32 @@ export default function App() {
               </div>
             )}
           </div>
+          {!otherWorkspace && (
           <button className="tb" onClick={() => setCodonModalOpen(true)} disabled={noDoc} {...tip(isProtein
             ? { label: 'Back-translate', desc: 'Write the protein as DNA with the codons of an expression host', why: 'Open a sequence to use this' }
             : { label: 'Optimize codons', desc: 'Recode a coding sequence for an expression host', why: 'Open a sequence to use this' })}>
             <span className="tb-icon"><Wand2 size={14} /></span><span className="tb-text">Optimize</span>
           </button>
+          )}
+        </div>
+
+        {/* Stands in for the group above once even its icons do not fit
+            (the density hook's `collapsed` step); hidden otherwise. */}
+        <div className="toolbar-group toolbar-tools-menu file-menu-wrap" ref={toolsMenuRef}>
+          <button
+            className={`tb ${toolsMenuOpen ? 'active' : ''}`}
+            onClick={() => setToolsMenuOpen(v => !v)}
+            aria-haspopup="menu"
+            aria-expanded={toolsMenuOpen}
+            {...tip({ label: 'Tools', desc: 'Annotate, find, design, clone, align and run gels' })}
+          >
+            <span className="tb-icon"><Wrench size={14} /></span><ChevronDownSmall size={10} />
+          </button>
+          {toolsMenuOpen && (
+            <div className="file-menu" role="menu">
+              <MenuGroups variant="file" groups={toolsMenu} onPicked={() => setToolsMenuOpen(false)} />
+            </div>
+          )}
         </div>
 
         <div className="toolbar-group">
@@ -1817,6 +1893,8 @@ export default function App() {
                 </>
               )
             }
+            // The sequence zoom has nothing to act on in a gel or a cloning design.
+            if (otherWorkspace) return null
             return (
               <>
                 <button className="tb" onClick={() => setZoom(zoomLevel - 1)} disabled={!activeTabId || zoomLevel <= 0} {...tip({ label: 'Zoom out' })}>
@@ -1884,40 +1962,28 @@ export default function App() {
               <span>Theme</span>
               <button className="popover-close" onClick={() => setThemeOpen(false)}><X size={14} /></button>
             </div>
+            {/* Light and dark side by side: all ten at once, no scrolling. */}
             <div className="theme-popover-body">
-              <div className="theme-group-label">Light</div>
-              {THEMES.filter(t => t.group === 'light').map(t => (
-                <button
-                  key={t.id}
-                  className={`theme-option ${theme === t.id ? 'active' : ''}`}
-                  onClick={() => { switchTheme(t.id); setThemeOpen(false) }}
-                >
-                  <span className="theme-preview" style={{ background: t.outer }}>
-                    <span className="tp-card" style={{ background: t.bg }}>
-                      <span className="tp-accent" style={{ background: t.accent }} />
-                      <span className="tp-line" style={{ background: t.text }} />
-                      <span className="tp-line short" style={{ background: t.muted }} />
-                    </span>
-                  </span>
-                  <span className="theme-label">{t.label}</span>
-                </button>
-              ))}
-              <div className="theme-group-label">Dark</div>
-              {THEMES.filter(t => t.group === 'dark').map(t => (
-                <button
-                  key={t.id}
-                  className={`theme-option ${theme === t.id ? 'active' : ''}`}
-                  onClick={() => { switchTheme(t.id); setThemeOpen(false) }}
-                >
-                  <span className="theme-preview" style={{ background: t.outer }}>
-                    <span className="tp-card" style={{ background: t.bg }}>
-                      <span className="tp-accent" style={{ background: t.accent }} />
-                      <span className="tp-line" style={{ background: t.text }} />
-                      <span className="tp-line short" style={{ background: t.muted }} />
-                    </span>
-                  </span>
-                  <span className="theme-label">{t.label}</span>
-                </button>
+              {(['light', 'dark'] as const).map(group => (
+                <div key={group} className="theme-col">
+                  <div className="theme-group-label">{group === 'light' ? 'Light' : 'Dark'}</div>
+                  {THEMES.filter(t => t.group === group).map(t => (
+                    <button
+                      key={t.id}
+                      className={`theme-option ${theme === t.id ? 'active' : ''}`}
+                      onClick={() => { switchTheme(t.id); setThemeOpen(false) }}
+                    >
+                      <span className="theme-preview" style={{ background: t.outer }}>
+                        <span className="tp-card" style={{ background: t.bg }}>
+                          <span className="tp-accent" style={{ background: t.accent }} />
+                          <span className="tp-line" style={{ background: t.text }} />
+                          <span className="tp-line short" style={{ background: t.muted }} />
+                        </span>
+                      </span>
+                      <span className="theme-label">{t.label}</span>
+                    </button>
+                  ))}
+                </div>
               ))}
             </div>
           </div>
@@ -1973,9 +2039,9 @@ export default function App() {
               </div>
               <hr />
               <div className="info-legal">
-                <a href="impressum.html" target="_blank" rel="noopener noreferrer">Impressum</a>
+                <a href="impressum.html" target="_blank" rel="noopener noreferrer">Legal notice</a>
                 <span className="info-legal-sep">&middot;</span>
-                <a href="datenschutz.html" target="_blank" rel="noopener noreferrer">Datenschutz</a>
+                <a href="datenschutz.html" target="_blank" rel="noopener noreferrer">Privacy</a>
               </div>
             </div>
           </div>
@@ -2109,25 +2175,25 @@ export default function App() {
                   <>
                     <button
                       className={`view-tab ${viewMode === 'linear' ? 'active' : ''}`}
-                      onClick={() => setViewMode('linear')}
+                      onClick={() => switchView('linear')}
                     >
                       Sequence
                     </button>
                     <button
                       className={`view-tab ${viewMode === 'circular' ? 'active' : ''}`}
-                      onClick={() => setViewMode('circular')}
+                      onClick={() => switchView('circular')}
                     >
                       Map
                     </button>
                     <button
                       className={`view-tab ${viewMode === 'split' ? 'active' : ''}`}
-                      onClick={() => setViewMode('split')}
+                      onClick={() => switchView('split')}
                     >
                       Split
                     </button>
                     <button
                       className={`view-tab ${viewMode === 'structure' ? 'active' : ''}`}
-                      onClick={() => setViewMode('structure')}
+                      onClick={() => switchView('structure')}
                       title={doc.metadata?.structure ? `3D structure: ${doc.metadata.structure.id}` : 'Show a 3D structure beside the sequence'}
                     >
                       3D
@@ -2137,19 +2203,19 @@ export default function App() {
                   <>
                     <button
                       className={`view-tab ${viewMode === 'linear' ? 'active' : ''}`}
-                      onClick={() => setViewMode('linear')}
+                      onClick={() => switchView('linear')}
                     >
                       Linear
                     </button>
                     <button
                       className={`view-tab ${viewMode === 'circular' ? 'active' : ''}`}
-                      onClick={() => setViewMode('circular')}
+                      onClick={() => switchView('circular')}
                     >
                       Circular
                     </button>
                     <button
                       className={`view-tab ${viewMode === 'split' ? 'active' : ''}`}
-                      onClick={() => setViewMode('split')}
+                      onClick={() => switchView('split')}
                     >
                       Split
                     </button>
@@ -2225,7 +2291,10 @@ export default function App() {
               {/* Mounted with the bar so it finds the ref on its first effect. */}
               <ToolbarTooltip container={viewTabsRef} />
 
-              {/* Panel bar */}
+              {/* Panel bar: the sidebar's tabs first, then the layers drawn
+                  over the sequence, under a "Show" label so a layer toggle is
+                  not mistaken for the toolbar button of the same name (the
+                  toolbar's ORFs and Enzymes open the finders). */}
               <div className="panel-bar">
                 <button
                   className={`panel-bar-btn ${featuresPanelOpen && sidebarTab === 'features' ? 'active' : ''}`}
@@ -2234,11 +2303,33 @@ export default function App() {
                   title="Toggle feature sidebar"
                 >
                   <List size={13} /> Features
-                  <span className="panel-bar-count">{doc.annotations.length}</span>
+                  <span key={doc.annotations.length} className="panel-bar-count">{doc.annotations.length}</span>
                 </button>
                 {/* The DNA-only toggles are left out for a protein rather
                     than shown greyed: this bar belongs to the document. */}
-                {!isProtein && <div className="panel-bar-sep" />}
+                {!isProtein && (
+                <button
+                  className={`panel-bar-btn ${featuresPanelOpen && sidebarTab === 'primers' ? 'active' : ''}`}
+                  onClick={() => toggleSidebarTab('primers')}
+                  aria-pressed={featuresPanelOpen && sidebarTab === 'primers'}
+                  title="Toggle the primers sidebar"
+                >
+                  <FlaskConical size={13} /> Primers
+                  {primerCount > 0 && <span key={primerCount} className="panel-bar-count">{primerCount}</span>}
+                </button>
+                )}
+                {!isProtein && (
+                <button
+                  className={`panel-bar-btn ${featuresPanelOpen && sidebarTab === 'guides' ? 'active' : ''}`}
+                  onClick={() => toggleSidebarTab('guides')}
+                  aria-pressed={featuresPanelOpen && sidebarTab === 'guides'}
+                  title="Toggle the guide design sidebar"
+                >
+                  <Crosshair size={13} /> Guides
+                </button>
+                )}
+                <div className="panel-bar-sep" />
+                <span className="panel-bar-label">Show</span>
                 {!isProtein && (
                 <button
                   className={`panel-bar-btn ${showOrfs ? 'active' : ''}`}
@@ -2248,7 +2339,7 @@ export default function App() {
                 >
                   <Dna size={13} /> ORFs
                   {showOrfs && orfResults.length > 0 && (
-                    <span className="panel-bar-count">{orfResults.length}</span>
+                    <span key={orfResults.length} className="panel-bar-count">{orfResults.length}</span>
                   )}
                 </button>
                 )}
@@ -2273,34 +2364,12 @@ export default function App() {
                   aria-pressed={showEnzymes}
                   title="Toggle restriction enzyme display"
                 >
-                  <Scissors size={13} /> REs
+                  <Scissors size={13} /> Enzymes
                   {showEnzymes && enzymeCutSites.length > 0 && (
-                    <span className="panel-bar-count">{enzymeCutSites.length}</span>
+                    <span key={enzymeCutSites.length} className="panel-bar-count">{enzymeCutSites.length}</span>
                   )}
                 </button>
                 )}
-                {!isProtein && (
-                <button
-                  className={`panel-bar-btn ${featuresPanelOpen && sidebarTab === 'primers' ? 'active' : ''}`}
-                  onClick={() => toggleSidebarTab('primers')}
-                  aria-pressed={featuresPanelOpen && sidebarTab === 'primers'}
-                  title="Toggle the primers sidebar"
-                >
-                  <FlaskConical size={13} /> Primers
-                  {primerCount > 0 && <span className="panel-bar-count">{primerCount}</span>}
-                </button>
-                )}
-                {!isProtein && (
-                <button
-                  className={`panel-bar-btn ${featuresPanelOpen && sidebarTab === 'guides' ? 'active' : ''}`}
-                  onClick={() => toggleSidebarTab('guides')}
-                  aria-pressed={featuresPanelOpen && sidebarTab === 'guides'}
-                  title="Toggle the guide design sidebar"
-                >
-                  <Crosshair size={13} /> Guides
-                </button>
-                )}
-                {isProtein && <div className="panel-bar-sep" />}
                 {isProtein && (
                 <button
                   className={`panel-bar-btn ${showMotifs ? 'active' : ''}`}
@@ -2310,7 +2379,7 @@ export default function App() {
                 >
                   <Atom size={13} /> Motifs
                   {showMotifs && shownMotifs.length > 0 && (
-                    <span className="panel-bar-count">{shownMotifs.length}</span>
+                    <span key={shownMotifs.length} className="panel-bar-count">{shownMotifs.length}</span>
                   )}
                 </button>
                 )}
@@ -2332,7 +2401,7 @@ export default function App() {
                 >
                   <Tag size={13} /> Auto
                   {showAutoAnnotations && autoProposals.length > 0 && (
-                    <span className="panel-bar-count">{autoProposals.length}</span>
+                    <span key={autoProposals.length} className="panel-bar-count">{autoProposals.length}</span>
                   )}
                 </button>
 
@@ -2340,7 +2409,9 @@ export default function App() {
                   <ConvertActions
                     total={autoProposals.length}
                     picked={pickedProposalCount}
-                    showHint={anyPicked === 0}
+                    // The hint is said once per bar: the ORF or motif
+                    // actions before these already carry it.
+                    showHint={anyPicked === 0 && !(isProtein ? showMotifs && convertibleMotifList.length > 0 : showOrfs && convertibleOrfCount > 0)}
                     addAllTitle="Add every suggestion as a feature"
                     onAddPicked={handleAddPickedAutoAnnotations}
                     onAddAll={handleAddAllAutoAnnotations}
@@ -2382,7 +2453,7 @@ export default function App() {
                       {!isProtein && showOrfs && orfResults.length === 0 && (
                         <EmptyState icon={Dna} message="No ORFs found" actionLabel="adjust parameters" onAction={handleOpenOrfPanel} />
                       )}
-                      {!isProtein && showEnzymes && enzymeCutSites.length === 0 && (
+                      {!isProtein && showEnzymes && !enzymeScanPending && enzymeCutSites.length === 0 && (
                         <EmptyState icon={Scissors} message="No enzyme sites found" actionLabel="select enzymes" onAction={handleOpenEnzymePanel} />
                       )}
                       {showAutoAnnotations && !autoAnnotateScanning && autoProposals.length === 0 && (
@@ -2453,17 +2524,17 @@ export default function App() {
                   {isProtein ? (
                     <>
                       protein
-                      {' | '}{formatAa(seqLength)}
-                      {(doc.metadata?.displayOrigin ?? 0) < 0 && ` | from ${1 - (doc.metadata?.displayOrigin ?? 0)}`}
+                      {' · '}{formatAa(seqLength)}
+                      {(doc.metadata?.displayOrigin ?? 0) < 0 && ` · from ${1 - (doc.metadata?.displayOrigin ?? 0)}`}
                     </>
                   ) : (
                     <>
                       {doc.sequence.topology}
-                      {doc.metadata?.strandedness === 'single' ? ' | ss' : ' | ds'}
-                      {' | '}{formatBp(seqLength)}
-                      {doc.metadata?.damMethylated && ' | Dam'}
-                      {doc.metadata?.dcmMethylated && ' | Dcm'}
-                      {doc.metadata?.ecoKIMethylated && ' | EcoKI'}
+                      {doc.metadata?.strandedness === 'single' ? ' · ss' : ' · ds'}
+                      {' · '}{formatBp(seqLength)}
+                      {doc.metadata?.damMethylated && ' · Dam'}
+                      {doc.metadata?.dcmMethylated && ' · Dcm'}
+                      {doc.metadata?.ecoKIMethylated && ' · EcoKI'}
                     </>
                   )}
                 </button>
@@ -2505,7 +2576,7 @@ export default function App() {
                         className="status-goto-input"
                         type="text"
                         value={gotoValue}
-                        placeholder={`1-${seqLength.toLocaleString()}`}
+                        placeholder={`1-${seqLength.toLocaleString('en-US')}`}
                         onChange={e => setGotoValue(e.target.value)}
                         onKeyDown={e => {
                           if (e.key === 'Enter') {
@@ -2571,7 +2642,9 @@ export default function App() {
             </>
           )}
         </div>
-        <FeatureSidebar open={featuresPanelOpen} onClose={handleCloseFeaturesPanel} />
+        {/* The sidebar belongs to the sequence: another workspace in front hides
+            it, and it comes back as it was with the sequence. */}
+        <FeatureSidebar open={featuresPanelOpen && !otherWorkspace} onClose={handleCloseFeaturesPanel} />
       </div>
 
       <Toaster />
@@ -2670,11 +2743,11 @@ export default function App() {
 
       <ConfirmDialog
         open={manyRecords !== null}
-        title={`Open ${manyRecords?.count.toLocaleString() ?? ''} records?`}
-        message={`"${manyRecords?.source ?? ''}" holds ${manyRecords?.count.toLocaleString() ?? ''} records. Each opens as its own tab, and thousands of tabs can make the page unresponsive.`}
+        title={`Open ${manyRecords?.count.toLocaleString('en-US') ?? ''} records?`}
+        message={`"${manyRecords?.source ?? ''}" holds ${manyRecords?.count.toLocaleString('en-US') ?? ''} records. Each opens as its own tab, and thousands of tabs can make the page unresponsive.`}
         buttons={[
           { label: 'Cancel', value: 'cancel' },
-          { label: `Open all ${manyRecords?.count.toLocaleString() ?? ''}`, value: 'all' },
+          { label: `Open all ${manyRecords?.count.toLocaleString('en-US') ?? ''}`, value: 'all' },
           { label: `Open the first ${MANY_RECORDS}`, value: 'first', variant: 'primary' },
         ]}
         onResult={value => {

@@ -509,6 +509,9 @@
   flex-shrink: 0;
   min-width: 200px;
   max-width: 500px;
+  /* Takes its width at once (animating the width would lay the sequence
+     out again on every frame) and slides its contents in. */
+  animation: pop-left var(--dur-normal) var(--ease-out);
 }
 
 /* Resize handle: sits to the left of the sidebar */
@@ -536,14 +539,6 @@
   flex-shrink: 0;
   height: var(--panel-header-h);
   box-sizing: border-box;
-}
-
-.fs-title {
-  font-size: var(--text-xs);
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-  color: var(--text-muted);
 }
 
 .fs-count {
@@ -837,7 +832,7 @@
 .ft-len {
   font-size: var(--text-2xs);
   font-family: var(--font-mono);
-  color: var(--text-faint);
+  color: var(--text-soft);
 }
 
 .ft-issue-icon {
@@ -955,7 +950,7 @@ fieldset.ft-editor {
   flex-shrink: 0;
   text-align: right;
   font-size: var(--text-2xs);
-  color: var(--text-faint);
+  color: var(--text-soft);
 }
 .btn.ft-parts-merge {
   align-self: flex-start;
@@ -980,7 +975,7 @@ fieldset.ft-editor {
 .ft-protein-len {
   margin-right: auto;
   font-size: var(--text-2xs);
-  color: var(--text-faint);
+  color: var(--text-soft);
 }
 .ft-protein-seq {
   max-height: 88px;

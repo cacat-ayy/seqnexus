@@ -53,15 +53,15 @@ interface Props {
   actions: ContigActions
 }
 
-const nf = new Intl.NumberFormat()
+const nf = new Intl.NumberFormat('en-US')
 
 function ContigInspector(p: Props) {
   return (
     <aside className="aw-inspector" aria-label="Contig inspector">
       <div className="aw-tabs" role="tablist">
-        <button role="tab" aria-selected={p.tab === 'contig'} className={`aw-tab ${p.tab === 'contig' ? 'active' : ''}`} onClick={() => p.onTab('contig')}>Contig</button>
-        <button role="tab" aria-selected={p.tab === 'column'} className={`aw-tab ${p.tab === 'column' ? 'active' : ''}`} onClick={() => p.onTab('column')}>Column</button>
-        <button role="tab" aria-selected={p.tab === 'variants'} className={`aw-tab ${p.tab === 'variants' ? 'active' : ''}`} onClick={() => p.onTab('variants')}>
+        <button role="tab" aria-selected={p.tab === 'contig'} className={`panel-tab aw-tab ${p.tab === 'contig' ? 'active' : ''}`} onClick={() => p.onTab('contig')}>Contig</button>
+        <button role="tab" aria-selected={p.tab === 'column'} className={`panel-tab aw-tab ${p.tab === 'column' ? 'active' : ''}`} onClick={() => p.onTab('column')}>Column</button>
+        <button role="tab" aria-selected={p.tab === 'variants'} className={`panel-tab aw-tab ${p.tab === 'variants' ? 'active' : ''}`} onClick={() => p.onTab('variants')}>
           Variants{p.variants.length ? ` (${p.variants.length})` : ''}
         </button>
       </div>
@@ -114,7 +114,7 @@ function ContigPanel({ doc, cons, view, reads, selection, onView, actions }: Pro
       </dl>
 
       <div className="aw-section-label">Consensus</div>
-      <div className="aw-seg" role="radiogroup" aria-label="Consensus method">
+      <div className="seg seg-sm aw-seg" role="radiogroup" aria-label="Consensus method">
         {([['quality', 'Highest quality'], ['majority', 'Majority']] as const).map(([id, label]) => (
           <button key={id} role="radio" aria-checked={view.consensus.method === id} className={view.consensus.method === id ? 'active' : ''}
             onClick={() => onView({ consensus: { ...view.consensus, method: id as ConsensusSettings['method'] } })}

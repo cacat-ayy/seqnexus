@@ -9,7 +9,7 @@ import './CodonOptimizeDialog.css'
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { X, Loader2, ChevronDown, ChevronRight, Upload, Trash2, Search } from 'lucide-react'
+import { X, Loader2, Upload, Trash2, Search } from 'lucide-react'
 import { useEditorStore } from '../store'
 import { Sequence } from '../models/Sequence'
 import { Annotation } from '../models/Annotation'
@@ -34,6 +34,7 @@ import { setKey } from '../enzymes/sets'
 import { useExitAnimation } from '../hooks/useExitAnimation'
 import { useFocusTrap } from '../hooks/useFocusTrap'
 import { useBackdropDismiss } from '../hooks/useBackdropDismiss'
+import Chevron from './Chevron'
 
 interface Props {
   open: boolean
@@ -636,10 +637,10 @@ export default function CodonOptimizeDialog({ open, onClose }: Props) {
 
             <section className="cod-section">
               <button className="cod-disclosure" onClick={() => setAdvancedOpen(v => !v)}>
-                {advancedOpen ? <ChevronDown size={14} /> : <ChevronRight size={14} />} Advanced
+                <Chevron open={advancedOpen} size={14} /> Advanced
               </button>
               {advancedOpen && (
-                <div className="cod-advanced">
+                <div className="cod-advanced disclose">
                   <div className="cod-num-grid">
                     <label title="Longest run of a single A or T the optimizer may leave behind. Runs longer than this cause polymerase slippage and synthesis failures. 0 turns the check off.">
                       Max A/T run
@@ -760,7 +761,7 @@ export default function CodonOptimizeDialog({ open, onClose }: Props) {
           <div className="cod-result">
             {!autoRun && manualRun === 0 && (
               <div className="cod-placeholder">
-                <p>{targetSize.toLocaleString()} bp is a lot to optimize while you type.</p>
+                <p>{targetSize.toLocaleString('en-US')} bp is a lot to optimize while you type.</p>
                 <button className="btn btn-primary btn-sm" onClick={() => setManualRun(n => n + 1)}>
                   Run once
                 </button>
@@ -768,7 +769,7 @@ export default function CodonOptimizeDialog({ open, onClose }: Props) {
             )}
 
             {running && (
-              <div className="cod-running"><Loader2 size={14} className="ann-spin" /> Working</div>
+              <div className="cod-running"><Loader2 size={14} className="spinner" /> Working</div>
             )}
 
             {error && <div className="cod-error cod-block">{error}</div>}
@@ -879,7 +880,7 @@ export default function CodonOptimizeDialog({ open, onClose }: Props) {
                           aria-expanded={open}
                           title={`${region.changes.length} of ${region.after.codons} codons changed, ${region.identity.toFixed(1)}% identical to the original`}
                         >
-                          {open ? <ChevronDown size={13} /> : <ChevronRight size={13} />}
+                          <Chevron open={open} size={13} />
                           <span className="cod-region-name">{region.label}</span>
                           <span className="cod-hint">
                             {region.changes.length} change{region.changes.length === 1 ? '' : 's'}

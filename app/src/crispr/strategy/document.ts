@@ -35,7 +35,7 @@ export function deletionDocument(
   const result = applyDeletion(doc.sequence.bases, features, pair)
 
   const lines = [
-    `${pair.length.toLocaleString()} bp removed with ${nucleaseName}, between the cuts of `
+    `${pair.length.toLocaleString('en-US')} bp removed with ${nucleaseName}, between the cuts of `
     + `${pair.left.site.spacer} and ${pair.right.site.spacer}.`,
     `Junction: ${pair.junction}`,
   ]

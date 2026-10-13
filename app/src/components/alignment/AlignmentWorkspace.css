@@ -141,35 +141,10 @@
 .aw-tool-sep { width: 1px; height: 18px; background: var(--border); margin: 0 var(--space-1); }
 .aw-select { padding: var(--space-0-5) var(--space-1-5); font-size: var(--text-xs); max-width: 170px; }
 
-.aw-seg {
-  display: inline-flex;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-  overflow: hidden;
-  flex-shrink: 0;
-}
-.aw-seg button {
-  padding: 3px var(--space-2);
-  font-size: var(--text-xs);
-  background: transparent;
-  border: none;
-  border-right: 1px solid var(--border);
-  color: var(--text-secondary);
-  cursor: pointer;
-  white-space: nowrap;
-}
-.aw-seg button:last-child { border-right: none; }
-.aw-seg button:hover:not(:disabled) { background: var(--bg-hover); color: var(--text); }
-.aw-seg button.active {
-  background: color-mix(in srgb, var(--accent) 16%, transparent);
-  color: var(--accent);
-  font-weight: 600;
-}
-.aw-seg button:disabled { opacity: 0.45; cursor: not-allowed; }
 /* A side panel stretches the control to its width; the options share it
    rather than leaving an empty end inside the frame. */
 .aw-panel > .aw-seg { display: flex; }
-.aw-panel > .aw-seg button { flex: 1 1 0; }
+.aw-panel > .aw-seg > button { flex: 1 1 0; }
 
 .aw-tool-btn {
   display: inline-flex;
@@ -448,16 +423,7 @@
 .aw-tab {
   flex: 1;
   padding: var(--space-2);
-  font-size: var(--text-xs);
-  font-weight: 600;
-  background: none;
-  border: none;
-  border-bottom: 2px solid transparent;
-  color: var(--text-muted);
-  cursor: pointer;
 }
-.aw-tab:hover { color: var(--text); }
-.aw-tab.active { color: var(--accent); border-bottom-color: var(--accent); }
 .aw-inspector-body { flex: 1; overflow-y: auto; min-height: 0; }
 .aw-panel { padding: var(--space-3); display: flex; flex-direction: column; gap: var(--space-2); }
 
@@ -612,8 +578,7 @@
 .aw-progress { height: 4px; border-radius: var(--radius-pill); background: var(--border); overflow: hidden; }
 .aw-progress span { display: block; height: 100%; background: var(--accent); transition: width 250ms linear; }
 
-.aw-spin { animation: aw-spin 0.9s linear infinite; color: var(--accent); }
-@keyframes aw-spin { to { transform: rotate(360deg); } }
+.aw-spin { color: var(--accent); }
 
 /* ---- Add sequences ---- */
 .aw-popover-wide { width: 380px; }

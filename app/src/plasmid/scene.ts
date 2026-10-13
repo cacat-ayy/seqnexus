@@ -1029,7 +1029,7 @@ export function isFlipped(midAngle: number): boolean {
 function formatBpShort(n: number): string {
   if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(2)} Mb`
   if (n >= 10_000) return `${(n / 1000).toFixed(1)} kb`
-  return `${n.toLocaleString()} bp`
+  return `${n.toLocaleString('en-US')} bp`
 }
 
 /**
@@ -1663,7 +1663,7 @@ function drawRunLists(
         // outer side of it: "BamHI (975)" on the right, "(975) BamHI" on the
         // left, so the name is what the leader reaches.
         const posFont = font(style.enzymeSize)
-        const posText = e.kind === 'site' && showPositions ? `(${e.site.pos.toLocaleString()})` : ''
+        const posText = e.kind === 'site' && showPositions ? `(${e.site.pos.toLocaleString('en-US')})` : ''
         const posW = posText ? measureText(posText, posFont) : 0
         const posGap = posText ? 4 : 0
         const needs = e.kind === 'site' ? e.site.width + posGap + posW : measureText('MM…', f)

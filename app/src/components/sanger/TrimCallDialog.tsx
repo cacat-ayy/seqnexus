@@ -23,7 +23,7 @@ interface Props {
   onClose: () => void
 }
 
-const nf = new Intl.NumberFormat()
+const nf = new Intl.NumberFormat('en-US')
 
 export default function TrimCallDialog({ readIds, onClose }: Props) {
   const allReads = useEditorStore(s => s.sequencingReads)
@@ -135,7 +135,7 @@ export default function TrimCallDialog({ readIds, onClose }: Props) {
             </label>
             {settings.trimEnabled && (
               <>
-                <div className="aw-seg" role="radiogroup" aria-label="Quality trimming">
+                <div className="seg seg-sm aw-seg" role="radiogroup" aria-label="Quality trimming">
                   {([['error', 'Error rate'], ['quality', 'Quality'], ['keep', 'Keep current']] as const).map(([id, label]) => (
                     <button key={id} role="radio" aria-checked={t.method === id} className={t.method === id ? 'active' : ''} onClick={() => setTrim({ method: id })}>{label}</button>
                   ))}

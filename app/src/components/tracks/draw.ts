@@ -31,8 +31,8 @@ export function tickStep(pxPerUnit: number, minPx = 70): number {
 /** Position as a ruler label: 1,500 or 2.5 kb or 1.2 Mb, short enough for the spacing. */
 export function positionLabel(pos: number, step: number): string {
   if (step >= 1_000_000) return `${pos / 1_000_000} Mb`
-  if (step >= 1000 && pos >= 10_000) return `${(pos / 1000).toLocaleString()} kb`
-  return pos.toLocaleString()
+  if (step >= 1000 && pos >= 10_000) return `${(pos / 1000).toLocaleString('en-US')} kb`
+  return pos.toLocaleString('en-US')
 }
 
 /**

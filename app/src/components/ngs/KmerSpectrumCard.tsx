@@ -10,7 +10,7 @@ import { spectrumBins, type KmerSpectrum } from '../../ngs/denovo/spectrum'
 import { formatBp } from '../../utils/format'
 import { HistogramChart } from './charts'
 
-const nf = new Intl.NumberFormat()
+const nf = new Intl.NumberFormat('en-US')
 
 interface Props {
   spectrum: KmerSpectrum | undefined

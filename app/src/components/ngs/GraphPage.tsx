@@ -23,7 +23,7 @@ import { layoutGraph } from '../../ngs/denovo/layout'
 import { formatBp } from '../../utils/format'
 import { saveText } from '../../utils/download'
 
-const nf = new Intl.NumberFormat()
+const nf = new Intl.NumberFormat('en-US')
 
 /** Graphs with more segments than this are not drawn (Bandage handles them better); GFA export still works. */
 const MAX_DRAWN = 4000
@@ -159,7 +159,7 @@ export default function GraphPage({ assembly, onShowReads }: { assembly: Assembl
 
   const colourOf = (i: number) => {
     const s = g.segments[i]
-    if (mode === 'contigs') return s.contig !== null ? 'var(--accent)' : 'var(--text-faint)'
+    if (mode === 'contigs') return s.contig !== null ? 'var(--accent)' : 'var(--text-soft)'
     return coverageColour(s.coverage / usual)
   }
   const seqName = (i: number) => g.segments[i].name
@@ -223,7 +223,7 @@ export default function GraphPage({ assembly, onShowReads }: { assembly: Assembl
     <div className="gp">
       <div className="gp-main">
         <div className="gp-toolbar">
-          <div className="aw-seg" role="radiogroup" aria-label="Colour by">
+          <div className="seg seg-sm aw-seg" role="radiogroup" aria-label="Colour by">
             <button role="radio" aria-checked={mode === 'coverage'} className={mode === 'coverage' ? 'active' : ''} onClick={() => setMode('coverage')}
               title="Coverage against the assembly's usual coverage">Coverage</button>
             <button role="radio" aria-checked={mode === 'contigs'} className={mode === 'contigs' ? 'active' : ''} onClick={() => setMode('contigs')}

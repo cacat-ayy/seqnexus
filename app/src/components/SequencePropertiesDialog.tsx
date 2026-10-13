@@ -114,7 +114,7 @@ export default function SequencePropertiesDialog({ open, onClose }: Props) {
           </label>
 
           <label className="nsm-label">
-            Description <span className="nsm-optional">(optional)</span>
+            Description <span className="field-optional">optional</span>
             <textarea
               className="input nsm-textarea spm-desc"
               value={description}
@@ -130,7 +130,7 @@ export default function SequencePropertiesDialog({ open, onClose }: Props) {
               the numbering of the record it came from. */}
           {protein && (
             <label className="nsm-label">
-              Numbering start <span className="nsm-optional">(the first residue is shown as)</span>
+              Numbering start <span className="field-optional">(the first residue is shown as)</span>
               <input
                 className="input nsm-input"
                 type="number"
@@ -144,14 +144,14 @@ export default function SequencePropertiesDialog({ open, onClose }: Props) {
           {!protein && (
           <label className="nsm-label">
             Topology
-            <div className="toggle-group">
+            <div className="seg">
               <button
-                className={`toggle-btn ${topology === 'linear' ? 'active' : ''}`}
+                className={topology === 'linear' ? 'active' : ''}
                 onClick={() => setTopology('linear')}
                 type="button"
               >Linear</button>
               <button
-                className={`toggle-btn ${topology === 'circular' ? 'active' : ''}`}
+                className={topology === 'circular' ? 'active' : ''}
                 onClick={() => setTopology('circular')}
                 type="button"
               >Circular</button>
@@ -162,14 +162,14 @@ export default function SequencePropertiesDialog({ open, onClose }: Props) {
           {!protein && (
           <label className="nsm-label">
             Strandedness
-            <div className="toggle-group">
+            <div className="seg">
               <button
-                className={`toggle-btn ${strandedness === 'double' ? 'active' : ''}`}
+                className={strandedness === 'double' ? 'active' : ''}
                 onClick={() => setStrandedness('double')}
                 type="button"
               >Double-stranded</button>
               <button
-                className={`toggle-btn ${strandedness === 'single' ? 'active' : ''}`}
+                className={strandedness === 'single' ? 'active' : ''}
                 onClick={() => setStrandedness('single')}
                 type="button"
               >Single-stranded</button>
@@ -199,7 +199,7 @@ export default function SequencePropertiesDialog({ open, onClose }: Props) {
 
           {!protein && topology === 'circular' && (
             <label className="nsm-label">
-              Display Origin <span className="nsm-optional">(position shown as 1)</span>
+              Display origin <span className="field-optional">(position shown as 1)</span>
               <input
                 className="input nsm-input"
                 type="number"

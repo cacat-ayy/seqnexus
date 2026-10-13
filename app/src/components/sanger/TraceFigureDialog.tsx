@@ -69,11 +69,11 @@ export default function TraceFigureDialog({ model, view, selection, name, onClos
           <div className="aw-figure-preview">
             {preview
               ? <img src={preview} alt="Figure preview" width={fig!.width} height={fig!.height} />
-              : <p className="aw-note">{tooBig ? `This stretch has ${(d1 - d0).toLocaleString()} bases; choose up to ${MAX_FIGURE_BASES.toLocaleString()} for a figure.` : 'Nothing to draw.'}</p>}
+              : <p className="aw-note">{tooBig ? `This stretch has ${(d1 - d0).toLocaleString('en-US')} bases; choose up to ${MAX_FIGURE_BASES.toLocaleString('en-US')} for a figure.` : 'Nothing to draw.'}</p>}
           </div>
           <div className="aw-figure-options aw-stack">
             <div className="aw-section-label">Region</div>
-            <div className="aw-seg" role="radiogroup" aria-label="Region">
+            <div className="seg seg-sm aw-seg" role="radiogroup" aria-label="Region">
               <button role="radio" aria-checked={region === 'selection'} className={region === 'selection' ? 'active' : ''} disabled={!hasSel} onClick={() => setRegion('selection')} title={hasSel ? undefined : 'Select a stretch of the read first'}>Selection</button>
               <button role="radio" aria-checked={region === 'kept'} className={region === 'kept' ? 'active' : ''} onClick={() => setRegion('kept')}>Trimmed read</button>
               <button role="radio" aria-checked={region === 'all'} className={region === 'all' ? 'active' : ''} onClick={() => setRegion('all')}>Whole read</button>

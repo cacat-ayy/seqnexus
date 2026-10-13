@@ -55,7 +55,7 @@ const MARGIN = 40
 const FOOTER = 22
 const SANS = 'Helvetica, Arial, sans-serif'
 const T = FIGURE_THEME
-const nf = new Intl.NumberFormat()
+const nf = new Intl.NumberFormat('en-US')
 const compact = new Intl.NumberFormat('en', { notation: 'compact', maximumFractionDigits: 1 })
 
 const font = (size: number, bold = false) => `${bold ? 700 : 400} ${size}px ${SANS}`

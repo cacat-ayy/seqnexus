@@ -7,12 +7,13 @@
  */
 
 import { useCallback, useMemo, useState } from 'react'
-import { ArrowDown, ArrowUp, ChevronDown, ChevronRight, MoreHorizontal } from 'lucide-react'
+import { ArrowDown, ArrowUp, MoreHorizontal } from 'lucide-react'
 import type { BlastHit, BlastSearch } from '../../blast/types'
 import { hitStrandOnDoc } from '../../blast/query'
 import { formatEvalue, hitMatches, orientationText } from '../../blast/format'
 import { recordUrl } from '../../blast/databases'
 import HitAlignment from './HitAlignment'
+import Chevron from '../Chevron'
 
 /** The DOM id of a hit's row, for scrolling it into view from the plot. */
 const rowDomId = (rid: string, idx: number) => `bd-row-${rid}-${idx}`
@@ -155,7 +156,7 @@ export default function HitTable({
                     aria-label={`${open ? 'Hide' : 'Show'} the alignments of ${hit.accession}`}
                     onClick={e => { e.stopPropagation(); toggleExpand(idx) }}
                   >
-                    {open ? <ChevronDown size={13} /> : <ChevronRight size={13} />}
+                    <Chevron open={open} size={13} />
                   </button>
                 </td>
                 <td className="bd-td-hit">
@@ -176,14 +177,14 @@ export default function HitTable({
                 <td className="bd-td-num">{formatEvalue(hsp.evalue)}</td>
                 <td className="bd-td-num"><Meter value={hit.topIdentity} digits={1} /></td>
                 <td className="bd-td-num"><Meter value={hit.queryCoverage} digits={0} /></td>
-                <td className="bd-td-num">{hsp.alignLen.toLocaleString()}</td>
+                <td className="bd-td-num">{hsp.alignLen.toLocaleString('en-US')}</td>
                 <td className="bd-td-num">
                   {onSelectRange ? (
                     <button
                       className="bd-range-btn"
                       title="Select this range in the sequence"
                       onClick={e => { e.stopPropagation(); onSelectRange(idx) }}
-                    >{hsp.queryFrom.toLocaleString()}..{hsp.queryTo.toLocaleString()}</button>
+                    >{hsp.queryFrom.toLocaleString('en-US')}..{hsp.queryTo.toLocaleString('en-US')}</button>
                   ) : `${hsp.queryFrom}..${hsp.queryTo}`}
                   {reversed && (
                     <span className="bd-strand" title={`${orientationText(program, hsp) ?? 'Minus strand'}: the hit runs against the query`}>minus</span>

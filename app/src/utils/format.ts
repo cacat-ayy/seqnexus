@@ -2,17 +2,17 @@
 
 import type { Alphabet } from '../models/alphabet'
 
-/** A base count: 812 bp, 1.5 kb, 1.50 Mbp, 3.20 Gbp. */
+/** A base count: 812 bp, 1.5 kb, 1.50 Mb, 3.20 Gb. */
 export function formatBp(n: number): string {
-  if (n >= 1_000_000_000) return `${(n / 1_000_000_000).toFixed(2)} Gbp`
-  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(2)} Mbp`
+  if (n >= 1_000_000_000) return `${(n / 1_000_000_000).toFixed(2)} Gb`
+  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(2)} Mb`
   if (n >= 1_000) return `${(n / 1_000).toFixed(1)} kb`
   return `${n} bp`
 }
 
 /** A residue count: 245 aa, 1,245 aa. A protein is never long enough to abbreviate. */
 export function formatAa(n: number): string {
-  return `${n.toLocaleString()} aa`
+  return `${n.toLocaleString('en-US')} aa`
 }
 
 /** A length in the unit of its alphabet. */

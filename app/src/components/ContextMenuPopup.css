@@ -16,17 +16,13 @@
   box-shadow: var(--shadow-popover);
   backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px);
-  animation: ctx-pop-in .12s ease;
+  animation: pop-in var(--dur-fast) var(--ease-out);
   outline: none;
 }
 .ctx-submenu {
   min-width: 180px;
 }
 
-@keyframes ctx-pop-in {
-  from { opacity: 0; transform: scale(.96); }
-  to   { opacity: 1; transform: scale(1); }
-}
 
 .ctx-menu-header {
   padding: var(--space-2) var(--space-3-5) var(--space-1-5);
@@ -169,4 +165,9 @@
    it would draw a second box. */
 .ctx-menu .ctx-menu-item:focus-visible {
   outline: none;
+}
+
+/* A key that does the same thing, at the right edge like the File menu's. */
+.ctx-menu-item > .menu-kbd {
+  margin-left: auto;
 }

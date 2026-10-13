@@ -23,7 +23,7 @@ export interface DeNovoResult {
   mapping: MappingReport
 }
 
-const nf = new Intl.NumberFormat()
+const nf = new Intl.NumberFormat('en-US')
 
 /** The summary toast of a finished assembly. */
 export function assembledMessage(r: DeNovoResult): string {

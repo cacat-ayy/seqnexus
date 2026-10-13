@@ -472,7 +472,7 @@ function paintRuler(ctx: CanvasRenderingContext2D, p: PaintInput, theme: AlnThem
     ctx.fillStyle = theme.grid
     ctx.fillRect(Math.round(x), y1 - 5, 1, 4)
     ctx.fillStyle = theme.muted
-    ctx.fillText(num.toLocaleString(), x, 11)
+    ctx.fillText(num.toLocaleString('en-US'), x, 11)
   }
   ctx.textBaseline = 'middle'
 }

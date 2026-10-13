@@ -11,7 +11,7 @@
  */
 
 import { useState, useCallback, useRef, useEffect, useMemo } from 'react'
-import { ChevronRight, ChevronDown, Plus, X, Copy, Atom, Info, TriangleAlert } from 'lucide-react'
+import { Plus, X, Copy, Atom, Info, TriangleAlert } from 'lucide-react'
 import { useEditorStore } from '../../store'
 import type { Annotation, AnnotationData, Strand } from '../../models/Annotation'
 import { PRESET_COLORS } from '../../utils/annotation-constants'
@@ -20,6 +20,7 @@ import {
 } from '../../utils/annotation-sequence'
 import { locationError } from '../../utils/feature-location'
 import { copyText } from '../../utils/clipboard'
+import Chevron from '../Chevron'
 
 type Patch = Partial<Omit<AnnotationData, 'id'>>
 
@@ -118,13 +119,13 @@ function QualifiersEditor({ annotation, update, begin }: {
   return (
     <div className="ft-quals">
       <button className="ft-quals-toggle" onClick={() => setOpen(v => !v)}>
-        {open ? <ChevronDown size={11} /> : <ChevronRight size={11} />}
+        <Chevron open={open} size={11} />
         <span>Qualifiers</span>
         {entries.length > 0 && <span className="ft-quals-count">{entries.reduce((n, [, v]) => n + v.length, 0)}</span>}
       </button>
 
       {open && (
-        <div className="ft-quals-body">
+        <div className="ft-quals-body disclose">
           {entries.length === 0 && !showAddForm && <div className="ft-quals-empty">No qualifiers</div>}
 
           {entries.map(([key, values]) => (

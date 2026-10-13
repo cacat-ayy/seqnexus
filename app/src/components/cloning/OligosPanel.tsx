@@ -257,7 +257,7 @@ export default function OligosPanel({ design, product, onClose }: Props) {
                     <td className="cw-cell-name">Junction {read.junction + 1}</td>
                     <td className="cw-oligo-seq">{read.primer.sequence}</td>
                     <td className="cw-cell-size">{read.primer.tm.toFixed(1)}</td>
-                    <td className="cw-cell-size">{read.at.toLocaleString()}</td>
+                    <td className="cw-cell-size">{read.at.toLocaleString('en-US')}</td>
                   </tr>
                 ))}
               </tbody>
@@ -280,7 +280,7 @@ export default function OligosPanel({ design, product, onClose }: Props) {
       {pairs.length > 0 && (
         <p className="cw-line-caption">
           {usable.length > 0 && 'The tail is shown in colour; the rest is what binds the template. '}
-          Parts total {parts.reduce((n, p) => n + partLength(p), 0).toLocaleString()} bp,
+          Parts total {parts.reduce((n, p) => n + partLength(p), 0).toLocaleString('en-US')} bp,
           {' '}of which {usable.length === 0 ? 'none is' : `${usable.length} ${usable.length === 1 ? 'piece is' : 'pieces are'}`} amplified
           {pairs.some(p => p.ready) && ': the rest are ready to use as they are'}.
         </p>

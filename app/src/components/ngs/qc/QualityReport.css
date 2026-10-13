@@ -50,7 +50,7 @@
 .qr-status.pass { color: var(--success); }
 .qr-status.warn { color: var(--warning); }
 .qr-status.fail { color: var(--danger); }
-.qr-status.skip { color: var(--text-faint); }
+.qr-status.skip { color: var(--text-soft); }
 
 /* ---- Modules ---- */
 .qr-main { display: flex; flex-direction: column; gap: var(--space-3); min-width: 0; padding: var(--space-4) 0; }
@@ -172,7 +172,6 @@
 }
 
 /* The read set page switch: the report's worst result beside its name. */
-.aw-seg button.qr-switch { display: inline-flex; align-items: center; gap: var(--space-1); }
 
 /* Library type, and FastQC marks that the library explains: kept, but muted. */
 .qr-library { display: inline-flex; align-items: center; gap: var(--space-1-5); font-size: var(--text-xs); color: var(--text-muted); }

@@ -453,7 +453,7 @@ function ExplorerPanel({
       const joined = { ...doc, origin: { method: 'manual' as const, detail: 'Joined alignments', at: Date.now() } }
       store.addAlignment(joined, { name: alns.map(a => a.name).join(' + ') })
       setSelectedIds(new Set())
-      notify.success(`Joined ${alns.length} alignments: ${joined.rows.length} rows, ${(joined.rows[0]?.seq.length ?? 0).toLocaleString()} columns`)
+      notify.success(`Joined ${alns.length} alignments: ${joined.rows.length} rows, ${(joined.rows[0]?.seq.length ?? 0).toLocaleString('en-US')} columns`)
     } catch (err) {
       notify.error('Could not join the alignments', { detail: err instanceof Error ? err.message : String(err) })
     }
@@ -664,7 +664,9 @@ function ExplorerPanel({
         <input
           className="ex-search"
           type="text"
-          placeholder="Search names, notes, tags, features…"
+          placeholder="Search…"
+          title="Searches names, notes, tags and features"
+          aria-label="Search names, notes, tags and features"
           value={search}
           onChange={e => setSearch(e.target.value)}
         />

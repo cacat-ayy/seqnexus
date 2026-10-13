@@ -6,10 +6,13 @@
   --accent-bg: #eef2ff;
   --accent-hover: #4f46e5;
   --accent-ring: rgba(99,102,241,.12);
+  /* Text, strongest first in every theme: --text, --text-soft (a step down,
+     for dense secondary data that must stay readable), --text-secondary,
+     --text-muted. */
   --text: #1e293b;
   --text-secondary: #64748b;
   --text-muted: #94a3b8;
-  --text-faint: #475569;
+  --text-soft: #475569;
   --bg: #f0f2f5;
   --bg-alt: #ffffff;
   --bg-alt-rgb: 255,255,255;
@@ -222,6 +225,105 @@
   }
 }
 
+/* === Motion ===
+   One set of entrances for the whole app, so every surface moves the same
+   way: fade-in for backdrops and overlays, pop-down for anything that opens
+   below its trigger (menus, popovers, tooltips), pop-up for anything that
+   opens above it (toasts, status-bar popovers, hints), pop-in for a menu at
+   the pointer, pop-left for a panel coming in at the right edge, modal-in
+   for dialogs. Exits play the same keyframes with `reverse`. Durations come from --dur-*, easing from --ease-out. */
+@keyframes fade-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+@keyframes pop-down {
+  from { opacity: 0; transform: translateY(-4px) scale(.98); }
+  to   { opacity: 1; transform: none; }
+}
+@keyframes pop-up {
+  from { opacity: 0; transform: translateY(4px) scale(.98); }
+  to   { opacity: 1; transform: none; }
+}
+@keyframes pop-in {
+  from { opacity: 0; transform: scale(.96); }
+  to   { opacity: 1; transform: none; }
+}
+@keyframes pop-left {
+  from { opacity: 0; transform: translateX(8px); }
+  to   { opacity: 1; transform: none; }
+}
+@keyframes modal-in {
+  from { opacity: 0; transform: translateY(8px) scale(.96); }
+  to   { opacity: 1; transform: none; }
+}
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50%      { opacity: .35; }
+}
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+/* Disclosures: the chevron turns (components/Chevron), and a section that
+   opens (.disclose) grows from nothing to its height rather than appearing
+   at once. The growth needs a browser that can transition to `auto`
+   (interpolate-size, Chromium 129+); elsewhere the section just appears.
+   Closing unmounts the section, so it goes at once. */
+.app-root { interpolate-size: allow-keywords; }
+.chevron {
+  flex-shrink: 0;
+  transition: transform var(--dur-fast) var(--ease-out);
+}
+.chevron.open { transform: rotate(90deg); }
+.disclose {
+  overflow: clip;
+  transition: height var(--dur-normal) var(--ease-out), opacity var(--dur-normal) var(--ease-out);
+}
+@starting-style {
+  .disclose { height: 0; opacity: 0; }
+}
+
+/* A copy that worked, shown on the button it came from (utils/clipboard):
+   the success colours, holding a moment, then easing back. */
+.app-root button.copied {
+  animation: copied calc(var(--dur-slow) * 3) var(--ease-out);
+}
+@keyframes copied {
+  0%, 40% {
+    color: var(--success);
+    background-color: var(--success-bg);
+    border-color: var(--success);
+  }
+}
+
+/* Placeholder rows (components/SkeletonRows): a light band sweeps across
+   them. Under reduced motion they stand still. */
+.skeleton-rows {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2-5);
+  padding: var(--space-3);
+}
+.skeleton-row {
+  height: 10px;
+  border-radius: var(--radius-pill);
+  background: linear-gradient(90deg, var(--bg-hover) 30%, color-mix(in srgb, var(--bg-hover) 35%, var(--bg-alt)) 50%, var(--bg-hover) 70%);
+  background-size: 300% 100%;
+  animation: shimmer calc(var(--dur-slow) * 5) ease-in-out infinite;
+}
+@keyframes shimmer {
+  from { background-position: 100% 0; }
+  to   { background-position: 0 0; }
+}
+
+/* The one spinner: Loader icons and ring spinners take this class. Under
+   reduced motion it pulses slowly instead, because a spinner stopped after
+   one turn by the rule above reads as a hung app. */
+.spinner { animation: spin .9s linear infinite; }
+@media (prefers-reduced-motion: reduce) {
+  .app-root .spinner { animation: pulse 2s ease-in-out infinite !important; }
+}
+
 /* === Smooth Theme Transitions === */
 
 /* View Transition API cross-fade (Chrome 111+, Safari 18+) */
@@ -261,7 +363,7 @@
   --accent: #818cf8; --accent-dark: #6366f1; --accent-light: #4338ca;
   --accent-bg: rgba(99,102,241,.15); --accent-hover: #6366f1;
   --accent-ring: rgba(99,102,241,.2);
-  --text: #f1f5f9; --text-secondary: #94a3b8; --text-muted: #64748b; --text-faint: #cbd5e1;
+  --text: #f1f5f9; --text-secondary: #94a3b8; --text-muted: #64748b; --text-soft: #cbd5e1;
   --bg: #0f172a; --bg-alt: #1e293b; --bg-alt-rgb: 30,41,59; --bg-hover: #273449;
   --bg-toolbar: #1e293b; --bg-sidebar: #1e293b;
   --border: #334155; --border-light: #2d3a4e; --border-hover: #475569;
@@ -289,7 +391,7 @@
   --accent: #38bdf8; --accent-dark: #0ea5e9; --accent-light: #0c4a6e;
   --accent-bg: rgba(56,189,248,.1); --accent-hover: #0ea5e9;
   --accent-ring: rgba(56,189,248,.15);
-  --text: #f0f9ff; --text-secondary: #7dd3fc; --text-muted: #38bdf8; --text-faint: #bae6fd;
+  --text: #f0f9ff; --text-secondary: #7dd3fc; --text-muted: #38bdf8; --text-soft: #bae6fd;
   --bg: #020617; --bg-alt: #0c1222; --bg-alt-rgb: 12,18,34; --bg-hover: #131d33;
   --bg-toolbar: #0c1222; --bg-sidebar: #0c1222;
   --border: #1e293b; --border-light: #172033; --border-hover: #334155;
@@ -316,7 +418,7 @@
   --accent: #268bd2; --accent-dark: #1a6da8; --accent-light: #b8d4e8;
   --accent-bg: rgba(38,139,210,.08); --accent-hover: #1a6da8;
   --accent-ring: rgba(38,139,210,.12);
-  --text: #002b36; --text-secondary: #586e75; --text-muted: #93a1a1; --text-faint: #657b83;
+  --text: #002b36; --text-secondary: #586e75; --text-muted: #93a1a1; --text-soft: #657b83;
   --bg: #eee8d5; --bg-alt: #fdf6e3; --bg-alt-rgb: 253,246,227; --bg-hover: #f0e8cc;
   --bg-toolbar: #fdf6e3; --bg-sidebar: #fdf6e3;
   --border: #d6ceb5; --border-light: #e0d8bf; --border-hover: #c4bca3;
@@ -338,7 +440,7 @@
   --accent: #16a34a; --accent-dark: #15803d; --accent-light: #bbf7d0;
   --accent-bg: rgba(22,163,74,.08); --accent-hover: #15803d;
   --accent-ring: rgba(22,163,74,.12);
-  --text: #14532d; --text-secondary: #4d7c5a; --text-muted: #86a892; --text-faint: #3d6b4a;
+  --text: #14532d; --text-secondary: #4d7c5a; --text-muted: #86a892; --text-soft: #3d6b4a;
   --bg: #ecf5ec; --bg-alt: #f8fcf8; --bg-alt-rgb: 248,252,248; --bg-hover: #e6f2e6;
   --bg-toolbar: #f8fcf8; --bg-sidebar: #f8fcf8;
   --border: #d1e5d1; --border-light: #dceadc; --border-hover: #a8cca8;
@@ -360,7 +462,7 @@
   --accent: #e11d48; --accent-dark: #be123c; --accent-light: #fecdd3;
   --accent-bg: rgba(225,29,72,.06); --accent-hover: #be123c;
   --accent-ring: rgba(225,29,72,.1);
-  --text: #1c1017; --text-secondary: #78616b; --text-muted: #a8929c; --text-faint: #5c4a52;
+  --text: #1c1017; --text-secondary: #78616b; --text-muted: #a8929c; --text-soft: #5c4a52;
   --bg: #f8f0f3; --bg-alt: #fffbfc; --bg-alt-rgb: 255,251,252; --bg-hover: #f5eaee;
   --bg-toolbar: #fffbfc; --bg-sidebar: #fffbfc;
   --border: #e8d5db; --border-light: #f0dfe4; --border-hover: #d4b8c1;
@@ -382,7 +484,7 @@
   --accent: #7c3aed; --accent-dark: #6d28d9; --accent-light: #ddd6fe;
   --accent-bg: rgba(124,58,237,.07); --accent-hover: #6d28d9;
   --accent-ring: rgba(124,58,237,.12);
-  --text: #2e1065; --text-secondary: #6b5b8a; --text-muted: #a393bf; --text-faint: #4c3575;
+  --text: #2e1065; --text-secondary: #6b5b8a; --text-muted: #a393bf; --text-soft: #4c3575;
   --bg: #f0ecf9; --bg-alt: #faf8ff; --bg-alt-rgb: 250,248,255; --bg-hover: #ece6f5;
   --bg-toolbar: #faf8ff; --bg-sidebar: #faf8ff;
   --border: #ddd4ee; --border-light: #e6dff2; --border-hover: #c4b5db;
@@ -405,7 +507,7 @@
   --accent: #bd93f9; --accent-dark: #9d6fef; --accent-light: #6272a4;
   --accent-bg: rgba(189,147,249,.12); --accent-hover: #9d6fef;
   --accent-ring: rgba(189,147,249,.18);
-  --text: #f8f8f2; --text-secondary: #bfbfbf; --text-muted: #6272a4; --text-faint: #ccc;
+  --text: #f8f8f2; --text-secondary: #bfbfbf; --text-muted: #6272a4; --text-soft: #ccc;
   --bg: #1e1f29; --bg-alt: #282a36; --bg-alt-rgb: 40,42,54; --bg-hover: #343746;
   --bg-toolbar: #282a36; --bg-sidebar: #282a36;
   --border: #44475a; --border-light: #3b3d50; --border-hover: #6272a4;
@@ -432,7 +534,7 @@
   --accent: #88c0d0; --accent-dark: #5e81ac; --accent-light: #4c566a;
   --accent-bg: rgba(136,192,208,.1); --accent-hover: #5e81ac;
   --accent-ring: rgba(136,192,208,.15);
-  --text: #eceff4; --text-secondary: #d8dee9; --text-muted: #7b88a1; --text-faint: #e5e9f0;
+  --text: #eceff4; --text-secondary: #d8dee9; --text-muted: #7b88a1; --text-soft: #e5e9f0;
   --bg: #242933; --bg-alt: #2e3440; --bg-alt-rgb: 46,52,64; --bg-hover: #3b4252;
   --bg-toolbar: #2e3440; --bg-sidebar: #2e3440;
   --border: #3b4252; --border-light: #353c4a; --border-hover: #4c566a;
@@ -459,7 +561,7 @@
   --accent: #cba6f7; --accent-dark: #b4befe; --accent-light: #585b70;
   --accent-bg: rgba(203,166,247,.1); --accent-hover: #b4befe;
   --accent-ring: rgba(203,166,247,.15);
-  --text: #cdd6f4; --text-secondary: #a6adc8; --text-muted: #6c7086; --text-faint: #bac2de;
+  --text: #cdd6f4; --text-secondary: #a6adc8; --text-muted: #6c7086; --text-soft: #bac2de;
   --bg: #11111b; --bg-alt: #1e1e2e; --bg-alt-rgb: 30,30,46; --bg-hover: #2a2b3d;
   --bg-toolbar: #1e1e2e; --bg-sidebar: #1e1e2e;
   --border: #313244; --border-light: #2a2b3d; --border-hover: #45475a;
@@ -555,6 +657,11 @@
 /* Labels go, icons and tooltips stay. */
 .toolbar.is-icons .tb-text { display: none; }
 
+/* The analysis and design tools fold into one Tools menu. */
+.toolbar .toolbar-tools-menu { display: none; }
+.toolbar.is-collapsed .toolbar-tools { display: none; }
+.toolbar.is-collapsed .toolbar-tools-menu { display: flex; }
+
 /* Narrower than even the icon row. Wrapping is wrong, but it beats pushing
    the trailing buttons off the edge of the window where nothing can reach
    them: at that width the popover offset is the smaller problem. */
@@ -611,6 +718,8 @@
 }
 
 .toolbar-group:last-child { border-right: none; }
+/* A group with nothing to offer in the current workspace leaves no divider. */
+.toolbar-group:empty { display: none; }
 
 .tb {
   display: inline-flex;
@@ -683,13 +792,9 @@
   box-shadow: var(--shadow-popover);
   backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px);
-  animation: dropdown-in .1s ease;
+  animation: pop-down var(--dur-fast) var(--ease-out);
 }
 
-@keyframes dropdown-in {
-  from { opacity: 0; transform: translateY(-4px) scale(.97); }
-  to   { opacity: 1; transform: translateY(0) scale(1); }
-}
 
 .tb-dropdown-item {
   display: block;
@@ -728,13 +833,9 @@
   font-size: var(--text-xs);
   line-height: 1.4;
   pointer-events: none;
-  animation: tb-tooltip-in var(--dur-fast) var(--ease-out);
+  animation: pop-down var(--dur-fast) var(--ease-out);
 }
 
-@keyframes tb-tooltip-in {
-  from { opacity: 0; transform: translateY(-2px); }
-  to   { opacity: 1; transform: translateY(0); }
-}
 
 .tb-tooltip-head {
   display: flex;
@@ -824,19 +925,16 @@
 .theme-popover {
   position: fixed;
   z-index: var(--z-dropdown);
-  width: 220px;
+  width: 320px;
+  max-width: calc(100vw - var(--space-6));
   background: var(--bg-alt);
   border: 1px solid var(--border-hover);
   border-radius: var(--radius-popover);
   box-shadow: var(--shadow-popover);
   overflow: hidden;
-  animation: popover-in .12s ease;
+  animation: pop-down var(--dur-fast) var(--ease-out);
 }
 
-@keyframes popover-in {
-  from { opacity: 0; transform: translateY(-4px) scale(.97); }
-  to   { opacity: 1; transform: translateY(0) scale(1); }
-}
 
 .popover-header {
   display: flex;
@@ -867,9 +965,17 @@
 }
 
 .theme-popover-body {
-  padding: var(--space-1-5) var(--space-2) var(--space-2);
-  max-height: 400px;
-  overflow-y: auto;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-1);
+  padding: var(--space-1) var(--space-2) var(--space-2);
+}
+
+.theme-col {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-0-5);
+  min-width: 0;
 }
 
 .theme-group-label {
@@ -884,7 +990,7 @@
 .theme-option {
   display: flex;
   align-items: center;
-  gap: var(--space-2-5);
+  gap: var(--space-2);
   width: 100%;
   padding: var(--space-1) var(--space-1-5);
   background: none;
@@ -903,8 +1009,8 @@
 }
 
 .theme-preview {
-  width: 44px;
-  height: 30px;
+  width: 36px;
+  height: 26px;
   border-radius: var(--radius-sm);
   display: flex;
   align-items: center;
@@ -914,13 +1020,13 @@
 }
 
 .tp-card {
-  width: 32px;
-  height: 22px;
+  width: 26px;
+  height: 18px;
   border-radius: var(--radius-sm);
   display: flex;
   flex-direction: column;
   gap: var(--space-0-5);
-  padding: var(--space-1) var(--space-1);
+  padding: var(--space-0-5) var(--space-1);
   box-shadow: var(--shadow-sm);
 }
 
@@ -941,6 +1047,10 @@
 
 .theme-label {
   font-weight: 500;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 /* --- Info Popover --- */
@@ -1115,7 +1225,7 @@
 
 .tb-badge-pulse {
   background: var(--accent);
-  animation: blast-pulse 1.5s ease-in-out infinite;
+  animation: pulse 1.5s ease-in-out infinite;
 }
 
 .tb-badge-done {
@@ -1270,6 +1380,23 @@
 .view-tab.active { color: var(--accent); border-bottom-color: var(--accent); }
 /* A protein has one view, so its tab is a label, not a choice. */
 .view-tab-static { cursor: default; }
+
+/* Tabs inside a panel (the sidebar, the gel, alignment and contig inspectors,
+   the cloning maps): the view tabs' design one size down, in sentence case.
+   Each strip keeps its own class for layout; this is how a tab looks. */
+.panel-tab {
+  border: none;
+  border-bottom: 2px solid transparent;
+  background: transparent;
+  color: var(--text-secondary);
+  font-family: inherit;
+  font-size: var(--text-sm);
+  font-weight: 600;
+  cursor: pointer;
+  transition: color var(--dur-fast) var(--ease-out), border-color var(--dur-fast) var(--ease-out);
+}
+.panel-tab:hover { color: var(--text); }
+.panel-tab.active { color: var(--accent); border-bottom-color: var(--accent); }
 
 .view-info {
   margin-left: auto;
@@ -1462,6 +1589,17 @@
   line-height: 16px;
 }
 
+/* A count re-keyed on its value (the layer bar's, the sidebar tabs') swells
+   a little when it changes, so a new result is noticed without a toast. */
+.panel-bar-count,
+.fs-tab .fs-count {
+  animation: count-bump var(--dur-normal) var(--ease-out);
+}
+@keyframes count-bump {
+  from { transform: scale(1.35); }
+  to   { transform: none; }
+}
+
 .panel-bar-btn.active .panel-bar-count {
   background: var(--accent);
   color: var(--on-accent);
@@ -1481,6 +1619,30 @@
   border-color: var(--accent);
   color: var(--on-accent);
   filter: brightness(1.08);
+}
+
+/* "Add all" beside a layer: a bulk write offered next to a display toggle,
+   so it reads as a link-weight action rather than the loudest thing here. */
+.panel-bar-btn-quiet {
+  color: var(--accent);
+  font-weight: 500;
+}
+
+/* A layer's convert actions, kept against the toggle that produced them. */
+.panel-bar-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-0-5);
+  min-width: 0;
+  margin-right: var(--space-1-5);
+}
+
+/* Names the layer toggles that follow it, apart from the sidebar tabs before. */
+.panel-bar-label {
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+  padding: 0 var(--space-1) 0 var(--space-0-5);
+  white-space: nowrap;
 }
 
 /* The one thing in this row that is text rather than a control. It explains
@@ -1522,13 +1684,24 @@
   overflow: hidden;
   position: relative;
   min-height: 0;
+  /* Its own transition group, so switching Linear, Circular and Split
+     (switchView in App) cross-fades the view while the rest stays put. */
+  view-transition-name: seq-view;
+}
+/* Raw values: these pseudo-elements hang off the document root, outside
+   .app-root where the --dur and --ease tokens are defined. */
+::view-transition-old(seq-view),
+::view-transition-new(seq-view) {
+  animation-duration: .2s;
+  animation-timing-function: cubic-bezier(.2, .8, .3, 1);
 }
 
 /* --- Panel empty state hints --- */
+/* Bottom right of the view: the top holds the minimap ruler and the Find card. */
 .panel-hints {
   position: absolute;
-  top: 6px;
-  right: 8px;
+  bottom: var(--space-3);
+  right: var(--space-5);
   z-index: var(--z-sticky);
   display: flex;
   flex-direction: column;
@@ -1548,7 +1721,7 @@
   border-radius: var(--radius-sm);
   box-shadow: var(--shadow-sm);
   pointer-events: auto;
-  animation: panel-hint-in 0.2s ease;
+  animation: pop-up var(--dur-normal) var(--ease-out);
 }
 .panel-hint-link {
   background: none;
@@ -1562,10 +1735,6 @@
 }
 .panel-hint-link:hover {
   color: var(--text);
-}
-@keyframes panel-hint-in {
-  from { opacity: 0; transform: translateY(-4px); }
-  to   { opacity: 1; transform: translateY(0); }
 }
 
 /* --- Bottom panel (features) --- */
@@ -1666,31 +1835,19 @@
   background: var(--backdrop);
   backdrop-filter: blur(4px);
   -webkit-backdrop-filter: blur(4px);
-  animation: modal-fade-in var(--dur-normal) ease;
+  animation: fade-in var(--dur-normal) var(--ease-out);
 }
 
-@keyframes modal-fade-in {
-  from { opacity: 0; }
-  to   { opacity: 1; }
-}
 
-@keyframes modal-fade-out {
-  from { opacity: 1; }
-  to   { opacity: 0; }
-}
 
-@keyframes modal-slide-out {
-  from { transform: scale(1)   translateY(0);   opacity: 1; }
-  to   { transform: scale(.96) translateY(8px); opacity: 0; }
-}
 
 .modal-backdrop.closing {
-  animation: modal-fade-out var(--dur-fast) ease forwards;
+  animation: fade-in var(--dur-fast) var(--ease-out) reverse forwards;
   pointer-events: none;
 }
 
 .modal-backdrop.closing .modal-dialog {
-  animation: modal-slide-out var(--dur-fast) ease forwards;
+  animation: modal-in var(--dur-fast) var(--ease-out) reverse forwards;
 }
 
 .modal-dialog {
@@ -1702,7 +1859,7 @@
   flex-direction: column;
   max-height: 85vh;
   overflow: hidden;
-  animation: modal-slide-in var(--dur-normal) ease;
+  animation: modal-in var(--dur-normal) var(--ease-out);
 }
 .modal-dialog.enzyme-modal {
   width: 420px;
@@ -1721,15 +1878,6 @@
   opacity: 0.8;
 }
 
-@keyframes modal-slide-in {
-  from { transform: scale(.96) translateY(8px); opacity: 0; }
-  to   { transform: scale(1)   translateY(0);   opacity: 1; }
-}
-
-/* Shared spinner - replaces per-component duplicates */
-@keyframes spin {
-  to { transform: rotate(360deg); }
-}
 
 .modal-header {
   display: flex;
@@ -1843,43 +1991,112 @@
 .btn-add:disabled { opacity: 0.4; cursor: not-allowed; }
 .btn-add:disabled:hover { color: var(--text-secondary); border-color: var(--border-hover); background: transparent; }
 
-/* --- Toggle groups (segmented buttons) --- */
-.toggle-group {
+/* An optional field says so after its label, in a lighter weight: "Description
+   optional". One way everywhere, not "(optional)" in one dialog and a
+   placeholder in the next. */
+.field-optional {
+  margin-left: var(--space-1);
+  font-weight: 400;
+  color: var(--text-muted);
+}
+
+/* --- Segmented controls ---
+   Every choice between a few options looks the same: a sunken track with the
+   chosen option raised on it. The container takes `seg` (plus its own class
+   for layout); the buttons inside are styled here and marked chosen by
+   .active or aria-checked / aria-selected. `seg-sm` is the size for panels
+   and inspectors, `seg-xs` for the dense Display popover. */
+.seg {
   display: inline-flex;
-  border: 1px solid var(--border);
+  align-items: center;
+  gap: var(--space-0-5);
+  padding: var(--space-0-5);
+  background: color-mix(in srgb, var(--text) 7%, transparent);
   border-radius: var(--radius-input);
-  overflow: hidden;
+  flex-shrink: 0;
 }
 
-.toggle-btn {
+.seg > button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-1);
   padding: var(--space-1) var(--space-3);
-  font-size: var(--text-sm);
-  font-weight: 500;
-  font-family: inherit;
-  background: var(--bg-alt);
-  color: var(--text-secondary);
   border: none;
+  border-radius: var(--radius-sm);
+  background: none;
+  font-family: inherit;
+  font-size: var(--text-sm);
+  font-weight: 600;
+  color: var(--text-secondary);
+  white-space: nowrap;
   cursor: pointer;
-  transition: background var(--dur-fast), color var(--dur-fast);
+  transition: background-color var(--dur-fast) var(--ease-out), color var(--dur-fast) var(--ease-out),
+    box-shadow var(--dur-fast) var(--ease-out);
 }
 
-.toggle-btn:not(:last-child) {
-  border-right: 1px solid var(--border);
+/* Hover darkens the options not chosen; the chosen one keeps its accent. */
+.seg > button:not(.active):not([aria-checked="true"]):not([aria-selected="true"]):hover:not(:disabled) { color: var(--text); }
+
+.seg > button.active,
+.seg > button[aria-checked="true"],
+.seg > button[aria-selected="true"] {
+  background: var(--bg-alt);
+  color: var(--accent);
+  box-shadow: var(--shadow-sm);
 }
 
-.toggle-btn:hover:not(.active):not(:disabled) {
-  background: var(--bg-hover);
-}
+.seg > button:disabled { opacity: 0.45; cursor: not-allowed; }
+.seg > button:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
 
-.toggle-btn.active {
+/* --- Sliding indicators (useSlidingIndicators) ---
+   Once the controller has measured a control (.has-ind), the chosen option's
+   raised fill and the active tab's underline are drawn by the control itself,
+   from the box it was given, and slide between options; the options drop
+   their own. Unmeasured, the options keep them. */
+.seg { position: relative; isolation: isolate; }
+.view-tabs,
+:has(> .panel-tab):not(.fs-tabs-measure) { position: relative; }
+
+.has-ind.ind-pill::before,
+.has-ind.ind-bar::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: var(--ind-w);
+  height: var(--ind-h);
+  transform: translate(var(--ind-x), var(--ind-y));
+  pointer-events: none;
+}
+.has-ind.ind-pill::before {
+  z-index: -1;
+  background: var(--bg-alt);
+  border-radius: var(--radius-sm);
+  box-shadow: var(--shadow-sm);
+}
+.has-ind.ind-pill.seg-xs::before { border-radius: var(--radius-xs); }
+.has-ind.ind-bar::after {
   background: var(--accent);
-  color: var(--on-accent);
+  border-radius: var(--radius-pill);
 }
+.ind-ready.ind-pill::before,
+.ind-ready.ind-bar::after {
+  transition: transform var(--dur-normal) var(--ease-out), width var(--dur-normal) var(--ease-out),
+    height var(--dur-normal) var(--ease-out);
+}
+.has-ind.ind-pill > .active,
+.has-ind.ind-pill > [aria-checked="true"],
+.has-ind.ind-pill > [aria-selected="true"] {
+  background: transparent;
+  box-shadow: none;
+}
+.has-ind.ind-bar > .active { border-bottom-color: transparent; }
 
-.toggle-btn:disabled {
-  opacity: 0.4;
-  cursor: not-allowed;
-}
+.seg-sm > button { padding: var(--space-0-5) var(--space-2); font-size: var(--text-xs); }
+.seg-xs { padding: 1px; border-radius: var(--radius-sm); }
+.seg-xs > button { padding: 1px var(--space-1-5); font-size: var(--text-2xs); border-radius: var(--radius-xs); }
+
 
 /* --- Inputs --- */
 .input {
@@ -1917,6 +2134,69 @@
 .select:focus {
   border-color: var(--accent);
   box-shadow: 0 0 0 3px var(--accent-ring);
+}
+
+/* --- Dropdown lists ---
+   Where the browser lets a <select> be styled (customizable select, in
+   Chromium since 135), its list opens as one of the app's popovers, in the
+   theme, rather than as the operating system's list with its own highlight
+   colour. Other browsers keep the native list. List boxes (multiple, size)
+   are left alone. */
+@supports (appearance: base-select) {
+  .app-root select:not([multiple]):not([size]),
+  .app-root select:not([multiple]):not([size])::picker(select) {
+    appearance: base-select;
+  }
+
+  .app-root select:not([multiple]):not([size]) {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-1);
+  }
+
+  .app-root select::picker-icon {
+    color: var(--text-muted);
+    transition: rotate var(--dur-fast) var(--ease-out);
+  }
+  .app-root select:open::picker-icon { rotate: 180deg; }
+
+  .app-root select::picker(select) {
+    margin-block: var(--space-0-5);
+    padding: var(--space-1);
+    color: var(--text);
+    background: var(--bg-alt);
+    border: 1px solid var(--border-hover);
+    border-radius: var(--radius-input);
+    box-shadow: var(--shadow-popover);
+  }
+
+  .app-root select optgroup {
+    padding-top: var(--space-1);
+    font-size: var(--text-2xs);
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--text-muted);
+  }
+
+  .app-root select option {
+    gap: var(--space-1-5);
+    padding: var(--space-1) var(--space-2);
+    border-radius: var(--radius-sm);
+    font-size: var(--text-sm);
+    font-weight: 400;
+    text-transform: none;
+    letter-spacing: normal;
+    color: var(--text);
+  }
+  .app-root select option:hover,
+  .app-root select option:focus-visible {
+    background: var(--bg-hover);
+    outline: none;
+  }
+  .app-root select option:checked { color: var(--accent); font-weight: 600; }
+  .app-root select option::checkmark { color: var(--accent); }
+  .app-root select option:disabled { color: var(--text-muted); }
 }
 
 /* === Responsive: compact layout for narrow viewports === */
@@ -2011,7 +2291,7 @@
   cursor: pointer;
   padding: 0 var(--space-0-5);
   font-size: var(--text-md);
-  color: var(--text-faint);
+  color: var(--text-soft);
   flex-shrink: 0;
 }
 
@@ -2038,6 +2318,26 @@
 }
 @keyframes seq-caret-blink {
   50% { opacity: 0; }
+}
+
+/* Where a jump landed (SequenceView's flashRange): an accent ring over the
+   bases that grows out a little and fades, once. */
+.seq-locate {
+  display: none;
+  position: absolute;
+  top: 0;
+  left: 0;
+  border-radius: var(--radius-xs);
+  box-shadow: 0 0 0 2px var(--accent);
+  pointer-events: none;
+}
+.seq-locate.flash {
+  display: block;
+  animation: seq-locate var(--dur-slow) var(--ease-out) 2;
+}
+@keyframes seq-locate {
+  from { opacity: 1; box-shadow: 0 0 0 2px var(--accent); }
+  to   { opacity: 0; box-shadow: 0 0 0 8px color-mix(in srgb, var(--accent) 0%, transparent); }
 }
 
 /* Range readout beside the pointer while a selection is dragged. */

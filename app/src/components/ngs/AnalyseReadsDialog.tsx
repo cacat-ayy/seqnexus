@@ -39,7 +39,7 @@ import { deleteMappingStorage, deleteReadChunks } from '../../storage/idb'
 import PrimerClipField from './PrimerClipField'
 import { usePrimerClip } from './usePrimerClip'
 
-const nf = new Intl.NumberFormat()
+const nf = new Intl.NumberFormat('en-US')
 
 type StepState = 'skip' | 'wait' | 'run' | 'done' | 'fail'
 type StepId = 'trim' | 'map' | 'variants' | 'junctions'
@@ -323,7 +323,7 @@ export default function AnalyseReadsDialog({ readSetIds, denovo: startDenovo = f
                       <td key={s} className={`ap-step ${r.steps[s]}`}>
                         {r.steps[s] === 'done' ? <CircleCheck size={13} aria-label="done" />
                           : r.steps[s] === 'fail' ? <CircleX size={13} aria-label="failed" />
-                            : r.steps[s] === 'run' ? <><Loader2 size={13} className="ap-spin" aria-label="running" /> {Math.round(r.frac * 100)}%</>
+                            : r.steps[s] === 'run' ? <><Loader2 size={13} className="spinner" aria-label="running" /> {Math.round(r.frac * 100)}%</>
                               : r.steps[s] === 'skip' ? '-' : ''}
                       </td>
                     ))}
@@ -363,7 +363,7 @@ export default function AnalyseReadsDialog({ readSetIds, denovo: startDenovo = f
               <input type="checkbox" checked={trim} onChange={e => setTrim(e.target.checked)} />
               {denovo ? '2. Trim and filter first' : '2. Trim and filter first, with the default settings'}
             </label>
-            <div className="aw-seg" role="radiogroup" aria-label="Step 3">
+            <div className="seg seg-sm aw-seg" role="radiogroup" aria-label="Step 3">
               <button role="radio" aria-checked={!denovo} className={!denovo ? 'active' : ''} onClick={() => setDenovo(false)}
                 title="Map every read set to the same references, as samples of one mapping">Map to references</button>
               <button role="radio" aria-checked={denovo} className={denovo ? 'active' : ''} onClick={() => setDenovo(true)}

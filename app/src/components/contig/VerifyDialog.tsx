@@ -82,7 +82,7 @@ export default function VerifyDialog({ doc, name, consensus, features, canAnnota
     return { ...s, featureIds: [...ids] }
   })
   const chosen = new Set(settings.featureIds ?? checkable.map(f => f.id))
-  const gaps = report.uncovered.map(g => (g.from === g.to ? `${g.from}` : `${g.from.toLocaleString()}-${g.to.toLocaleString()}`))
+  const gaps = report.uncovered.map(g => (g.from === g.to ? `${g.from}` : `${g.from.toLocaleString('en-US')}-${g.to.toLocaleString('en-US')}`))
 
   return (
     <div className="aw-figure-backdrop" onMouseDown={e => { if (e.target === e.currentTarget) onClose() }}>
@@ -95,7 +95,7 @@ export default function VerifyDialog({ doc, name, consensus, features, canAnnota
           <div className="cw-verify-report">
             <span className={`cw-verdict ${report.verdict}`}>{STATUS_LABEL[report.verdict]}</span>
             <p>
-              {pct(report.covered)} of {report.reference.length.toLocaleString()} bp covered
+              {pct(report.covered)} of {report.reference.length.toLocaleString('en-US')} bp covered
               {settings.minDepth > 1 ? ` by at least ${settings.minDepth} reads` : ''}{settings.bothStrands ? ' on both strands' : ''};
               {' '}{pct(report.bothStrands)} read on both strands, from {report.reads} reads.
               {' '}{report.differences.length ? `${report.differences.length} ${report.differences.length === 1 ? 'difference' : 'differences'} from the design.` : 'No differences from the design.'}
@@ -112,7 +112,7 @@ export default function VerifyDialog({ doc, name, consensus, features, canAnnota
                       <tr key={f.feature.id}>
                         <td className="rs-name" title={f.feature.type}>{f.feature.name}</td>
                         <td><span className={`cw-status ${f.status}`}>{STATUS_LABEL[f.status]}</span></td>
-                        <td className="num">{f.length.toLocaleString()}</td>
+                        <td className="num">{f.length.toLocaleString('en-US')}</td>
                         <td className="num">{pct(f.covered)}</td>
                         <td className="num">{pct(f.bothStrands)}</td>
                         <td className="num">{f.minDepth}</td>
@@ -132,7 +132,7 @@ export default function VerifyDialog({ doc, name, consensus, features, canAnnota
                   <tbody>
                     {report.differences.map((v, i) => (
                       <tr key={i} onClick={() => onGoto(v)} title="Show it in the contig" style={{ cursor: 'pointer' }}>
-                        <td className="num">{v.position.toLocaleString()}</td>
+                        <td className="num">{v.position.toLocaleString('en-US')}</td>
                         <td className="cw-base">{describeChange(v)}</td>
                         <td className="num">{Math.round(v.frequency * 100)}% of {v.coverage}</td>
                         <td className="num" title={v.pValue > 1e-4 ? 'Low confidence: check the traces' : undefined}>{v.pValue.toExponential(1)}{v.pValue > 1e-4 ? ' ⚠' : ''}</td>

@@ -43,7 +43,7 @@ interface Props {
   rerunId?: string
 }
 
-const nf = new Intl.NumberFormat()
+const nf = new Intl.NumberFormat('en-US')
 /** A reference kept in the assembly's own contigs, for when its sequence is no longer open: `stored:` and its name. */
 const STORED = 'stored:'
 /** Most parts offered to name a clone by. */
@@ -266,7 +266,7 @@ export default function AssembleDialog({ readIds, onClose, referenceTabId, rerun
             </table>
           </div>
           <div className="aw-figure-options aw-stack">
-            <div className="aw-seg" role="radiogroup" aria-label="How to assemble">
+            <div className="seg seg-sm aw-seg" role="radiogroup" aria-label="How to assemble">
               <button role="radio" aria-checked={mode === 'reference'} className={mode === 'reference' ? 'active' : ''} onClick={() => setMode('reference')}>Map to a reference</button>
               <button role="radio" aria-checked={mode === 'de-novo'} className={mode === 'de-novo' ? 'active' : ''} onClick={() => setMode('de-novo')}>De novo</button>
             </div>

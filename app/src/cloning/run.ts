@@ -323,7 +323,7 @@ export function productDocument(
 ): DocumentState {
   const lines = [
     `Cloning: ${product.description}`,
-    `Parts: ${design.parts.map(p => `${p.name} (${partLength(p).toLocaleString()} bp)`).join('; ')}`,
+    `Parts: ${design.parts.map(p => `${p.name} (${partLength(p).toLocaleString('en-US')} bp)`).join('; ')}`,
   ]
   if (product.warnings.length > 0) lines.push(...product.warnings)
 

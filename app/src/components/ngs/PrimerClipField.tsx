@@ -6,7 +6,7 @@
 
 import type { PrimerClip } from './usePrimerClip'
 
-const nf = new Intl.NumberFormat()
+const nf = new Intl.NumberFormat('en-US')
 
 export default function PrimerClipField({ clip, disabled }: { clip: PrimerClip; disabled?: boolean }) {
   const none = clip.oligoCount === 0

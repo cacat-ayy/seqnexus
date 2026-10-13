@@ -16,7 +16,7 @@ import { ChevronRight, CircleCheck, CircleSlash, Info, TriangleAlert, Wand2 } fr
 import type { Assembly } from '../../cloning/product'
 import type { CloningDesign } from '../../cloning/design'
 import { productKey } from '../../cloning/run'
-import { isIntended, productLabel, type DesignFix } from '../../cloning/outcome'
+import { isIntended, missingPart, productLabel, type DesignFix } from '../../cloning/outcome'
 import { formatBp } from '../../utils/format'
 
 interface Props {
@@ -87,18 +87,12 @@ export default function ProductsPanel({
   )
 
   if (products.length === 0 || !selected) {
-    const onePart = design.parts.length === 1 && design.method !== 'gateway' && design.method !== 'topo'
-    // With one part there is nothing to join it to, so the engine's reasons
-    // (no shared ends, no homology between parts) only restate that.
-    const missing = design.parts[0]?.role === 'vector' ? 'an insert' : 'the vector'
+    // With one part the engine's reasons (no shared ends, no homology between
+    // parts) only restate that there is nothing to join, which the map says.
+    if (missingPart(design)) return warningList ? <div className="cw-outcome">{warningList}</div> : null
     return (
       <div className="cw-outcome">
-        <Diagnosis
-          title="Nothing assembles yet"
-          problems={onePart ? [`There is only one part so far. Add ${missing} under Parts.`] : problems}
-          fixes={fixes}
-          onFix={onFix}
-        />
+        <Diagnosis title="Nothing assembles yet" problems={problems} fixes={fixes} onFix={onFix} />
         {warningList}
       </div>
     )

@@ -10,7 +10,7 @@ import { Tags, X } from 'lucide-react'
 import { describeJunction, MIN_CLIP, MIN_READS, MIN_SHARE, type Junction } from '../../ngs/junctions'
 import type { CallState } from './VariantTable'
 
-const nf = new Intl.NumberFormat()
+const nf = new Intl.NumberFormat('en-US')
 
 interface Props {
   junctions: readonly Junction[] | null

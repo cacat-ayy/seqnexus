@@ -586,6 +586,7 @@ function SequenceView({ onFindRequest, onFindClose, onAnnotateRequest, onEditFea
   // The caret overlay and the base it last sat at (to restart its blink).
   const caretRef = useRef<HTMLDivElement>(null)
   const lastCaretRef = useRef(-1)
+  const locateRef = useRef<HTMLDivElement>(null)
   // Range readout that follows the pointer while a selection is dragged.
   const dragPillRef = useRef<HTMLDivElement>(null)
   // Cut sites exactly as the last draw grouped them, for hit-testing.
@@ -1131,12 +1132,12 @@ function SequenceView({ onFindRequest, onFindClose, onAnnotateRequest, onEditFea
     const d = docRef.current
     const seqLen = d.sequence.length
     const origin = (d.sequence.topology === 'circular' ? d.metadata?.displayOrigin : 0) || 0
-    const dp = (p: number) => displayPosition(p, origin, seqLen).toLocaleString()
+    const dp = (p: number) => displayPosition(p, origin, seqLen).toLocaleString('en-US')
     const protein = d.sequence.alphabet === 'protein'
     const tm = !protein && len <= SELECTION_TM_MAX ? selectionTm(d.sequence.basesIn(start, end)) : null
     pill.textContent = [
       `${dp(start)}..${dp(end - 1)}`,
-      `${len.toLocaleString()} ${unitOf(d.sequence.alphabet)}`,
+      `${len.toLocaleString('en-US')} ${unitOf(d.sequence.alphabet)}`,
       ...(tm !== null ? [`Tm ${tm.toFixed(1)} °C`] : []),
       ...(protein ? [formatMass(proteinMass(d.sequence.basesIn(start, end)).average)] : []),
     ].join('  ·  ')
@@ -1726,6 +1727,47 @@ function SequenceView({ onFindRequest, onFindClose, onAnnotateRequest, onEditFea
     }
   }, [])
 
+  /**
+   * A ring over [start, end) on its first row that grows and fades once:
+   * after a jump (a feature picked in a list or on the map, the next Find hit,
+   * Go to position) the eye has something to land on, not just a moved band.
+   * A DOM element in the scrolled content, like the caret, so it scrolls with
+   * the bases and never redraws the canvas.
+   */
+  const flashRange = useCallback((start: number, end: number) => {
+    const el = locateRef.current
+    const seqLen = docRef.current.sequence.length
+    if (!el || seqLen === 0) return
+    const L = layoutRef.current
+    const rl = rowLayoutRef.current
+    const from = Math.min(Math.max(0, start), seqLen - 1)
+    const row = Math.min(Math.floor(from / L.basesPerRow), Math.max(0, rl.totalRows - 1))
+    const rs = row * L.basesPerRow
+    const re = Math.min(rs + L.basesPerRow, seqLen)
+    // An origin-spanning range shows its part at the start of the row.
+    const to = Math.min(end > from ? end : seqLen, re)
+    const x1 = baseX(from, rs, L)
+    const x2 = baseX(Math.max(from, to - 1), rs, L) + L.bpWidth
+    const y = rl.rowY(row) + rl.seqTop(row, L)
+    el.style.width = `${x2 - x1}px`
+    el.style.height = `${L.seqLineHeight}px`
+    el.style.transform = `translate(${x1}px, ${y}px)`
+    el.classList.remove('flash')
+    void el.offsetWidth
+    el.classList.add('flash')
+  }, [])
+
+  // Find's next and previous: the hit stepped to flashes. A new query, which
+  // also moves the current hit, does not, or every keystroke would flash.
+  const flashedSearchRef = useRef({ matches: search.matches, current: search.currentMatch })
+  useEffect(() => {
+    const prev = flashedSearchRef.current
+    flashedSearchRef.current = { matches: search.matches, current: search.currentMatch }
+    if (prev.matches !== search.matches || prev.current === search.currentMatch) return
+    const hit = search.matches[search.currentMatch]
+    if (hit) flashRange(hit.start, hit.end)
+  }, [search.matches, search.currentMatch, flashRange])
+
   // Scroll to keep the selection anchor visible
   useEffect(() => {
     // Don't auto-scroll while the user is dragging a selection handle
@@ -1767,7 +1809,13 @@ function SequenceView({ onFindRequest, onFindClose, onAnnotateRequest, onEditFea
     const viewBottom = container.scrollTop + container.clientHeight
     const store = useEditorStore.getState()
     const useSmooth = store.smoothScrollRequested
-    if (useSmooth) store.smoothScrollRequested = false
+    if (useSmooth) {
+      store.smoothScrollRequested = false
+      // A requested jump (Go to position): mark where it landed.
+      const lo = Math.min(selection.anchor, selection.caret)
+      const hi = Math.max(selection.anchor, selection.caret)
+      flashRange(lo, hi > lo ? hi : lo + 1)
+    }
     if (rowTop < viewTop) {
       const top = rowTop - (viewTop - container.scrollTop)
       if (useSmooth) {
@@ -1783,7 +1831,7 @@ function SequenceView({ onFindRequest, onFindClose, onAnnotateRequest, onEditFea
         container.scrollTop = target
       }
     }
-  }, [selection])
+  }, [selection, flashRange])
 
   // Minimap: scroll so the viewport starts at a (fractional) base
   const handleMinimapNavigate = useCallback((base: number) => {
@@ -1941,7 +1989,8 @@ function SequenceView({ onFindRequest, onFindClose, onAnnotateRequest, onEditFea
     // After the frame in which the selection's follow-the-caret scroll runs,
     // as in zoomToRange, so this one lands last.
     requestAnimationFrame(() => requestAnimationFrame(() => container.scrollTo({ top: target, behavior: 'smooth' })))
-  }, [])
+    flashRange(start, end)
+  }, [flashRange])
 
   useEffect(() => registerSequenceViewZoomTo(zoomToRange), [zoomToRange])
   useEffect(() => registerSequenceViewCenter(centerRange), [centerRange])
@@ -2056,6 +2105,7 @@ function SequenceView({ onFindRequest, onFindClose, onAnnotateRequest, onEditFea
         style={{ display: 'block', cursor: 'text', position: 'absolute', top: 0, left: 0, willChange: 'transform' }}
       />
       <div ref={caretRef} className="seq-caret" aria-hidden="true" />
+      <div ref={locateRef} className="seq-locate" aria-hidden="true" onAnimationEnd={e => e.currentTarget.classList.remove('flash')} />
       <div ref={dragPillRef} className="seq-drag-pill" aria-hidden="true" />
       {/* Hover tooltips - hidden when context menu is open */}
       {!ctxMenu && enzymeTooltip && (enzymeTooltip.more ? (
@@ -2124,7 +2174,7 @@ function SequenceView({ onFindRequest, onFindClose, onAnnotateRequest, onEditFea
       <ConfirmDialog
         open={largeDeleteConfirm !== null}
         title="Delete Selection"
-        message={`Delete ${largeDeleteConfirm?.count.toLocaleString()} ${unitOf(doc.sequence.alphabet)}? You can undo with Ctrl+Z.`}
+        message={`Delete ${largeDeleteConfirm?.count.toLocaleString('en-US')} ${unitOf(doc.sequence.alphabet)}? You can undo with Ctrl+Z.`}
         buttons={[
           { label: 'Cancel', value: 'cancel' },
           { label: 'Delete', value: 'delete', variant: 'danger' },

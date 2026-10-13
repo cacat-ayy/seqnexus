@@ -166,7 +166,7 @@ export default function AddSequencesPanel({ doc, onApply, onClose, onBusy, trigg
       </div>
       {job ? (
         <div className="aw-running">
-          <div className="aw-running-line"><Loader2 size={14} className="aw-spin" /> {job.job.label} is aligning {plan?.count ?? ''} sequences…</div>
+          <div className="aw-running-line"><Loader2 size={14} className="spinner aw-spin" /> {job.job.label} is aligning {plan?.count ?? ''} sequences…</div>
           <div className="aw-progress"><span style={{ width: `${Math.round(100 * (1 - Math.exp(-elapsed / Math.max(0.5, job.job.estimate))))}%` }} /></div>
           <div className="aw-note">{Math.floor(elapsed)} s · expected {formatDuration(job.job.estimate)}</div>
           <div className="aw-subpanel-buttons"><button className="btn btn-sm" onClick={() => job.job.cancel()}>Cancel</button></div>
@@ -183,7 +183,7 @@ export default function AddSequencesPanel({ doc, onApply, onClose, onBusy, trigg
               <label key={c.key} className="aw-pick" role="option" aria-selected={picked.has(c.key)}>
                 <input type="checkbox" checked={picked.has(c.key)} onChange={() => toggle(c.key)} />
                 <span className="aw-pick-name" title={c.name}>{c.name}</span>
-                <span className="aw-pick-meta">{c.what} · {c.seq.length.toLocaleString()}</span>
+                <span className="aw-pick-meta">{c.what} · {c.seq.length.toLocaleString('en-US')}</span>
               </label>
             ))}
           </div>
@@ -195,7 +195,7 @@ export default function AddSequencesPanel({ doc, onApply, onClose, onBusy, trigg
             aria-label="Paste sequences"
             rows={3}
           />
-          <div className="aw-seg" role="radiogroup" aria-label="How to add">
+          <div className="seg seg-sm aw-seg" role="radiogroup" aria-label="How to add">
             <button role="radio" aria-checked={method === 'fit'} className={method === 'fit' ? 'active' : ''} onClick={() => setMethod('fit')}>Fit to this alignment</button>
             <button role="radio" aria-checked={method === 'realign'} className={method === 'realign' ? 'active' : ''} onClick={() => setMethod('realign')}>Realign everything</button>
           </div>
@@ -215,7 +215,7 @@ export default function AddSequencesPanel({ doc, onApply, onClose, onBusy, trigg
           <div className="aw-subpanel-buttons">
             <button className="btn btn-sm" onClick={onClose}>Cancel</button>
             <button className="btn btn-sm btn-primary" disabled={inputs.length === 0 || tooBig || working} onClick={run}>
-              {working ? <Loader2 size={12} className="aw-spin" /> : null}
+              {working ? <Loader2 size={12} className="spinner aw-spin" /> : null}
               {inputs.length > 1 ? `Add ${inputs.length} sequences` : 'Add sequence'}
             </button>
           </div>

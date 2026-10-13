@@ -181,18 +181,7 @@
 .gw-tab {
   flex: 1;
   padding: var(--space-2) var(--space-3);
-  font-size: var(--text-xs);
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-  background: none;
-  border: none;
-  border-bottom: 2px solid transparent;
-  color: var(--text-muted);
-  cursor: pointer;
 }
-.gw-tab:hover { color: var(--text); }
-.gw-tab.active { color: var(--accent); border-bottom-color: var(--accent); }
 
 .gw-inspector-body {
   flex: 1;
@@ -238,7 +227,7 @@
 }
 
 /* Segmented toggles keep their natural width instead of filling the column. */
-.gw-field > .toggle-group { justify-self: start; }
+.gw-field > .seg { justify-self: start; }
 
 .gw-field-label {
   font-size: var(--text-xs);
@@ -404,24 +393,7 @@
 .gw-kinds {
   display: grid;
   grid-template-columns: repeat(5, 1fr);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-  overflow: hidden;
 }
-
-.gw-kind {
-  padding: var(--space-1) 0;
-  font-size: var(--text-xs);
-  font-weight: 600;
-  background: transparent;
-  border: none;
-  border-left: 1px solid var(--border);
-  color: var(--text-secondary);
-  cursor: pointer;
-}
-.gw-kind:first-child { border-left: none; }
-.gw-kind:hover { background: var(--bg-hover); color: var(--text); }
-.gw-kind.active { background: var(--accent); color: var(--bg); }
 
 .gw-inline-btn { align-self: flex-start; }
 

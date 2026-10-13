@@ -7,7 +7,7 @@
 import { KIND_DELETE, KIND_INSERT, KIND_SUBSTITUTE } from '../../sanger/layout'
 import { forwardColumn, type TraceModel } from '../../sanger/model'
 
-const nf = new Intl.NumberFormat()
+const nf = new Intl.NumberFormat('en-US')
 
 export default function HoverReadout({ m, d }: { m: TraceModel; d: number }) {
   const c = forwardColumn(m, d)

@@ -156,7 +156,7 @@ describe.skipIf(!RUN)('de novo at bacterial scale', () => {
       if (batch.length >= 20000) { chunks.push(encodeChunk(batch)); batch = [] }
     }
     if (batch.length) chunks.push(encodeChunk(batch))
-    console.log(`Illumina: ${(pairs * 2).toLocaleString()} reads, ${(bases / 1e6).toFixed(0)} Mb, stored in ${mb(chunks.reduce((n, c) => n + c.length, 0))}`)
+    console.log(`Illumina: ${(pairs * 2).toLocaleString('en-US')} reads, ${(bases / 1e6).toFixed(0)} Mb, stored in ${mb(chunks.reduce((n, c) => n + c.length, 0))}`)
     peak = 0
     const t = performance.now()
     let last = -1
@@ -167,7 +167,7 @@ describe.skipIf(!RUN)('de novo at bacterial scale', () => {
       onProgress: d => { const pct = Math.floor(d / 100); if (pct !== last) { last = pct; console.log(`  ${pct * 10}% at ${((performance.now() - t) / 1000).toFixed(0)} s, heap ${mb(process.memoryUsage().heapUsed + process.memoryUsage().arrayBuffers)}`) } },
     })
     const secs = (performance.now() - t) / 1000
-    console.log(`  genome ${r.report.spectrum.genomeSize?.toLocaleString()} bp from the spectrum; k ${r.report.k} of ${r.report.tried.map(x => `${x.k}: ${x.contigs} contigs N50 ${x.n50}`).join('; ')}`)
+    console.log(`  genome ${r.report.spectrum.genomeSize?.toLocaleString('en-US')} bp from the spectrum; k ${r.report.k} of ${r.report.tried.map(x => `${x.k}: ${x.contigs} contigs N50 ${x.n50}`).join('; ')}`)
     console.log(`  pairs: ${JSON.stringify(r.report.pairs)}`)
     summary('Illumina de novo', r.contigs, truth, secs)
     expect(r.contigs.length).toBeGreaterThan(0)
@@ -192,7 +192,7 @@ describe.skipIf(!RUN)('de novo at bacterial scale', () => {
       if (batch.length >= 2000) { chunks.push(encodeChunk(batch)); batch = [] }
     }
     if (batch.length) chunks.push(encodeChunk(batch))
-    console.log(`Nanopore: ${n.toLocaleString()} reads, ${(bases / 1e6).toFixed(0)} Mb, stored in ${mb(chunks.reduce((s, c) => s + c.length, 0))}`)
+    console.log(`Nanopore: ${n.toLocaleString('en-US')} reads, ${(bases / 1e6).toFixed(0)} Mb, stored in ${mb(chunks.reduce((s, c) => s + c.length, 0))}`)
     const dir = resolve(process.cwd(), '..', 'wasm', 'minimap2', '2.22')
     const data = readFileSync(resolve(dir, 'minimap2.data'))
     const glue = readFileSync(resolve(dir, 'minimap2-simd.js'), 'utf8')

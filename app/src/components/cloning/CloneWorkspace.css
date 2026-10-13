@@ -12,14 +12,29 @@
 /* ---- Header ---- */
 .cw-header {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  gap: var(--space-2);
+  gap: var(--space-1-5) var(--space-2);
   padding: var(--space-1-5) var(--space-3);
   border-bottom: 1px solid var(--border);
   background: var(--bg-toolbar);
   flex-shrink: 0;
   min-height: var(--panel-header-h);
 }
+
+/* The actions keep to the right whether they share the name's line or, on a
+   narrow pane, wrap to a line of their own. */
+.cw-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--space-1-5);
+  margin-left: auto;
+}
+
+.cw-header .cw-btn,
+.cw-header .cw-modes > button { white-space: nowrap; }
 
 .cw-header-icon { color: var(--accent); flex-shrink: 0; }
 .cw-spacer { flex: 1; }
@@ -32,8 +47,12 @@
   border: 1px solid transparent;
   border-radius: var(--radius-sm);
   padding: var(--space-0-5) var(--space-1);
+  /* As wide as the name, between these bounds, where the browser can size a
+     field to its content; elsewhere the default width. */
+  field-sizing: content;
   min-width: 10ch;
   max-width: 36ch;
+  text-overflow: ellipsis;
 }
 
 .cw-name:hover { border-color: var(--border); }
@@ -263,7 +282,7 @@
 .cw-part-name:hover .cw-part-title { color: var(--accent); }
 .cw-part.selected { background: color-mix(in srgb, var(--accent) 7%, transparent); }
 
-.cw-field-note { font-size: var(--text-xs); font-weight: 400; color: var(--text-faint); line-height: 1.4; }
+.cw-field-note { font-size: var(--text-xs); font-weight: 400; color: var(--text-soft); line-height: 1.4; }
 
 .cw-chevron { flex-shrink: 0; color: var(--text-muted); transition: transform 0.12s; }
 [aria-expanded='true'] > .cw-chevron { transform: rotate(90deg); }
@@ -381,22 +400,13 @@
   gap: var(--space-1-5);
   max-width: 240px;
   padding: var(--space-1-5) var(--space-3);
-  border: none;
-  border-bottom: 2px solid transparent;
-  background: transparent;
-  color: var(--text-muted);
-  font-size: var(--text-sm);
-  font-weight: 500;
-  cursor: pointer;
   white-space: nowrap;
 }
 
-.cw-tab:hover { color: var(--text); }
-.cw-tab.active { color: var(--text); border-bottom-color: var(--accent); }
 .cw-tab-product { margin-left: auto; }
 .cw-tab-swatch { width: 8px; height: 8px; border-radius: var(--radius-pill); flex-shrink: 0; }
 .cw-tab-name { overflow: hidden; text-overflow: ellipsis; }
-.cw-tab-role { font-size: var(--text-2xs); color: var(--text-faint); text-transform: uppercase; letter-spacing: 0.04em; }
+.cw-tab-role { font-size: var(--text-xs); font-weight: 400; color: var(--text-muted); }
 .cw-tab-dot { width: 7px; height: 7px; border-radius: var(--radius-pill); }
 .cw-tab-dot.ok { background: var(--success); }
 .cw-tab-dot.partial { background: var(--warning); }
@@ -486,7 +496,7 @@
 }
 
 .cw-strip-group { display: inline-flex; align-items: center; gap: var(--space-2); flex-shrink: 0; }
-.cw-strip-op { color: var(--text-faint); flex-shrink: 0; }
+.cw-strip-op { color: var(--text-soft); flex-shrink: 0; }
 
 .cw-piece {
   display: inline-flex;
@@ -730,36 +740,15 @@
 
 @media (max-width: 1100px) {
   .cw-body { flex-direction: column; overflow-y: auto; }
-  .cw-left { width: auto; border: none; border-bottom: 1px solid var(--border); }
+  /* Stacked, each part keeps its full height and the body scrolls; shrunk
+     to fit, the left column clipped its own settings. */
+  .cw-left { width: auto; border: none; border-bottom: 1px solid var(--border); flex-shrink: 0; overflow: visible; }
   .cw-section-grow { flex: none; }
   .cw-parts { overflow: visible; }
-  .cw-middle { overflow: visible; }
+  .cw-middle { flex-shrink: 0; overflow: visible; }
   .cw-map { min-height: 320px; }
   .cw-result { max-height: none; }
 }
-
-/* ---- One construct / Library switch ---- */
-.cw-modes {
-  display: inline-flex;
-  gap: 2px;
-  padding: 2px;
-  border-radius: var(--radius-sm);
-  background: var(--bg-alt);
-}
-
-.cw-mode {
-  font-size: var(--text-sm);
-  font-weight: 600;
-  padding: var(--space-0-5) var(--space-2);
-  border: none;
-  border-radius: var(--radius-sm);
-  background: transparent;
-  color: var(--text-muted);
-  cursor: pointer;
-}
-
-.cw-mode:hover { color: var(--text); }
-.cw-mode.active { background: var(--bg); color: var(--accent); box-shadow: var(--shadow-sm); }
 
 /* ---- Library ---- */
 .cw-library {

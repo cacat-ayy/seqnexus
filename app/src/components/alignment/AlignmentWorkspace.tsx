@@ -232,7 +232,7 @@ export default function AlignmentWorkspace({ aln, onClose, onExportPrompt, findR
     if (n === 0) return
     edit(d => deleteColumns(d, columnsMatching(d, rule)), `Strip ${n} column${n === 1 ? '' : 's'}`)
     setSelection(null)
-    notify.success(`Stripped ${n.toLocaleString()} column${n === 1 ? '' : 's'}`, { action: undoAction })
+    notify.success(`Stripped ${n.toLocaleString('en-US')} column${n === 1 ? '' : 's'}`, { action: undoAction })
   }
 
   const sortRows = (by: 'name' | 'identity') => {
@@ -523,7 +523,7 @@ export default function AlignmentWorkspace({ aln, onClose, onExportPrompt, findR
         />
         <span className="aw-chip" title={doc.origin.file ? `Read from ${doc.origin.file}` : doc.origin.detail}>{originLabel(doc.origin)}</span>
         <span className="aw-muted">
-          {summary.rows.toLocaleString()} {doc.kind === 'protein' ? 'proteins' : 'sequences'} · {summary.width.toLocaleString()} columns
+          {summary.rows.toLocaleString('en-US')} {doc.kind === 'protein' ? 'proteins' : 'sequences'} · {summary.width.toLocaleString('en-US')} columns
           {summary.identity !== null && <> · {(summary.identity * 100).toFixed(1)}% identity</>}
         </span>
         <span className="aw-spacer" />
@@ -642,7 +642,7 @@ export default function AlignmentWorkspace({ aln, onClose, onExportPrompt, findR
         </button>
         <span className="aw-diff-nav">
           <button className="aw-tool-icon" onClick={() => gotoDiff(-1)} disabled={diffs.length === 0} title="Previous difference" aria-label="Previous difference"><ChevronLeft size={14} /></button>
-          <span className="aw-muted" title="Columns where some row differs from the comparison">{diffs.length.toLocaleString()} differing</span>
+          <span className="aw-muted" title="Columns where some row differs from the comparison">{diffs.length.toLocaleString('en-US')} differing</span>
           <button className="aw-tool-icon" onClick={() => gotoDiff(1)} disabled={diffs.length === 0} title="Next difference" aria-label="Next difference"><ChevronRight size={14} /></button>
         </span>
         {doc.kind === 'dna' && (
@@ -695,7 +695,7 @@ export default function AlignmentWorkspace({ aln, onClose, onExportPrompt, findR
             }}
           />
           <span className="aw-muted aw-find-count">
-            {query.trim() ? (hits.length ? `${hitIndex + 1} of ${hits.length.toLocaleString()}` : 'No matches') : ''}
+            {query.trim() ? (hits.length ? `${hitIndex + 1} of ${hits.length.toLocaleString('en-US')}` : 'No matches') : ''}
           </span>
           <button className="aw-tool-icon" onClick={() => gotoHit(hitIndex - 1)} disabled={!hits.length} aria-label="Previous match"><ChevronLeft size={14} /></button>
           <button className="aw-tool-icon" onClick={() => gotoHit(hitIndex + 1)} disabled={!hits.length} aria-label="Next match"><ChevronRight size={14} /></button>
@@ -853,13 +853,13 @@ function StatusBar({ pm, hover, editing, insertMode, onToggleInsert }: {
     const ref = pm.reference && pm.reference !== row ? residueNumberAt(pm.reference, h.col) : null
     readout = (
       <>
-        <span>Column <b>{(h.col + 1).toLocaleString()}</b></span>
+        <span>Column <b>{(h.col + 1).toLocaleString('en-US')}</b></span>
         {row && (
           <span>
-            {row.name}: {ch === '-' ? <i>gap</i> : <><b>{ch}</b> {num !== null && <>#{num.toLocaleString()}</>}</>}
+            {row.name}: {ch === '-' ? <i>gap</i> : <><b>{ch}</b> {num !== null && <>#{num.toLocaleString('en-US')}</>}</>}
           </span>
         )}
-        {ref !== null && <span>reference #{ref.toLocaleString()}</span>}
+        {ref !== null && <span>reference #{ref.toLocaleString('en-US')}</span>}
         <span>consensus <b>{pm.consensus[h.col]}</b></span>
         <span>{Math.round((pm.identity[h.col] ?? 0) * 100)}% identity</span>
       </>

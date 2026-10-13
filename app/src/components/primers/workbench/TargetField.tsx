@@ -23,9 +23,9 @@ export function TargetField({ label, hint, t, n }: {
         <div className="wb-target">
           {target
             ? target.start === target.end
-              ? <>after {target.start.toLocaleString()}</>
-              : <>{fmtRegion(target)} <span>· {regionLength(target, n).toLocaleString()} bp</span></>
-            : hint}
+              ? <span className="wb-target-pos">after {target.start.toLocaleString('en-US')}</span>
+              : <span className="wb-target-pos">{fmtRegion(target)} <span>· {regionLength(target, n).toLocaleString('en-US')} bp</span></span>
+            : <span className="wb-target-hint">{hint}</span>}
         </div>
       ) : (
         <div className="wb-row wb-range">

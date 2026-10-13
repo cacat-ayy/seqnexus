@@ -4,15 +4,15 @@
  * jsdom does no layout, so the toolbar and its last item are given boxes that
  * respond to the density classes the hook applies, which is exactly the
  * feedback the hook relies on in a real browser. The widths below stand in for
- * a toolbar that needs 1300px as designed, 1100px squeezed, and 800px without
- * labels.
+ * a toolbar that needs 1300px as designed, 1100px squeezed, 800px without
+ * labels and 560px with its tools folded into one menu.
  */
 import { renderHook, act } from '@testing-library/react'
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { useRef } from 'react'
 import { useToolbarDensity } from './useToolbarDensity'
 
-const WIDTHS = { full: 1300, tight: 1100, icons: 800 }
+const WIDTHS = { full: 1300, tight: 1100, icons: 800, collapsed: 560 }
 const PADDING = 8
 
 function rect(right: number): DOMRect {
@@ -26,12 +26,15 @@ function rect(right: number): DOMRect {
  */
 function makeToolbar(initial: number) {
   let available = initial
+  // Width added by buttons that come and go (tools left out in a workspace).
+  let extra = 0
   const el = document.createElement('div')
   el.style.paddingRight = `${PADDING}px`
-  const needed = () =>
-    el.classList.contains('is-icons') ? WIDTHS.icons
+  const needed = () => extra + (
+    el.classList.contains('is-collapsed') ? WIDTHS.collapsed
+      : el.classList.contains('is-icons') ? WIDTHS.icons
       : el.classList.contains('is-tight') ? WIDTHS.tight
-      : WIDTHS.full
+      : WIDTHS.full)
   Object.defineProperty(el, 'clientWidth', { get: () => available })
   Object.defineProperty(el, 'scrollWidth', { get: () => Math.max(available, needed()) })
   el.getBoundingClientRect = () => rect(available)
@@ -41,7 +44,7 @@ function makeToolbar(initial: number) {
     rect(el.classList.contains('is-wrap') ? Math.min(needed(), available - PADDING) : needed())
   el.appendChild(last)
   document.body.appendChild(el)
-  return { el, resize: (w: number) => { available = w } }
+  return { el, resize: (w: number) => { available = w }, grow: (w: number) => { extra = w } }
 }
 
 function mount(el: HTMLElement) {
@@ -89,9 +92,27 @@ describe('useToolbarDensity', () => {
     expect(result.current).toEqual({ density: 'icons', wrapped: false })
   })
 
-  it('wraps as a last resort when even the icon row overflows', () => {
-    const { result } = mount(makeToolbar(600).el)
-    expect(result.current).toEqual({ density: 'icons', wrapped: true })
+  it('folds the tools into one menu when even the icon row overflows', () => {
+    const { el } = makeToolbar(600)
+    const { result } = mount(el)
+    expect(result.current).toEqual({ density: 'collapsed', wrapped: false })
+    expect(el.classList.contains('is-icons')).toBe(true)
+    expect(el.classList.contains('is-collapsed')).toBe(true)
+  })
+
+  it('wraps as a last resort when even the collapsed row overflows', () => {
+    const { result } = mount(makeToolbar(500).el)
+    expect(result.current).toEqual({ density: 'collapsed', wrapped: true })
+  })
+
+  it('re-measures when its buttons change, though its own box does not', async () => {
+    const toolbar = makeToolbar(1200)
+    const { result } = mount(toolbar.el)
+    expect(result.current.density).toBe('tight')
+    // Buttons come back (leaving a workspace): the row no longer fits squeezed.
+    toolbar.grow(300)
+    await act(async () => { toolbar.el.prepend(document.createElement('button')) })
+    expect(result.current.density).toBe('icons')
   })
 
   it('leaves the chosen classes on the element', () => {

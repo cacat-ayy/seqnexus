@@ -25,7 +25,7 @@ export interface Reporter {
   duplicates(docs: readonly DocumentState[], openAnyway: () => void): void
 }
 
-const count = (n: number, one: string, many: string) => `${n.toLocaleString()} ${n === 1 ? one : many}`
+const count = (n: number, one: string, many: string) => `${n.toLocaleString('en-US')} ${n === 1 ? one : many}`
 
 /** Say that documents were already open, with a way to open them anyway. */
 function duplicateNotice(docs: readonly DocumentState[], openAnyway: () => void): void {

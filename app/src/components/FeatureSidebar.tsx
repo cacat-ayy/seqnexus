@@ -29,7 +29,7 @@ import { FeatureContextMenu, GroupContextMenu } from './features/FeatureMenus'
 import { deleteFeaturesWithUndo, rowDomId, selectAndCenterFeature, selectFeature } from './features/feature-actions'
 import { useListMultiSelect } from '../hooks/useListMultiSelect'
 import {
-  Plus, X, ChevronRight, ChevronDown, Eye, EyeOff, Search, PanelRightClose, ChevronsDownUp, ChevronsUpDown,
+  Plus, X, Eye, EyeOff, Search, PanelRightClose, ChevronsDownUp, ChevronsUpDown,
   SlidersHorizontal, MoreHorizontal, List, FlaskConical, Crosshair,
 } from 'lucide-react'
 import './FeatureSidebar.css'
@@ -40,6 +40,7 @@ import { isEmptyQuery, matchesFeatureQuery, parseFeatureQuery } from '../utils/f
 import { featureOverlaps } from '../utils/feature-location'
 import { copyText } from '../utils/clipboard'
 import { STORAGE_KEYS } from '../storage/keys'
+import Chevron from './Chevron'
 
 const SIDEBAR_MIN = 200
 const SIDEBAR_MAX = 500
@@ -205,7 +206,6 @@ function FeatureSidebar({ open, onClose }: FeatureSidebarProps) {
   const [addingPrimer, setAddingPrimer] = useState(false)
   const primerCount = useEditorStore(s => s.doc.primers?.length ?? 0)
   const isProteinDoc = alphabet === 'protein'
-  const guideCount = useEditorStore(s => s.guideResults.length)
   const activeTabId = useEditorStore(s => s.activeTabId)
 
   // When editAnnotationId is set from outside, expand that annotation
@@ -559,7 +559,10 @@ function FeatureSidebar({ open, onClose }: FeatureSidebarProps) {
   const tabDefs = [
     { id: 'features' as const, label: 'Features', Icon: List, count: userAnnotations.length as number | null },
     { id: 'primers' as const, label: 'Primers', Icon: FlaskConical, count: primerCount as number | null },
-    ...(isProteinDoc ? [] : [{ id: 'guides' as const, label: 'Guides', Icon: Crosshair, count: guideCount > 0 ? guideCount : null }]),
+    // No count on Guides: its number would be the sites the scan found, which
+    // only exists while the tab is open, so selecting it would widen the
+    // header and tip all three tabs into icons. The panel says how many.
+    ...(isProteinDoc ? [] : [{ id: 'guides' as const, label: 'Guides', Icon: Crosshair, count: null }]),
   ]
   const compactTabs = useCompactTabs(tabsRef, measureRef, tabDefs.map(t => `${t.label}${t.count}`).join('|') + `|${width}`)
 
@@ -618,7 +621,7 @@ function FeatureSidebar({ open, onClose }: FeatureSidebarProps) {
             {tabDefs.map(({ id, label, Icon, count }) => (
               <button
                 key={id}
-                className={`fs-tab ${tab === id ? 'active' : ''}`}
+                className={`panel-tab fs-tab ${tab === id ? 'active' : ''}`}
                 role="tab"
                 aria-selected={tab === id}
                 aria-label={compactTabs ? label : undefined}
@@ -627,14 +630,14 @@ function FeatureSidebar({ open, onClose }: FeatureSidebarProps) {
               >
                 {compactTabs && <Icon size={14} className="fs-tab-icon" />}
                 {!compactTabs && <span className="fs-title">{label}</span>}
-                {count !== null && <span className="fs-count">{count}</span>}
+                {count !== null && <span key={count} className="fs-count">{count}</span>}
               </button>
             ))}
           </div>
           {/* The tabs as words, laid out unseen, to know whether they fit. */}
           <div ref={measureRef} className="fs-tabs fs-tabs-measure" aria-hidden>
             {tabDefs.map(({ id, label, count }) => (
-              <span key={id} className="fs-tab">
+              <span key={id} className="panel-tab fs-tab">
                 <span className="fs-title">{label}</span>
                 {count !== null && <span className="fs-count">{count}</span>}
               </span>
@@ -658,7 +661,7 @@ function FeatureSidebar({ open, onClose }: FeatureSidebarProps) {
           <GuidePanel />
         ) : tab === 'primers' ? (
           <>
-            <div className="fs-segmented" role="tablist" aria-label="Primers view">
+            <div className="seg seg-sm fs-segmented" role="tablist" aria-label="Primers view">
               <button
                 role="tab"
                 aria-selected={primerView === 'list'}
@@ -930,7 +933,7 @@ function FeatureSidebar({ open, onClose }: FeatureSidebarProps) {
                     onClick={() => toggleTypeCollapse(type)}
                     aria-expanded={!isCollapsed}
                   >
-                    {isCollapsed ? <ChevronRight size={12} /> : <ChevronDown size={12} />}
+                    <Chevron open={!isCollapsed} size={12} />
                     <span className="fs-group-name">{type}</span>
                     <span className="fs-group-count">{anns.length}</span>
                   </button>

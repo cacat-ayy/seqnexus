@@ -43,7 +43,7 @@ describe('PrimerWorkbench', () => {
 
   it('asks for a target until there is a selection', () => {
     render(<PrimerWorkbench />)
-    expect(screen.getByText(/Select a region/)).toBeTruthy()
+    expect(screen.getByText(/Select the region the product must contain/)).toBeTruthy()
   })
 
   it('designs around the selection and saves a picked pair in one undo entry', async () => {

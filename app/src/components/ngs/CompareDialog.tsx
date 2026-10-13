@@ -43,7 +43,7 @@ interface Props {
   onClose: () => void
 }
 
-const nf = new Intl.NumberFormat()
+const nf = new Intl.NumberFormat('en-US')
 const pct = (x: number) => `${(x * 100).toFixed(x === 1 || x === 0 ? 0 : 1)}%`
 const DEPTHS = [1, 3, 5, 10, 20, 30]
 

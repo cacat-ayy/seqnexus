@@ -50,10 +50,10 @@ function AlignmentInspector({ doc, view, selection, editing, tab, onTab, onView,
   return (
     <aside className="aw-inspector" aria-label="Alignment inspector">
       <div className="aw-tabs" role="tablist">
-        <button role="tab" aria-selected={tab === 'selection'} className={`aw-tab ${tab === 'selection' ? 'active' : ''}`} onClick={() => onTab('selection')}>
+        <button role="tab" aria-selected={tab === 'selection'} className={`panel-tab aw-tab ${tab === 'selection' ? 'active' : ''}`} onClick={() => onTab('selection')}>
           {selection ? 'Selection' : 'Statistics'}
         </button>
-        <button role="tab" aria-selected={tab === 'display'} className={`aw-tab ${tab === 'display' ? 'active' : ''}`} onClick={() => onTab('display')}>
+        <button role="tab" aria-selected={tab === 'display'} className={`panel-tab aw-tab ${tab === 'display' ? 'active' : ''}`} onClick={() => onTab('display')}>
           Display
         </button>
       </div>
@@ -97,7 +97,7 @@ function SelectionPanel({ doc, selection: liveSelection, editing, actions }: {
   const where = !selection
     ? 'Whole alignment'
     : allCols ? `${selection.rowIds.length} row${selection.rowIds.length === 1 ? '' : 's'}, all columns`
-    : `Columns ${(selection.c0 + 1).toLocaleString()}-${selection.c1.toLocaleString()}${allRows ? ', all rows' : `, ${selection.rowIds.length} row${selection.rowIds.length === 1 ? '' : 's'}`}`
+    : `Columns ${(selection.c0 + 1).toLocaleString('en-US')}-${selection.c1.toLocaleString('en-US')}${allRows ? ', all rows' : `, ${selection.rowIds.length} row${selection.rowIds.length === 1 ? '' : 's'}`}`
 
   const colorer = useMemo(() => cellColorer(doc.kind === 'dna' ? 'nucleotide' : 'zappo', doc.kind, docProfile(deferredDoc), () => '-'), [doc.kind, deferredDoc])
   const totalResidues = stats.composition.reduce((a, c) => a + c.count, 0)
@@ -106,7 +106,7 @@ function SelectionPanel({ doc, selection: liveSelection, editing, actions }: {
     <div className="aw-panel">
       <div className="aw-sel-head">
         <div className="aw-sel-title">{where}</div>
-        <div className="aw-sel-sub">{stats.rows.toLocaleString()} × {stats.columns.toLocaleString()} · {stats.residues.toLocaleString()} residues</div>
+        <div className="aw-sel-sub">{stats.rows.toLocaleString('en-US')} × {stats.columns.toLocaleString('en-US')} · {stats.residues.toLocaleString('en-US')} residues</div>
       </div>
 
       <dl className="aw-stats">
@@ -114,18 +114,18 @@ function SelectionPanel({ doc, selection: liveSelection, editing, actions }: {
         {doc.kind === 'protein' && <Stat label="Pairwise similarity" value={pct(stats.pairwiseSimilarity)} hint="Identical or similar (BLOSUM62 > 0)" />}
         <Stat
           label="Identical sites"
-          value={`${stats.identicalSites.toLocaleString()} (${pct(stats.columns ? stats.identicalSites / stats.columns : null, 0)})`}
+          value={`${stats.identicalSites.toLocaleString('en-US')} (${pct(stats.columns ? stats.identicalSites / stats.columns : null, 0)})`}
           hint="Columns where every row has the same residue and none has a gap"
         />
-        <Stat label="Variable sites" value={stats.variableSites.toLocaleString()} hint="Columns with more than one residue type" />
-        <Stat label="Informative sites" value={stats.informativeSites.toLocaleString()} hint="Parsimony-informative: at least two residue types, each in at least two rows" />
-        <Stat label="Gaps" value={pct(stats.gapFraction)} hint={`${stats.gapCells.toLocaleString()} gap cells`} />
+        <Stat label="Variable sites" value={stats.variableSites.toLocaleString('en-US')} hint="Columns with more than one residue type" />
+        <Stat label="Informative sites" value={stats.informativeSites.toLocaleString('en-US')} hint="Parsimony-informative: at least two residue types, each in at least two rows" />
+        <Stat label="Gaps" value={pct(stats.gapFraction)} hint={`${stats.gapCells.toLocaleString('en-US')} gap cells`} />
         {doc.kind === 'dna' && <Stat label="GC content" value={pct(stats.gc)} />}
         <Stat
           label="Length"
           value={stats.lengths.min === stats.lengths.max
-            ? stats.lengths.max.toLocaleString()
-            : `${stats.lengths.min.toLocaleString()}-${stats.lengths.max.toLocaleString()}`}
+            ? stats.lengths.max.toLocaleString('en-US')
+            : `${stats.lengths.min.toLocaleString('en-US')}-${stats.lengths.max.toLocaleString('en-US')}`}
           hint={`Ungapped residues per row; mean ${stats.lengths.mean.toFixed(1)}`}
         />
       </dl>
@@ -138,7 +138,7 @@ function SelectionPanel({ doc, selection: liveSelection, editing, actions }: {
               <span
                 key={c.ch}
                 style={{ flexGrow: c.count, background: colorer(c.ch, 0) ?? 'var(--text-muted)' }}
-                title={`${c.ch}: ${c.count.toLocaleString()} (${(c.count / totalResidues * 100).toFixed(1)}%)`}
+                title={`${c.ch}: ${c.count.toLocaleString('en-US')} (${(c.count / totalResidues * 100).toFixed(1)}%)`}
               />
             ))}
           </div>
@@ -170,7 +170,7 @@ function SelectionPanel({ doc, selection: liveSelection, editing, actions }: {
             : <button className="aw-action" onClick={() => actions.setReference(singleRow)}><Crosshair size={13} /> Set as reference</button>
         )}
         {selection && allRows && (
-          <button className="aw-action danger" onClick={actions.deleteColumns}><Trash2 size={13} /> Delete {selection.c1 - selection.c0 === 1 ? 'column' : `${(selection.c1 - selection.c0).toLocaleString()} columns`}</button>
+          <button className="aw-action danger" onClick={actions.deleteColumns}><Trash2 size={13} /> Delete {selection.c1 - selection.c0 === 1 ? 'column' : `${(selection.c1 - selection.c0).toLocaleString('en-US')} columns`}</button>
         )}
         {selection && editing && !allRows && (
           <button className="aw-action" onClick={actions.erase}><Eraser size={13} /> Replace with gaps</button>
@@ -283,7 +283,7 @@ function StripColumns({ doc, onStrip }: { doc: AlnDoc; onStrip: (r: StripRule) =
         <input className="aw-num" type="number" min={1} max={100} value={idPct} onChange={e => { setIdPct(Math.max(1, Math.min(100, Number(e.target.value) || 1))); setKind('low-identity') }} />%
       </label>
       <label className="aw-radio"><input type="radio" checked={kind === 'invariant'} onChange={() => setKind('invariant')} /> Identical in every row (keep variable sites)</label>
-      <p className="aw-note">{count === 0 ? 'No columns match.' : `Removes ${count.toLocaleString()} of ${w.toLocaleString()} columns.`}</p>
+      <p className="aw-note">{count === 0 ? 'No columns match.' : `Removes ${count.toLocaleString('en-US')} of ${w.toLocaleString('en-US')} columns.`}</p>
       <div className="aw-subpanel-buttons">
         <button className="btn btn-sm" onClick={() => setOpen(false)}>Cancel</button>
         <button className="btn btn-sm btn-primary" disabled={count === 0 || count === w} onClick={() => { onStrip(rule); setOpen(false) }}>Strip</button>
@@ -303,7 +303,7 @@ function Segmented<T extends string | number>({ value, options, onChange, label 
   label: string
 }) {
   return (
-    <div className="aw-seg" role="radiogroup" aria-label={label}>
+    <div className="seg seg-sm aw-seg" role="radiogroup" aria-label={label}>
       {options.map(o => (
         <button
           key={String(o.value)}

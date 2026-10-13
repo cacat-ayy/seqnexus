@@ -25,7 +25,7 @@ import { allCoding, codingLabel } from '../../assembly/effects'
 import { PRESET_NAME, VARIANT_PRESETS, variantFilters, type Variant, type VariantPreset } from '../../assembly/variants'
 import { DEFAULT_VERIFY, STATUS_LABEL, type VerifyReport, type VerifySettings, type VerifyStatus } from '../../assembly/verify'
 
-const nf = new Intl.NumberFormat()
+const nf = new Intl.NumberFormat('en-US')
 const pct = (x: number) => `${(x * 100).toFixed(1)}%`
 /** Rows of the matrix drawn at once. */
 const MATRIX_ROWS = 2000

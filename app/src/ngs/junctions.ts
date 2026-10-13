@@ -131,11 +131,11 @@ export function findPartner(j: Pick<Junction, 'side' | 'clipped'>, refs: readonl
 export function describeJunction(j: Junction, refIndex: number, refNames: readonly string[]): string {
   const p = j.partner
   if (!p) return j.clipped.length < PARTNER_SEED ? 'Clipped sequence too short to place' : 'Clipped sequence not found on the references'
-  if (p.ref !== refIndex) return `Continues on ${refNames[p.ref] ?? 'another reference'} at ${(p.pos + 1).toLocaleString()}${p.strand === -1 ? ', other strand' : ''}`
-  if (p.strand === -1) return `Continues at ${(p.pos + 1).toLocaleString()} on the other strand: an inversion?`
+  if (p.ref !== refIndex) return `Continues on ${refNames[p.ref] ?? 'another reference'} at ${(p.pos + 1).toLocaleString('en-US')}${p.strand === -1 ? ', other strand' : ''}`
+  if (p.strand === -1) return `Continues at ${(p.pos + 1).toLocaleString('en-US')} on the other strand: an inversion?`
   const gap = j.side === 'right' ? p.pos - j.pos : j.pos - p.pos
-  if (gap > 0) return `Continues ${gap.toLocaleString()} bases on: a deletion of ${gap.toLocaleString()} bases?`
-  if (gap < 0) return `Continues ${(-gap).toLocaleString()} bases back: a duplication?`
+  if (gap > 0) return `Continues ${gap.toLocaleString('en-US')} bases on: a deletion of ${gap.toLocaleString('en-US')} bases?`
+  if (gap < 0) return `Continues ${(-gap).toLocaleString('en-US')} bases back: a duplication?`
   return 'Continues next to itself'
 }
 

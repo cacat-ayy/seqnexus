@@ -726,7 +726,7 @@ const SKIP_VERBS: Partial<Record<GeneiousSkipKind, string>> = {
   treeAlignment: 'opened as the alignment each was built from',
 }
 
-const plural = (n: number, [one, many]: [string, string]) => `${n.toLocaleString()} ${n === 1 ? one : many}`
+const plural = (n: number, [one, many]: [string, string]) => `${n.toLocaleString('en-US')} ${n === 1 ? one : many}`
 
 /** The lines of the summary that say what was not opened, one per kind. */
 export function describeSkipped(skipped: readonly GeneiousSkipped[]): string[] {

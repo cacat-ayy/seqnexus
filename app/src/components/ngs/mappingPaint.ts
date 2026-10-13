@@ -535,10 +535,10 @@ export function paintMapping(ctx: CanvasRenderingContext2D, p: MapPaintInput, th
   ctx.font = `600 11px ${theme.sans}`
   ctx.fillText('Coverage', 8, g.cov[0] + 10)
   ctx.font = `500 10px ${theme.sans}`
-  ctx.fillText(`0 to ${top.toLocaleString()}×`, 8, g.cov[0] + 24)
+  ctx.fillText(`0 to ${top.toLocaleString('en-US')}×`, 8, g.cov[0] + 24)
   if (p.opts.lowCoverage > 0) {
     ctx.fillStyle = theme.warning
-    ctx.fillText(truncate(ctx, `below ${p.opts.lowCoverage.toLocaleString()}×`, g.gutter - 14), 8, g.cov[0] + 37)
+    ctx.fillText(truncate(ctx, `below ${p.opts.lowCoverage.toLocaleString('en-US')}×`, g.gutter - 14), 8, g.cov[0] + 37)
   }
   ctx.fillStyle = theme.muted
   ctx.font = `600 11px ${theme.sans}`
@@ -548,7 +548,7 @@ export function paintMapping(ctx: CanvasRenderingContext2D, p: MapPaintInput, th
   if (g.feats) ctx.fillText('Features', 8, g.feats[0] + FEATURE_LANE_H / 2 + 1)
   if (g.vars) {
     ctx.font = `500 10px ${theme.sans}`
-    ctx.fillText(`Variants (${(p.variants?.length ?? 0).toLocaleString()})`, 8, (g.vars[0] + g.vars[1]) / 2 + 0.5)
+    ctx.fillText(`Variants (${(p.variants?.length ?? 0).toLocaleString('en-US')})`, 8, (g.vars[0] + g.vars[1]) / 2 + 0.5)
   }
   if (p.layout?.sampled.length) {
     ctx.font = `500 10px ${theme.sans}`

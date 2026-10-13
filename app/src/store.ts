@@ -1076,7 +1076,7 @@ interface EditorStore {
 
   // Session restore (bulk-load tabs + folders + sequencing reads + alignments from persistence)
   restoreSession: (
-    tabs: { id: string; doc: DocumentState; createdAt?: number; modifiedAt?: number; viewMode: ViewMode; zoomLevel: number; hiddenAnnotationIds?: string[]; showOrfs?: boolean; showEnzymes?: boolean; showAutoAnnotations?: boolean; readOnly?: boolean; undoStack?: UndoSnapshot[]; redoStack?: UndoSnapshot[]; blastSearches?: BlastSearch[] }[],
+    tabs: { id: string; doc: DocumentState; createdAt?: number; modifiedAt?: number; viewMode: ViewMode; zoomLevel: number; hiddenAnnotationIds?: string[]; showOrfs?: boolean; showEnzymes?: boolean; enzymeNames?: string[]; showAutoAnnotations?: boolean; readOnly?: boolean; undoStack?: UndoSnapshot[]; redoStack?: UndoSnapshot[]; blastSearches?: BlastSearch[] }[],
     activeTabId: string | null,
     folders: ExplorerFolder[],
     seqReads?: { id: string; data: Ab1Data; createdAt?: number; trimStart: number; trimEnd: number; edits: BaseEdit[]; reversed?: boolean }[],
@@ -1093,7 +1093,7 @@ interface EditorStore {
 
   // Merge imported session into existing state (adds items alongside existing ones)
   mergeSession: (
-    tabs: { id: string; doc: DocumentState; createdAt?: number; modifiedAt?: number; viewMode: ViewMode; zoomLevel: number; hiddenAnnotationIds?: string[]; showOrfs?: boolean; showEnzymes?: boolean; showAutoAnnotations?: boolean; readOnly?: boolean; blastSearches?: BlastSearch[] }[],
+    tabs: { id: string; doc: DocumentState; createdAt?: number; modifiedAt?: number; viewMode: ViewMode; zoomLevel: number; hiddenAnnotationIds?: string[]; showOrfs?: boolean; showEnzymes?: boolean; enzymeNames?: string[]; showAutoAnnotations?: boolean; readOnly?: boolean; blastSearches?: BlastSearch[] }[],
     folders: ExplorerFolder[],
     seqReads?: { id: string; data: Ab1Data; createdAt?: number; trimStart: number; trimEnd: number; edits: BaseEdit[]; reversed?: boolean }[],
     savedAlignments?: SavedAlignment[],
@@ -2647,6 +2647,8 @@ export const useEditorStore = create<EditorStore>((set, get) => {
         showEnzymes: active?.showEnzymes ?? false,
         showAutoAnnotations: active?.showAutoAnnotations ?? false,
         autoAnnotations: active?.autoAnnotations ?? [],
+        enzymeNames: active?.enzymeNames ?? [],
+        enzymeCutSites: active?.enzymeCutSites ?? [],
         autoAnnotationPicks: new Set<string>(),
         orfPicks: new Set<string>(),
         primerDesign: active?.primerDesign ?? EMPTY_DESIGN,
@@ -3119,7 +3121,7 @@ export const useEditorStore = create<EditorStore>((set, get) => {
         showAutoAnnotations: rt.showAutoAnnotations ?? false,
         orfResults: [],
         enzymeCutSites: [],
-        enzymeNames: [],
+        enzymeNames: rt.enzymeNames ?? [],
         primerDesign: EMPTY_DESIGN,
         autoAnnotations: [],
         blastSearches: rt.blastSearches ?? [],
@@ -3186,6 +3188,9 @@ export const useEditorStore = create<EditorStore>((set, get) => {
         showEnzymes: active?.showEnzymes ?? false,
         showAutoAnnotations: active?.showAutoAnnotations ?? false,
         autoAnnotations: active?.autoAnnotations ?? [],
+        // The sites are found again from the names (see App's enzyme effect).
+        enzymeNames: active?.enzymeNames ?? [],
+        enzymeCutSites: [],
         autoAnnotationPicks: new Set<string>(),
         orfPicks: new Set<string>(),
         primerDesign: active?.primerDesign ?? EMPTY_DESIGN,
@@ -3227,7 +3232,7 @@ export const useEditorStore = create<EditorStore>((set, get) => {
         showAutoAnnotations: rt.showAutoAnnotations ?? false,
         orfResults: [],
         enzymeCutSites: [],
-        enzymeNames: [],
+        enzymeNames: rt.enzymeNames ?? [],
         primerDesign: EMPTY_DESIGN,
         autoAnnotations: [],
         blastSearches: rt.blastSearches ?? [],
@@ -3354,14 +3359,14 @@ export const useEditorStore = create<EditorStore>((set, get) => {
     insert(pos, fragment) {
       const tab = getActiveTab()
       if (!tab || tab.readOnly) return
-      pushUndo(`Insert ${fragment.length.toLocaleString()} bp`)
+      pushUndo(`Insert ${fragment.length.toLocaleString('en-US')} bp`)
       updateActiveTab({ doc: insertBasesInPlace(tab.doc, pos, fragment) })
     },
 
     delete(start, end) {
       const tab = getActiveTab()
       if (!tab || tab.readOnly) return
-      pushUndo(`Delete ${Math.abs(end - start).toLocaleString()} ${tab.doc.sequence.isProtein ? 'aa' : 'bp'}`)
+      pushUndo(`Delete ${Math.abs(end - start).toLocaleString('en-US')} ${tab.doc.sequence.isProtein ? 'aa' : 'bp'}`)
       const before = beforeEdit(tab.doc)
       updateActiveTab({ doc: withVariant(before, start, end, '', deleteBasesInPlace(tab.doc, start, end)) })
     },
@@ -3369,7 +3374,7 @@ export const useEditorStore = create<EditorStore>((set, get) => {
     deleteTwo(start1, end1, start2, end2, insertAtZero) {
       const tab = getActiveTab()
       if (!tab || tab.readOnly) return
-      pushUndo(`Delete ${(Math.abs(end1 - start1) + Math.abs(end2 - start2)).toLocaleString()} bp`)
+      pushUndo(`Delete ${(Math.abs(end1 - start1) + Math.abs(end2 - start2)).toLocaleString('en-US')} bp`)
       let doc = deleteBasesInPlace(tab.doc, start1, end1)
       doc = deleteBasesInPlace(doc, start2, end2)
       if (insertAtZero) doc = insertBasesInPlace(doc, 0, insertAtZero)
@@ -3379,7 +3384,7 @@ export const useEditorStore = create<EditorStore>((set, get) => {
     replace(start, end, fragment) {
       const tab = getActiveTab()
       if (!tab || tab.readOnly) return
-      pushUndo(`Replace ${Math.abs(end - start).toLocaleString()} ${tab.doc.sequence.isProtein ? 'aa' : 'bp'}`)
+      pushUndo(`Replace ${Math.abs(end - start).toLocaleString('en-US')} ${tab.doc.sequence.isProtein ? 'aa' : 'bp'}`)
       const before = beforeEdit(tab.doc)
       updateActiveTab({ doc: withVariant(before, start, end, fragment, replaceBasesInPlace(tab.doc, start, end, fragment)) })
     },
@@ -3391,7 +3396,7 @@ export const useEditorStore = create<EditorStore>((set, get) => {
         ...(annotations.length ? [describeItems('feature', annotations.map(a => a.name))] : []),
         ...(primers.length ? [describeItems('primer', primers.map(p => p.name))] : []),
       ]
-      pushUndo(`Paste ${bases.length.toLocaleString()} ${tab.doc.sequence.isProtein ? 'aa' : 'bp'}${carried.length ? ` with ${carried.join(' and ')}` : ''}`)
+      pushUndo(`Paste ${bases.length.toLocaleString('en-US')} ${tab.doc.sequence.isProtein ? 'aa' : 'bp'}${carried.length ? ` with ${carried.join(' and ')}` : ''}`)
       const before = beforeEdit(tab.doc)
       let doc = start === end
         ? insertBasesInPlace(tab.doc, start, bases)
@@ -3496,7 +3501,7 @@ export const useEditorStore = create<EditorStore>((set, get) => {
       const tab = getActiveTab()
       if (!tab || tab.readOnly || segments.length === 0) return
       const total = segments.reduce((n, [s, e]) => n + e - s, 0)
-      pushUndo(`Delete ${total.toLocaleString()} bp`)
+      pushUndo(`Delete ${total.toLocaleString('en-US')} bp`)
       // From the end backwards, so each delete leaves the spans before it
       // where they were.
       let doc = tab.doc
@@ -3638,7 +3643,7 @@ export const useEditorStore = create<EditorStore>((set, get) => {
       const textFor = (m: SearchMatch) => (m.strand === -1 ? reverseComplement(bases) : bases)
 
       const n = taken.length
-      pushUndo(`Replace ${n.toLocaleString()} match${n === 1 ? '' : 'es'}`)
+      pushUndo(`Replace ${n.toLocaleString('en-US')} match${n === 1 ? '' : 'es'}`)
       let doc = get().doc
       // Right to left, so the positions still to come do not move.
       let shift = 0

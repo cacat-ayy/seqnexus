@@ -13,7 +13,7 @@ import { useMemo } from 'react'
 import { RotateCcw } from 'lucide-react'
 import type { Assembly } from '../../cloning/product'
 import type { RunResult } from '../../cloning/run'
-import { isIntended, productLabel, keptFragment, type DesignFix } from '../../cloning/outcome'
+import { isIntended, missingPart, productLabel, keptFragment, type DesignFix } from '../../cloning/outcome'
 import { mapSites, type MapSite } from '../../cloning/sites'
 import { pickSite, pieceAt, siteHint } from '../../cloning/picking'
 import {
@@ -73,7 +73,7 @@ export default function MapStage({
             key={p.id}
             role="tab"
             aria-selected={tab === p.id}
-            className={`cw-tab ${tab === p.id ? 'active' : ''}`}
+            className={`panel-tab cw-tab ${tab === p.id ? 'active' : ''}`}
             onClick={() => onTab(p.id)}
           >
             <span className="cw-tab-swatch" style={{ background: partColor(i) }} aria-hidden="true" />
@@ -84,7 +84,7 @@ export default function MapStage({
         <button
           role="tab"
           aria-selected={tab === 'product'}
-          className={`cw-tab cw-tab-product ${tab === 'product' ? 'active' : ''}`}
+          className={`panel-tab cw-tab cw-tab-product ${tab === 'product' ? 'active' : ''}`}
           onClick={() => onTab('product')}
         >
           <span className={`cw-tab-dot ${chosen && isIntended(chosen) ? 'ok' : chosen ? 'partial' : 'none'}`} aria-hidden="true" />
@@ -243,11 +243,14 @@ function ProductView({ design, product }: { design: CloningDesign; product: Asse
   }, [product, design.parts])
 
   if (!product) {
+    const missing = missingPart(design)
     return (
       <div className="cw-map cw-map-empty">
         <p>{design.parts.length === 0
           ? 'Add the sequences you are cloning and the product is drawn here.'
-          : 'Nothing forms yet. The reason is below.'}</p>
+          : missing
+            ? `Add ${missing} under Parts and the product is drawn here.`
+            : 'Nothing forms yet. The reason is below.'}</p>
       </div>
     )
   }

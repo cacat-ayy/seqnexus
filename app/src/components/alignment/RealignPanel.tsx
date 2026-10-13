@@ -119,7 +119,7 @@ export default function RealignPanel({ doc, selection, onApply, onClose, onBusy,
       </div>
       {job ? (
         <div className="aw-running">
-          <div className="aw-running-line"><Loader2 size={14} className="aw-spin" /> {job.job.label} is aligning {block.picked.length} sequences…</div>
+          <div className="aw-running-line"><Loader2 size={14} className="spinner aw-spin" /> {job.job.label} is aligning {block.picked.length} sequences…</div>
           <div className="aw-progress"><span style={{ width: `${Math.round(100 * (1 - Math.exp(-elapsed / Math.max(0.5, job.job.estimate))))}%` }} /></div>
           <div className="aw-note">{Math.floor(elapsed)} s · expected {formatDuration(job.job.estimate)}</div>
           <div className="aw-subpanel-buttons">
@@ -128,7 +128,7 @@ export default function RealignPanel({ doc, selection, onApply, onClose, onBusy,
         </div>
       ) : (
         <div className="aw-stack aw-popover-body">
-          <div className="aw-seg" role="radiogroup" aria-label="What to realign">
+          <div className="seg seg-sm aw-seg" role="radiogroup" aria-label="What to realign">
             <button role="radio" aria-checked={target === 'selection'} className={target === 'selection' ? 'active' : ''} disabled={!usable} title={usable ? undefined : 'Select at least two rows and two columns first'} onClick={() => setTarget('selection')}>
               Selection
             </button>
@@ -139,7 +139,7 @@ export default function RealignPanel({ doc, selection, onApply, onClose, onBusy,
           <p className="aw-note">
             {block.whole
               ? `All ${block.picked.length} sequences are aligned again from scratch; hand edits are replaced.`
-              : `Columns ${(block.c0 + 1).toLocaleString()}-${block.c1.toLocaleString()} of ${block.picked.length} rows are realigned; everything else stays as it is.`}
+              : `Columns ${(block.c0 + 1).toLocaleString('en-US')}-${block.c1.toLocaleString('en-US')} of ${block.picked.length} rows are realigned; everything else stays as it is.`}
           </p>
           <label className="aw-field">
             <span>Aligner</span>

@@ -1,7 +1,7 @@
 /**
  * Sequence-view display settings.
  *
- * Sits with the ORFs / REs / Primers toggles because everything in it controls
+ * Sits with the ORFs / Enzymes / Primers toggles because everything in it controls
  * what the sequence view draws. Unlike those, the settings here are global
  * preferences rather than per-document state, so the popover says so rather
  * than leaving the user to discover it.
@@ -213,24 +213,12 @@ export default function DisplayPopover({ open, onClose, triggerRef }: Props) {
   const aminoAcidStyleLabel =
     AMINO_ACID_STYLES.find(s => s.id === aminoAcidStyle)?.label ?? aminoAcidStyle
 
-  // The palette menu closes with the popover, and with Escape, which would
-  // otherwise close the whole popover while the menu stayed open underneath.
+  // The palette menu closes with the popover, and on its own with Escape or a
+  // click outside it: it sits above the popover in the Escape order, so Escape
+  // closes the menu first and the popover only on a second press.
   useEffect(() => { if (!open) setAaMenuOpen(false) }, [open])
-  useEffect(() => {
-    if (!aaMenuOpen) return
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') { e.stopPropagation(); setAaMenuOpen(false) }
-    }
-    const onDown = (e: MouseEvent) => {
-      if (!aaPickerRef.current?.contains(e.target as Node)) setAaMenuOpen(false)
-    }
-    document.addEventListener('keydown', onKey, true)
-    document.addEventListener('mousedown', onDown)
-    return () => {
-      document.removeEventListener('keydown', onKey, true)
-      document.removeEventListener('mousedown', onDown)
-    }
-  }, [aaMenuOpen])
+  const closeAaMenu = useCallback(() => setAaMenuOpen(false), [])
+  usePopoverDismiss(aaMenuOpen, closeAaMenu, aaPickerRef)
 
   /**
    * Open upwards when there is no room below.
@@ -264,11 +252,11 @@ export default function DisplayPopover({ open, onClose, triggerRef }: Props) {
         <div className="dp-section">
           <div className="dp-target-row">
             <span className="dp-section-label" id="dp-residue-label">Residue colours</span>
-            <div className="dp-target" role="radiogroup" aria-label="Apply colour to">
+            <div className="seg seg-xs dp-target" role="radiogroup" aria-label="Apply colour to">
               {COLOR_TARGETS.map(t => (
                 <button
                   key={t.id}
-                  className={`dp-target-btn ${colorTarget === t.id ? 'active' : ''}`}
+                  className={colorTarget === t.id ? 'active' : ''}
                   role="radio"
                   aria-checked={colorTarget === t.id}
                   disabled={proteinColorScheme === 'none'}
@@ -371,11 +359,11 @@ export default function DisplayPopover({ open, onClose, triggerRef }: Props) {
           <span className="dp-section-label" id="dp-scheme-label">Base colours</span>
           {/* Applies to whichever scheme is chosen, so it sits above the list
               rather than duplicating every scheme in two variants. */}
-          <div className="dp-target" role="radiogroup" aria-label="Apply colour to">
+          <div className="seg seg-xs dp-target" role="radiogroup" aria-label="Apply colour to">
             {COLOR_TARGETS.map(t => (
               <button
                 key={t.id}
-                className={`dp-target-btn ${colorTarget === t.id ? 'active' : ''}`}
+                className={colorTarget === t.id ? 'active' : ''}
                 role="radio"
                 aria-checked={colorTarget === t.id}
                 disabled={colorScheme === 'none'}
@@ -529,11 +517,11 @@ export default function DisplayPopover({ open, onClose, triggerRef }: Props) {
           <span className="dp-section-label" id="dp-plasmid-label">Plasmid map</span>
           {/* Where things go round the ring, apart from the look a style sets,
               so any style can be drawn either way. */}
-          <div className="dp-target" role="radiogroup" aria-label="Plasmid map layout">
+          <div className="seg seg-xs dp-target" role="radiogroup" aria-label="Plasmid map layout">
             {PLASMID_LAYOUTS.map(l => (
               <button
                 key={l.id}
-                className={`dp-target-btn ${plasmidLayout === l.id ? 'active' : ''}`}
+                className={plasmidLayout === l.id ? 'active' : ''}
                 role="radio"
                 aria-checked={plasmidLayout === l.id}
                 title={l.description}

@@ -8,13 +8,9 @@
   align-items: center;
   justify-content: center;
   background: var(--backdrop);
-  animation: export-fade-in 0.15s ease;
+  animation: fade-in var(--dur-fast) var(--ease-out);
 }
 
-@keyframes export-fade-in {
-  from { opacity: 0; }
-  to   { opacity: 1; }
-}
 
 .export-dialog {
   background: var(--bg);
@@ -24,13 +20,9 @@
   padding: var(--space-4) var(--space-5);
   min-width: 320px;
   max-width: 420px;
-  animation: export-pop-in 0.15s ease;
+  animation: modal-in var(--dur-fast) var(--ease-out);
 }
 
-@keyframes export-pop-in {
-  from { opacity: 0; transform: scale(0.96) translateY(4px); }
-  to   { opacity: 1; transform: scale(1) translateY(0); }
-}
 
 .export-dialog-title {
   font-size: var(--text-md);

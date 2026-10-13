@@ -179,7 +179,7 @@ describe('inner label placement', () => {
     const texts = scene.items.filter(
       (i): i is Extract<SceneItem, { kind: 'text' }> => i.kind === 'text',
     )
-    const tick = texts.find(t => t.text === '501')
+    const tick = texts.find(t => t.text === '500')
     const enzyme = texts.find(t => t.text === 'BamHI')
     expect(tick).toBeDefined()
     expect(enzyme).toBeDefined()
@@ -713,7 +713,7 @@ describe('the ring layout (sites outside)', () => {
       const name = texts.find(t => t.text === site.label)
       expect(name).toBeDefined()
       expect(at(s, name!.x, name!.y)).toBeGreaterThan(s.baseRadius)
-      const pos = texts.find(t => t.text === `(${(site.cutPos + 1).toLocaleString()})` && t.y === name!.y)
+      const pos = texts.find(t => t.text === `(${(site.cutPos + 1).toLocaleString('en-US')})` && t.y === name!.y)
       expect(pos).toBeDefined()
       // The name is the end nearer the circle, the position the outer end.
       expect(at(s, pos!.x, pos!.y)).toBeGreaterThan(at(s, name!.x, name!.y))

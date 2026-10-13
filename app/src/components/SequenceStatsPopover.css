@@ -16,13 +16,9 @@
   -webkit-backdrop-filter: blur(16px);
   padding: 0;
   font-size: var(--text-sm);
-  animation: stats-pop-in .15s ease;
+  animation: pop-up var(--dur-fast) var(--ease-out);
 }
 
-@keyframes stats-pop-in {
-  from { opacity: 0; transform: translateY(-4px) scale(.98); }
-  to   { opacity: 1; transform: translateY(0) scale(1); }
-}
 
 .stats-section {
   padding: var(--space-2) var(--space-3-5);
@@ -187,7 +183,7 @@
 }
 
 .pp-chart-ph {
-  stroke: var(--text-faint);
+  stroke: var(--text-soft);
   stroke-width: 1;
   stroke-dasharray: 3 2;
 }

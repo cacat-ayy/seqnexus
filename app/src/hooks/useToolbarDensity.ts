@@ -5,16 +5,17 @@ import { useLayoutEffect, useState, type RefObject } from 'react'
  *
  * `full` is the designed layout. `tight` buys ~200px by squeezing padding and
  * collapsing the command palette to its icon, which is enough to keep the
- * labels on a 1280px laptop. `icons` drops the labels, the last step before
- * the row stops fitting at all.
+ * labels on a 1280px laptop. `icons` drops the labels. `collapsed` folds the
+ * analysis and design tools into one Tools menu, the last step before the
+ * row stops fitting at all.
  */
-export type ToolbarDensity = 'full' | 'tight' | 'icons'
+export type ToolbarDensity = 'full' | 'tight' | 'icons' | 'collapsed'
 
-const DENSITIES: ToolbarDensity[] = ['full', 'tight', 'icons']
+const DENSITIES: ToolbarDensity[] = ['full', 'tight', 'icons', 'collapsed']
 
 export interface ToolbarFit {
   density: ToolbarDensity
-  /** True when even `icons` overflows and wrapping is the lesser evil. */
+  /** True when even `collapsed` overflows and wrapping is the lesser evil. */
   wrapped: boolean
 }
 
@@ -68,7 +69,8 @@ export function useToolbarDensity(ref: RefObject<HTMLElement | null>): ToolbarFi
 
     const apply = (d: ToolbarDensity, wrapped: boolean) => {
       el.classList.toggle('is-tight', d !== 'full')
-      el.classList.toggle('is-icons', d === 'icons')
+      el.classList.toggle('is-icons', d === 'icons' || d === 'collapsed')
+      el.classList.toggle('is-collapsed', d === 'collapsed')
       el.classList.toggle('is-wrap', wrapped)
     }
 
@@ -86,7 +88,7 @@ export function useToolbarDensity(ref: RefObject<HTMLElement | null>): ToolbarFi
           break
         }
       }
-      // Narrower than even the icon row: let it wrap rather than push the
+      // Narrower than even the collapsed row: let it wrap rather than push the
       // trailing buttons past the edge of the window where nobody can hit them.
       apply(chosen, false)
       const wrapped = overflows(el)
@@ -105,6 +107,12 @@ export function useToolbarDensity(ref: RefObject<HTMLElement | null>): ToolbarFi
 
     const ro = new ResizeObserver(schedule)
     ro.observe(el)
+    // The toolbar's own box does not change when its buttons do (tools left
+    // out in another workspace, a label swapped), so its content is watched
+    // too. Only the children: the classes measure() writes are attributes,
+    // so watching them would loop.
+    const mo = new MutationObserver(schedule)
+    mo.observe(el, { childList: true, subtree: true, characterData: true })
     measure()
     // Labels are wider before the webfont lands than after, so a measurement
     // taken during the fallback font can pick a denser layout than needed.
@@ -112,6 +120,7 @@ export function useToolbarDensity(ref: RefObject<HTMLElement | null>): ToolbarFi
 
     return () => {
       ro.disconnect()
+      mo.disconnect()
       if (frame) cancelAnimationFrame(frame)
     }
   }, [ref])

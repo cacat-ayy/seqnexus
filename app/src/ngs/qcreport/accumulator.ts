@@ -233,7 +233,7 @@ export class QcAccumulator {
         t = m.tiles.get(tile)
         if (!t) {
           if (m.tiles.size >= MAX_TILES) {
-            m.dropTiles(`The read names give more than ${MAX_TILES.toLocaleString()} tiles, so they are probably not tile numbers.`)
+            m.dropTiles(`The read names give more than ${MAX_TILES.toLocaleString('en-US')} tiles, so they are probably not tile numbers.`)
           } else {
             t = { sum: new Float64Array(0), n: new Uint32Array(0) }
             m.tiles.set(tile, t)
@@ -381,7 +381,7 @@ export class QcAccumulator {
 
     // Sequence length distribution: FastQC warns when the reads are not all one length, and fails on empty reads.
     status.lengths = m.emptyReads > 0 ? 'fail' : m.lengths.size > 1 ? 'warn' : 'pass'
-    if (m.emptyReads > 0) notes.lengths = `${m.emptyReads.toLocaleString()} ${m.emptyReads === 1 ? 'read has' : 'reads have'} no bases.`
+    if (m.emptyReads > 0) notes.lengths = `${m.emptyReads.toLocaleString('en-US')} ${m.emptyReads === 1 ? 'read has' : 'reads have'} no bases.`
 
     // Duplication and overrepresented sequences.
     let duplication: MateReport['duplication'] = { levels: [], remaining: 100 }
@@ -395,7 +395,7 @@ export class QcAccumulator {
       overrepresented = overrepresentedSequences(m.dup, reads)
       status.overrepresented = overrepresented.length === 0 ? 'pass' : overrepresented[0].percent > L.overrepresented.error ? 'fail' : 'warn'
       if (m.dupFrozen) {
-        notes.duplication = `Only the first ${DUPLICATION_TRACKED.toLocaleString()} distinct sequences are tracked, as in FastQC; the levels for the rest are estimated from them.`
+        notes.duplication = `Only the first ${DUPLICATION_TRACKED.toLocaleString('en-US')} distinct sequences are tracked, as in FastQC; the levels for the rest are estimated from them.`
       }
     }
 

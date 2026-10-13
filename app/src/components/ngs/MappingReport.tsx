@@ -20,7 +20,7 @@ import { HistogramChart } from './charts'
 import { downloadBlob, downloadMany } from '../../utils/download'
 import { notifyFigureSaved } from '../../utils/cite-notice'
 
-const nf = new Intl.NumberFormat()
+const nf = new Intl.NumberFormat('en-US')
 const pct = (x: number) => `${(x * 100).toFixed(1)}%`
 const safe = (s: string) => s.replace(/[\\/:*?"<>|\s]+/g, '_')
 

@@ -16,7 +16,7 @@ import { writeReportPdf, type ReportBlock } from '../../../pdf/report-pdf'
 import { figurePalette, lineFigure, qualityFigure, tileFigure, type FigurePalette } from './figures'
 import { CITATION_TEXT } from '../../../citation'
 
-const nf = new Intl.NumberFormat()
+const nf = new Intl.NumberFormat('en-US')
 const STATUS_TEXT: Record<ModuleStatus, string> = { pass: 'Passed', warn: 'Warning', fail: 'Failed', skip: 'Not run' }
 const positions = (n: number) => Array.from({ length: n }, (_, i) => String(i + 1))
 

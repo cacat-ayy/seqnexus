@@ -18,7 +18,7 @@ import { liftFeatures } from '../../ngs/denovo/compare'
 import { Sequence } from '../../models/Sequence'
 import { Annotation, type AnnotationData } from '../../models/Annotation'
 
-const nf = new Intl.NumberFormat()
+const nf = new Intl.NumberFormat('en-US')
 let remembered: ConsensusSettings = DEFAULT_CONSENSUS_SETTINGS
 
 interface Props {

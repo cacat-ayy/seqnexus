@@ -23,7 +23,7 @@ interface Props {
   onClose: () => void
 }
 
-const nf = new Intl.NumberFormat()
+const nf = new Intl.NumberFormat('en-US')
 
 export default function TrimReadsDialog({ readSet: rs, onClose }: Props) {
   const long = isLongRead(rs.technology)

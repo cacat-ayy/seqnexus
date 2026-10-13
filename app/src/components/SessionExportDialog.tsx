@@ -109,7 +109,7 @@ export default function SessionExportDialog({ open, onClose, onExport }: Props) 
 
   if (!visible) return null
 
-  const count = (n: number, one: string, many: string) => `${n.toLocaleString()} ${n === 1 ? one : many}`
+  const count = (n: number, one: string, many: string) => `${n.toLocaleString('en-US')} ${n === 1 ? one : many}`
   /** Written whatever the checkboxes say. */
   const always = ([
     [gels.length, 'gel', 'gels'],

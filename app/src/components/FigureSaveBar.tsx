@@ -86,7 +86,7 @@ export default function FigureSaveBar({ file, base, onExportPrompt }: Props) {
       {file && (
         <p className="aw-note">
           Prints at {cm(file.width)} × {cm(file.height)} cm; the PNG is
-          {' '}{Math.round(file.width * dpi / CSS_DPI).toLocaleString()} × {Math.round(file.height * dpi / CSS_DPI).toLocaleString()} px.
+          {' '}{Math.round(file.width * dpi / CSS_DPI).toLocaleString('en-US')} × {Math.round(file.height * dpi / CSS_DPI).toLocaleString('en-US')} px.
         </p>
       )}
       <CiteHint />

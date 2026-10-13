@@ -125,11 +125,11 @@ export default function ExplorerContextMenu({
             )}
             {(has.newSequenceHere || has.importHere || has.exportFolder) && <div className="ctx-menu-sep" />}
             <button className="ctx-menu-item" onClick={onRename}>
-              <Pencil size={13} /> Rename
+              <Pencil size={13} /> Rename<kbd className="menu-kbd">F2</kbd>
             </button>
             <div className="ctx-menu-sep" />
             <button className="ctx-menu-item ctx-menu-danger" onClick={onDelete}>
-              <Trash2 size={13} /> Delete
+              <Trash2 size={13} /> Delete<kbd className="menu-kbd">Del</kbd>
             </button>
           </>
         ) : (
@@ -145,7 +145,7 @@ export default function ExplorerContextMenu({
             </button>
             <div className="ctx-menu-sep" />
             <button className="ctx-menu-item" onClick={onRename}>
-              <Pencil size={13} /> Rename
+              <Pencil size={13} /> Rename<kbd className="menu-kbd">F2</kbd>
             </button>
             {target.item.canDuplicate && (
               <button className="ctx-menu-item" onClick={onDuplicate}>
@@ -154,7 +154,7 @@ export default function ExplorerContextMenu({
             )}
             {has.properties && isDocumentKind(target.item.kind) && (
               <button className="ctx-menu-item" onClick={onProperties}>
-                <Dna size={13} /> Properties
+                <Dna size={13} /> Properties…
               </button>
             )}
             {has.alignToRef && target.item.kind === 'read' && (
@@ -169,7 +169,7 @@ export default function ExplorerContextMenu({
             )}
             <div className="ctx-menu-sep" />
             <button className="ctx-menu-item ctx-menu-danger" onClick={onDelete}>
-              <Trash2 size={13} /> Delete
+              <Trash2 size={13} /> Delete<kbd className="menu-kbd">Del</kbd>
             </button>
           </>
         )}

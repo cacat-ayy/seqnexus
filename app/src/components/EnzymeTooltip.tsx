@@ -277,7 +277,7 @@ export function SiteListTooltip({ x, y, groups }: { x: number; y: number; groups
           {groups.map(g => (
             <tr key={`${g.label}@${g.recognitionStart}`}>
               <td>{g.label}</td>
-              <td>{(g.recognitionStart + 1).toLocaleString()}</td>
+              <td>{(g.recognitionStart + 1).toLocaleString('en-US')}</td>
             </tr>
           ))}
         </tbody>

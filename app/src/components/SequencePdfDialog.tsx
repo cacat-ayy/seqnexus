@@ -123,7 +123,7 @@ function PdfDialogBody({ closing, onAnimationEnd, onClose, onExportPrompt }: {
     const from = parseInt(customFrom.replace(/[,\s]/g, ''), 10)
     const to = parseInt(customTo.replace(/[,\s]/g, ''), 10)
     if (!Number.isFinite(from) || !Number.isFinite(to)) return { error: 'Enter two positions' }
-    if (from < 1 || to < 1 || from > seqLen || to > seqLen) return { error: `Positions run from 1 to ${seqLen.toLocaleString()}` }
+    if (from < 1 || to < 1 || from > seqLen || to > seqLen) return { error: `Positions run from 1 to ${seqLen.toLocaleString('en-US')}` }
     const internal = (d: number) => (d - 1 + origin) % seqLen
     let start = internal(from)
     let last = internal(to)
@@ -233,7 +233,7 @@ function PdfDialogBody({ closing, onAnimationEnd, onClose, onExportPrompt }: {
   const rangeNote = (r: PdfRange | null) => {
     if (!r) return ''
     const n = rangeLength(r, seqLen)
-    return `${dp(r.start).toLocaleString()}-${dp((r.end - 1 + seqLen) % seqLen).toLocaleString()} (${n.toLocaleString()} bp)`
+    return `${dp(r.start).toLocaleString('en-US')}-${dp((r.end - 1 + seqLen) % seqLen).toLocaleString('en-US')} (${n.toLocaleString('en-US')} bp)`
   }
 
   const letterPt = plan?.letterPt ?? 0
@@ -265,7 +265,7 @@ function PdfDialogBody({ closing, onAnimationEnd, onClose, onExportPrompt }: {
               {plan && !tooMany
                 ? <canvas ref={canvasRef} style={{ width: previewW, height: previewH }} aria-label={`Preview of page ${shownPage + 1}`} />
                 : <p className="pdf-page-note">{tooMany
-                    ? `This would be ${pageCount.toLocaleString()}+ pages. Export a smaller range, or zoom out for an overview.`
+                    ? `This would be ${pageCount.toLocaleString('en-US')}+ pages. Export a smaller range, or zoom out for an overview.`
                     : 'Nothing to export in this range.'}</p>}
             </div>
             {plan && !tooMany && (
@@ -287,7 +287,7 @@ function PdfDialogBody({ closing, onAnimationEnd, onClose, onExportPrompt }: {
                     <span>{o.label}</span>
                     {o.id === 'visible' && visibleRange && <span className="pdf-hint">{rangeNote(visibleRange)}</span>}
                     {o.id === 'selection' && selectionRange && <span className="pdf-hint">{rangeNote(selectionRange)}</span>}
-                    {o.id === 'all' && <span className="pdf-hint">{seqLen.toLocaleString()} bp</span>}
+                    {o.id === 'all' && <span className="pdf-hint">{seqLen.toLocaleString('en-US')} bp</span>}
                   </label>
                 ))}
               </div>
@@ -298,7 +298,7 @@ function PdfDialogBody({ closing, onAnimationEnd, onClose, onExportPrompt }: {
                   <input className="input pdf-pos" value={customTo} onChange={e => setCustomTo(e.target.value)} aria-label="To position" inputMode="numeric" />
                   {'error' in custom
                     ? <span className="pdf-hint pdf-warn">{custom.error}</span>
-                    : <span className="pdf-hint">{rangeLength(custom.range, seqLen).toLocaleString()} bp</span>}
+                    : <span className="pdf-hint">{rangeLength(custom.range, seqLen).toLocaleString('en-US')} bp</span>}
                 </div>
               )}
             </div>
@@ -307,9 +307,9 @@ function PdfDialogBody({ closing, onAnimationEnd, onClose, onExportPrompt }: {
               <div className="pdf-section-label">Layout</div>
               <div className="pdf-row">
                 <span className="pdf-row-label">Page</span>
-                <div className="toggle-group">
-                  <button type="button" className={`toggle-btn ${!prefs.landscape ? 'active' : ''}`} onClick={() => setPref('landscape', false)}>A4 portrait</button>
-                  <button type="button" className={`toggle-btn ${prefs.landscape ? 'active' : ''}`} onClick={() => setPref('landscape', true)}>A4 landscape</button>
+                <div className="seg">
+                  <button type="button" className={!prefs.landscape ? 'active' : ''} onClick={() => setPref('landscape', false)}>A4 portrait</button>
+                  <button type="button" className={prefs.landscape ? 'active' : ''} onClick={() => setPref('landscape', true)}>A4 landscape</button>
                 </div>
               </div>
               {letters ? (

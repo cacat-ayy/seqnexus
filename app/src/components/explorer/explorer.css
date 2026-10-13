@@ -400,6 +400,12 @@
 
 .ex-row.dragging { opacity: 0.4; }
 
+/* A row whose item was just made: an accent wash that fades out. */
+.ex-row.fresh { animation: ex-row-fresh calc(var(--dur-slow) * 4) var(--ease-out); }
+@keyframes ex-row-fresh {
+  from { background-color: color-mix(in srgb, var(--accent) 22%, transparent); }
+}
+
 .ex-icon {
   grid-area: icon;
   position: relative;
@@ -569,7 +575,7 @@
   line-height: 1.5;
 }
 
-.ex-blank-icon { color: var(--text-faint); }
+.ex-blank-icon { color: var(--text-soft); }
 
 .ex-no-matches {
   padding: var(--space-5) var(--space-3);

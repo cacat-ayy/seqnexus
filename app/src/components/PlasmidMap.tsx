@@ -627,6 +627,9 @@ function PlasmidMap(_props: PlasmidMapProps) {
         justifyContent: 'center',
         overflow: 'hidden',
         position: 'relative',
+        // The scene paints only its own square, so the pane around it takes
+        // the same colour; otherwise a dark theme shows the map as a box.
+        background: 'var(--canvas-bg)',
       }}
     >
       <canvas

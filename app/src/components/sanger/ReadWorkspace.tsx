@@ -61,7 +61,7 @@ interface Props {
   onFindClosed?: () => void
 }
 
-const nf = new Intl.NumberFormat()
+const nf = new Intl.NumberFormat('en-US')
 const plural = (n: number, one: string, many = `${one}s`) => `${nf.format(n)} ${n === 1 ? one : many}`
 
 export default function ReadWorkspace({ read, onClose, onExportPrompt, findRequested, onFindClosed }: Props) {

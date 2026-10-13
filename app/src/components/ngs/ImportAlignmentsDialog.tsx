@@ -34,7 +34,7 @@ interface Props {
   onClose: () => void
 }
 
-const nf = new Intl.NumberFormat()
+const nf = new Intl.NumberFormat('en-US')
 /** A name as the BAM export writes it, so a file exported here finds the sequence it came from. */
 const norm = (s: string) => samName(s).toLowerCase()
 

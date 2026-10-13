@@ -5,20 +5,7 @@ import {
   markSessionSaved, savedStateChanged, hasUnsavedChanges, flushSave,
 } from '../persistence'
 import { findORFs } from '../workers/orf-finder'
-import { findEnzymeSitesAsync } from '../workers/enzyme-finder'
-import type { RestrictionEnzyme } from '../enzymes/db'
-import { subsetEnzymes, type EnzymeSet } from '../enzymes/sets'
 import { demoDocument } from '../demo'
-
-/** The enzymes a restored Restriction Analysis ran, narrowed by its search. */
-function getSubsetEnzymes(subset: string, searchQuery: string, sets: readonly EnzymeSet[]): RestrictionEnzyme[] {
-  let enzymes = subsetEnzymes(subset, sets)
-  if (searchQuery.trim()) {
-    const q = searchQuery.trim().toUpperCase()
-    enzymes = enzymes.filter(e => e.name.toUpperCase().includes(q) || e.recognition.toUpperCase().includes(q))
-  }
-  return enzymes
-}
 
 /**
  * Handles session restore on mount, auto-save on store/theme changes,
@@ -93,7 +80,8 @@ export function useSessionPersistence(
             enzymeMaxCuts: saved.enzymeParams.maxCuts,
           })
         }
-        // Re-run ORF/enzyme searches for the active tab if its visibility flags are on
+        // Re-run the ORF search for the active tab if ORFs are shown. Enzyme sites
+        // need nothing here: each tab keeps its enzyme names and App finds the sites.
         const doc = store.doc
         if (doc.sequence.length > 0) {
           if (store.showOrfs && saved.orfParams) {
@@ -104,32 +92,6 @@ export function useSessionPersistence(
               topology: doc.sequence.topology,
               geneticCode: store.translationCodeId,
             }).then(orfs => useEditorStore.getState().setOrfResults(orfs)).catch(() => {})
-          }
-          if (store.showEnzymes && saved.enzymeParams) {
-            const ep = saved.enzymeParams
-            const enzymes = getSubsetEnzymes(ep.subset, ep.searchQuery, useEditorStore.getState().enzymeSets)
-            findEnzymeSitesAsync(doc.sequence.bases, enzymes, doc.sequence.topology).then(allSites => {
-              const perEnzyme = new Map<string, typeof allSites>()
-              for (const site of allSites) {
-                const list = perEnzyme.get(site.enzyme.name) || []
-                list.push(site)
-                perEnzyme.set(site.enzyme.name, list)
-              }
-              let filtered = enzymes
-              if (ep.filterByCount) {
-                filtered = filtered.filter(e => {
-                  const count = perEnzyme.get(e.name)?.length ?? 0
-                  return count >= ep.minCuts && count <= ep.maxCuts
-                })
-              } else {
-                filtered = filtered.filter(e => (perEnzyme.get(e.name)?.length ?? 0) > 0)
-              }
-              const sites = filtered.flatMap(e => perEnzyme.get(e.name) ?? [])
-                .sort((a, b) => a.position - b.position)
-              const s = useEditorStore.getState()
-              s.setEnzymeCutSites(sites)
-              s.setEnzymeNames(filtered.map(e => e.name))
-            }).catch(() => {})
           }
         }
         setTheme(saved.theme || 'light')

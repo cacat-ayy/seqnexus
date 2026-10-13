@@ -330,7 +330,11 @@ describe('translation', () => {
     expect(document.querySelector('.dp-aa-menu')).toBeNull()
 
     openAaMenu()
-    act(() => { document.body.dispatchEvent(new MouseEvent('mousedown', { bubbles: true })) })
+    // A full click outside, as for every popover.
+    act(() => {
+      document.body.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }))
+      document.body.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }))
+    })
     expect(document.querySelector('.dp-aa-menu')).toBeNull()
   })
 

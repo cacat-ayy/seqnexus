@@ -9,7 +9,7 @@ import { useEditorStore, selectionRange } from '../../../store'
 import type { Region } from '../../../primers/design/types'
 
 export const regionLength = (r: Region, n: number) => (r.start < r.end ? r.end - r.start : n - r.start + r.end)
-export const fmtRegion = (r: Region) => `${(r.start + 1).toLocaleString()}..${r.end.toLocaleString()}`
+export const fmtRegion = (r: Region) => `${(r.start + 1).toLocaleString('en-US')}..${r.end.toLocaleString('en-US')}`
 
 export interface SelectionTarget {
   target: Region | null

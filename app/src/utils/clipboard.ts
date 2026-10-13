@@ -22,6 +22,25 @@
 import { notify } from '../toast'
 
 /**
+ * The button a copy was clicked from, to confirm on as well as the toast: the
+ * eye is on the button. Not a menu item, whose menu closes on the click.
+ */
+function triggerButton(): HTMLElement | null {
+  const el = typeof document === 'undefined' ? null : document.activeElement
+  if (!(el instanceof HTMLButtonElement) || el.closest('[role="menu"]')) return null
+  return el
+}
+
+/** A short success flash on the button (.copied in App.css). */
+function confirmOn(el: HTMLElement | null) {
+  if (!el?.isConnected) return
+  el.classList.remove('copied')
+  void el.offsetWidth
+  el.classList.add('copied')
+  el.addEventListener('animationend', () => el.classList.remove('copied'), { once: true })
+}
+
+/**
  * Copy `text`, reporting success or failure. Resolves to whether it worked.
  *
  * `successMessage` should already read as a finished outcome, e.g.
@@ -31,12 +50,14 @@ import { notify } from '../toast'
  * no caller has an inline way to say "that did not work".
  */
 export async function copyText(text: string, successMessage?: string): Promise<boolean> {
+  const trigger = successMessage ? triggerButton() : null
   try {
     if (!navigator.clipboard?.writeText) throw new Error('Clipboard API unavailable')
     await navigator.clipboard.writeText(text)
     // Short, and keyed: rapid repeat copies should refresh one toast rather
     // than stack three identical ones.
     if (successMessage) notify.success(successMessage, { duration: 2000, key: 'clipboard' })
+    confirmOn(trigger)
     return true
   } catch (err) {
     notify.error('Could not copy to clipboard', {
@@ -77,10 +98,12 @@ export async function readText(): Promise<string | null> {
  * copy as part of the click even though the PNG takes a moment to draw.
  */
 export async function copyImage(png: Promise<Blob>, successMessage: string): Promise<boolean> {
+  const trigger = triggerButton()
   try {
     if (!navigator.clipboard?.write || typeof ClipboardItem === 'undefined') throw new Error('Clipboard API unavailable')
     await navigator.clipboard.write([new ClipboardItem({ 'image/png': png })])
     notify.success(successMessage, { duration: 2000, key: 'clipboard' })
+    confirmOn(trigger)
     return true
   } catch (err) {
     notify.error('Could not copy the image', {

@@ -106,6 +106,6 @@
   min-width: 26px;
   justify-content: flex-end;
 }
-.ef-cuts.zero { color: var(--text-faint); }
+.ef-cuts.zero { color: var(--text-soft); }
 .ef-cuts.one { color: var(--accent); font-weight: 600; }
 .ef-swatch { width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; }

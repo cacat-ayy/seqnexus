@@ -102,8 +102,10 @@ describe('planTicks', () => {
     const ticks = planTicks(5000, 0)
     expect(ticks[0]).toEqual({ pos: 0, label: 1, major: true })
     // 5 kb uses a 100 bp minor step and a 500 bp major step.
-    expect(ticks[1]).toEqual({ pos: 100, label: 101, major: false })
-    expect(ticks.find(t => t.label === 501)).toEqual({ pos: 500, label: 501, major: true })
+    expect(ticks[1]).toEqual({ pos: 99, label: 100, major: false })
+    expect(ticks.find(t => t.label === 500)).toEqual({ pos: 499, label: 500, major: true })
+    // Nothing is numbered beside the 1 at the top: the last base is the one before it.
+    expect(ticks.some(t => t.label === 5000)).toBe(false)
   })
 
   it('keeps every label a round number under a display origin', () => {
@@ -111,7 +113,7 @@ describe('planTicks', () => {
     // labelled with displayPosition(), so the ring read 4001, 4501, 1, 501.
     const ticks = planTicks(5000, 1000)
     const majors = ticks.filter(t => t.major).map(t => t.label)
-    expect(majors).toEqual([1, 501, 1001, 1501, 2001, 2501, 3001, 3501, 4001, 4501])
+    expect(majors).toEqual([1, 500, 1000, 1500, 2000, 2500, 3000, 3500, 4000, 4500])
   })
 
   it('puts each label where that base actually is', () => {

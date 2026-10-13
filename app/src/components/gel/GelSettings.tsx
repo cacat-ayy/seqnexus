@@ -34,10 +34,10 @@ export default function GelSettings({ conditions, onConditions, display, onDispl
           inspector then flags as the wrong molecule for this gel. */}
       <div className="gw-field">
         <span className="gw-field-label">Kind</span>
-        <div className="toggle-group" role="radiogroup" aria-label="Gel kind">
+        <div className="seg" role="radiogroup" aria-label="Gel kind">
           {([['agarose', 'Agarose'], ['sds-page', 'SDS-PAGE']] as [GelKind, string][]).map(([k, label]) => (
             <button key={k} role="radio" aria-checked={(conditions.kind ?? 'agarose') === k}
-              className={`toggle-btn ${(conditions.kind ?? 'agarose') === k ? 'active' : ''}`}
+              className={(conditions.kind ?? 'agarose') === k ? 'active' : ''}
               title={k === 'agarose' ? 'DNA by length' : 'Proteins by mass, denatured in SDS'}
               onClick={() => onConditions(k === 'sds-page'
                 ? { kind: 'sds-page', acrylamidePct: conditions.acrylamidePct ?? DEFAULT_ACRYLAMIDE_PCT }
@@ -70,10 +70,10 @@ export default function GelSettings({ conditions, onConditions, display, onDispl
       {!protein && (
       <div className="gw-field">
         <span className="gw-field-label">Buffer</span>
-        <div className="toggle-group" role="radiogroup" aria-label="Buffer">
+        <div className="seg" role="radiogroup" aria-label="Buffer">
           {(['TAE', 'TBE'] as GelBuffer[]).map(b => (
             <button key={b} role="radio" aria-checked={conditions.buffer === b}
-              className={`toggle-btn ${conditions.buffer === b ? 'active' : ''}`}
+              className={conditions.buffer === b ? 'active' : ''}
               onClick={() => onConditions({ buffer: b })}>{b}</button>
           ))}
         </div>
@@ -81,10 +81,10 @@ export default function GelSettings({ conditions, onConditions, display, onDispl
       )}
       <div className="gw-field">
         <span className="gw-field-label">Size</span>
-        <div className="toggle-group" role="radiogroup" aria-label="Gel size">
+        <div className="seg" role="radiogroup" aria-label="Gel size">
           {(Object.keys(GEL_FORMATS) as GelFormat[]).map(f => (
             <button key={f} role="radio" aria-checked={conditions.format === f}
-              className={`toggle-btn ${conditions.format === f ? 'active' : ''}`}
+              className={conditions.format === f ? 'active' : ''}
               title={GEL_FORMATS[f].label}
               onClick={() => onConditions({ format: f })}>{f[0].toUpperCase() + f.slice(1)}</button>
           ))}
@@ -124,10 +124,10 @@ export default function GelSettings({ conditions, onConditions, display, onDispl
       </label>
       <div className="gw-field">
         <span className="gw-field-label">Labels</span>
-        <div className="toggle-group" role="radiogroup" aria-label="Lane labels">
+        <div className="seg" role="radiogroup" aria-label="Lane labels">
           {(['numbers', 'names'] as LaneLabelMode[]).map(m => (
             <button key={m} role="radio" aria-checked={display.labelMode === m}
-              className={`toggle-btn ${display.labelMode === m ? 'active' : ''}`}
+              className={display.labelMode === m ? 'active' : ''}
               onClick={() => onDisplay({ labelMode: m })}>{m === 'numbers' ? 'Numbers' : 'Names'}</button>
           ))}
         </div>

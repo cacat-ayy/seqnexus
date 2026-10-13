@@ -89,10 +89,9 @@
 .re-range-row {
   display: flex;
   align-items: center;
-  gap: var(--space-1);
+  gap: var(--space-1-5);
   font-size: var(--text-sm);
   color: var(--text-secondary);
-  padding-left: 18px;
 }
 .re-num {
   width: 40px;
@@ -174,7 +173,7 @@
 
 .re-enzyme-recog {
   font-size: var(--text-2xs);
-  font-family: monospace;
+  font-family: var(--font-mono);
   color: var(--text-secondary);
   letter-spacing: 0.03em;
   padding: 0 var(--space-1);
@@ -189,7 +188,7 @@
   height: 11px;
   background: var(--accent);
   vertical-align: middle;
-  margin: 0 0.var(--space-1);
+  margin: 0 1px;
   border-radius: var(--radius-xs);
 }
 
@@ -215,7 +214,7 @@
   border: 1px solid var(--border-light);
   border-radius: var(--radius-sm);
   font-size: var(--text-xs);
-  font-family: monospace;
+  font-family: var(--font-mono);
   cursor: pointer;
   color: var(--accent);
 }
@@ -245,7 +244,6 @@
   border-radius: var(--radius-sm);
   line-height: 1.6;
   font-weight: 500;
-  margin-left: auto;
   flex-shrink: 0;
 }
 .re-methyl-tag-blocked {
@@ -319,4 +317,39 @@
 .re-set-buttons {
   display: flex;
   gap: var(--space-1);
+}
+
+/* In the Restriction Enzymes dialog an enzyme's positions sit in its row,
+   after the recognition site and overhang, and wrap there when there are
+   many; the gel button stays at the end of the first line. */
+.re-enzyme-row {
+  flex-wrap: wrap;
+}
+.re-enzyme-row .re-site-badges {
+  flex: 1 1 120px;
+  margin-top: 0;
+  margin-left: var(--space-1);
+}
+
+/* One scrolling region: the filters stay put above the list, rather than the
+   dialog body and the list inside it scrolling separately. */
+.enzyme-modal .modal-body {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+}
+.enzyme-modal .re-results {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+}
+.enzyme-modal .re-site-list {
+  flex: 1;
+  min-height: 120px;
+  max-height: none;
+}
+.re-results-status {
+  margin-top: var(--space-3);
 }

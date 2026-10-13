@@ -36,6 +36,8 @@ import PrimeEditTask from './tasks/PrimeEditTask'
 import OrderTask from './tasks/OrderTask'
 import AnalyseTask from './tasks/AnalyseTask'
 import GuideLibrary from './GuideLibrary'
+import ConfirmDialog from '../ConfirmDialog'
+import SkeletonRows from '../SkeletonRows'
 import type { CrisprTask, GuideCandidate, GuideDrawScope } from '../../crispr/types'
 
 const TASKS: { id: CrisprTask; label: string; hint: string }[] = [
@@ -49,6 +51,9 @@ const TASKS: { id: CrisprTask; label: string; hint: string }[] = [
   { id: 'order', label: 'Order', hint: 'The oligos to buy, and how to screen afterwards' },
   { id: 'analyse', label: 'Analyse', hint: 'What the experiment actually did, from traces or reads' },
 ]
+
+/** Past this many, adding every guide asks first. */
+const CONFIRM_ADD_ALL = 50
 
 type Sort = 'position' | 'score' | 'frame' | 'gc'
 
@@ -92,6 +97,7 @@ export default function GuidePanel() {
 
   const [sort, setSort] = useState<Sort>('position')
   const [dialogOpen, setDialogOpen] = useState(false)
+  const [confirmAddAll, setConfirmAddAll] = useState(false)
 
   const nuclease = resolveNuclease(nucleaseId, customNucleases)
   const at = (i: number) => displayPosition(i, origin, seqLen)
@@ -139,7 +145,7 @@ export default function GuidePanel() {
   if (view === 'library') {
     return (
       <div className="gp">
-        <div className="fs-segmented" role="tablist" aria-label="Guides view">
+        <div className="seg seg-sm fs-segmented" role="tablist" aria-label="Guides view">
           <button role="tab" aria-selected={false} onClick={() => setView('design')}>Design</button>
           <button role="tab" aria-selected className="active">Library</button>
         </div>
@@ -150,12 +156,12 @@ export default function GuidePanel() {
 
   return (
     <div className="gp">
-      <div className="fs-segmented" role="tablist" aria-label="Guides view">
+      <div className="seg seg-sm fs-segmented" role="tablist" aria-label="Guides view">
         <button role="tab" aria-selected className="active">Design</button>
         <button role="tab" aria-selected={false} onClick={() => setView('library')}>Library</button>
       </div>
 
-      <div className="gp-tasks" role="tablist" aria-label="What to design">
+      <div className="seg seg-sm gp-tasks" role="tablist" aria-label="What to design">
         {TASKS.map(t => (
           <button
             key={t.id}
@@ -268,9 +274,15 @@ export default function GuidePanel() {
           {pickedCount > 0 && <span className="gp-picked">{pickedCount} picked</span>}
         </span>
         {convertible.length > 0 && !readOnly && (
+          // Adding every site is a bulk write, so it is a plain button and,
+          // past a handful, asks first; adding a deliberate pick is primary.
           <button
-            className="btn btn-primary btn-sm"
-            onClick={() => applyGuides(pickedCount > 0 ? picks : undefined)}
+            className={`btn btn-sm ${pickedCount > 0 ? 'btn-primary' : ''}`}
+            onClick={() => {
+              if (pickedCount > 0) applyGuides(picks)
+              else if (convertible.length > CONFIRM_ADD_ALL) setConfirmAddAll(true)
+              else applyGuides()
+            }}
             title="Add these guides to the document as features"
           >
             {pickedCount > 0 ? `Add picked (${pickedCount})` : `Add all (${convertible.length})`}
@@ -329,6 +341,9 @@ export default function GuidePanel() {
             Showing {shown.length} of {sorted.length}. Sort or narrow the scan to see the rest.
           </li>
         )}
+        {candidates.length === 0 && info.running && (
+          <li className="gp-skeleton"><SkeletonRows label="Scanning for sites" /></li>
+        )}
         {candidates.length === 0 && !info.running && (
           <li className="gp-empty">
             {seqLen === 0
@@ -355,6 +370,20 @@ export default function GuidePanel() {
         open={dialogOpen}
         onClose={() => setDialogOpen(false)}
         onSaved={id => setParams({ crisprNucleaseId: id, crisprSpacerLength: 0 })}
+      />
+
+      <ConfirmDialog
+        open={confirmAddAll}
+        title="Add all guides"
+        message={`Add all ${convertible.length.toLocaleString('en-US')} guides to the sequence as features? Undo takes them out again.`}
+        buttons={[
+          { label: 'Cancel', value: 'cancel' },
+          { label: `Add ${convertible.length.toLocaleString('en-US')} guides`, value: 'add', variant: 'primary' },
+        ]}
+        onResult={value => {
+          if (value === 'add') applyGuides()
+          setConfirmAddAll(false)
+        }}
       />
     </div>
   )

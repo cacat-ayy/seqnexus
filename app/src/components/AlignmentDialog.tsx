@@ -7,7 +7,7 @@ import './AlignmentDialog.css'
  */
 
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
-import { X, Plus, Trash2, ChevronDown, ChevronRight, Loader2, FileText, AudioWaveform, ClipboardPaste, AlertTriangle, GripVertical, Scissors, Search, FolderOpen, Check } from 'lucide-react'
+import { X, Plus, Trash2, Loader2, FileText, AudioWaveform, ClipboardPaste, AlertTriangle, GripVertical, Scissors, Search, FolderOpen, Check } from 'lucide-react'
 import { reverseComplement } from '../models/complement'
 import { useEditorStore, applyEdits } from '../store'
 import { parseUid, toUid } from '../explorer/types'
@@ -23,6 +23,7 @@ import { NEEDS_WEB, openedAsFile } from '../utils/opened-as-file'
 import { useExitAnimation } from '../hooks/useExitAnimation'
 import { useFocusTrap } from '../hooks/useFocusTrap'
 import { useBackdropDismiss } from '../hooks/useBackdropDismiss'
+import Chevron from './Chevron'
 
 interface SeqEntry {
   id: string
@@ -514,16 +515,16 @@ export default function AlignmentDialog({ open, onClose, onResult, onReadAlignRe
               {isPairwise && (
                 <>
                   <label>Mode</label>
-                  <div className="toggle-group">
+                  <div className="seg">
                     <button
-                      className={`toggle-btn ${mode === 'global' ? 'active' : ''}`}
+                      className={mode === 'global' ? 'active' : ''}
                       onClick={() => setMode('global')}
                       title="Needleman-Wunsch: align the sequences end to end"
                     >
                       Global
                     </button>
                     <button
-                      className={`toggle-btn ${mode === 'local' ? 'active' : ''}`}
+                      className={mode === 'local' ? 'active' : ''}
                       onClick={() => setMode('local')}
                       title="Smith-Waterman: find the best matching stretch"
                     >
@@ -537,21 +538,21 @@ export default function AlignmentDialog({ open, onClose, onResult, onReadAlignRe
                   className="align-name-input"
                   value={alnName}
                   onChange={e => setAlnName(e.target.value)}
-                  placeholder={entries.length >= 2 ? `Alignment (${entries.length} sequences)` : 'Name (optional)'}
+                  placeholder={entries.length >= 2 ? `Alignment (${entries.length} sequences)` : 'Alignment name'}
                   aria-label="Alignment name"
                 />
               )}
 
               <label style={{ marginLeft: 'auto' }}>Type</label>
-              <div className="toggle-group">
+              <div className="seg">
                 <button
-                  className={`toggle-btn ${seqType === 'dna' ? 'active' : ''}`}
+                  className={seqType === 'dna' ? 'active' : ''}
                   onClick={() => setSeqType('dna')}
                 >
                   DNA
                 </button>
                 <button
-                  className={`toggle-btn ${seqType === 'protein' ? 'active' : ''}`}
+                  className={seqType === 'protein' ? 'active' : ''}
                   onClick={() => setSeqType('protein')}
                 >
                   Protein
@@ -621,7 +622,7 @@ export default function AlignmentDialog({ open, onClose, onResult, onReadAlignRe
                       <span className="align-seq-grip" title="Drag to reorder"><GripVertical size={13} /></span>
                       <span className="align-seq-icon">{sourceIcon(entry.source)}</span>
                       <span className="align-seq-name" title={entry.name}>{entry.name}</span>
-                      <span className="align-seq-len">{entry.bases.length.toLocaleString()} bp</span>
+                      <span className="align-seq-len">{entry.bases.length.toLocaleString('en-US')} bp</span>
                       {entry.source === 'read' && entry.untrimmedBases != null && entry.trimmedBases != null && (
                         <button
                           className={`align-seq-trim ${entry.trimmed !== false ? 'active' : ''}`}
@@ -661,7 +662,7 @@ export default function AlignmentDialog({ open, onClose, onResult, onReadAlignRe
                       setReadMenuOpen(false)
                     }}
                   >
-                    <Plus size={12} /> From tab
+                    <Plus size={12} /> From explorer
                   </button>
                   {tabMenuOpen && (() => {
                     const lowerFilter = tabFilter.toLowerCase()
@@ -794,7 +795,7 @@ export default function AlignmentDialog({ open, onClose, onResult, onReadAlignRe
                                       </span>
                                       <FileText size={13} />
                                       <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis' }}>{t.doc.name}</span>
-                                      <span className="align-add-menu-item-sub">{alreadyAdded ? 'added' : `${t.doc.sequence.length.toLocaleString()} ${t.doc.sequence.alphabet === 'protein' ? 'aa' : 'bp'}`}</span>
+                                      <span className="align-add-menu-item-sub">{alreadyAdded ? 'added' : `${t.doc.sequence.length.toLocaleString('en-US')} ${t.doc.sequence.alphabet === 'protein' ? 'aa' : 'bp'}`}</span>
                                     </button>
                                   )
                                 })}
@@ -869,7 +870,7 @@ export default function AlignmentDialog({ open, onClose, onResult, onReadAlignRe
                 <div className="align-paste-area">
                   <textarea
                     className="input align-paste-textarea"
-                    placeholder="Paste raw sequence or FASTA..."
+                    placeholder="Paste raw sequence or FASTA…"
                     value={pasteText}
                     onChange={e => setPasteText(e.target.value)}
                     autoFocus
@@ -897,12 +898,12 @@ export default function AlignmentDialog({ open, onClose, onResult, onReadAlignRe
             {/* Scoring: only the built-in pairwise aligner takes it; the others use their own tuned defaults. */}
             {(isPairwise || readAlignPattern) && (
             <button className="align-advanced-toggle" onClick={() => setAdvancedOpen(v => !v)}>
-              {advancedOpen ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+              <Chevron open={advancedOpen} size={14} />
               Pairwise scoring
             </button>
             )}
             {(isPairwise || readAlignPattern) && advancedOpen && (
-              <div className="align-advanced-body">
+              <div className="align-advanced-body disclose">
                 {seqType === 'dna' && (
                   <div className="align-param" style={{ gridColumn: 'span 2' }}>
                     <label>Preset</label>
@@ -987,7 +988,7 @@ export default function AlignmentDialog({ open, onClose, onResult, onReadAlignRe
         {phase === 'running' && (
           <div className="modal-body align-body">
             <div className="align-running">
-              <Loader2 size={28} className="ann-spin" style={{ color: 'var(--accent)' }} />
+              <Loader2 size={28} className="spinner" style={{ color: 'var(--accent)' }} />
               <span className="align-running-text">
                 {readAlignPattern
                   ? `Aligning ${readAlignPattern.readEntries.length} read${readAlignPattern.readEntries.length > 1 ? 's' : ''} to reference…`

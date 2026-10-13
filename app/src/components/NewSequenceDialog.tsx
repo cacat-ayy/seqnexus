@@ -141,7 +141,7 @@ export default function NewSequenceDialog({ open, initialAlphabet = 'dna', onClo
   const detected = total === 0 ? null : [
     genbank ? 'GenBank' : (protein ? 'Protein' : 'DNA'),
     recordCount > 1 ? `${recordCount} records` : null,
-    `${total.toLocaleString()} ${unit}`,
+    `${total.toLocaleString('en-US')} ${unit}`,
   ].filter(Boolean).join(' · ')
   const title = initialAlphabet === 'protein' ? 'New Protein' : 'New Sequence'
   /** Enter in a one-line field creates, as in any form. */
@@ -205,7 +205,7 @@ export default function NewSequenceDialog({ open, initialAlphabet = 'dna', onClo
             {!several && (
               <div className="nsm-field">
                 <label className="nsm-label" htmlFor="nsm-description">
-                  Description <span className="nsm-optional">optional</span>
+                  Description <span className="field-optional">optional</span>
                 </label>
                 <input
                   id="nsm-description"
@@ -225,9 +225,9 @@ export default function NewSequenceDialog({ open, initialAlphabet = 'dna', onClo
             <div className="nsm-grid">
               <div className="nsm-field">
                 <span className="nsm-label" id="nsm-molecule">Molecule</span>
-                <div className="toggle-group" role="radiogroup" aria-labelledby="nsm-molecule">
+                <div className="seg" role="radiogroup" aria-labelledby="nsm-molecule">
                   <button
-                    className={`toggle-btn ${!protein ? 'active' : ''}`}
+                    className={!protein ? 'active' : ''}
                     onClick={() => setChosenAlphabet('dna')}
                     type="button"
                     role="radio"
@@ -236,7 +236,7 @@ export default function NewSequenceDialog({ open, initialAlphabet = 'dna', onClo
                     DNA
                   </button>
                   <button
-                    className={`toggle-btn ${protein ? 'active' : ''}`}
+                    className={protein ? 'active' : ''}
                     onClick={() => setChosenAlphabet('protein')}
                     type="button"
                     role="radio"
@@ -255,9 +255,9 @@ export default function NewSequenceDialog({ open, initialAlphabet = 'dna', onClo
                 {protein ? (
                   <span className="nsm-note">A protein is always linear.</span>
                 ) : (
-                  <div className="toggle-group" role="radiogroup" aria-labelledby="nsm-topology">
+                  <div className="seg" role="radiogroup" aria-labelledby="nsm-topology">
                     <button
-                      className={`toggle-btn ${topology === 'linear' ? 'active' : ''}`}
+                      className={topology === 'linear' ? 'active' : ''}
                       onClick={() => setTopology('linear')}
                       type="button"
                       role="radio"
@@ -266,7 +266,7 @@ export default function NewSequenceDialog({ open, initialAlphabet = 'dna', onClo
                       Linear
                     </button>
                     <button
-                      className={`toggle-btn ${topology === 'circular' ? 'active' : ''}`}
+                      className={topology === 'circular' ? 'active' : ''}
                       onClick={() => setTopology('circular')}
                       type="button"
                       role="radio"

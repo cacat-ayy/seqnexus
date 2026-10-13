@@ -32,7 +32,7 @@ interface Props {
   onClose: () => void
 }
 
-const nf = new Intl.NumberFormat()
+const nf = new Intl.NumberFormat('en-US')
 
 export default function AssembleReadsDialog({ readSet: rs, rerun, onClose }: Props) {
   const [settings, setSettings] = useState<DeNovoSettings>(rerun?.denovo?.settings ?? defaultDeNovoSettings(rs))
@@ -168,7 +168,7 @@ export default function AssembleReadsDialog({ readSet: rs, rerun, onClose }: Pro
           {genome && (
             <div className="ngs-field-row">
               <label className="aw-field" title="Used to take about 40x of the longest reads. Left empty, up to 200 Mb of the longest reads are used.">
-                <span>Genome length, Mb (optional)</span>
+                <span>Genome length, Mb <span className="field-optional">optional</span></span>
                 <input className="aw-text" type="number" min={0.01} max={50} step={0.1} value={genomeMb} placeholder="Unknown" disabled={running}
                   onChange={e => setGenomeMb(e.target.value)} />
               </label>
@@ -198,7 +198,7 @@ export default function AssembleReadsDialog({ readSet: rs, rerun, onClose }: Pro
             <span>Line the contigs up with</span>
             <select className="select aw-select-full" value={lineUp} disabled={running} onChange={e => setLineUp(e.target.value)}>
               <option value="auto">{offered.length ? 'The open sequence each matches (automatic)' : 'An open sequence it matches (none is open)'}</option>
-              {offered.map(t => <option key={t.id} value={t.id}>{t.doc.name} ({t.doc.sequence.length.toLocaleString()} bp{t.doc.sequence.topology === 'circular' ? ', circular' : ''})</option>)}
+              {offered.map(t => <option key={t.id} value={t.id}>{t.doc.name} ({t.doc.sequence.length.toLocaleString('en-US')} bp{t.doc.sequence.topology === 'circular' ? ', circular' : ''})</option>)}
               <option value="none">Nothing: leave them as assembled</option>
             </select>
           </label>
