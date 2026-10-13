@@ -383,3 +383,38 @@ describe('writeSnapGene', () => {
     expect(parsed.annotations[0].name).toBe('T7 > promoter & "strong"')
   })
 })
+
+describe('SnapGene writer: what used to be lost on the way back', () => {
+  const base = (patch: Partial<DocumentState> = {}): DocumentState => ({
+    name: 'pTest',
+    sequence: new Sequence('ATGAAATTTGGGCCC'.repeat(20), 'circular'),
+    annotations: [],
+    ...patch,
+  })
+
+  it('keeps a feature renamed after import', () => {
+    const d = base({ annotations: [new Annotation({ id: 'a', name: 'lacZ-alpha', type: 'CDS', start: 0, end: 30, strand: 1, qualifiers: { label: ['lacZ'] } })] })
+    expect(parseSnapGene(writeSnapGene(d)).annotations[0].name).toBe('lacZ-alpha')
+  })
+
+  it('keeps the description and the source', () => {
+    const d = base({ description: 'A test\nconstruct', metadata: { source: [{ organism: ['Escherichia coli'], mol_type: ['other DNA'] }] } })
+    const back = parseSnapGene(writeSnapGene(d))
+    expect(back.description).toBe('A test\nconstruct')
+    expect(back.metadata?.source).toEqual([{ organism: ['Escherichia coli'], mol_type: ['other DNA'] }])
+    expect(back.annotations).toHaveLength(0)
+  })
+
+  it('keeps line breaks and angle brackets in notes, names and primer notes', () => {
+    const d = base({
+      name: 'p<1>',
+      annotations: [new Annotation({ id: 'a', name: 'Tm < 60', type: 'misc_feature', start: 0, end: 30, strand: 1, qualifiers: { note: ['Tm < 60\nsecond & last <b>line</b>'] } })],
+      primers: [{ id: 'p1', name: 'fwd', sequence: 'ATGAAATTTGGGCCCATGAA', role: 'primer', notes: 'one\ntwo' }],
+    })
+    const back = parseSnapGene(writeSnapGene(d))
+    expect(back.name).toBe('p<1>')
+    expect(back.annotations[0].name).toBe('Tm < 60')
+    expect(back.annotations[0].qualifiers.note).toEqual(['Tm < 60\nsecond & last <b>line</b>'])
+    expect(back.primers?.[0].notes).toBe('one\ntwo')
+  })
+})

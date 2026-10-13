@@ -15,7 +15,7 @@ import { gunzipSync } from 'fflate'
 import { useEditorStore } from '../store'
 import type { DocumentState } from '../models/Document'
 import { Sequence } from '../models/Sequence'
-import { readFasta, type FastaRead, type FastaRecord } from '../io/fasta'
+import { readFasta, recordName, type FastaRead, type FastaRecord } from '../io/fasta'
 import { parseGenBankMulti } from '../io/genbank'
 import { looksLikeEmbl, parseEmbl } from '../io/embl'
 import { gff3Documents, looksLikeGff3, matchSeqid, readGff3 } from '../io/gff3'
@@ -50,8 +50,8 @@ const OPEN_EXTENSIONS = [
 ]
 /** Read alignments, which go to their own import dialog. */
 const MAPPED_READS = /\.(bam|sam)$/i
-/** GenBank, EMBL and GFF3 files gzipped, as NCBI and Ensembl serve them. */
-const COMPRESSED_RECORDS = /\.(gb|gbk|gbff|genbank|gp|gpt|genpept|ape|embl|emb|gff|gff3)\.gz$/i
+/** GenBank, EMBL and GFF3 files gzipped, as NCBI and Ensembl serve them, and gzipped session files. */
+const COMPRESSED_RECORDS = /\.(gb|gbk|gbff|genbank|gp|gpt|genpept|ape|embl|emb|gff|gff3|json)\.gz$/i
 /** Gzipped FASTA: a reference genome or a file of reads, told apart by peeking. */
 const COMPRESSED_FASTA = /\.(fasta|fa|fas|fna|faa)\.gz$/i
 /** GenBank text, ApE's files (GenBank under another name) included. */
@@ -307,20 +307,27 @@ export function useFileImport(h: FileImportHandlers) {
     if (docs.length > 0) openDocsInFolder(docs, source, source.replace(/\.[^.]+$/, ''), ctx)
     const store = useEditorStore.getState()
     const missing: string[] = []
-    for (const [seqid, features] of read.features) {
+    for (const seqid of new Set([...read.features.keys(), ...read.primers.keys()])) {
       if (read.sequences.has(seqid)) continue
       const tab = matchSeqid(seqid, store.tabs)
       if (!tab) { missing.push(seqid); continue }
+      const features = read.features.get(seqid) ?? []
+      const primers = read.primers.get(seqid) ?? []
       store.setActiveTab(tab.id)
-      useEditorStore.getState().addAnnotations(features)
-      report.info(`Added ${count(features.length, 'feature', 'features')} from "${source}" to ${tab.doc.name}`)
+      if (features.length > 0) useEditorStore.getState().addAnnotations(features)
+      if (primers.length > 0) useEditorStore.getState().addPrimers(primers)
+      const added = [
+        ...(features.length > 0 ? [count(features.length, 'feature', 'features')] : []),
+        ...(primers.length > 0 ? [count(primers.length, 'primer', 'primers')] : []),
+      ]
+      report.info(`Added ${added.join(' and ')} from "${source}" to ${tab.doc.name}`)
     }
     if (missing.length > 0) {
       report.warning(`No open sequence named ${listed(missing.slice(0, 4).map(m => `"${m}"`))}${missing.length > 4 ? ' and others' : ''} for the features in "${source}"`, {
         detail: 'Features go onto the open sequence their seqid names. Open it first, or use a GFF3 file with a ##FASTA section.',
       })
     }
-    if (docs.length === 0 && read.features.size === 0) report.error(`No features found in "${source}"`)
+    if (docs.length === 0 && read.features.size === 0 && read.primers.size === 0) report.error(`No features found in "${source}"`)
   }, [openDocsInFolder])
 
   /**
@@ -391,8 +398,7 @@ export function useFileImport(h: FileImportHandlers) {
     }
 
     const doc = (rec: FastaRecord, alphabet?: 'protein'): DocumentState => ({
-      name: rec.name,
-      ...(rec.description ? { description: rec.description } : {}),
+      ...recordName(rec),
       sequence: new Sequence(rec.bases, 'linear', alphabet),
       annotations: [],
     })

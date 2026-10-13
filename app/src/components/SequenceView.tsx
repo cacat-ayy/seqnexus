@@ -94,6 +94,7 @@ import { keyFromOrfId } from '../utils/orf-features'
 import { keyFromMotifId } from '../utils/motif-features'
 import { isWidgetKeyTarget } from '../utils/key-target'
 import { basesFromPaste } from '../utils/paste-bases'
+import { fragmentFor, fragmentOf, placeFragment, rememberFragment } from '../utils/feature-clipboard'
 import { notify } from '../toast'
 import { isPrimerItemId, type PrimerItem } from '../primers/display'
 import PrimerTooltip from './primers/PrimerTooltip'
@@ -1612,10 +1613,14 @@ function SequenceView({ onFindRequest, onFindClose, onAnnotateRequest, onEditFea
     }
     const rangeNote = multi ? ` from ${allSelectionsOf(store).length} ranges` : ''
     const unit = unitOf(docRef.current.sequence.alphabet)
+    // A copy of one stretch remembers its features, which a paste of the
+    // same bases puts back (utils/feature-clipboard).
+    const rememberCopy = () => rememberFragment(segs.length === 1 ? fragmentOf(curDoc, segs[0][0], segs[0][1]) : null)
     if (ctrlOrMeta && e.key === 'c') {
       if (segs.length > 0) {
         e.preventDefault()
         const bases = getSelectedBases()
+        rememberCopy()
         copyText(bases, `Copied ${bases.length} ${unit}${rangeNote}`)
       }
       return
@@ -1624,10 +1629,16 @@ function SequenceView({ onFindRequest, onFindClose, onAnnotateRequest, onEditFea
       if (segs.length > 0) {
         e.preventDefault()
         const bases = getSelectedBases()
+        rememberCopy()
         // Read-only still copies, but says so rather than claiming a cut.
-        copyText(bases, `${ro ? 'Copied' : 'Cut'} ${bases.length} ${unit}${rangeNote}`)
+        // The bases go only once they are on the clipboard: a cut whose copy
+        // failed would otherwise lose them. If the selection or the sequence
+        // moved meanwhile, the cut is left as a copy.
+        void copyText(bases, `${ro ? 'Copied' : 'Cut'} ${bases.length} ${unit}${rangeNote}`).then(ok => {
+          const now = useEditorStore.getState()
+          if (ok && !ro && now.selection === sel && docRef.current === curDoc) deleteSelection()
+        })
         if (ro) roBlock()
-        else deleteSelection()
       } else if (ro) {
         roBlock()
       }
@@ -1699,12 +1710,19 @@ function SequenceView({ onFindRequest, onFindClose, onAnnotateRequest, onEditFea
       const [headStart, headEnd] = segs[1]
       store.deleteTwo(tailStart, tailEnd, headStart, headEnd, filtered)
       store.setCaret(filtered.length)
-    } else if (range) {
-      store.replace(range[0], range[1], filtered)
-      store.setCaret(range[0] + filtered.length)
     } else {
-      store.insert(sel.caret, filtered)
-      store.setCaret(sel.caret + filtered.length)
+      const [start, end] = range ?? [sel.caret, sel.caret]
+      // A paste of bases copied here brings their features and primers too.
+      const fragment = fragmentFor(filtered)
+      const placed = fragment && placeFragment(fragment, start, curDoc.primers ?? [])
+      if (placed && (placed.annotations.length > 0 || placed.primers.length > 0)) {
+        store.pasteWithFeatures(start, end, filtered, placed.annotations, placed.primers)
+      } else if (range) {
+        store.replace(start, end, filtered)
+      } else {
+        store.insert(start, filtered)
+      }
+      store.setCaret(start + filtered.length)
     }
   }, [])
 

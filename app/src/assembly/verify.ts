@@ -11,6 +11,7 @@
 import { callVariants, DEFAULT_VARIANT_SETTINGS, referenceIndex, type RefFeature, type Variant } from './variants'
 import type { ContigDoc } from './types'
 import { allCoding, codingLabel, codingSummary } from './effects'
+import { csvCell } from '../utils/csv-cell'
 
 export interface VerifySettings {
   /** Reads needed over a base for it to count as covered. */
@@ -171,7 +172,7 @@ const pct = (x: number) => `${(x * 100).toFixed(x === 1 || x === 0 ? 0 : 1)}%`
 
 /** The report as CSV: one row per feature, then one per difference. */
 export function verifyCsv(r: VerifyReport): string {
-  const q = (s: string) => (/[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s)
+  const q = csvCell
   const lines = [
     `Clone verification,${q(r.reference.name)},${STATUS_LABEL[r.verdict]}`,
     `Reads,${r.reads}`,
@@ -199,28 +200,4 @@ export function describeChange(v: Variant): string {
 export function describeDifference(v: Variant, feature?: RefFeature): string {
   const c = (feature && allCoding(v).find(x => x.feature === feature.name)) || v.coding
   return `${v.position} ${describeChange(v)}${c ? `: ${codingLabel(c)}` : ''}`
-}
-
-/** A self-contained HTML page of the report, for printing to PDF. */
-export function verifyHtml(r: VerifyReport, contigName: string, date = new Date()): string {
-  const esc = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
-  const colour = { verified: '#15803d', differences: '#b91c1c', incomplete: '#b45309' }[r.verdict]
-  const featureRows = r.features.map(f => `<tr><td>${esc(f.feature.name)}</td><td>${esc(f.feature.type)}</td><td style="color:${{ verified: '#15803d', differences: '#b91c1c', incomplete: '#b45309' }[f.status]}">${STATUS_LABEL[f.status]}</td><td class="n">${f.length}</td><td class="n">${pct(f.covered)}</td><td class="n">${pct(f.bothStrands)}</td><td class="n">${f.minDepth}</td><td>${f.differences.map(d => esc(describeDifference(d, f.feature))).join('<br>')}</td></tr>`).join('')
-  const diffRows = r.differences.map(v => `<tr><td class="n">${v.position}</td><td>${esc(describeChange(v))}</td><td class="n">${Math.round(v.frequency * 100)}%</td><td class="n">${v.coverage}</td><td class="n">${v.pValue.toExponential(1)}</td><td>${esc(v.features.join(', '))}</td><td>${esc(allCoding(v).map(c => `${c.feature}: ${codingLabel(c)}`).join('; '))}</td></tr>`).join('')
-  const gaps = r.uncovered.map(g => (g.from === g.to ? `${g.from}` : `${g.from}-${g.to}`)).join(', ')
-  return `<!DOCTYPE html><html><head><meta charset="utf-8"><title>${esc(contigName)}: clone verification</title><style>
-body{font:13px/1.45 -apple-system,'Segoe UI',Helvetica,Arial,sans-serif;color:#1f2937;margin:24px}
-h1{font-size:18px;margin:0 0 4px}h2{font-size:14px;margin:20px 0 6px}
-.verdict{display:inline-block;padding:4px 10px;border-radius:6px;font-weight:700;color:#fff;background:${colour}}
-table{border-collapse:collapse;width:100%;font-size:12px}th,td{border-bottom:1px solid #e5e7eb;padding:4px 6px;text-align:left;vertical-align:top}
-th{color:#6b7280;font-weight:600}.n{text-align:right;font-variant-numeric:tabular-nums}.muted{color:#6b7280}
-</style></head><body>
-<h1>${esc(r.reference.name)}</h1>
-<div class="muted">${esc(contigName)} · ${r.reads} reads · ${date.toISOString().slice(0, 10)}</div>
-<p><span class="verdict">${STATUS_LABEL[r.verdict]}</span></p>
-<p>${pct(r.covered)} of ${r.reference.length.toLocaleString()} bp covered${r.settings.minDepth > 1 ? ` by at least ${r.settings.minDepth} reads` : ''}${r.settings.bothStrands ? ' on both strands' : ''}; ${pct(r.bothStrands)} on both strands. ${r.differences.length ? `${r.differences.length} difference${r.differences.length === 1 ? '' : 's'} from the design.` : 'No differences from the design.'}</p>
-${gaps ? `<p class="muted">Not covered: ${gaps}</p>` : ''}
-${r.features.length ? `<h2>Features</h2><table><thead><tr><th>Feature</th><th>Type</th><th>Status</th><th class="n">Length</th><th class="n">Covered</th><th class="n">Both strands</th><th class="n">Lowest depth</th><th>Differences</th></tr></thead><tbody>${featureRows}</tbody></table>` : ''}
-${r.differences.length ? `<h2>Differences</h2><table><thead><tr><th class="n">Position</th><th>Change</th><th class="n">Reads</th><th class="n">Coverage</th><th class="n">P-value</th><th>Features</th><th>Protein</th></tr></thead><tbody>${diffRows}</tbody></table>` : ''}
-</body></html>`
 }

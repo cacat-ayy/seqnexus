@@ -6,6 +6,7 @@
 import { bandLabelBp, type GelBand, type GelLayout, type PlacedSpecies } from './bands'
 import { formatGelSize, type FragmentOrigin, type GelConditions, type GelLane } from './model'
 import { getLadder } from './ladders'
+import { csvCell } from '../utils/csv-cell'
 
 export const FORM_LABEL: Record<PlacedSpecies['form'], string> = {
   linear: 'linear',
@@ -100,11 +101,6 @@ export function laneReport(
       fragments: species.map(opts.format).join(opts.sizeSep),
     }
   })
-}
-
-function csvCell(v: string | number): string {
-  const s = String(v)
-  return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s
 }
 
 export function laneCsv(lanes: GelLane[], layout: GelLayout, sourceName: (id: string) => string | null): string {

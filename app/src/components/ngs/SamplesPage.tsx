@@ -12,7 +12,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { CircleCheck, CircleX, Download, ExternalLink, Plus, ShieldCheck, Trash2, TriangleAlert } from 'lucide-react'
 import { useEditorStore, type Assembly } from '../../store'
 import { notify } from '../../toast'
-import { downloadText } from '../../utils/download'
+import { saveText } from '../../utils/download'
 import { getReadChunk } from '../../storage/idb'
 import { startCallVariants } from '../../workers/readset'
 import type { NgsMapping } from '../../assembly/container'
@@ -118,7 +118,7 @@ export default function SamplesPage({ assembly, onOpen, onAdd }: Props) {
 
   const exportMatrix = () => {
     if (!matrix) return
-    downloadText(matrixCsv(matrix.map(m => m.row), samples.map(s => s.readSetName), row => refsMeta[matrix.find(m => m.row === row)!.ref].name),
+    saveText(matrixCsv(matrix.map(m => m.row), samples.map(s => s.readSetName), row => refsMeta[matrix.find(m => m.row === row)!.ref].name),
       `${assembly.name.replace(/[\\/:*?"<>|\s]+/g, '_')}_samples.csv`, 'text/csv')
   }
 

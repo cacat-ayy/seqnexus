@@ -31,6 +31,8 @@ export type ReportBlock =
   }
   /** A figure as SVG (the subset pdf/svg-pdf.ts paints), drawn the width of the page. */
   | { kind: 'figure'; svg: string }
+  /** A raster picture (a gel's photo), from canvas pixels, at most the width of the page. */
+  | { kind: 'image'; width: number; height: number; rgba: Uint8ClampedArray }
   | { kind: 'tiles'; tiles: ReportTile[] }
   | { kind: 'table'; columns: ReportColumn[]; rows: string[][] }
   | {
@@ -263,6 +265,7 @@ function keepWith(blocks: ReportBlock[], at: number, width: number): number {
     const b = blocks[k]
     if (b.kind === 'note') { notes += 24; continue }
     if (b.kind === 'figure') return notes + svgHeightAt(b.svg, width) + 8
+    if (b.kind === 'image') return notes + imageBox(b, width, A4.height - MARGIN * 2 - FOOTER).h + 8
     break
   }
   return 60
@@ -274,6 +277,21 @@ function figure(w: Writer, svg: string) {
   w.need(h + 6)
   drawSvg(w.ctx, svg, w.left, w.y, w.width)
   w.y += h + 8
+}
+
+/** The size a picture prints at: the page's width at most, and no taller than a page. */
+function imageBox(b: { width: number; height: number }, maxWidth: number, maxHeight: number): { w: number; h: number } {
+  const s = Math.min(1, maxWidth / b.width, maxHeight / b.height)
+  return { w: b.width * s, h: b.height * s }
+}
+
+/** A raster picture, centred, kept whole on one page. */
+function image(w: Writer, b: Extract<ReportBlock, { kind: 'image' }>) {
+  const box = imageBox(b, w.width, w.bottom - MARGIN)
+  w.need(box.h + 6)
+  const name = w.doc.addImage(b.width, b.height, b.rgba)
+  w.ctx.drawPdfImage(name, w.left + (w.width - box.w) / 2, w.y, box.w, box.h)
+  w.y += box.h + 8
 }
 
 function note(w: Writer, text: string) {
@@ -303,6 +321,7 @@ export function writeReportPdf(report: Report): Uint8Array {
   report.blocks.forEach((b, i) => {
     if (b.kind === 'heading') heading(w, b.text, b.status, keepWith(report.blocks, i, w.width))
     else if (b.kind === 'figure') figure(w, b.svg)
+    else if (b.kind === 'image') image(w, b)
     else if (b.kind === 'tiles') tiles(w, b.tiles)
     else if (b.kind === 'table') table(w, b.columns, b.rows)
     else if (b.kind === 'histogram') histogram(w, b)

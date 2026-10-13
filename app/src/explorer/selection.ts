@@ -9,6 +9,7 @@
 
 import type { ItemKind } from './types'
 import { parseUid } from './types'
+import type { ExportItemKind } from '../components/exportFormats'
 
 /** Store ids grouped by kind, dropping anything unparseable. */
 export function groupSelection(selected: Iterable<string>): Partial<Record<ItemKind, string[]>> {
@@ -21,11 +22,31 @@ export function groupSelection(selected: Iterable<string>): Partial<Record<ItemK
   return out
 }
 
-/** How many selected items can be exported. Every kind can, so: all of them. */
+/**
+ * Kinds with no place in the export dialog: they are exported from their own
+ * page (a read set as FASTQ.gz, a gel as an image, a clone's parts and
+ * oligos from the cloning workspace).
+ */
+const EXPORTED_ELSEWHERE: readonly ItemKind[] = ['readset', 'gel', 'clone']
+
+/** How many selected items Export Selected can write. */
 export function countSelectable(selected: Iterable<string>): number {
   let n = 0
-  for (const uid of selected) if (parseUid(uid)) n++
+  for (const uid of selected) {
+    const parsed = parseUid(uid)
+    if (parsed && !EXPORTED_ELSEWHERE.includes(parsed.kind)) n++
+  }
   return n
+}
+
+/** A selection sorted by where each part of it is exported. */
+export interface ExportPick {
+  /** What the export dialog writes, by its kinds. A protein is a sequence there. */
+  items: Partial<Record<ExportItemKind, string[]>>
+  /** Library oligos, which have their own export (CSV, FASTA, order sheet). */
+  oligos: string[]
+  /** Kinds that were picked but are exported from their own page. */
+  elsewhere: ItemKind[]
 }
 
 /**
@@ -35,15 +56,21 @@ export function countSelectable(selected: Iterable<string>): number {
 export function exportSelection(
   selected: Iterable<string>,
   contigIdsOf: (assemblyId: string) => readonly string[],
-): Partial<Record<ItemKind, string[]>> {
+): ExportPick {
   const grouped = groupSelection(selected)
-  if (grouped.assembly) {
+  const items: ExportPick['items'] = {}
+  const sequences = [...(grouped.sequence ?? []), ...(grouped.protein ?? [])]
+  if (sequences.length > 0) items.sequence = sequences
+  if (grouped.read) items.read = grouped.read
+  if (grouped.alignment) items.alignment = grouped.alignment
+  if (grouped.contig || grouped.assembly) {
     const contigs = new Set(grouped.contig ?? [])
-    for (const id of grouped.assembly) for (const c of contigIdsOf(id)) contigs.add(c)
-    delete grouped.assembly
-    grouped.contig = [...contigs]
+    for (const id of grouped.assembly ?? []) for (const c of contigIdsOf(id)) contigs.add(c)
+    if (contigs.size > 0) items.contig = [...contigs]
   }
-  // Read sets are exported from their own page, as FASTQ.gz.
-  delete grouped.readset
-  return grouped
+  return {
+    items,
+    oligos: grouped.oligo ?? [],
+    elsewhere: EXPORTED_ELSEWHERE.filter(k => grouped[k]?.length),
+  }
 }

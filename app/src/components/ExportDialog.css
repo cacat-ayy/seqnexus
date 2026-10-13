@@ -148,3 +148,43 @@
   font-style: italic;
   padding: var(--space-0-5) 0;
 }
+
+/* What the chosen format keeps, as a row of small marks */
+.export-keeps {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1) var(--space-1-5);
+  margin: var(--space-2) 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.export-keeps li {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  padding: var(--space-0-5) var(--space-2);
+  font-size: var(--text-2xs);
+  border-radius: var(--radius-pill);
+  cursor: default;
+}
+
+.export-keeps li.kept {
+  color: var(--success);
+  background: var(--success-bg);
+}
+
+.export-keeps li.lost {
+  color: var(--text-muted);
+  background: var(--bg-hover);
+}
+
+/* A neutral note (the mixed export's formats) */
+.export-info-note {
+  padding: var(--space-2) var(--space-2-5);
+  font-size: var(--text-xs);
+  color: var(--text-secondary);
+  background: var(--bg-hover);
+  border-radius: var(--radius-sm);
+  line-height: 1.4;
+}

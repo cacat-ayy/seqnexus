@@ -29,6 +29,8 @@ import StructurePicker from './StructurePicker'
 import { useExitAnimation } from '../hooks/useExitAnimation'
 import { useFocusTrap } from '../hooks/useFocusTrap'
 import { useBackdropDismiss } from '../hooks/useBackdropDismiss'
+import { notifyFigureSaved } from '../utils/cite-notice'
+import { pngWithCredit } from '../utils/file-credit'
 
 type DrawStyle = 'cartoon' | 'sticks' | 'surface'
 
@@ -278,9 +280,10 @@ export default function StructurePanel({ onExportPrompt }: {
     const base = `${doc.name || 'protein'}-${ref.id}`.replace(/[^\w.-]+/g, '_')
     const write = async (name: string) => {
       try {
-        const blob = await (await fetch(viewer.pngURI())).blob()
+        // The view as drawn on screen: its resolution is the screen's, so none is written.
+        const blob = await pngWithCredit(await (await fetch(viewer.pngURI())).blob())
         downloadBlob(blob, name)
-        notify.success(`Exported ${name}`)
+        notifyFigureSaved(name)
       } catch (err) {
         notify.error('Could not export the structure', { detail: err instanceof Error ? err.message : undefined })
       }

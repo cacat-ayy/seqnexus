@@ -25,7 +25,7 @@ import {
 } from 'lucide-react'
 import { useEditorStore } from '../../store'
 import { notify } from '../../toast'
-import { downloadText } from '../../utils/download'
+import { saveText } from '../../utils/download'
 import { startCallVariants } from '../../workers/readset'
 import { siteVariants, technologyOfPreset, variantPresetOf, type SiteCall } from '../../ngs/calls'
 import { mappedFeatures, variantAnnotations } from '../../assembly/features'
@@ -131,9 +131,11 @@ interface Props {
   name: string
   refIndex: number
   onRefIndex: (i: number) => void
+  /** Ask for a file name before a figure is written. */
+  onExportPrompt?: (defaultName: string, onConfirm: (name: string) => void) => void
 }
 
-export default function MappingViewer({ ngs, assemblyId, name, refIndex, onRefIndex }: Props) {
+export default function MappingViewer({ ngs, assemblyId, name, refIndex, onRefIndex, onExportPrompt }: Props) {
   const report = ngs.report
   const refs = report.references
   const ref = Math.min(refIndex, refs.length - 1)
@@ -466,7 +468,7 @@ export default function MappingViewer({ ngs, assemblyId, name, refIndex, onRefIn
   const exportVariants = async (format: 'vcf' | 'vcf-all' | 'csv') => {
     try {
       if (format === 'csv') {
-        downloadText(variantsCsv(passing), `${fileStem}_${R.name.replace(/\s+/g, '_')}_variants.csv`, 'text/csv')
+        saveText(variantsCsv(passing), `${fileStem}_${R.name.replace(/\s+/g, '_')}_variants.csv`, 'text/csv')
         return
       }
       const all = format === 'vcf-all'
@@ -478,7 +480,7 @@ export default function MappingViewer({ ngs, assemblyId, name, refIndex, onRefIn
           variants: vs.map(v => ({ v, filters: variantFilters(v, vstate.settings) })).filter(x => all || x.filters.length === 0),
         }
       }))
-      downloadText(writeVcf({ references, source: ngs.readSetName, referenceName: refs.map(r => r.name).join(', ') }),
+      saveText(writeVcf({ references, source: ngs.readSetName, sample: ngs.readSetName, referenceName: refs.map(r => r.name).join(', ') }),
         `${fileStem}${all ? '_candidates' : ''}.vcf`, 'text/plain')
       const n = references.reduce((k, r) => k + r.variants.length, 0)
       notify.success(`Exported ${n} ${n === 1 ? 'variant' : 'variants'} as VCF`)
@@ -787,6 +789,7 @@ export default function MappingViewer({ ngs, assemblyId, name, refIndex, onRefIn
           strands={display.strands}
           name={`${name}_${R.name}`}
           onClose={() => setFigure(null)}
+          onExportPrompt={onExportPrompt}
         />
       )}
       {consensusOpen && (

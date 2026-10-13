@@ -10,6 +10,7 @@
 
 import type { BulkResult, BulkRow, DesignBin } from './bulk'
 import { newPartId, type DesignPart, type PartRole } from './design'
+import { csvCell } from '../utils/csv-cell'
 
 /** Split a delimited line, honouring quotes around a field. */
 function splitLine(line: string, delimiter: string): string[] {
@@ -129,10 +130,6 @@ export function parsePartList(text: string): ParsedParts {
     bins: order.map((name, i) => ({ id: `bin_${i}_${name.replace(/\W+/g, '')}`, name, parts: byBin.get(name)! })),
     skipped,
   }
-}
-
-function csvCell(value: string): string {
-  return /[",\n]/.test(value) ? `"${value.replace(/"/g, '""')}"` : value
 }
 
 /** The results table as CSV: a row per construct, a column per position. */

@@ -124,3 +124,36 @@ describe('full-circle features', () => {
     expect((band!.getAttribute('d')!.match(/A /g) ?? []).length).toBeGreaterThan(1)
   })
 })
+
+describe('feature bands', () => {
+  /**
+   * Every arc in a band's path, as [radius at its start, radius at its end].
+   * SVG starts an arc wherever the path is, so an arc that starts at one
+   * radius and ends at another is a band bent into a crescent.
+   */
+  function arcRadii(svg: string, cx: number, cy: number): [number, number][] {
+    const out: [number, number][] = []
+    for (const [, d] of svg.matchAll(/<path d="([^"]+)" fill="(?!none)[^"]*"/g)) {
+      let x = 0, y = 0
+      for (const [, cmd, args] of d.matchAll(/([MLAZ])([^MLAZ]*)/g)) {
+        const v = args.trim().split(/\s+/).map(Number)
+        if (cmd === 'M' || cmd === 'L') { [x, y] = v }
+        else if (cmd === 'A') {
+          const [ex, ey] = v.slice(5)
+          out.push([Math.hypot(x - cx, y - cy), Math.hypot(ex - cx, ey - cy)])
+          x = ex; y = ey
+        }
+      }
+    }
+    return out
+  }
+
+  for (const layout of ['features-outside', 'sites-outside'] as const) {
+    it(`draws every arc of a band at one radius (${layout})`, () => {
+      const s = scene({ layout })
+      const arcs = arcRadii(renderSceneToSvg(s), s.size / 2, (s.height ?? s.size) / 2)
+      expect(arcs.length).toBeGreaterThan(0)
+      for (const [a, b] of arcs) expect(Math.abs(a - b)).toBeLessThan(0.01)
+    })
+  }
+})

@@ -8,19 +8,14 @@
  */
 
 import type { DocumentState } from '../models/Document'
-
-function escapeCsv(s: string): string {
-  if (s.includes(',') || s.includes('"') || s.includes('\n') || s.includes('\r')) {
-    return `"${s.replace(/"/g, '""')}"`
-  }
-  return s
-}
+import { csvRow } from '../utils/csv-cell'
 
 export function writeCsv(doc: DocumentState): string {
   const seqLen = doc.sequence.bases.length
+  const unit = doc.sequence.alphabet === 'protein' ? 'aa' : 'bp'
   const rows: string[] = []
 
-  rows.push('Name,Type,Start,End,Length (bp),Strand,Color,Notes')
+  rows.push(`Name,Type,Start,End,Length (${unit}),Strand,Color,Notes`)
 
   for (const ann of doc.annotations) {
     const start = ann.start + 1 // 1-based
@@ -37,16 +32,7 @@ export function writeCsv(doc: DocumentState): string {
       notes.push(...noteVals)
     }
 
-    rows.push([
-      escapeCsv(ann.name),
-      escapeCsv(ann.type),
-      String(start),
-      String(end),
-      String(length),
-      strand,
-      ann.color ?? '',
-      escapeCsv(notes.join('; ')),
-    ].join(','))
+    rows.push(csvRow([ann.name, ann.type, start, end, length, strand, ann.color ?? '', notes.join('; ')]))
   }
 
   rows.push('')

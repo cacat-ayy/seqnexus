@@ -24,6 +24,8 @@ import { useWidth } from '../useWidth'
 import { LineChart, QualityBoxChart, QualityTable, SeriesTable, TileHeatmap, TileTable, type Series } from './qcCharts'
 import { MODULE_HELP } from './help'
 import { fastqcDataText } from '../../../ngs/qcreport/fastqcData'
+import { downloadBlob, downloadMany } from '../../../utils/download'
+import { notifyFigureSaved } from '../../../utils/cite-notice'
 
 const nf = new Intl.NumberFormat()
 const pct = (v: number) => `${v.toFixed(v > 0 && v < 1 ? 2 : 1)}%`
@@ -142,32 +144,24 @@ export default function QualityReport({ readSet: rs }: { readSet: ReadSet }) {
     ? rs.files[k].name
     : `${rs.files[0]?.name ?? rs.name}${report.mates.length === 2 ? ` (R${k + 1})` : ''}`)
   const fileName = mateFile(Math.min(mate, report.mates.length - 1))
-  const save = (blob: Blob, name: string) => {
-    const url = URL.createObjectURL(blob)
-    const a = document.createElement('a')
-    a.href = url
-    a.download = name
-    a.click()
-    setTimeout(() => URL.revokeObjectURL(url), 10_000)
-  }
   const exportAs = async (kind: 'html' | 'pdf' | 'data') => {
     setMenu(false)
     const base = rs.name.replace(/[\\/:*?"<>|]+/g, '_').replace(/\s+/g, '_')
     try {
       if (kind === 'data') {
-        const names = report.mates.map((mm, k) => {
-          const name = `${base}${report.mates.length === 2 ? `_R${k + 1}` : ''}_fastqc_data.txt`
-          save(new Blob([fastqcDataText(mm, mateFile(k))], { type: 'text/plain' }), name)
-          return name
-        })
-        notify.success(`Exported ${names.join(' and ')}`)
+        const files = report.mates.map((mm, k) => ({
+          blob: new Blob([fastqcDataText(mm, mateFile(k))], { type: 'text/plain' }),
+          name: `${base}${report.mates.length === 2 ? `_R${k + 1}` : ''}_fastqc_data.txt`,
+        }))
+        await downloadMany(files)
+        notify.success(`Exported ${files.map(f => f.name).join(' and ')}`)
         return
       }
       const { reportHtml, reportPdf } = await import('./exportReport')
       const input = { name: rs.name, report, fileNames: report.mates.map((_, k) => mateFile(k)), ctx }
       const name = `${base}_quality_report.${kind}`
-      save(kind === 'html' ? new Blob([reportHtml(input)], { type: 'text/html' }) : new Blob([reportPdf(input) as BlobPart], { type: 'application/pdf' }), name)
-      notify.success(`Exported ${name}`)
+      downloadBlob(kind === 'html' ? new Blob([reportHtml(input)], { type: 'text/html' }) : new Blob([reportPdf(input) as BlobPart], { type: 'application/pdf' }), name)
+      notifyFigureSaved(name)
     } catch (err) {
       notify.error('Export failed', { detail: err instanceof Error ? err.message : String(err) })
     }

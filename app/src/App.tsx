@@ -15,7 +15,11 @@ import StructurePanel from './components/StructurePanel'
 import FeatureSidebar from './components/FeatureSidebar'
 import EmptyState from './components/EmptyState'
 import DisplayPopover from './components/DisplayPopover'
-import { downloadBlob } from './utils/download'
+import { downloadBlob, downloadMany, type DownloadFile } from './utils/download'
+import { registerExportPrompt } from './utils/export-prompt'
+import { zipFiles } from './utils/zip'
+import { combinable, exportWarnings, itemFile, type ExportItem, type ItemFile } from './export/items'
+import { folderExport } from './export/folder'
 import './components/Shell.css'
 import FindDialog, { type FindPreset } from './components/FindDialog'
 import { defaultSearchOptions } from './search/find'
@@ -23,7 +27,8 @@ import { proteinMass, formatMass } from './protein/properties'
 const AnnotateDialog = lazy(() => import('./components/AnnotateDialog'))
 import NewSequenceDialog, { type NewSequenceResult } from './components/NewSequenceDialog'
 import ExplorerPanel from './components/explorer/ExplorerPanel'
-import { exportSelection, countSelectable } from './explorer/selection'
+import { exportSelection, countSelectable, type ExportPick } from './explorer/selection'
+import type { ItemKind } from './explorer/types'
 import SequencePropertiesDialog from './components/SequencePropertiesDialog'
 import SequenceStatsPopover from './components/SequenceStatsPopover'
 const CodonOptimizeDialog = lazy(() => import('./components/CodonOptimizeDialog'))
@@ -33,13 +38,9 @@ import {
   useEditorStore, isOriginSpanningSelection, selectionSegments, extraSelectionsOf, selectedRanges, joinedSegments,
   gelSourceTabId, type SequencingRead, type SidebarTab,
 } from './store'
-import { editedRead, toFasta, toFastq } from './sanger/edits'
-import { displayPosition, internalPosition } from './models/Document'
+import { editedRead } from './sanger/edits'
+import { displayPosition, internalPosition, type DocumentState } from './models/Document'
 import ConfirmDialog from './components/ConfirmDialog'
-import { writeGenBank } from './io/genbank'
-import { writeSnapGene } from './io/snapgene'
-import { writeGff3 } from './io/gff3'
-import { writeCsv } from './io/csv'
 import { getTraceView, subscribeTraceView, updateTraceView, ZOOM_WIDTHS } from './sanger/view'
 import { CONTIG_ZOOM } from './assembly/view'
 import { closeAnalyse, openAnalyse, useAnalyseRequest } from './components/ngs/analyseRequest'
@@ -63,7 +64,7 @@ import ConvertActions from './components/ConvertActions'
 import Toaster from './components/Toaster'
 import MenuGroups, { type MenuGroup } from './components/MenuGroups'
 import StartScreen from './components/StartScreen'
-import { OligoImportDialog } from './components/primers/OligoDialogs'
+import { OligoExportDialog, OligoImportDialog } from './components/primers/OligoDialogs'
 import { demoDocument } from './demo'
 import { droppedFiles } from './import/dropped'
 import { openTwin } from './import/duplicates'
@@ -93,7 +94,7 @@ import ExportDialog, { type ExportMode } from './components/ExportDialog'
 import { type ExportFormat, type ExportItemKind, defaultFormatForKind, formatsForKind } from './components/exportFormats'
 import SessionExportDialog from './components/SessionExportDialog'
 import SessionImportDialog from './components/SessionImportDialog'
-import { describeSession, exportSessionToJson, importSessionFromJson, remapSessionIds, type SessionExportOptions } from './persistence'
+import { describeSession, exportSessionToJson, importSessionFromJson, remapSessionIds, restoreSessionStructures, sessionFileText, sessionStructures, type SessionExportOptions } from './persistence'
 import FilenamePrompt from './components/FilenamePrompt'
 import SequencePdfDialog from './components/SequencePdfDialog'
 import { isFocusTrapActive } from './hooks/useFocusTrap'
@@ -115,9 +116,6 @@ const ReadSetWorkspace = lazy(() => import('./components/ngs/ReadSetWorkspace'))
 const ImportReadsDialog = lazy(() => import('./components/ngs/ImportReadsDialog'))
 const ImportAlignmentsDialog = lazy(() => import('./components/ngs/ImportAlignmentsDialog'))
 
-import type { AlnDoc } from './msa/model'
-import { contigToAlignment } from './assembly/export'
-import { writeAlignment, type AlnFormatId } from './msa/formats'
 import { STORAGE_KEYS } from './storage/keys'
 import { THEMES, type ThemeName } from './theme'
 import { useFileImport, OPEN_ACCEPT, canOpen, errorDetail, MANY_RECORDS } from './hooks/useFileImport'
@@ -128,12 +126,6 @@ import { useFileImport, OPEN_ACCEPT, canOpen, errorDetail, MANY_RECORDS } from '
  * second.
  */
 /** Everything the Open dialog offers: sequences, reads and alignments. */
-
-/** Export dialog format ids to alignment writers. */
-const ALN_EXPORT_FORMAT: Partial<Record<string, AlnFormatId>> = {
-  'aligned-fasta': 'fasta', clustal: 'clustal', phylip: 'phylip', nexus: 'nexus',
-  mega: 'mega', stockholm: 'stockholm', pir: 'pir', msf: 'msf',
-}
 
 /** Things a session file named but did not contain. */
 function reportImportWarnings(warnings: string[] | undefined): void {
@@ -148,6 +140,74 @@ function contigsOnScreen(s: ReturnType<typeof useEditorStore.getState>) {
   if (!assembly) return []
   const byId = new Map(s.contigs.map(c => [c.id, c]))
   return assembly.contigIds.map(id => byId.get(id)).filter((c): c is NonNullable<typeof c> => !!c)
+}
+
+/**
+ * What Export writes for the item on screen. An assembly's overview with
+ * several contigs is a pick of those contigs, so the dialog offers them as
+ * separate files: an alignment file holds one alignment.
+ */
+function activeExportItems(s: ReturnType<typeof useEditorStore.getState>): Partial<Record<ExportItemKind, string[]>> {
+  if (s.activeContigId || !s.activeAssemblyId) return {}
+  const contigs = contigsOnScreen(s)
+  return contigs.length > 1 ? { contig: contigs.map(c => c.id) } : {}
+}
+
+/** The kind of the item on screen, for Export. An assembly's overview exports its contigs. */
+function getActiveItemKind(s: ReturnType<typeof useEditorStore.getState>): ExportItemKind {
+  if (s.activeContigId || s.activeAssemblyId) return 'contig'
+  if (s.activeAlignmentId) return 'alignment'
+  if (s.activeSequencingReadIds.length > 0) return 'read'
+  return 'sequence'
+}
+
+/**
+ * What Export writes: the picked items (`bulk`, by kind), or the item on
+ * screen when nothing was picked. `doc` is the open document as it is now,
+ * which the store's tab may not hold yet.
+ */
+function resolveExportItems(
+  state: ReturnType<typeof useEditorStore.getState>,
+  doc: DocumentState,
+  bulk: Partial<Record<ExportItemKind, string[]>>,
+): ExportItem[] {
+  const resolve = (kind: ExportItemKind, id: string): ExportItem | null => {
+    if (kind === 'sequence') {
+      const tab = state.tabs.find(t => t.id === id)
+      return tab ? { kind, doc: tab.id === state.activeTabId ? doc : tab.doc } : null
+    }
+    if (kind === 'read') {
+      const read = state.sequencingReads.find(r => r.id === (id.startsWith('seq_') ? id.slice(4) : id))
+      return read ? { kind, read } : null
+    }
+    if (kind === 'alignment') {
+      const align = state.alignments.find(a => a.id === id)
+      return align ? { kind, name: align.name, doc: align.doc } : null
+    }
+    const contig = state.contigs.find(c => c.id === id)
+    return contig ? { kind: 'contig', contig } : null
+  }
+  const kinds = Object.keys(bulk).filter(k => (bulk[k as ExportItemKind] ?? []).length > 0) as ExportItemKind[]
+  const items: ExportItem[] = []
+  if (kinds.length > 0) {
+    for (const kind of kinds) for (const id of bulk[kind] ?? []) {
+      const item = resolve(kind, id)
+      if (item) items.push(item)
+    }
+    return items
+  }
+  const kind = getActiveItemKind(state)
+  if (kind === 'sequence') items.push({ kind, doc })
+  else if (kind === 'read') {
+    const read = state.sequencingReads.find(r => state.activeSequencingReadIds.includes(r.id))
+    if (read) items.push({ kind, read })
+  } else if (kind === 'alignment') {
+    const item = state.activeAlignmentId ? resolve('alignment', state.activeAlignmentId) : null
+    if (item) items.push(item)
+  } else {
+    for (const contig of contigsOnScreen(state)) items.push({ kind: 'contig', contig })
+  }
+  return items
 }
 
 /** A sequence fills the workspace: no alignment, read, contig, gel or clone is open over it. */
@@ -172,6 +232,16 @@ function reportExport(count: number, filename: string): void {
   } else {
     notify.success(`Exported ${count} files`)
   }
+}
+
+/** Where the kinds the export dialog leaves out are exported, in words. */
+function exportedElsewhereNote(kinds: readonly ItemKind[]): string {
+  const where: Partial<Record<ItemKind, string>> = {
+    readset: 'A read set is exported as FASTQ from its own page.',
+    gel: 'A gel is exported as an image or a lane table from its Export menu.',
+    clone: "A clone's map, parts and oligos are exported from the cloning workspace.",
+  }
+  return kinds.map(k => where[k]).filter(Boolean).join(' ')
 }
 
 function topLabel(stack: readonly { label?: string }[] | undefined): string | null {
@@ -677,7 +747,7 @@ export default function App() {
         e.preventDefault()
         const s = useEditorStore.getState()
         if (s.activeTabId || s.activeSequencingReadIds.length > 0 || s.activeAlignmentId || s.activeContigId || s.activeAssemblyId) {
-          setBulkExportItems({})
+          setBulkExportItems(activeExportItems(s))
           setExportModalOpen(true)
         }
       }
@@ -793,6 +863,9 @@ export default function App() {
   const [exportModalOpen, setExportModalOpen] = useState(false)
   /** Items selected for bulk export, grouped by kind. Empty = single (active item). */
   const [bulkExportItems, setBulkExportItems] = useState<Partial<Record<ExportItemKind, string[]>>>({})
+  /** Library oligos picked for export; their dialog waits until the export dialog is closed. */
+  const [oligoExportIds, setOligoExportIds] = useState<string[] | null>(null)
+  const libraryOligos = useEditorStore(s => s.oligos)
   // Lightweight filename prompt for non-sequence exports (gel images, etc.)
   const [filenamePrompt, setFilenamePrompt] = useState<{ defaultName: string; onConfirm: (name: string) => void } | null>(null)
   /** Shared by every view that writes an image: ask for a name, then act. */
@@ -802,6 +875,11 @@ export default function App() {
       onConfirm: (name) => { onConfirm(name); setFilenamePrompt(null) },
     })
   }, [])
+  // The same prompt for exports deep in a workspace (see utils/export-prompt).
+  useEffect(() => {
+    registerExportPrompt(handleFilenamePrompt)
+    return () => registerExportPrompt(null)
+  }, [handleFilenamePrompt])
 
   // Stable identities for the props handed to SequenceView and PlasmidMap.
   // Both are React.memo'd, and memo compares props by identity: passing these
@@ -818,9 +896,37 @@ export default function App() {
   // Same reasoning for the file explorer, which subscribes to 36 store slices
   // and was previously re-rendered by every unrelated App state change.
   const handleOpenProperties = useCallback(() => setPropertiesModalOpen(true), [])
-  const handleExportItems = useCallback((items: Partial<Record<ExportItemKind, string[]>>) => {
-    setBulkExportItems(items)
-    setExportModalOpen(true)
+  // A folder and everything under it, as one ZIP of GenBank, FASTQ and FASTA files.
+  const handleExportFolder = useCallback((folderId: string) => {
+    const s = useEditorStore.getState()
+    const folder = s.folders.find(f => f.id === folderId)
+    if (!folder) return
+    const out = folderExport(s, folderId, s.doc)
+    if (out.entries.length === 0) {
+      notify.info(`"${folder.name}" has nothing to export`, {
+        detail: Object.keys(out.skipped).length > 0 ? exportedElsewhereNote(Object.keys(out.skipped) as ItemKind[]) : undefined,
+      })
+      return
+    }
+    handleFilenamePrompt(`${folder.name.replace(/[\\/:*?"<>|]+/g, '_')}.zip`, name => {
+      downloadBlob(zipFiles(out.entries), /\.zip$/i.test(name) ? name : `${name}.zip`)
+      const left = Object.values(out.skipped).reduce((n, k) => n + (k ?? 0), 0)
+      notify.success(`Exported ${out.written} item${out.written === 1 ? '' : 's'} from "${folder.name}"`, {
+        detail: left > 0 ? `${left} left out. ${exportedElsewhereNote(Object.keys(out.skipped) as ItemKind[])}` : undefined,
+      })
+    })
+  }, [handleFilenamePrompt])
+  const handleExportItems = useCallback((pick: ExportPick) => {
+    if (pick.oligos.length > 0) setOligoExportIds(pick.oligos)
+    if (Object.keys(pick.items).length > 0) {
+      setBulkExportItems(pick.items)
+      setExportModalOpen(true)
+    } else if (pick.oligos.length === 0 && pick.elsewhere.length > 0) {
+      notify.info('Nothing here goes through Export', { detail: exportedElsewhereNote(pick.elsewhere) })
+    }
+    if (pick.elsewhere.length > 0 && (pick.oligos.length > 0 || Object.keys(pick.items).length > 0)) {
+      notify.info('Some of the selection is exported elsewhere', { detail: exportedElsewhereNote(pick.elsewhere) })
+    }
   }, [])
   const handleQuickAlign = useCallback((tabIds: string[], readIds?: string[]) => {
     const state = useEditorStore.getState()
@@ -1024,8 +1130,9 @@ export default function App() {
 
 
   // --- Session export / import ---
-  const handleSessionExport = useCallback((filename: string, opts: SessionExportOptions) => {
-    const blob = exportSessionToJson(theme, opts)
+  const handleSessionExport = useCallback(async (filename: string, opts: SessionExportOptions) => {
+    // Structure files of the user's own live only in this browser's storage.
+    const blob = exportSessionToJson(theme, opts, { structures: await sessionStructures() })
     downloadBlob(blob, filename)
     notify.success(`Exported session (${(blob.size / 1024).toFixed(0)} KB)`)
     // Only an export with everything in it is a backup; one that leaves out
@@ -1042,8 +1149,9 @@ export default function App() {
     const file = files[0]
     const reader = new FileReader()
     reader.onload = () => {
-      const json = reader.result as string
       try {
+        // A .seqnexus.json.gz is unpacked first.
+        const json = sessionFileText(new Uint8Array(reader.result as ArrayBuffer))
         // Validate before showing the modal
         const session = importSessionFromJson(json)
         setSessionImportData({ filename: file.name, json })
@@ -1055,14 +1163,17 @@ export default function App() {
       }
     }
     reader.onerror = () => notify.error(`Could not read "${file.name}"`)
-    reader.readAsText(file)
+    reader.readAsArrayBuffer(file)
   }, [])
 
   const sessionImportParsedRef = useRef<ReturnType<typeof importSessionFromJson> | null>(null)
 
-  const handleSessionReplace = useCallback(() => {
+  const handleSessionReplace = useCallback(async () => {
     const session = sessionImportParsedRef.current
     if (!session) return
+    sessionImportParsedRef.current = null
+    // Structure files first, so a protein shown at once finds its structure.
+    await restoreSessionStructures(session.structures)
     const { restoreSession } = useEditorStore.getState()
     restoreSession(
       session.tabs, session.activeTabId, session.folders,
@@ -1080,16 +1191,17 @@ export default function App() {
     useEditorStore.getState().restoreClones(session.clones, session.activeCloneId ?? null)
     setSessionImportOpen(false)
     setSessionImportData(null)
-    sessionImportParsedRef.current = null
     notify.success(`Replaced the session with ${describeSession(session) || 'an empty one'}`)
     reportImportWarnings(session.warnings)
   }, [])
 
-  const handleSessionMerge = useCallback(() => {
+  const handleSessionMerge = useCallback(async () => {
     let session = sessionImportParsedRef.current
     if (!session) return
     const warnings = session.warnings
     session = remapSessionIds(session)
+    sessionImportParsedRef.current = null
+    await restoreSessionStructures(session.structures)
     const { mergeSession } = useEditorStore.getState()
     mergeSession(
       session.tabs, session.folders,
@@ -1104,206 +1216,46 @@ export default function App() {
     useEditorStore.getState().mergeClones(session.clones)
     setSessionImportOpen(false)
     setSessionImportData(null)
-    sessionImportParsedRef.current = null
     notify.success(`Merged ${describeSession(session) || 'an empty session'} into this one`)
     reportImportWarnings(warnings)
   }, [])
 
-  /** Determine the kind of the currently active/viewed item. */
-  const getActiveItemKind = (s: ReturnType<typeof useEditorStore.getState>): ExportItemKind => {
-    // An assembly's overview exports its contigs.
-    if (s.activeContigId || s.activeAssemblyId) return 'contig'
-    if (s.activeAlignmentId) return 'alignment'
-    if (s.activeSequencingReadIds.length > 0) return 'read'
-    return 'sequence'
-  }
-
   const handleExport = useCallback((format: ExportFormat, filename: string, mode: ExportMode) => {
     const state = useEditorStore.getState()
-    const hasBulk = Object.values(bulkExportItems).some(ids => ids && ids.length > 0)
-
-    // --- helpers per kind ---
-
-    const exportSequenceText = (d: typeof doc, fmt: ExportFormat): string => {
-      if (fmt === 'gb') return writeGenBank(d)
-      if (fmt === 'fasta') {
-        const lines = [`>${d.name}\n`]
-        const bases = d.sequence.bases
-        for (let i = 0; i < bases.length; i += 80) lines.push(bases.slice(i, i + 80) + '\n')
-        return lines.join('')
-      }
-      if (fmt === 'gff3') return writeGff3(d)
-      if (fmt === 'csv') return writeCsv(d)
-      return ''
-    }
-
-    const exportReadText = (read: SequencingRead, fmt: ExportFormat): string => {
-      const r = editedRead(read.data, read.edits, read.trimStart, read.trimEnd, { reversed: !!read.reversed })
-      const name = read.data.name.replace(/\s+/g, '_')
-      return fmt === 'fastq' ? toFastq(name, r) : toFasta(name, r.bases)
-    }
-    const contigText = (c: (typeof state.contigs)[number], fmt: ExportFormat): string =>
-      exportAlignmentText(contigToAlignment(c.doc, c.name, c.view.consensus), fmt)
-
-    const exportAlignmentText = (doc: AlnDoc, fmt: ExportFormat): string =>
-      writeAlignment(doc, ALN_EXPORT_FORMAT[fmt] ?? 'fasta')
-
-    const EXT_MAP: Record<string, string> = {
-      gb: '.gb', fasta: '.fasta', dna: '.dna', gff3: '.gff', csv: '.csv',
-      fastq: '.fastq', 'aligned-fasta': '.fasta', clustal: '.aln', phylip: '.phy', nexus: '.nex',
-      mega: '.meg', stockholm: '.sto', pir: '.pir', msf: '.msf',
-    }
-
-    const downloadItem = (text: string, name: string, ext: string, mime = 'text/plain') => {
-      downloadBlob(new Blob([text], { type: mime }), `${name}${ext}`)
-    }
-
-    // --- Determine what to export ---
-
-    // Compute the item kind for the modal (needed for mixed detection)
     const kinds = Object.keys(bulkExportItems).filter(k => (bulkExportItems[k as ExportItemKind] ?? []).length > 0) as ExportItemKind[]
     const isMixed = kinds.length > 1
+    const items = resolveExportItems(state, doc, bulkExportItems)
 
-    if (isMixed) {
-      // Mixed export: each item in its default format, always separate
-      let fileCount = 0
-      for (const kind of kinds) {
-        const ids = bulkExportItems[kind] ?? []
-        const defFmt = defaultFormatForKind(kind)
-        const ext = formatsForKind(kind)[0]?.ext ?? '.txt'
-        for (const id of ids) {
-          if (kind === 'sequence') {
-            const tab = state.tabs.find(t => t.id === id)
-            if (!tab) continue
-            if (defFmt === 'dna' && tab.doc.sequence.alphabet !== 'protein') {
-              const buf = writeSnapGene(tab.doc)
-              downloadBlob(new Blob([buf], { type: 'application/octet-stream' }), `${tab.doc.name}.dna`)
-            } else {
-              downloadItem(exportSequenceText(tab.doc, defFmt), tab.doc.name, ext)
-            }
-          } else if (kind === 'read') {
-            const readId = id.startsWith('seq_') ? id.slice(4) : id
-            const read = state.sequencingReads.find(r => r.id === readId)
-            if (!read) continue
-            downloadItem(exportReadText(read, defFmt), read.data.name.replace(/\s+/g, '_'), ext)
-          } else if (kind === 'alignment') {
-            const align = state.alignments.find(a => a.id === id)
-            if (!align) continue
-            downloadItem(exportAlignmentText(align.doc, defFmt), align.name.replace(/\s+/g, '_'), ext)
-          } else if (kind === 'contig') {
-            const contig = state.contigs.find(c => c.id === id)
-            if (!contig) continue
-            downloadItem(contigText(contig, defFmt), contig.name.replace(/\s+/g, '_'), ext)
-          }
-          fileCount++
-        }
-      }
-      reportExport(fileCount, filename)
-    } else if (!hasBulk) {
-      // Single item export (active item)
-      const activeKind = getActiveItemKind(state)
-      let written = 0
-      if (activeKind === 'sequence') {
-        if (format === 'dna') {
-          downloadBlob(new Blob([writeSnapGene(doc)], { type: 'application/octet-stream' }), filename)
-        } else {
-          const text = exportSequenceText(doc, format)
-          const mime = format === 'csv' ? 'text/csv' : 'text/plain'
-          downloadBlob(new Blob([text], { type: mime }), filename)
-        }
-        written = 1
-      } else if (activeKind === 'read') {
-        const read = state.sequencingReads.find(r => state.activeSequencingReadIds.includes(r.id))
-        if (read) {
-          const text = exportReadText(read, format)
-          downloadBlob(new Blob([text], { type: 'text/plain' }), filename)
-          written = 1
-        }
-      } else if (activeKind === 'alignment') {
-        const align = state.alignments.find(a => a.id === state.activeAlignmentId)
-        if (align) {
-          const text = exportAlignmentText(align.doc, format)
-          downloadBlob(new Blob([text], { type: 'text/plain' }), filename)
-          written = 1
-        }
-      } else if (activeKind === 'contig') {
-        const shown = contigsOnScreen(state)
-        if (shown.length > 0) {
-          downloadBlob(new Blob([shown.map(c => contigText(c, format)).join('')], { type: 'text/plain' }), filename)
-          written = 1
-        }
-      }
-      reportExport(written, filename)
+    const blobOf = (f: ItemFile) => new Blob([f.data], { type: f.mime })
+    const files: DownloadFile[] = []
+    if (items.length === 1 && !isMixed) {
+      files.push({ blob: blobOf(itemFile(items[0], format)), name: filename })
+    } else if (items.length > 1 && !isMixed && mode === 'combined' && combinable(format)) {
+      const parts = items.map(item => itemFile(item, format).data as string)
+      files.push({ blob: new Blob(parts, { type: 'text/plain' }), name: filename })
+    } else if (mode === 'zip' && items.length > 0) {
+      // A file per item, packed into one archive: one download.
+      files.push({
+        blob: zipFiles(items.map(item => {
+          const f = itemFile(item, isMixed ? defaultFormatForKind(item.kind) : format)
+          return { path: `${f.base}${f.ext}`, data: f.data }
+        })),
+        name: filename,
+      })
     } else {
-      // Bulk export of a single kind
-      const kind = kinds[0]
-      const ids = bulkExportItems[kind] ?? []
-      const ext = EXT_MAP[format] ?? '.txt'
-
-      if (mode === 'separate') {
-        let written = 0
-        for (const id of ids) {
-          if (kind === 'sequence') {
-            const tab = state.tabs.find(t => t.id === id)
-            if (!tab) continue
-            // SnapGene's .dna holds DNA; a protein in a bulk export goes out as GenPept instead.
-            if (format === 'dna' && tab.doc.sequence.alphabet !== 'protein') {
-              downloadBlob(new Blob([writeSnapGene(tab.doc)], { type: 'application/octet-stream' }), `${tab.doc.name}.dna`)
-            } else if (format === 'dna') {
-              downloadBlob(new Blob([exportSequenceText(tab.doc, 'gb')], { type: 'text/plain' }), `${tab.doc.name}.gp`)
-            } else {
-              const text = exportSequenceText(tab.doc, format)
-              const mime = format === 'csv' ? 'text/csv' : 'text/plain'
-              downloadBlob(new Blob([text], { type: mime }), `${tab.doc.name}${ext}`)
-            }
-            written++
-          } else if (kind === 'read') {
-            const readId = id.startsWith('seq_') ? id.slice(4) : id
-            const read = state.sequencingReads.find(r => r.id === readId)
-            if (!read) continue
-            downloadItem(exportReadText(read, format), read.data.name.replace(/\s+/g, '_'), ext)
-            written++
-          } else if (kind === 'alignment') {
-            const align = state.alignments.find(a => a.id === id)
-            if (!align) continue
-            downloadItem(exportAlignmentText(align.doc, format), align.name.replace(/\s+/g, '_'), ext)
-            written++
-          } else if (kind === 'contig') {
-            const contig = state.contigs.find(c => c.id === id)
-            if (!contig) continue
-            downloadItem(contigText(contig, format), contig.name.replace(/\s+/g, '_'), ext)
-            written++
-          }
-        }
-        reportExport(written, filename)
-      } else {
-        // Combined into one file
-        const parts: string[] = []
-        for (const id of ids) {
-          if (kind === 'sequence') {
-            const tab = state.tabs.find(t => t.id === id)
-            if (tab) parts.push(exportSequenceText(tab.doc, format))
-          } else if (kind === 'read') {
-            const readId = id.startsWith('seq_') ? id.slice(4) : id
-            const read = state.sequencingReads.find(r => r.id === readId)
-            if (read) parts.push(exportReadText(read, format))
-          } else if (kind === 'alignment') {
-            const align = state.alignments.find(a => a.id === id)
-            if (align) parts.push(exportAlignmentText(align.doc, format))
-          } else if (kind === 'contig') {
-            const contig = state.contigs.find(c => c.id === id)
-            if (contig) parts.push(contigText(contig, format))
-          }
-        }
-        const mime = format === 'csv' ? 'text/csv' : 'text/plain'
-        const sep = format === 'gb' ? '\n' : ''
-        if (parts.length > 0) {
-          downloadBlob(new Blob([parts.join(sep)], { type: mime }), filename)
-        }
-        reportExport(parts.length > 0 ? 1 : 0, filename)
+      // Separate files, each item in the chosen format, or in its kind's
+      // default when the pick mixes kinds.
+      for (const item of items) {
+        const f = itemFile(item, isMixed ? defaultFormatForKind(item.kind) : format)
+        files.push({ blob: blobOf(f), name: `${f.base}${f.ext}` })
       }
     }
 
+    // The dialog says this before writing; a mixed pick has no format of its own to say it for.
+    const warnings = isMixed ? exportWarnings(items, 'gb') : []
+    if (warnings.length > 0) notify.warning('Some primers are not in the files', { detail: warnings.join('\n') })
+    void downloadMany(files)
+    reportExport(files.length, files[0]?.name ?? filename)
     setExportModalOpen(false)
     setBulkExportItems({})
   }, [doc, bulkExportItems])
@@ -1487,7 +1439,7 @@ export default function App() {
     { id: 'import-folder', label: 'Import Folder…', group: 'File', icon: FolderUp, run: pickFolder },
     { id: 'import-clipboard', label: 'Import from Clipboard', group: 'File', icon: ClipboardPaste, run: handleImportClipboard },
     { id: 'fetch', label: 'Import by Accession…', group: 'File', icon: Globe, keywords: 'fetch download ncbi uniprot genpept accession', run: () => setFetchModalOpen(true) },
-    { id: 'export', label: 'Export…', group: 'File', icon: Save, shortcut: `${mod}⇧S`, disabled: noDoc, run: () => { setBulkExportItems({}); setExportModalOpen(true) } },
+    { id: 'export', label: 'Export…', group: 'File', icon: Save, shortcut: `${mod}⇧S`, disabled: noDoc, run: () => { setBulkExportItems(activeExportItems(useEditorStore.getState())); setExportModalOpen(true) } },
     { id: 'export-pdf', label: 'Export PDF…', group: 'File', icon: FileText, shortcut: `${mod}P`, keywords: 'print figure publication', disabled: !sequenceShown, run: openPdfExport },
     { id: 'session-export', label: 'Export Session…', group: 'File', icon: Archive, run: () => setSessionExportOpen(true) },
     { id: 'session-import', label: 'Import Session…', group: 'File', icon: ArchiveRestore, run: () => sessionImportInputRef.current?.click() },
@@ -1602,14 +1554,11 @@ export default function App() {
                     {
                       id: 'export', label: 'Export…', icon: FileDown, shortcut: `${mod}⇧S`,
                       disabled: !activeTabId && activeSequencingReadIds.length === 0 && !activeAlignmentId && !activeContigId && !activeAssembly,
-                      run: () => { setBulkExportItems({}); setExportModalOpen(true) },
+                      run: () => { setBulkExportItems(activeExportItems(useEditorStore.getState())); setExportModalOpen(true) },
                     },
                     {
                       id: 'export-selected', label: 'Export Selected…', icon: Files, disabled: selectedExportableCount < 2,
-                      run: () => {
-                        setBulkExportItems(exportSelection(useEditorStore.getState().explorerSelectedIds, id => useEditorStore.getState().assemblies.find(a => a.id === id)?.contigIds ?? []))
-                        setExportModalOpen(true)
-                      },
+                      run: () => handleExportItems(exportSelection(useEditorStore.getState().explorerSelectedIds, id => useEditorStore.getState().assemblies.find(a => a.id === id)?.contigIds ?? [])),
                     },
                     { id: 'export-pdf', label: 'Export PDF…', icon: FileText, shortcut: `${mod}P`, disabled: !sequenceShown, run: openPdfExport },
                   ] },
@@ -1632,7 +1581,7 @@ export default function App() {
           <input
             ref={sessionImportInputRef}
             type="file"
-            accept=".json,.seqnexus.json"
+            accept=".json,.seqnexus.json,.gz"
             style={{ display: 'none' }}
             onChange={e => { handleSessionImportFile(e.target.files); e.target.value = '' }}
           />
@@ -2026,6 +1975,7 @@ export default function App() {
           addMenu={addGroups}
           onImportInto={handlePickFilesInto}
           onNewSequenceIn={handleNewSequenceIn}
+          onExportFolder={handleExportFolder}
           onAlignToRef={openRefPicker}
           onExportItems={handleExportItems}
           onQuickAlign={handleQuickAlign}
@@ -2076,6 +2026,7 @@ export default function App() {
                 key={activeAssembly.id}
                 assembly={activeAssembly}
                 onClose={() => useEditorStore.getState().setActiveAssembly(null)}
+                onExportPrompt={handleFilenamePrompt}
               />
             </Suspense>
           ) : activeReadSet ? (
@@ -2660,6 +2611,13 @@ export default function App() {
         }}
       />
 
+      <OligoExportDialog
+        open={oligoExportIds !== null && !exportModalOpen}
+        onClose={() => setOligoExportIds(null)}
+        oligos={libraryOligos.filter(o => oligoExportIds?.includes(o.id))}
+        baseName="oligos"
+      />
+
       <NewSequenceDialog
         open={newSeqModalOpen}
         initialAlphabet={newSeqAlphabet}
@@ -2891,10 +2849,11 @@ export default function App() {
             defaultName={defaultName}
             annotationCount={singleKind === 'sequence' ? doc.annotations.length : 0}
             itemKind={hasBulk ? singleKind : getActiveItemKind(s)}
-            protein={!hasBulk && isProtein}
+            protein={hasBulk ? !isMixed && singleKind === 'sequence' && (bulkExportItems.sequence ?? []).every(id => s.tabs.find(t => t.id === id)?.doc.sequence.alphabet === 'protein') : isProtein}
             kindCounts={isMixed ? kindCounts : undefined}
             count={hasBulk ? totalCount : 1}
             itemNames={hasBulk ? itemNames : undefined}
+            warningsFor={format => exportWarnings(resolveExportItems(s, doc, bulkExportItems), format)}
             onExport={handleExport}
             onClose={() => { setExportModalOpen(false); setBulkExportItems({}) }}
           />

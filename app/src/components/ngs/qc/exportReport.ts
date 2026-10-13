@@ -14,6 +14,7 @@ import { expectedNote, LIBRARY_LABEL, type ExpectedContext } from '../../../ngs/
 import { formatBp } from '../../../utils/format'
 import { writeReportPdf, type ReportBlock } from '../../../pdf/report-pdf'
 import { figurePalette, lineFigure, qualityFigure, tileFigure, type FigurePalette } from './figures'
+import { CITATION_TEXT } from '../../../citation'
 
 const nf = new Intl.NumberFormat()
 const STATUS_TEXT: Record<ModuleStatus, string> = { pass: 'Passed', warn: 'Warning', fail: 'Failed', skip: 'Not run' }
@@ -170,7 +171,7 @@ export function reportHtml(input: ExportInput, pal: FigurePalette = figurePalett
   const sub = `${report.mates.length === 2 ? 'Paired reads' : 'Reads'} · library ${libraryText(ctx).toLowerCase()} · ${new Date().toLocaleString()}`
   return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${esc(input.name)} quality report</title><style>${HTML_STYLE}</style></head><body>`
     + `<header><h1>${esc(input.name)}: quality report</h1><p>${esc(sub)}</p></header>${parts}`
-    + `<footer>Made by SeqNexus. The modules, their names and their default pass, warn and fail thresholds follow FastQC (S. Andrews, Babraham Bioinformatics); the values were computed by SeqNexus, not by FastQC. Marks shown faded are expected for the library type or the technology, with the reason under the module's title.</footer></body></html>`
+    + `<footer>Made by SeqNexus. The modules, their names and their default pass, warn and fail thresholds follow FastQC (S. Andrews, Babraham Bioinformatics); the values were computed by SeqNexus, not by FastQC. Marks shown faded are expected for the library type or the technology, with the reason under the module's title. Please cite: ${esc(CITATION_TEXT)}</footer></body></html>`
 }
 
 // ---- PDF ----

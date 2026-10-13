@@ -19,6 +19,7 @@ import type { PaintModel } from './layout'
 import { cellLook, logoColorer } from './paint'
 import { FIGURE_THEME, type AlnTheme } from './theme'
 import { svgToPdf } from '../../pdf/svg-pdf'
+import { canvasScale, type FigureFile } from '../../utils/figure-file'
 
 export interface FigureOptions {
   /** Rows to include (document order), or null for all. */
@@ -258,10 +259,25 @@ export function buildFigure(pm: PaintModel, o: FigureOptions, theme: AlnTheme = 
   return { svg, width, height }
 }
 
+/** A figure built as SVG, ready for the figure dialogs' Save section. */
+export function figureFile(fig: Figure, title: string): FigureFile {
+  return {
+    width: fig.width,
+    height: fig.height,
+    svg: () => fig.svg,
+    png: async scale => ({ blob: await figureToPng(fig, scale), scale: pngScale(fig, scale) }),
+    pdf: () => figureToPdf(fig, title),
+  }
+}
+
+/** The scale a PNG of the figure is drawn at: `scale`, capped to what canvases allow. */
+function pngScale(fig: Figure, scale: number): number {
+  return canvasScale(fig.width, fig.height, scale)
+}
+
 /** Rasterise a figure to PNG at `scale`, capped to what canvases allow. */
 export async function figureToPng(fig: Figure, scale: number): Promise<Blob> {
-  const maxSide = 16000
-  const s = Math.max(0.5, Math.min(scale, maxSide / fig.width, maxSide / fig.height, Math.sqrt(2.4e8 / (fig.width * fig.height))))
+  const s = pngScale(fig, scale)
   const img = new Image()
   const url = URL.createObjectURL(new Blob([fig.svg], { type: 'image/svg+xml' }))
   try {

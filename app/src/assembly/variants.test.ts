@@ -8,7 +8,7 @@ import {
 import { codingChanges } from './effects'
 
 const codingChange = (...a: Parameters<typeof codingChanges>) => codingChanges(...a)[0] ?? null
-import { DEFAULT_VERIFY, verifyClone, verifyCsv, verifyHtml } from './verify'
+import { DEFAULT_VERIFY, verifyClone, verifyCsv } from './verify'
 
 // ATG AAA GCT TGG TAA: M K A W *, as a CDS from 3 to 18 on a reference of 24.
 const REF = 'CCC' + 'ATGAAAGCTTGGTAA' + 'GGGGGG'
@@ -180,7 +180,6 @@ describe('clone verification', () => {
     expect(r.features[0].differences[0].coding?.protein).toBe('K2E')
     expect(r.uncovered).toEqual([{ from: 21, to: 24 }])
     expect(verifyCsv(r)).toContain('K2E')
-    expect(verifyHtml(r, 'Contig')).toContain('Differences found')
   })
 
   it('calls a feature incomplete when it needs both strands and has one', () => {

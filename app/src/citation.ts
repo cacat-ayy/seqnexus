@@ -20,3 +20,11 @@ export const CITATION_BIBTEX = `@misc{acatay_seqnexus,
   note = {Version ${BUILD_DATE}},
   url = {${SITE_URL}}
 }`
+
+/**
+ * What a figure or report file says about where it came from, in its
+ * metadata: a PNG text chunk, an SVG <desc>, the PDF's Info dictionary.
+ * Invisible on the figure, but there for whoever opens the file's
+ * properties or finds the file years later.
+ */
+export const FILE_CREDIT = `Made with SeqNexus (version ${BUILD_DATE}). Please cite: ${CITATION_TEXT}`

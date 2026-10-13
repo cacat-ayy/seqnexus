@@ -1,8 +1,8 @@
 /**
  * A minimal PDF writer: pages of vector content, the four standard fonts
- * in fonts.ts, and transparency through ExtGState. No images, no embedded
- * fonts, no external library. Version 1.5, the first to allow ActualText
- * on marked content, which the sequence runs use.
+ * in fonts.ts, transparency through ExtGState, and RGB images (a virtual
+ * gel's photo). No embedded fonts, no external library. Version 1.5, the
+ * first to allow ActualText on marked content, which the sequence runs use.
  *
  * Page content is collected as text (operators plus WinAnsi strings, one
  * char per byte) and Flate-compressed with fflate, which the app already
@@ -13,6 +13,7 @@
 import { zlibSync } from 'fflate'
 import { PDF_FONTS, encodeWinAnsi } from './fonts'
 import { PdfCanvas } from './canvas'
+import { BUILD_DATE, FILE_CREDIT } from '../citation'
 
 /** A4 in points (1/72 inch). */
 export const A4 = { width: 595.28, height: 841.89 }
@@ -39,8 +40,27 @@ export class PdfDocument {
   /** Alpha value (rounded) to ExtGState resource name, fill and stroke apart. */
   private readonly fillAlphas = new Map<number, string>()
   private readonly strokeAlphas = new Map<number, string>()
+  /** Images as Flate-compressed RGB, drawn with PdfCanvas.drawPdfImage. */
+  private readonly images: { name: string; width: number; height: number; data: Uint8Array }[] = []
 
   constructor(private readonly info: { title?: string; subject?: string } = {}) {}
+
+  /**
+   * An image from canvas pixels (RGBA, row by row from the top), with any
+   * transparency laid on white paper. Returns the name to draw it by.
+   */
+  addImage(width: number, height: number, rgba: Uint8ClampedArray | Uint8Array): string {
+    const rgb = new Uint8Array(width * height * 3)
+    for (let i = 0, j = 0; i < width * height * 4; i += 4, j += 3) {
+      const a = rgba[i + 3] / 255
+      rgb[j] = Math.round(rgba[i] * a + 255 * (1 - a))
+      rgb[j + 1] = Math.round(rgba[i + 1] * a + 255 * (1 - a))
+      rgb[j + 2] = Math.round(rgba[i + 2] * a + 255 * (1 - a))
+    }
+    const name = `Im${this.images.length + 1}`
+    this.images.push({ name, width, height, data: zlibSync(rgb, { level: 6 }) })
+    return name
+  }
 
   /** A new page; draw on the returned context in points, origin top left. */
   addPage(width = A4.width, height = A4.height): PdfCanvas {
@@ -81,9 +101,10 @@ export class PdfDocument {
     }
 
     // Object numbers: 1 catalog, 2 page tree, 3 resources, 4 info,
-    // then a page object and a content stream per page.
+    // then a page object and a content stream per page, then the images.
     const pageObj = (i: number) => 5 + i * 2
-    const total = 4 + this.pages.length * 2
+    const imageObj = (k: number) => 5 + this.pages.length * 2 + k
+    const total = 4 + this.pages.length * 2 + this.images.length
 
     const object = (n: number, body: string) => {
       offsets[n] = length
@@ -103,13 +124,18 @@ export class PdfDocument {
       ...[...this.fillAlphas].map(([k, name]) => `/${name} << /Type /ExtGState /ca ${k / 100} >>`),
       ...[...this.strokeAlphas].map(([k, name]) => `/${name} << /Type /ExtGState /CA ${k / 100} >>`),
     ].join(' ')
-    object(3, `<< /ProcSet [/PDF /Text] /Font << ${fonts} >> /ExtGState << ${states} >> >>`)
+    const xobjects = this.images.length > 0
+      ? ` /XObject << ${this.images.map((im, k) => `/${im.name} ${imageObj(k)} 0 R`).join(' ')} >>`
+      : ''
+    object(3, `<< /ProcSet [/PDF /Text${this.images.length > 0 ? ' /ImageC' : ''}] /Font << ${fonts} >> /ExtGState << ${states} >>${xobjects} >>`)
 
     const infoEntries = [
       this.info.title ? `/Title ${pdfString(encodeWinAnsi(this.info.title))}` : '',
       this.info.subject ? `/Subject ${pdfString(encodeWinAnsi(this.info.subject))}` : '',
       '/Producer (SeqNexus)',
-      '/Creator (SeqNexus)',
+      `/Creator ${pdfString(encodeWinAnsi(`SeqNexus ${BUILD_DATE}`))}`,
+      // Where it came from and how to cite it, in the file's properties.
+      `/Keywords ${pdfString(encodeWinAnsi(FILE_CREDIT))}`,
       `/CreationDate (${pdfDate(new Date())})`,
     ].filter(Boolean).join(' ')
     object(4, `<< ${infoEntries} >>`)
@@ -121,6 +147,14 @@ export class PdfDocument {
       offsets[n + 1] = length
       text(`${n + 1} 0 obj\n<< /Length ${data.length} /Filter /FlateDecode >>\nstream\n`)
       push(data)
+      text('\nendstream\nendobj\n')
+    })
+
+    this.images.forEach((im, k) => {
+      const n = imageObj(k)
+      offsets[n] = length
+      text(`${n} 0 obj\n<< /Type /XObject /Subtype /Image /Width ${im.width} /Height ${im.height} /ColorSpace /DeviceRGB /BitsPerComponent 8 /Length ${im.data.length} /Filter /FlateDecode >>\nstream\n`)
+      push(im.data)
       text('\nendstream\nendobj\n')
     })
 

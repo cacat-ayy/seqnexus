@@ -17,23 +17,25 @@ import '../alignment/AlignmentWorkspace.css'
 import './ReadSetWorkspace.css'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { inflateSync } from 'fflate'
-import { ClipboardCopy, Download, FilePlus2, GitCompareArrows, Printer, RotateCw, X } from 'lucide-react'
+import { ClipboardCopy, Download, FilePlus2, FileText, GitCompareArrows, RotateCw, X } from 'lucide-react'
 import { useEditorStore, type Assembly } from '../../store'
 import { notify } from '../../toast'
 import { useFocusTrap } from '../../hooks/useFocusTrap'
 import { copyText } from '../../utils/clipboard'
-import { downloadText } from '../../utils/download'
+import { downloadBlob, saveText } from '../../utils/download'
+import { verifyReportPdf } from '../contig/verifyReport'
 import { getReadChunk } from '../../storage/idb'
 import { mappingStorageIds } from '../../ngs/builder'
 import { readReferenceBases } from '../../ngs/sam'
 import { openedAsFile } from '../../ngs/jobs'
 import { refFeatures, variantAnnotations } from '../../assembly/features'
-import { DEFAULT_VERIFY, describeChange, describeDifference, STATUS_LABEL, verifyCsv, verifyHtml, type VerifySettings } from '../../assembly/verify'
+import { DEFAULT_VERIFY, describeChange, describeDifference, STATUS_LABEL, verifyCsv, type VerifySettings } from '../../assembly/verify'
 import { codingLabel } from '../../assembly/effects'
 import { compareToExpected, liftFeatures, type Comparison } from '../../ngs/denovo/compare'
 import { verifyContig } from '../../ngs/denovo/verifyContig'
 import type { DeNovoReport } from '../../ngs/denovo/types'
 import { remapContigs } from './remapContigs'
+import { notifyFigureSaved } from '../../utils/cite-notice'
 
 interface Props {
   assembly: Assembly
@@ -199,12 +201,14 @@ export default function CompareDialog({ assembly, contig: initial, onClose }: Pr
     }
   }
 
-  const print = () => {
+  const savePdf = () => {
     if (!report) return
-    const w = window.open('', '_blank')
-    if (!w) { notify.error('Could not open the print window', { detail: 'Allow pop-ups for this site to save a PDF.' }); return }
-    w.document.write(verifyHtml(report, title).replace('</body>', '<script>window.onload=function(){setTimeout(function(){window.print()},300)}</script></body>'))
-    w.document.close()
+    try {
+      downloadBlob(new Blob([verifyReportPdf(report, title) as BlobPart], { type: 'application/pdf' }), `${base}_verification.pdf`)
+      notifyFigureSaved(`${base}_verification.pdf`)
+    } catch (err) {
+      notify.error('Could not make the PDF', { detail: err instanceof Error ? err.message : String(err) })
+    }
   }
   const summary = () => report ? [
     `${title} against ${report.reference.name}: ${STATUS_LABEL[report.verdict]}`,
@@ -347,8 +351,8 @@ export default function CompareDialog({ assembly, contig: initial, onClose }: Pr
             </div>
             <div className="aw-section-label">Save</div>
             <div className="aw-actions">
-              <button className="aw-action" disabled={!report} onClick={print}><Printer size={13} /> Print or save as PDF</button>
-              <button className="aw-action" disabled={!report} onClick={() => report && downloadText(verifyCsv(report), `${base}_vs_${tab?.doc.name.replace(/\s+/g, '_') ?? 'expected'}.csv`, 'text/csv')}><Download size={13} /> CSV</button>
+              <button className="aw-action" disabled={!report} onClick={savePdf}><FileText size={13} /> PDF</button>
+              <button className="aw-action" disabled={!report} onClick={() => report && saveText(verifyCsv(report), `${base}_vs_${tab?.doc.name.replace(/\s+/g, '_') ?? 'expected'}.csv`, 'text/csv')}><Download size={13} /> CSV</button>
               <button className="aw-action" disabled={!report} onClick={() => copyText(summary(), 'Copied the summary')}><ClipboardCopy size={13} /> Copy summary</button>
             </div>
           </div>

@@ -12,6 +12,7 @@
 import type { GuideCandidate, Nuclease } from '../types'
 import { cutPosition } from '../finder'
 import { worstSeverity } from '../score/rules'
+import { csvRow } from '../../utils/csv-cell'
 
 export interface TileSettings {
   /** Bases that must separate two cuts. */
@@ -86,15 +87,15 @@ export function tilingCsv(plan: TilePlan, nucleaseName: string): string {
   const rows = [['name', 'spacer', 'pam', 'cut', 'strand', 'score', 'nuclease'].join(',')]
   plan.picks.forEach((pick, i) => {
     const { site, } = pick.candidate
-    rows.push([
+    rows.push(csvRow([
       `guide_${i + 1}`,
       site.spacer,
       site.pam,
-      String(pick.cut + 1),
+      pick.cut + 1,
       site.strand === 1 ? '+' : '-',
-      pick.candidate.scores.onTarget === null ? '' : String(pick.candidate.scores.onTarget),
+      pick.candidate.scores.onTarget === null ? '' : pick.candidate.scores.onTarget,
       nucleaseName,
-    ].join(','))
+    ]))
   })
   return rows.join('\n')
 }

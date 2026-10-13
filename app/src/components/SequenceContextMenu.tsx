@@ -44,6 +44,8 @@ import { prepareSelectionSearch } from '../blast/session'
 import type { GroupedCutSite } from '../enzymes/grouping'
 import { threeLetter } from '../protein/variants'
 import { displayPosition } from '../models/Document'
+import { writeGenBank } from '../io/genbank'
+import { fragmentDocument, fragmentOf, rememberFragment } from '../utils/feature-clipboard'
 
 export interface SequenceMenuTarget {
   x: number
@@ -431,8 +433,20 @@ export default function SequenceContextMenu({
           label={`Copy Selection (${selectionLen} ${unit}${multi ? `, ${ranges.length} ranges` : ''})`}>
           <MenuItem shortcut="Ctrl+C" onSelect={act(() => {
             const b = selectedBases()
+            // Pasted back in SeqNexus, one stretch brings its features along.
+            rememberFragment(segs.length === 1 ? fragmentOf(doc, segs[0][0], segs[0][1]) : null)
             copyText(b, `Copied ${b.length} ${unit}${rangeNote}`)
           })}>{protein ? (multi ? 'Residues, Joined' : 'Residues') : (multi ? 'Bases, Joined' : 'Bases')}</MenuItem>
+          {segs.length === 1 && (
+            <MenuItem onSelect={act(() => {
+              const fragment = fragmentOf(doc, segs[0][0], segs[0][1])
+              const text = writeGenBank(fragmentDocument(fragment, selectionName(), doc.sequence.alphabet))
+              const n = fragment.annotations.length
+              copyText(text + '\n', `Copied the selection as ${protein ? 'GenPept' : 'GenBank'}${n ? ` with ${n} feature${n === 1 ? '' : 's'}` : ''}`)
+            })} title="The selection with the features inside it, as a record another editor (or New Sequence) can open">
+              {protein ? 'GenPept' : 'GenBank'}
+            </MenuItem>
+          )}
           {!protein && (
             <MenuItem onSelect={act(() => {
               const t = reverseComplementStr(selectedBases())

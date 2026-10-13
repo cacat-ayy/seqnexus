@@ -44,12 +44,14 @@ const mappingPage = new Map<string, { page: MappingPageId; ref: number; sample: 
 interface Props {
   assembly: Assembly
   onClose: () => void
+  /** Ask for a file name before a figure is written. */
+  onExportPrompt?: (defaultName: string, onConfirm: (name: string) => void) => void
 }
 
 const nf = new Intl.NumberFormat()
 const pct = (x: number) => `${Math.round(x * 100)}%`
 
-export default function AssemblyOverview({ assembly, onClose }: Props) {
+export default function AssemblyOverview({ assembly, onClose, onExportPrompt }: Props) {
   const allContigs = useEditorStore(s => s.contigs)
   const reads = useEditorStore(s => s.sequencingReads)
   const tabs = useEditorStore(s => s.tabs)
@@ -200,7 +202,7 @@ export default function AssemblyOverview({ assembly, onClose }: Props) {
           <Suspense fallback={null}>
             <MappingViewer key={ngs.storageId} ngs={ngs} assemblyId={assembly.id}
               name={samples.length > 1 ? `${assembly.name} ${ngs.readSetName}` : assembly.name}
-              refIndex={mapping.ref} onRefIndex={i => showMapping({ ref: i })} />
+              refIndex={mapping.ref} onRefIndex={i => showMapping({ ref: i })} onExportPrompt={onExportPrompt} />
           </Suspense>
         </div>
       ) : ngs && page === 'samples' ? (

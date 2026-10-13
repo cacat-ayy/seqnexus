@@ -20,8 +20,9 @@ import {
 } from '../../assembly/plate'
 import { describeDifference, STATUS_LABEL } from '../../assembly/verify'
 import type { RefFeature } from '../../assembly/variants'
-import { downloadBlob, downloadText } from '../../utils/download'
+import { downloadBlob, saveText } from '../../utils/download'
 import { plateReportPdf } from './plateReport'
+import { notifyFigureSaved } from '../../utils/cite-notice'
 
 const nf = new Intl.NumberFormat()
 const pct = (x: number) => `${(x * 100).toFixed(x === 1 || x === 0 ? 0 : 1)}%`
@@ -69,18 +70,19 @@ export default function ClonesSection({ assembly, contigs }: Props) {
   const stem = assembly.name.replace(/[\\/:*?"<>|]+/g, '_').replace(/\s+/g, '_')
   const several = contigs.length > 1
 
-  const exportCsv = () => { setMenu(false); downloadText(plateCsv(results, settings), `${stem}_clones.csv`, 'text/csv') }
+  const exportCsv = () => { setMenu(false); saveText(plateCsv(results, settings), `${stem}_clones.csv`, 'text/csv') }
   const exportFasta = (onlyVerified: boolean) => {
     setMenu(false)
     const list = onlyVerified ? results.filter(r => r.report?.verdict === 'verified') : results
     if (!list.length) { notify.info('No clone is verified yet'); return }
-    downloadText(plateFasta(list), `${stem}_${onlyVerified ? 'verified' : 'consensus'}.fasta`)
+    saveText(plateFasta(list), `${stem}_${onlyVerified ? 'verified' : 'consensus'}.fasta`)
   }
   const exportPdf = () => {
     setMenu(false)
     try {
       const bytes = plateReportPdf({ name: assembly.name, results, settings, grouping: assembly.grouping ?? null, references: refNames })
       downloadBlob(new Blob([bytes], { type: 'application/pdf' }), `${stem}_verification.pdf`)
+      notifyFigureSaved(`${stem}_verification.pdf`)
     } catch (err) {
       notify.error('Could not make the PDF', { detail: err instanceof Error ? err.message : String(err) })
     }

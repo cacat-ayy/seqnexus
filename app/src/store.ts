@@ -1006,6 +1006,11 @@ interface EditorStore {
    *  Optionally insert text at position 0 after both deletes. */
   deleteTwo: (start1: number, end1: number, start2: number, end2: number, insertAtZero?: string) => void
   replace: (start: number, end: number, fragment: string) => void
+  /**
+   * Paste bases over [start, end) (an insertion when they are equal) with the
+   * features and primers copied along with them, already placed: one undo step.
+   */
+  pasteWithFeatures: (start: number, end: number, bases: string, annotations: AnnotationData[], primers: PrimerData[]) => void
   addAnnotation: (data: AnnotationData) => void
   addAnnotations: (data: AnnotationData[]) => void
   removeAnnotation: (id: string) => void
@@ -3375,6 +3380,24 @@ export const useEditorStore = create<EditorStore>((set, get) => {
       pushUndo(`Replace ${Math.abs(end - start).toLocaleString()} ${tab.doc.sequence.isProtein ? 'aa' : 'bp'}`)
       const before = beforeEdit(tab.doc)
       updateActiveTab({ doc: withVariant(before, start, end, fragment, replaceBasesInPlace(tab.doc, start, end, fragment)) })
+    },
+
+    pasteWithFeatures(start, end, bases, annotations, primers) {
+      const tab = getActiveTab()
+      if (!tab || tab.readOnly) return
+      const carried = [
+        ...(annotations.length ? [describeItems('feature', annotations.map(a => a.name))] : []),
+        ...(primers.length ? [describeItems('primer', primers.map(p => p.name))] : []),
+      ]
+      pushUndo(`Paste ${bases.length.toLocaleString()} ${tab.doc.sequence.isProtein ? 'aa' : 'bp'}${carried.length ? ` with ${carried.join(' and ')}` : ''}`)
+      const before = beforeEdit(tab.doc)
+      let doc = start === end
+        ? insertBasesInPlace(tab.doc, start, bases)
+        : withVariant(before, start, end, bases, replaceBasesInPlace(tab.doc, start, end, bases))
+      doc = annotations.reduce(addAnnotation, doc)
+      if (primers.length > 0) doc = addPrimers(doc, primers)
+      updateActiveTab({ doc })
+      if (annotations.length > 0) revealAnnotationTracks()
     },
 
     // All of these route through transact(), so each is exactly one undo entry

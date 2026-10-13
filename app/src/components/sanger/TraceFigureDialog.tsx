@@ -6,12 +6,11 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Image as ImageIcon, X } from 'lucide-react'
-import { downloadBlob, downloadText } from '../../utils/download'
-import { notify } from '../../toast'
+import FigureSaveBar from '../FigureSaveBar'
 import { useFocusTrap } from '../../hooks/useFocusTrap'
 import type { TraceModel } from '../../sanger/model'
 import type { TraceView } from '../../sanger/view'
-import { figureToPng, figureToPdf } from '../alignment/figure'
+import { figureFile } from '../alignment/figure'
 import { buildTraceFigure, MAX_FIGURE_BASES } from './figure'
 import type { TraceSelection } from './TraceCanvas'
 
@@ -57,15 +56,7 @@ export default function TraceFigureDialog({ model, view, selection, name, onClos
   }, [onClose])
 
   const base = name.replace(/[\\/:*?"<>|]+/g, '_').replace(/\s+/g, '_')
-  const withName = (def: string, run: (n: string) => void) => (onExportPrompt ? onExportPrompt(def, run) : run(def))
-  const saveSvg = () => fig && withName(`${base}.svg`, n => downloadText(fig.svg, n, 'image/svg+xml'))
-  const savePng = (scale: number) => fig && withName(`${base}${scale >= 4 ? '-print' : ''}.png`, n => {
-    figureToPng(fig, scale).then(b => downloadBlob(b, n)).catch(err => notify.error('Could not make the PNG', { detail: err instanceof Error ? err.message : String(err) }))
-  })
-  const savePdf = () => fig && withName(`${base}.pdf`, n => {
-    try { downloadBlob(figureToPdf(fig, title.trim() || name), n) }
-    catch (err) { notify.error('Could not make the PDF', { detail: err instanceof Error ? err.message : String(err) }) }
-  })
+  const file = useMemo(() => (fig ? figureFile(fig, title.trim() || name) : null), [fig, title, name])
 
   return (
     <div className="aw-figure-backdrop" onMouseDown={e => { if (e.target === e.currentTarget) onClose() }}>
@@ -113,14 +104,7 @@ export default function TraceFigureDialog({ model, view, selection, name, onClos
             <label className="aw-check"><input type="checkbox" checked={ruler} onChange={e => setRuler(e.target.checked)} /> Ruler</label>
             <label className="aw-check"><input type="checkbox" checked={quality} onChange={e => setQuality(e.target.checked)} disabled={!!model.data.metadata.qualityMissing} /> Quality bars</label>
             <p className="aw-note">Orientation, channels, peak height and even heights follow the current view.</p>
-            <div className="aw-section-label">Save</div>
-            <div className="aw-figure-save">
-              <button className="btn btn-sm btn-primary" disabled={!fig} onClick={saveSvg} title="Vector; edit in Illustrator or Inkscape">SVG</button>
-              <button className="btn btn-sm" disabled={!fig} onClick={() => savePng(2)} title="Image at 2× resolution">PNG</button>
-              <button className="btn btn-sm" disabled={!fig} onClick={() => savePng(4)} title="Image at 4× resolution, for print">PNG 4×</button>
-              <button className="btn btn-sm" disabled={!fig} onClick={savePdf} title="Vector, one page at the figure's size">PDF</button>
-            </div>
-            {fig && <p className="aw-note">{fig.width.toLocaleString()} × {fig.height.toLocaleString()} px</p>}
+            <FigureSaveBar file={file} base={base} onExportPrompt={onExportPrompt} />
           </div>
         </div>
       </div>

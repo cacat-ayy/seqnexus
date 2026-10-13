@@ -31,20 +31,12 @@ import { NEEDS_WEB, openedAsFile } from '../../ngs/jobs'
 import { HistogramChart } from './charts'
 import KmerSpectrumCard from './KmerSpectrumCard'
 import CoverageGcChart from './CoverageGcChart'
+import { downloadText } from '../../utils/download'
 
 const CompareDialog = lazy(() => import('./CompareDialog'))
 
 const nf = new Intl.NumberFormat()
 const pct = (x: number) => `${(x * 100).toFixed(1)}%`
-
-function download(text: string, name: string) {
-  const url = URL.createObjectURL(new Blob([text], { type: 'text/plain' }))
-  const a = document.createElement('a')
-  a.href = url
-  a.download = name
-  a.click()
-  setTimeout(() => URL.revokeObjectURL(url), 10_000)
-}
 
 const fastaName = (name: string) => name.replace(/\s+/g, '_')
 
@@ -106,7 +98,7 @@ export default function DeNovoPage({ assembly, onShowReads }: { assembly: Assemb
     try {
       const all = await Promise.all(d.contigs.map((_, i) => bases(i)))
       const text = d.contigs.map((c, i) => `>${fastaName(c.name)} length=${c.length} ${c.circular ? 'circular=true' : 'linear'}\n${all[i].replace(/(.{80})/g, '$1\n').replace(/\n$/, '')}\n`).join('')
-      download(text, `${fileStem}.fasta`)
+      downloadText(text, `${fileStem}.fasta`)
     } catch (err) {
       notify.error('Export failed', { detail: err instanceof Error ? err.message : String(err) })
     }

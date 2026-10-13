@@ -25,6 +25,7 @@ import { formatBytes } from '../../utils/format'
 import { startImportAlignments, CancelledError, type JobHandle } from '../../workers/readset'
 import { deleteMappingStorage } from '../../storage/idb'
 import { tabReference } from '../../assembly/features'
+import { samName } from '../../ngs/refNames'
 
 interface Props {
   file: File
@@ -34,7 +35,8 @@ interface Props {
 }
 
 const nf = new Intl.NumberFormat()
-const norm = (s: string) => s.trim().toLowerCase().replace(/\s+/g, '_')
+/** A name as the BAM export writes it, so a file exported here finds the sequence it came from. */
+const norm = (s: string) => samName(s).toLowerCase()
 
 export default function ImportAlignmentsDialog({ file, place, onClose }: Props) {
   const tabs = useEditorStore(s => s.tabs)

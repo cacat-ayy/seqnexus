@@ -10,9 +10,11 @@ import type { DocumentState } from '../models/Document'
 import { Annotation, type AnnotationData, type Strand } from '../models/Annotation'
 import { Sequence } from '../models/Sequence'
 import { guessAlphabet } from '../models/alphabet'
-import { readFasta } from './fasta'
+import { readFasta, recordName, writeFastaRecord } from './fasta'
 import { resolveForward } from './location'
 import { idSource } from './ids'
+import { primerFeatures, primersFromFeatures } from './genbank'
+import type { PrimerData } from '../primers/oligo'
 
 const gffIds = idSource('gff')
 
@@ -29,64 +31,77 @@ function encodeGff3(s: string): string {
     .replace(/\r/g, '%0D')
 }
 
-export function writeGff3(doc: DocumentState): string {
-  const lines: string[] = []
-  lines.push('##gff-version 3')
+/**
+ * The phase of each part of a CDS, in the order of `parts` (top strand):
+ * the bases to skip at the start of the part, read in the direction of
+ * transcription, to reach the first base of a codon. /codon_start moves the
+ * first codon. GFF3 requires a phase on every CDS line.
+ */
+function cdsPhases(parts: readonly [number, number][], strand: number, codonStart: number): number[] {
+  const order = strand === -1 ? [...parts.keys()].reverse() : [...parts.keys()]
+  const phases = new Array<number>(parts.length)
+  let before = -(codonStart - 1)
+  for (const k of order) {
+    phases[k] = ((3 - (before % 3)) % 3 + 3) % 3
+    before += parts[k][1] - parts[k][0]
+  }
+  return phases
+}
 
+/**
+ * The document as GFF3. A whole-sequence region carries the topology
+ * (Is_circular=true), so the file reopens onto the right kind of sequence.
+ * A feature in several parts is one line per part sharing an ID, as the
+ * specification has it; a part list that crosses the origin is marked
+ * Is_circular=true so the reader keeps the parts in file order. A feature
+ * crossing the origin in one piece runs to the end with circular_end
+ * giving where it stops. A site between two bases (start = end) is written
+ * on the base before it, the specification's way, with zero_length=true so
+ * it is not read as a one-base feature. Primers go out as primer_bind
+ * lines carrying their oligo, as in GenBank.
+ */
+export function writeGff3(doc: DocumentState, opts: { withSequence?: boolean } = {}): string {
   const seqLen = doc.sequence.bases.length
-  const seqId = doc.name.replace(/\s+/g, '_')
+  const circular = doc.sequence.topology === 'circular'
+  const seqId = encodeGff3(doc.name.trim().replace(/\s+/g, '_') || 'sequence')
+  const lines: string[] = ['##gff-version 3', `##sequence-region ${seqId} 1 ${seqLen}`]
+  // seqid  source  type  start  end  score  strand  phase  attributes
+  const row = (type: string, start: number, end: number, strand: string, phase: string, attrs: string[]) =>
+    lines.push(`${seqId}\tSeqNexus\t${type}\t${start}\t${end}\t.\t${strand}\t${phase}\t${attrs.join(';')}`)
 
-  // ##sequence-region directive
-  lines.push(`##sequence-region ${seqId} 1 ${seqLen}`)
+  if (seqLen > 0) row('region', 1, seqLen, '.', '.', [`ID=${seqId}_region`, ...(circular ? ['Is_circular=true'] : [])])
 
-  for (const ann of doc.annotations) {
-    // GFF3 uses 1-based inclusive coordinates
-    let start: number
-    let end: number
-
-    if (ann.start <= ann.end) {
-      start = ann.start + 1
-      end = ann.end
-    } else {
-      // Origin-spanning feature on circular sequence: GFF3 doesn't natively
-      // support wrapping, so we emit the full span as [start+1, seqLen] and
-      // note the wrap in attributes. Tools can reconstruct from Is_circular.
-      start = ann.start + 1
-      end = seqLen
-    }
-
+  for (const ann of [...doc.annotations, ...primerFeatures(doc)]) {
     const strand = ann.strand === 1 ? '+' : ann.strand === -1 ? '-' : '.'
     const type = ann.type || 'region'
-
-    // Build column 9 attributes
-    const attrs: string[] = []
-    attrs.push(`ID=${encodeGff3(ann.id)}`)
-    attrs.push(`Name=${encodeGff3(ann.name)}`)
-
-    if (ann.color) {
-      attrs.push(`color=${encodeGff3(ann.color)}`)
+    const attrs: string[] = [`ID=${encodeGff3(ann.id)}`, `Name=${encodeGff3(ann.name)}`]
+    if (ann.color) attrs.push(`color=${encodeGff3(ann.color)}`)
+    // Name carries the current name; any further labels are kept as they are.
+    for (const [key, values] of Object.entries(ann.qualifiers ?? {})) {
+      for (const val of key === 'label' ? values.slice(1) : values) attrs.push(`${encodeGff3(key)}=${encodeGff3(val)}`)
     }
 
-    if (ann.start > ann.end) {
-      // Mark origin-spanning features
-      attrs.push('Is_circular=true')
-      attrs.push(`circular_end=${ann.end}`)
+    if (ann.start === ann.end) {
+      const base = ann.start > 0 ? ann.start : circular ? seqLen : 1
+      row(type, base, base, strand, '.', [...attrs, 'zero_length=true'])
+      continue
     }
-
-    // Include qualifiers
-    if (ann.qualifiers) {
-      for (const [key, values] of Object.entries(ann.qualifiers)) {
-        if (key === 'label' || key === 'gene') continue // already in Name
-        for (const val of values) {
-          attrs.push(`${encodeGff3(key)}=${encodeGff3(val)}`)
-        }
-      }
-    }
-
-    // seqid  source  type  start  end  score  strand  phase  attributes
-    lines.push(`${seqId}\tSeqEditor\t${type}\t${start}\t${end}\t.\t${strand}\t.\t${attrs.join(';')}`)
+    const parts: [number, number][] = ann.segments
+      ? ann.segments.map(([s, e]) => [s, e])
+      : ann.start < ann.end ? [[ann.start, ann.end]] : [[ann.start, seqLen]]
+    const wrapped = ann.start > ann.end
+    const marks = wrapped ? (ann.segments ? ['Is_circular=true'] : ['Is_circular=true', `circular_end=${ann.end}`]) : []
+    const codonStart = Number(ann.qualifiers?.codon_start?.[0]) || 1
+    const phases = type === 'CDS'
+      ? cdsPhases(ann.segments ? parts : [[ann.start, wrapped ? ann.end + seqLen : ann.end]], ann.strand, codonStart)
+      : null
+    parts.forEach(([s, e], k) => row(type, s + 1, e, strand, phases ? String(phases[k]) : '.', [...attrs, ...marks]))
   }
 
+  // The sequence in a ##FASTA section, so the file opens as a sequence again
+  // rather than needing one open to land on. Its header is the seqid, then
+  // the name in full, which the reader takes back as a name with spaces.
+  if (opts.withSequence) lines.push('##FASTA', writeFastaRecord(doc.name, doc.sequence.bases).trimEnd())
   lines.push('')
   return lines.join('\n')
 }
@@ -120,7 +135,7 @@ const SO_TO_KEY: Record<string, string> = {
 }
 
 /** Column 9 keys that are GFF3 structure, not qualifiers to keep. */
-const RESERVED_ATTRS = new Set(['ID', 'Name', 'Parent', 'color', 'Is_circular', 'circular_end', 'Alias', 'Target', 'Gap', 'Derives_from'])
+const RESERVED_ATTRS = new Set(['ID', 'Name', 'Parent', 'color', 'Is_circular', 'circular_end', 'zero_length', 'Alias', 'Target', 'Gap', 'Derives_from'])
 
 /** Qualifier names GFF3 spells differently from GenBank. */
 const ATTR_TO_QUALIFIER: Record<string, string> = {
@@ -132,6 +147,8 @@ const ATTR_TO_QUALIFIER: Record<string, string> = {
 export interface Gff3Read {
   /** Features by seqid, in file order. */
   features: Map<string, AnnotationData[]>
+  /** Primers by seqid: primer_bind lines that carry their oligo (/primer_sequence). */
+  primers: Map<string, PrimerData[]>
   /** Sequences from a ##FASTA section, by the first word of their header. */
   sequences: Map<string, { bases: string; description?: string }>
   /** Lengths from ##sequence-region lines. */
@@ -165,7 +182,7 @@ export function looksLikeGff3(text: string): boolean {
  */
 export function readGff3(text: string): Gff3Read {
   gffIds.reset()
-  const out: Gff3Read = { features: new Map(), sequences: new Map(), lengths: new Map(), circular: new Set(), warnings: [] }
+  const out: Gff3Read = { features: new Map(), primers: new Map(), sequences: new Map(), lengths: new Map(), circular: new Set(), warnings: [] }
   const lines = text.split(/\r?\n/)
   type Part = { type: string; start: number; end: number; strand: Strand; attrs: Map<string, string[]> }
   const groups = new Map<string, Map<string, Part[]>>()
@@ -232,13 +249,19 @@ export function readGff3(text: string): Gff3Read {
     let start: number
     let end: number
     let segments: [number, number][] | undefined
-    if (parts.length === 1 && circularMark && Number.isInteger(wrapEnd)) {
+    if (parts.length === 1 && first.attrs.get('zero_length')?.[0] === 'true') {
+      // A site between two bases, written on the base before it.
+      start = end = first.end === seqLen && out.circular.has(seqid) ? 0 : first.end
+    } else if (parts.length === 1 && circularMark && Number.isInteger(wrapEnd)) {
       // Written by writeGff3 as [start, seqLen] with the true end alongside.
       start = first.start - 1
       end = wrapEnd
     } else {
-      const pieces = parts.map(p => [p.start - 1, p.end] as [number, number]).sort((a, b) => a[0] - b[0])
-      const resolved = resolveForward(pieces, first.strand, seqLen, false)
+      // Parts marked as crossing the origin are in order along the top
+      // strand from the feature's start; any others are sorted.
+      const pieces = parts.map(p => [p.start - 1, p.end] as [number, number])
+      if (!circularMark) pieces.sort((a, b) => a[0] - b[0])
+      const resolved = resolveForward(pieces, first.strand, seqLen, circularMark)
       if (!resolved) continue
       start = resolved.start
       end = resolved.end
@@ -267,6 +290,14 @@ export function readGff3(text: string): Gff3Read {
     if (list) list.push(feature)
     else out.features.set(seqid, [feature])
   }
+  // Primers written as primer_bind lines with their oligo are primers again.
+  for (const [seqid, features] of out.features) {
+    const { primers, rest } = primersFromFeatures(features)
+    if (primers.length === 0) continue
+    out.primers.set(seqid, primers)
+    if (rest.length > 0) out.features.set(seqid, rest)
+    else out.features.delete(seqid)
+  }
   return out
 }
 
@@ -275,10 +306,11 @@ export function gff3Documents(read: Gff3Read): DocumentState[] {
   return [...read.sequences].map(([seqid, seq]) => {
     const alphabet = guessAlphabet(seq.bases)
     return {
-      name: seqid,
-      ...(seq.description ? { description: seq.description } : {}),
+      // A seqid written with underscores for a name with spaces comes back with them.
+      ...recordName({ name: seqid, bases: seq.bases, ...(seq.description ? { description: seq.description } : {}) }),
       sequence: new Sequence(seq.bases, read.circular.has(seqid) && alphabet !== 'protein' ? 'circular' : 'linear', alphabet),
       annotations: (read.features.get(seqid) ?? []).map(d => new Annotation(d)),
+      ...(read.primers.get(seqid)?.length ? { primers: read.primers.get(seqid) } : {}),
     }
   })
 }

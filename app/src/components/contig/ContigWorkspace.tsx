@@ -27,7 +27,7 @@ import {
 import { useEditorStore, type Contig, type SequencingRead } from '../../store'
 import { notify } from '../../toast'
 import { copyText } from '../../utils/clipboard'
-import { downloadText } from '../../utils/download'
+import { saveText } from '../../utils/download'
 import { isWidgetKeyTarget } from '../../utils/key-target'
 import { translateCodon } from '../../utils/codon'
 import { computeConsensus, consensusSequence } from '../../assembly/consensus'
@@ -239,7 +239,7 @@ export default function ContigWorkspace({ contig, onClose, onExportPrompt, findR
     notify.success('Opened the contig as an alignment', { action: { label: 'Show', onClick: () => useEditorStore.getState().setActiveAlignment(id) } })
   }
   const download = (text: string, def: string) => {
-    const run = (name: string) => downloadText(text, name)
+    const run = (name: string) => saveText(text, name)
     if (onExportPrompt) onExportPrompt(def, run)
     else run(def)
   }
@@ -445,6 +445,7 @@ export default function ContigWorkspace({ contig, onClose, onExportPrompt, findR
         variants: variants.map(v => ({ v, filters: [] })),
       }],
       source: contig.name,
+      sample: contig.name,
       referenceName: doc.reference?.name ?? `${contig.name} consensus`,
     }), `${fileBase}_variants.vcf`),
     removeRows: removeReads,

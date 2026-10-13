@@ -19,7 +19,7 @@
  */
 
 import type { DocumentState } from '../models/Document'
-import { parseGenBankMulti } from './genbank'
+import { parseGenBankMulti, writeGenBank } from './genbank'
 
 /** Does this text start like an EMBL record? */
 export function looksLikeEmbl(text: string): boolean {
@@ -72,4 +72,64 @@ export function emblToGenBank(text: string): string {
 /** Read every record of an EMBL file. */
 export function parseEmbl(text: string, warnings?: string[]): DocumentState[] {
   return parseGenBankMulti(emblToGenBank(text), warnings)
+}
+
+/** Text after a two-letter line code, wrapped at 80 columns. */
+function tagged(tag: string, text: string): string[] {
+  const out: string[] = []
+  let line = ''
+  for (const word of text.split(/\s+/).filter(Boolean)) {
+    if (line && 5 + line.length + 1 + word.length > 80) { out.push(`${tag}   ${line}`); line = word }
+    else line = line ? `${line} ${word}` : word
+  }
+  out.push(`${tag}   ${line}`)
+  return out
+}
+
+/**
+ * A DNA document as an EMBL record. The feature table is the GenBank
+ * writer's, with its five-space prefix turned into EMBL's "FT   " (the same
+ * columns, the reverse of what the reader does), so features, joins,
+ * primers and colours are written exactly as in a GenBank export.
+ *
+ * The ID line gives the name, topology, molecule (the source's /mol_type,
+ * or "other DNA"), data class STD and division SYN; SQ counts the bases,
+ * and sequence lines hold sixty in blocks of ten with the count of the last
+ * one in columns 73 to 80.
+ */
+export function writeEmbl(doc: DocumentState): string {
+  const seq = doc.sequence
+  const bases = seq.bases
+  const name = doc.name.trim().replace(/\s+/g, '_') || 'Untitled'
+  const molType = doc.metadata?.source?.[0]?.mol_type?.[0] ?? 'other DNA'
+  const out: string[] = [
+    `ID   ${name}; SV 1; ${seq.topology === 'circular' ? 'circular' : 'linear'}; ${molType}; STD; SYN; ${bases.length} BP.`,
+    'XX',
+    ...tagged('DE', (doc.description || doc.name).replace(/[\r\n\t]+/g, ' ')),
+    'XX',
+  ]
+
+  // The feature table as GenBank writes it, between FEATURES and ORIGIN.
+  const gb = writeGenBank(doc).split('\n')
+  const from = gb.findIndex(l => l.startsWith('FEATURES'))
+  const to = gb.findIndex(l => l.startsWith('ORIGIN'))
+  const table = gb.slice(from + 1, to)
+  if (table.length > 0) {
+    out.push('FH   Key             Location/Qualifiers', 'FH')
+    for (const line of table) out.push(`FT${line.slice(2)}`)
+    out.push('XX')
+  }
+
+  const counts = { A: 0, C: 0, G: 0, T: 0 }
+  for (const b of bases.toUpperCase()) if (b in counts) counts[b as keyof typeof counts]++
+  const other = bases.length - counts.A - counts.C - counts.G - counts.T
+  out.push(`SQ   Sequence ${bases.length} BP; ${counts.A} A; ${counts.C} C; ${counts.G} G; ${counts.T} T; ${other} other;`)
+  const lower = bases.toLowerCase()
+  for (let i = 0; i < lower.length; i += 60) {
+    const blocks: string[] = []
+    for (let j = i; j < Math.min(i + 60, lower.length); j += 10) blocks.push(lower.slice(j, j + 10))
+    out.push(`     ${blocks.join(' ').padEnd(65)}${String(Math.min(i + 60, lower.length)).padStart(10)}`)
+  }
+  out.push('//')
+  return out.join('\n') + '\n'
 }

@@ -23,7 +23,6 @@ import ExplorerContextMenu, {
   type ExplorerMenuTarget, type SelectionCapabilities,
 } from './ExplorerContextMenu'
 import ExplorerNoteDialog from './ExplorerNoteDialog'
-import { OligoExportDialog } from '../primers/OligoDialogs'
 import ExplorerTagEditor from './ExplorerTagEditor'
 import ExplorerBulkBar from './ExplorerBulkBar'
 import ExplorerFolderPicker from './ExplorerFolderPicker'
@@ -34,7 +33,7 @@ import { useExplorerItems } from '../../explorer/useExplorerItems'
 import { useItemActions } from '../../explorer/useItemActions'
 import { buildNodes, collapsedGroupHolding } from '../../explorer/buildNodes'
 import { gelsUsingSequences } from '../../gel/workspace'
-import { exportSelection, groupSelection } from '../../explorer/selection'
+import { countSelectable, exportSelection, groupSelection, type ExportPick } from '../../explorer/selection'
 import { ITEM_KINDS, isDocumentKind, parseUid, type ExplorerItem, type Density, type ItemKind } from '../../explorer/types'
 import { DENSITIES } from '../../explorer/types'
 import {
@@ -45,7 +44,6 @@ import { useDelayedHover, type HoverTarget } from '../../hooks/useDelayedHover'
 import {
   loadExplorerSettings, saveExplorerSettings, clampWidth, SIDEBAR_MIN,
 } from '../../utils/explorer-settings'
-import type { ExportItemKind } from '../ExportDialog'
 import type { MenuGroup } from '../MenuGroups'
 import type { ImportOptions } from '../../hooks/useFileImport'
 import { droppedFiles } from '../../import/dropped'
@@ -59,12 +57,14 @@ interface Props {
   onImportInto?: (folderId: string) => void
   /** New Sequence Here, from a folder's menu. */
   onNewSequenceIn?: (folderId: string) => void
+  /** Export Folder as ZIP, from a folder's menu. */
+  onExportFolder?: (folderId: string) => void
   onOpenProperties?: () => void
   /** The New and Import groups, shared with the File menu. */
   addMenu?: MenuGroup[]
   onAlignToRef?: (readIds: string | string[]) => void
   onQuickAlign?: (tabIds: string[], readIds?: string[]) => void
-  onExportItems?: (items: Partial<Record<ExportItemKind, string[]>>) => void
+  onExportItems?: (pick: ExportPick) => void
 }
 
 
@@ -93,7 +93,7 @@ function gelLanesAtRisk(
 }
 
 function ExplorerPanel({
-  open, onCollapse, onExpand, onImportFiles, onImportInto, onNewSequenceIn, onOpenProperties, addMenu,
+  open, onCollapse, onExpand, onImportFiles, onImportInto, onNewSequenceIn, onExportFolder, onOpenProperties, addMenu,
   onAlignToRef, onQuickAlign, onExportItems,
 }: Props) {
   const folders = useEditorStore(s => s.folders)
@@ -421,19 +421,12 @@ function ExplorerPanel({
     })
   }, [folders])
 
-  // --- Primer library ---
-  const libraryOligos = useEditorStore(s => s.oligos)
-  const [oligoExportIds, setOligoExportIds] = useState<string[] | null>(null)
-
   // --- Export ---
+  // App sorts the pick out: the export dialog, the oligo export, and a word
+  // about kinds that are exported from their own page.
   const exportItems = useCallback((uids: Iterable<string>) => {
     setCtxMenu(null)
-    // Oligos have their own formats (CSV, FASTA, order sheet); everything
-    // else goes through the sequence export dialog.
-    const { oligo: oligoIds, ...grouped } = exportSelection(uids, id => useEditorStore.getState().assemblies.find(a => a.id === id)?.contigIds ?? [])
-    if (oligoIds?.length) setOligoExportIds(oligoIds)
-    if (Object.keys(grouped).length === 0) return
-    onExportItems?.(grouped)
+    onExportItems?.(exportSelection(uids, id => useEditorStore.getState().assemblies.find(a => a.id === id)?.contigIds ?? []))
   }, [onExportItems])
 
   // --- Selection actions, shared by the context menu and the bulk bar ---
@@ -482,7 +475,7 @@ function ExplorerPanel({
       canAlign: seqs.length + reads.length >= 2,
       canAlignToRef: reads.length > 0,
       canJoinAlignments: alns.length >= 2 && new Set(alns.map(a => a!.doc.kind)).size === 1,
-      canExport: selectedIds.size > 0,
+      canExport: countSelectable(selectedIds) > 0,
     }
   }, [selectedIds])
 
@@ -781,12 +774,15 @@ function ExplorerPanel({
           selection={selectionCaps}
           has={{
             properties: !!onOpenProperties,
-            exportItems: !!onExportItems,
+            // A gel, a clone or a read set is exported from its own page.
+            exportItems: !!onExportItems && (!menuItem || countSelectable([menuItem.uid]) > 0),
             alignToRef: !!onAlignToRef,
             quickAlign: !!onQuickAlign,
             importHere: !!onImportInto,
             newSequenceHere: !!onNewSequenceIn,
+            exportFolder: !!onExportFolder,
           }}
+          onExportFolder={() => { if (ctxMenu.type === 'folder') onExportFolder?.(ctxMenu.folderId); setCtxMenu(null) }}
           onImportHere={() => { if (ctxMenu.type === 'folder') onImportInto?.(ctxMenu.folderId); setCtxMenu(null) }}
           onNewSequenceHere={() => { if (ctxMenu.type === 'folder') onNewSequenceIn?.(ctxMenu.folderId); setCtxMenu(null) }}
           onClose={() => setCtxMenu(null)}
@@ -869,13 +865,6 @@ function ExplorerPanel({
         message={confirmState?.message ?? ''}
         buttons={confirmState?.buttons ?? []}
         onResult={confirmState?.onResult ?? (() => {})}
-      />
-
-      <OligoExportDialog
-        open={oligoExportIds !== null}
-        onClose={() => setOligoExportIds(null)}
-        oligos={libraryOligos.filter(o => oligoExportIds?.includes(o.id))}
-        baseName="oligos"
       />
     </aside>
   )

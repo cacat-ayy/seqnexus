@@ -48,14 +48,17 @@ interface Props {
   onImportHere: () => void
   /** A folder's: a new sequence filed into it. */
   onNewSequenceHere: () => void
+  /** A folder's: everything in it as one ZIP. */
+  onExportFolder?: () => void
   selection: SelectionCapabilities
   /** Whether the host wired up each optional action. */
-  has: { properties: boolean; exportItems: boolean; alignToRef: boolean; quickAlign: boolean; importHere: boolean; newSequenceHere: boolean }
+  has: { properties: boolean; exportItems: boolean; alignToRef: boolean; quickAlign: boolean; importHere: boolean; newSequenceHere: boolean; exportFolder?: boolean }
 }
 
 export default function ExplorerContextMenu({
   target, starred, onClose, onRename, onDuplicate, onProperties, onExport, onDelete,
-  onToggleStar, onEditNote, onEditTags, onAlignToRef, onAlignSelected, onJoinAlignments, onImportHere, onNewSequenceHere, selection, has,
+  onToggleStar, onEditNote, onEditTags, onAlignToRef, onAlignSelected, onJoinAlignments, onImportHere, onNewSequenceHere,
+  onExportFolder, selection, has,
 }: Props) {
   const ref = useRef<HTMLDivElement>(null)
   usePopoverDismiss(true, onClose, ref)
@@ -102,7 +105,12 @@ export default function ExplorerContextMenu({
                 <FileUp size={13} /> Import Files Here…
               </button>
             )}
-            {(has.newSequenceHere || has.importHere) && <div className="ctx-menu-sep" />}
+            {has.exportFolder && (
+              <button className="ctx-menu-item" onClick={onExportFolder} title="Everything in it and its subfolders, as GenBank, FASTQ and FASTA files">
+                <Download size={13} /> Export Folder as ZIP…
+              </button>
+            )}
+            {(has.newSequenceHere || has.importHere || has.exportFolder) && <div className="ctx-menu-sep" />}
             <button className="ctx-menu-item" onClick={onRename}>
               <Pencil size={13} /> Rename
             </button>

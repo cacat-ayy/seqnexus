@@ -24,13 +24,14 @@ import {
 import { useEditorStore, type SequencingRead } from '../../store'
 import { notify } from '../../toast'
 import { copyText } from '../../utils/clipboard'
-import { downloadText } from '../../utils/download'
+import { downloadBlob, saveText } from '../../utils/download'
+import { writeScf } from '../../io/scf'
 import { reverseComplement } from '../../models/complement'
 import { autoTrim } from '../../io/ab1'
 import { buildLayout, KIND_DELETE, KIND_INSERT, forwardRange, trimForColumns } from '../../sanger/layout'
 import { buildTraceModel, findProblems, forwardColumn, translateShown, type TraceModel } from '../../sanger/model'
 import {
-  deleteColumns, editedIn, editedRead, EDIT_BASE, findInColumns, insertBefore, revertColumns, substitute, toFasta, toFastq,
+  deleteColumns, editedIn, editedRead, editedTrace, EDIT_BASE, findInColumns, insertBefore, revertColumns, substitute, toFasta, toFastq,
 } from '../../sanger/edits'
 import { readQc, VERDICT_LABEL } from '../../sanger/qc'
 import {
@@ -209,11 +210,21 @@ export default function ReadWorkspace({ read, onClose, onExportPrompt, findReque
     store.setActiveSequencingRead(read.id)
     notify.success('Opened a new sequence', { action: { label: 'Show', onClick: () => useEditorStore.getState().setActiveTab(id) } })
   }
+  // The chromatogram itself, with the calls as edited (sanger/edits editedTrace).
+  const exportTrace = () => {
+    const def = `${fileBase}.scf`
+    const run = (name: string) => {
+      downloadBlob(new Blob([writeScf(editedTrace(data, edits))], { type: 'application/octet-stream' }), name)
+      notify.success(`Exported ${name}`)
+    }
+    if (onExportPrompt) onExportPrompt(def, run)
+    else run(def)
+  }
   const exportFile = (fmt: 'fasta' | 'fastq') => {
     const r = keptRead()
     const text = fmt === 'fastq' ? toFastq(fileBase, r) : toFasta(fileBase, r.bases)
     const def = `${fileBase}.${fmt}`
-    const run = (name: string) => downloadText(text, name)
+    const run = (name: string) => saveText(text, name)
     if (onExportPrompt) onExportPrompt(def, run)
     else run(def)
   }
@@ -481,6 +492,10 @@ export default function ReadWorkspace({ read, onClose, onExportPrompt, findReque
               <button role="menuitem" className="aw-menu-item" onClick={() => { exportFile('fastq'); setExportOpen(false) }}>
                 <span className="aw-menu-label">FASTQ</span>
                 <span className="aw-menu-desc">.fastq · bases with qualities; typed bases count as Q40</span>
+              </button>
+              <button role="menuitem" className="aw-menu-item" onClick={() => { exportTrace(); setExportOpen(false) }}>
+                <span className="aw-menu-label">Trace (SCF)</span>
+                <span className="aw-menu-desc">.scf · the chromatogram with the edited calls, for any trace viewer</span>
               </button>
               <div className="aw-menu-sep" />
               <button role="menuitem" className="aw-menu-item" onClick={() => { copyText(toFasta(fileBase, keptRead().bases), 'Copied the read as FASTA'); setExportOpen(false) }}>

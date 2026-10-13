@@ -70,3 +70,26 @@ export async function readText(): Promise<string | null> {
     return null
   }
 }
+
+/**
+ * Copy a PNG to the clipboard, for pasting a figure into slides or a
+ * document. The image is handed over as a promise so the browser counts the
+ * copy as part of the click even though the PNG takes a moment to draw.
+ */
+export async function copyImage(png: Promise<Blob>, successMessage: string): Promise<boolean> {
+  try {
+    if (!navigator.clipboard?.write || typeof ClipboardItem === 'undefined') throw new Error('Clipboard API unavailable')
+    await navigator.clipboard.write([new ClipboardItem({ 'image/png': png })])
+    notify.success(successMessage, { duration: 2000, key: 'clipboard' })
+    return true
+  } catch (err) {
+    notify.error('Could not copy the image', {
+      detail: window.isSecureContext
+        ? 'Your browser blocked clipboard access for this page. Save it as PNG instead.'
+        : 'Clipboard access needs a secure (https) connection. Save it as PNG instead.',
+      key: 'clipboard',
+    })
+    console.warn('Clipboard image write failed:', err)
+    return false
+  }
+}

@@ -20,6 +20,7 @@ import {
 } from '../assembly/variants'
 import { verifyPileup, type VerifyReport, type VerifySettings } from '../assembly/verify'
 import { codingLabel } from '../assembly/effects'
+import { csvCell } from '../utils/csv-cell'
 
 export interface SampleVariants {
   /** Every candidate variant of the sample on this reference (siteVariants). */
@@ -82,7 +83,7 @@ export function differingRows(rows: readonly MatrixRow[], s: VariantSettings): M
 }
 
 export function matrixCsv(rows: readonly MatrixRow[], sampleNames: readonly string[], refName: (r: MatrixRow) => string): string {
-  const q = (x: string) => (/[",\n]/.test(x) ? `"${x.replace(/"/g, '""')}"` : x)
+  const q = csvCell
   const head = ['Reference', 'Position', 'Type', 'Change', 'Effect', ...sampleNames.flatMap(n => [`${n} frequency`, `${n} depth`])]
   const lines = rows.map(r => [
     refName(r), String(r.variant.position), r.variant.type, r.label,

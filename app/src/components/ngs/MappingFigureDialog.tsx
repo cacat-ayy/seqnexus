@@ -7,10 +7,9 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Image as ImageIcon, X } from 'lucide-react'
-import { downloadBlob, downloadText } from '../../utils/download'
-import { notify } from '../../toast'
+import FigureSaveBar from '../FigureSaveBar'
 import { useFocusTrap } from '../../hooks/useFocusTrap'
-import { figureToPng, figureToPdf } from '../alignment/figure'
+import { figureFile } from '../alignment/figure'
 import { buildMappingFigure, MAX_READ_SPAN, type MappingFigureInput } from './mappingFigure'
 import type { ColorBy } from './mappingPaint'
 
@@ -25,9 +24,10 @@ interface Props {
   strands: boolean
   name: string
   onClose: () => void
+  onExportPrompt?: (defaultName: string, onConfirm: (name: string) => void) => void
 }
 
-export default function MappingFigureDialog({ input, view, loaded, colorBy, strands: viewStrands, name, onClose }: Props) {
+export default function MappingFigureDialog({ input, view, loaded, colorBy, strands: viewStrands, name, onClose, onExportPrompt }: Props) {
   const [region, setRegion] = useState<'view' | 'custom'>('view')
   const [from, setFrom] = useState(Math.floor(view[0]) + 1)
   const [to, setTo] = useState(Math.ceil(view[1]))
@@ -58,14 +58,7 @@ export default function MappingFigureDialog({ input, view, loaded, colorBy, stra
   }, [onClose])
 
   const base = `${name}_${a + 1}-${b}`.replace(/[\\/:*?"<>|]+/g, '_').replace(/\s+/g, '_')
-  const saveSvg = () => fig && downloadText(fig.svg, `${base}.svg`, 'image/svg+xml')
-  const savePng = (scale: number) => fig && figureToPng(fig, scale).then(bl => downloadBlob(bl, `${base}${scale >= 4 ? '-print' : ''}.png`))
-    .catch(err => notify.error('Could not make the PNG', { detail: err instanceof Error ? err.message : String(err) }))
-  const savePdf = () => {
-    if (!fig) return
-    try { downloadBlob(figureToPdf(fig, title.trim() || name), `${base}.pdf`) }
-    catch (err) { notify.error('Could not make the PDF', { detail: err instanceof Error ? err.message : String(err) }) }
-  }
+  const file = useMemo(() => (fig ? figureFile(fig, title.trim() || name) : null), [fig, title, name])
   const check = (k: keyof typeof tracks, label: string, disabled = false, hint?: string) => (
     <label className="aw-check" title={hint}><input type="checkbox" checked={tracks[k] && !disabled} disabled={disabled} onChange={e => setTracks(t => ({ ...t, [k]: e.target.checked }))} /> {label}</label>
   )
@@ -124,14 +117,7 @@ export default function MappingFigureDialog({ input, view, loaded, colorBy, stra
             {check('reads', 'Reads', !readsHere || b - a > MAX_READ_SPAN,
               b - a > MAX_READ_SPAN ? `Reads are drawn for ${nf.format(MAX_READ_SPAN)} bases or less` : !readsHere ? 'Reads are drawn where the view has them loaded: export the view, or move the view there first' : undefined)}
             <p className="aw-note">Reads keep the view&apos;s colours, order and downsampling; the reference&apos;s bases show when they are wide enough to tell apart.</p>
-            <div className="aw-section-label">Save</div>
-            <div className="aw-figure-save">
-              <button className="btn btn-sm btn-primary" disabled={!fig} onClick={saveSvg} title="Vector; edit in Illustrator or Inkscape">SVG</button>
-              <button className="btn btn-sm" disabled={!fig} onClick={() => savePng(2)} title="Image at 2× resolution">PNG</button>
-              <button className="btn btn-sm" disabled={!fig} onClick={() => savePng(4)} title="Image at 4× resolution, for print">PNG 4×</button>
-              <button className="btn btn-sm" disabled={!fig} onClick={savePdf} title="Vector, one page at the figure's size">PDF</button>
-            </div>
-            {fig && <p className="aw-note">{nf.format(fig.width)} × {nf.format(fig.height)} px</p>}
+            <FigureSaveBar file={file} base={base} onExportPrompt={onExportPrompt} />
           </div>
         </div>
       </div>

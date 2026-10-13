@@ -49,7 +49,7 @@ describe('GenPept', () => {
     }
     const text = writeGenBank(doc)
     // The same columns as a GenPept record from NCBI.
-    expect(text).toMatch(/^LOCUS {7}Ubiquitin {13}76 aa {12}linear/)
+    expect(text).toMatch(/^LOCUS {7}Ubiquitin {17}76 aa {12}linear {3}SYN /)
     expect(text).not.toContain('DNA')
     expect(text).toContain('     Site            48..48\n')
     const back = parseGenBankMulti(text)[0]
@@ -61,6 +61,6 @@ describe('GenPept', () => {
 
   it('still writes DNA with its molecule type', () => {
     const text = writeGenBank({ name: 'p', sequence: new Sequence('ACGT', 'circular'), annotations: [] })
-    expect(text).toMatch(/4 bp {4}ds-DNA {5}circular/)
+    expect(text).toMatch(/4 bp ds-DNA {5}circular SYN /)
   })
 })

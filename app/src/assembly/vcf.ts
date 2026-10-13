@@ -12,6 +12,7 @@
 
 import { FILTERS, variantQual, type FilterId, type Variant } from './variants'
 import { allCoding } from './effects'
+import { samNames } from '../ngs/refNames'
 
 export interface VcfReference {
   name: string
@@ -22,6 +23,9 @@ export interface VcfReference {
 
 /** A VCF field value: no spaces, semicolons, commas or equals signs. */
 const field = (s: string) => s.replace(/[\s;,=]+/g, '_')
+
+/** A sample column's header: a tab or a line break would end it. */
+const sampleName = (s: string) => s.replace(/[\t\r\n]+/g, ' ').trim() || 'sample'
 
 /** An HGVS name as a field value: its "=" (an unchanged protein) percent-encoded, as VEP writes it. */
 const hgvsField = (s: string) => field(s.replace(/=/g, '%3D'))
@@ -45,13 +49,20 @@ export function writeVcf(o: {
   references: readonly VcfReference[]
   /** What the variants were called from, for the header. */
   source: string
+  /**
+   * The sample's name, for a sample column (GT:AD:DP:AF). Tools that merge
+   * or compare call sets (bcftools merge, GATK) need one; without it the
+   * file is sites-only.
+   */
+  sample?: string
   /** Where the reference came from (a sequence's name). */
   referenceName: string
   date?: Date
 }): string {
   const d = o.date ?? new Date()
   const ymd = `${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, '0')}${String(d.getDate()).padStart(2, '0')}`
-  const names = uniqueNames(o.references.map(r => r.name))
+  // The names the BAM export writes, so the two line up in IGV.
+  const names = samNames(o.references.map(r => r.name))
   const head = [
     '##fileformat=VCFv4.2',
     `##fileDate=${ymd}`,
@@ -70,7 +81,13 @@ export function writeVcf(o: {
     '##INFO=<ID=REP,Number=1,Type=String,Description="Short tandem repeat the variant is in">',
     '##INFO=<ID=FEAT,Number=.,Type=String,Description="Features of the reference the variant is in">',
     '##INFO=<ID=EFF,Number=.,Type=String,Description="Coding effect in each coding feature, most severe first: effect|feature|HGVS cDNA change|HGVS protein change">',
-    '#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO',
+    ...(o.sample ? [
+      '##FORMAT=<ID=GT,Number=1,Type=String,Description="Haploid call: 1 when most reads covering the site carry the variant, 0 when most do not">',
+      '##FORMAT=<ID=AD,Number=R,Type=Integer,Description="Reads carrying the reference and the variant">',
+      '##FORMAT=<ID=DP,Number=1,Type=Integer,Description="Reads covering the site">',
+      '##FORMAT=<ID=AF,Number=A,Type=Float,Description="Share of the covering reads carrying the variant">',
+    ] : []),
+    `#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO${o.sample ? `\tFORMAT\t${sampleName(o.sample)}` : ''}`,
   ]
   const lines: string[] = []
   o.references.forEach((r, i) => {
@@ -89,19 +106,12 @@ export function writeVcf(o: {
         ...(v.coding ? [`EFF=${allCoding(v).map(c => `${field(c.effect)}|${field(c.feature)}|${hgvsField(c.cdna)}|${hgvsField(c.hgvsp)}`).join(',')}`] : []),
       ].join(';')
       const filter = filters.length ? filters.map(f => FILTERS[f].vcf).join(';') : 'PASS'
-      lines.push([names[i], a.pos, '.', a.ref, a.alt, variantQual(v).toFixed(1), filter, info].join('\t'))
+      // A plasmid or a clone is one haploid molecule: the call is whether most reads carry the variant.
+      const sample = o.sample
+        ? ['GT:AD:DP:AF', `${v.frequency >= 0.5 ? 1 : 0}:${v.forward.ref + v.reverse.ref},${Math.round(v.count)}:${v.coverage}:${v.frequency.toFixed(4)}`]
+        : []
+      lines.push([names[i], a.pos, '.', a.ref, a.alt, variantQual(v).toFixed(1), filter, info, ...sample].join('\t'))
     }
   })
   return [...head, ...lines].join('\n') + '\n'
-}
-
-/** Contig IDs: no whitespace, unique. */
-function uniqueNames(names: readonly string[]): string[] {
-  const seen = new Map<string, number>()
-  return names.map(n => {
-    const base = n.trim().replace(/[\s,<>=]+/g, '_') || 'reference'
-    const k = (seen.get(base) ?? 0) + 1
-    seen.set(base, k)
-    return k === 1 ? base : `${base}_${k}`
-  })
 }

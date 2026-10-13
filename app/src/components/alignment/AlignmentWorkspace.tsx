@@ -21,7 +21,7 @@ import {
 import { useEditorStore, type SavedAlignment } from '../../store'
 import { notify } from '../../toast'
 import { copyText } from '../../utils/clipboard'
-import { downloadText } from '../../utils/download'
+import { saveText } from '../../utils/download'
 import { isWidgetKeyTarget } from '../../utils/key-target'
 import { originLabel, residueNumberAt, width, type AlnDoc } from '../../msa/model'
 import {
@@ -486,7 +486,7 @@ export default function AlignmentWorkspace({ aln, onClose, onExportPrompt, findR
   const exportAs = (id: (typeof ALN_FORMATS)[number]['id']) => {
     const f = ALN_FORMATS.find(x => x.id === id)!
     const base = aln.name.replace(/[\\/:*?"<>|]+/g, '_').replace(/\s+/g, '_')
-    const run = (name: string) => downloadText(writeAlignment(current(), id, { title: aln.name }), name)
+    const run = (name: string) => saveText(writeAlignment(current(), id, { title: aln.name }), name)
     const def = `${base}${f.extensions[0]}`
     if (onExportPrompt) onExportPrompt(def, run)
     else run(def)

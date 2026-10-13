@@ -8,9 +8,7 @@
  */
 
 import { useRef, useEffect, useCallback, useMemo, useState, memo } from 'react'
-import { Download, Maximize2, Image as ImageIcon, FileCode2 } from 'lucide-react'
-import { downloadBlob } from '../utils/download'
-import { notify } from '../toast'
+import { Download, Maximize2 } from 'lucide-react'
 import {
   useEditorStore, isOriginSpanningSelection, selectionLength, extraSelectionsOf, selectedRanges,
   selectionSegments, type Selection,
@@ -26,10 +24,11 @@ import ConfirmDialog from './ConfirmDialog'
 import PrimerTooltip from './primers/PrimerTooltip'
 import { isPrimerItemId } from '../primers/display'
 
-import { buildPlasmidScene, type PlasmidScene } from '../plasmid/scene'
+import { buildPlasmidScene, type PlasmidScene, type PlasmidSceneInput } from '../plasmid/scene'
 import { guideKey } from '../utils/guide-features'
 import { renderSceneToCanvas, type Viewport } from '../plasmid/renderCanvas'
-import { plasmidToPng, plasmidToSvgBlob } from '../plasmid/exportImage'
+import { FIGURE_SIZE, figureSceneInput, type MapFigureOptions } from '../plasmid/exportImage'
+import MapFigureDialog from './MapFigureDialog'
 import { resolvePlasmidColors, type PlasmidColors } from '../plasmid/styles'
 import { angleToPos, normalizeAngle, arcSelection } from '../plasmid/geometry'
 import { hitTestScene } from '../plasmid/hit'
@@ -106,7 +105,7 @@ function PlasmidMap(_props: PlasmidMapProps) {
   }
   const [ctxMenu, setCtxMenu] = useState<ContextMenuState | null>(null)
   const [deleteConfirm, setDeleteConfirm] = useState<{ annId: string; annName: string } | null>(null)
-  const [exportOpen, setExportOpen] = useState(false)
+  const [figureOpen, setFigureOpen] = useState(false)
 
   // --- Viewport ---
   // Local, not the tab's `zoomLevel`, which the store defines as bases per row
@@ -151,9 +150,9 @@ function PlasmidMap(_props: PlasmidMapProps) {
     setColors(resolvePlasmidColors(style, containerRef.current))
   }, [style, themeVersion])
 
-  const scene = useMemo<PlasmidScene | null>(() => {
+  const sceneInput = useMemo<PlasmidSceneInput | null>(() => {
     if (canvasSize <= 0 || !colors) return null
-    return buildPlasmidScene({
+    return {
       size: canvasSize,
       seqLen: doc.sequence.length,
       name: doc.name,
@@ -186,16 +185,19 @@ function PlasmidMap(_props: PlasmidMapProps) {
       gcPercent: gcOverall,
       legend,
       layout,
-    })
+    }
   }, [
     canvasSize, doc.sequence.length, doc.sequence.topology, doc.name, doc.metadata,
     style, layout, colors, rings, hoveredAnnotationId, proposalIds, pickedIds, sceneEnzymes,
     hoveredEnzymeKey, sceneGuides, hoveredGuideKey, selectedGuideKey, scenePrimers, selection, extraSelections, search, methylation, gcSeries, gcOverall, legend,
     highlightRanges,
   ])
+  const scene = useMemo(() => (sceneInput ? buildPlasmidScene(sceneInput) : null), [sceneInput])
 
   const sceneRef = useRef<PlasmidScene | null>(null)
   sceneRef.current = scene
+  const sceneInputRef = useRef(sceneInput)
+  sceneInputRef.current = sceneInput
   const viewportRef = useRef(viewport)
   viewportRef.current = viewport
 
@@ -288,7 +290,6 @@ function PlasmidMap(_props: PlasmidMapProps) {
     // been handled by the drag.
     if (suppressClickRef.current) { suppressClickRef.current = false; return }
     setCtxMenu(null)
-    setExportOpen(false)
     const ctrl = e.ctrlKey || e.metaKey
     const p = toSceneXY(e.clientX, e.clientY)
     if (!p) return
@@ -601,30 +602,17 @@ function PlasmidMap(_props: PlasmidMapProps) {
   const closeCtxMenu = useCallback(() => setCtxMenu(null), [])
 
   // --- Export ---
-  // Always rendered at fit scale: an exported figure should be the whole map,
-  // not whatever corner the user had zoomed into.
-  const exportScene = useCallback((): PlasmidScene | null => sceneRef.current, [])
-
-  const runExport = useCallback((kind: 'png' | 'svg') => {
-    setExportOpen(false)
-    const s = exportScene()
-    if (!s) return
-    const base = (doc.name || 'plasmid').replace(/[^\w.-]+/g, '_')
-    const defaultName = `${base}-map.${kind}`
-    const write = async (filename: string) => {
-      try {
-        const blob = kind === 'png' ? await plasmidToPng(s) : plasmidToSvgBlob(s)
-        downloadBlob(blob, filename)
-        notify.success(`Exported ${filename}`)
-      } catch (err) {
-        notify.error('Could not export the map', {
-          detail: err instanceof Error ? err.message : undefined,
-        })
-      }
-    }
-    if (_props.onExportPrompt) _props.onExportPrompt(defaultName, name => { void write(name) })
-    else void write(defaultName)
-  }, [doc.name, exportScene, _props])
+  // The whole map as a figure, whatever the zoom, drawn again for the file
+  // (see figureSceneInput). The BLAST hit pointed at in the drawer is a
+  // highlight of the moment, so it goes with the selection.
+  const buildFigure = useCallback((o: MapFigureOptions): PlasmidScene | null => {
+    const input = sceneInputRef.current
+    if (!input) return null
+    const fig = figureSceneInput(input, o)
+    return buildPlasmidScene(o.highlights ? fig : { ...fig, regions: [] })
+  }, [])
+  const hasHighlights = selection.anchor !== selection.caret || extraSelections.length > 0
+    || search.matches.length > 0 || highlightRanges.length > 0
 
   const zoomed = viewport.scale > 1
 
@@ -660,29 +648,26 @@ function PlasmidMap(_props: PlasmidMapProps) {
             <Maximize2 size={13} />
           </button>
         )}
-        <div className="plasmid-tool-menu">
-          <button
-            className={`plasmid-tool ${exportOpen ? 'open' : ''}`}
-            onClick={() => setExportOpen(v => !v)}
-            title="Export map image"
-            aria-label="Export map image"
-            aria-haspopup="menu"
-            aria-expanded={exportOpen}
-          >
-            <Download size={13} />
-          </button>
-          {exportOpen && (
-            <div className="plasmid-export-menu" role="menu">
-              <button className="plasmid-export-item" role="menuitem" onClick={() => runExport('png')}>
-                <ImageIcon size={13} /> PNG image
-              </button>
-              <button className="plasmid-export-item" role="menuitem" onClick={() => runExport('svg')}>
-                <FileCode2 size={13} /> SVG vector
-              </button>
-            </div>
-          )}
-        </div>
+        <button
+          className="plasmid-tool"
+          onClick={() => setFigureOpen(true)}
+          title="Export figure (SVG, PNG or PDF)"
+          aria-label="Export figure"
+        >
+          <Download size={13} />
+        </button>
       </div>
+      {figureOpen && (
+        <MapFigureDialog
+          name={`${doc.name || 'plasmid'}-map`}
+          sizes={[480, FIGURE_SIZE, 1080]}
+          defaultSize={FIGURE_SIZE}
+          hasHighlights={hasHighlights}
+          build={buildFigure}
+          onClose={() => setFigureOpen(false)}
+          onExportPrompt={_props.onExportPrompt}
+        />
+      )}
       {editingName && (() => {
         // Position the input at the center of the canvas
         const container = containerRef.current

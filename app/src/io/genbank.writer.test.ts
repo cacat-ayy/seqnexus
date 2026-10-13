@@ -3,9 +3,9 @@
  * in strict readers (Biopython and others).
  */
 import { describe, it, expect } from 'vitest'
-import { parseGenBank, writeGenBank } from './genbank'
+import { parseGenBank, unwrittenPrimers, writeGenBank } from './genbank'
 import { Sequence } from '../models/Sequence'
-import { Annotation, type AnnotationData } from '../models/Annotation'
+import { Annotation, defaultColorForType, type AnnotationData } from '../models/Annotation'
 import type { DocumentState } from '../models/Document'
 
 const BASES = 'ATGAAATTTGGG'.repeat(50)
@@ -74,5 +74,102 @@ describe('GenBank writer (M5)', () => {
   it("writes today's date, not 2000 (L6)", () => {
     expect(writeGenBank(doc('p', []))).not.toContain('01-JAN-2000')
     expect(writeGenBank(doc('p', []))).toMatch(/^LOCUS .* \d{2}-[A-Z]{3}-\d{4}\n/)
+  })
+})
+
+describe('GenBank writer: what used to be lost on the way back', () => {
+  it('writes the LOCUS line in the GenBank columns', () => {
+    const line = writeGenBank(doc('pUC19', [])).split('\n')[0]
+    expect(line.slice(0, 12)).toBe('LOCUS       ')
+    expect(line.slice(12, 28).trimEnd()).toBe('pUC19')
+    expect(line.slice(29, 40).trimStart()).toBe('600')
+    expect(line.slice(41, 43)).toBe('bp')
+    expect(line.slice(44, 50)).toBe('ds-DNA')
+    expect(line.slice(55, 63).trimEnd()).toBe('linear')
+    expect(line.slice(64, 67)).toBe('SYN')
+    expect(line).toHaveLength(79)
+  })
+
+  it('keeps every feature after one whose note has line breaks', () => {
+    const text = writeGenBank(doc('p', [
+      feature({ id: 'a', name: 'first', qualifiers: { note: ['line one\nline two'] } }),
+      feature({ id: 'b', name: 'second' }),
+    ]))
+    const back = parseGenBank(text)
+    expect(back.annotations.map(a => a.name)).toEqual(['first', 'second'])
+    expect(back.annotations[0].qualifiers.note).toEqual(['line one', 'line two'])
+  })
+
+  it('writes a description with line breaks on one line', () => {
+    const back = parseGenBank(writeGenBank(doc('p', [feature()], 'line one\nline two')))
+    expect(back.description).toBe('line one line two')
+    expect(back.annotations).toHaveLength(1)
+  })
+
+  it('keeps a primer whose notes have line breaks, and the primers after it', () => {
+    const d = doc('p', [])
+    d.primers = [
+      { id: 'p1', name: 'fwd', sequence: BASES.slice(0, 20), role: 'primer', notes: 'note a\nnote b' },
+      { id: 'p2', name: 'rev', sequence: 'CCCAAATTTCATCCCAAATT', role: 'primer' },
+    ]
+    const back = parseGenBank(writeGenBank(d))
+    expect(back.primers?.map(p => [p.name, p.notes])).toEqual([['fwd', 'note a\nnote b'], ['rev', undefined]])
+  })
+
+  it('keeps a long URL whole and does not start a line with "/"', () => {
+    const url = 'https://www.addgene.org/browse/sequence/123456/some/really/long/path/without/any/spaces/at/all'
+    const text = writeGenBank(doc('p', [feature({ qualifiers: { note: [url], gene: ['see /etc/x and /usr/local/share/a/b/c/d/e/f/g for more of the same words here'] } })]))
+    for (const line of text.split('\n').filter(l => l !== '//')) {
+      expect(line.trimStart().startsWith('/') && !/^\s{21}\/\w+(=|$)/.test(line)).toBe(false)
+    }
+    const q = parseGenBank(text).annotations[0].qualifiers
+    expect(q.note).toEqual([url])
+    expect(q.gene).toEqual(['see /etc/x and /usr/local/share/a/b/c/d/e/f/g for more of the same words here'])
+  })
+
+  it('reads a value continued on a line that starts with "/" inside the quotes', () => {
+    const text = writeGenBank(doc('p', [feature()])).replace(
+      '                     /label="feat"',
+      '                     /label="feat"\n                     /note="see https://example.org\n                     /a/b/c"',
+    )
+    expect(parseGenBank(text).annotations[0].qualifiers.note).toEqual(['see https://example.org /a/b/c'])
+  })
+
+  it("keeps a feature's own colour and leaves the type's colour out", () => {
+    const text = writeGenBank(doc('p', [feature({ id: 'a', name: 'mine', color: '#123456', strand: -1 }), feature({ id: 'b', name: 'plain' })]))
+    expect(text.match(/ApEinfo_fwdcolor/g)).toHaveLength(1)
+    const back = parseGenBank(text)
+    expect(back.annotations[0].color).toBe('#123456')
+    expect(back.annotations[0].qualifiers.ApEinfo_fwdcolor).toBeUndefined()
+    expect(back.annotations[1].color).toBe(defaultColorForType('CDS'))
+  })
+
+  it("reads ApE's colours for the feature's strand", () => {
+    const text = writeGenBank(doc('p', [feature({ strand: -1, qualifiers: { ApEinfo_fwdcolor: ['#ff0000'], ApEinfo_revcolor: ['#00ff00'] } })]))
+    expect(parseGenBank(text).annotations[0].color).toBe('#00ff00')
+  })
+
+  it('names the primers it cannot write', () => {
+    const d = doc('p', [])
+    d.primers = [
+      { id: 'p1', name: 'binds', sequence: BASES.slice(0, 20), role: 'primer' },
+      { id: 'p2', name: 'nowhere', sequence: 'GGGGGGGGGGGGGGGGGGGG', role: 'primer' },
+    ]
+    expect(unwrittenPrimers(d)).toEqual(['nowhere'])
+  })
+})
+
+describe('GenBank reader: colours written by SnapGene', () => {
+  it('takes the colour from a SnapGene colour note and keeps the other notes', () => {
+    const text = writeGenBank(doc('p', [feature({ qualifiers: { note: ['color: #b7e6d7; direction: LEFT', 'a real note'] } })]))
+    const a = parseGenBank(text).annotations[0]
+    expect(a.color).toBe('#b7e6d7')
+    expect(a.qualifiers.note).toEqual(['a real note'])
+  })
+
+  it('prefers ApE colours when a feature has both', () => {
+    const text = writeGenBank(doc('p', [feature({ qualifiers: { note: ['color: #b7e6d7'], ApEinfo_fwdcolor: ['#ff0000'] } })]))
+    const a = parseGenBank(text).annotations[0]
+    expect(a.color).toBe('#ff0000')
   })
 })

@@ -8,7 +8,7 @@ import './ExportDialog.css'
  */
 
 import { useState, useRef, useEffect, useCallback } from 'react'
-import { X } from 'lucide-react'
+import { Check, X } from 'lucide-react'
 import { useExitAnimation } from '../hooks/useExitAnimation'
 import { useFocusTrap } from '../hooks/useFocusTrap'
 import { defaultFormatForKind, formatsForKind, type ExportFormat, type ExportItemKind } from './exportFormats'
@@ -26,7 +26,14 @@ function kindLabel(kind: ExportItemKind, plural: boolean): string {
   }
 }
 
-export type ExportMode = 'combined' | 'separate'
+export type ExportMode = 'combined' | 'separate' | 'zip'
+
+const MODE_LABEL: Record<ExportMode, string> = { combined: 'Combined file', separate: 'Separate files', zip: 'One ZIP' }
+const MODE_HINT: Record<ExportMode, string> = {
+  combined: 'Every item in one file of this format',
+  separate: 'A file per item; the browser may ask before saving several',
+  zip: 'A file per item, packed into one ZIP: one download',
+}
 
 interface Props {
   open: boolean
@@ -41,51 +48,66 @@ interface Props {
   itemNames?: string[]
   /** The sequence being exported is a protein: no SnapGene format. */
   protein?: boolean
+  /** What the chosen format will leave out that the user would not expect, said before writing. */
+  warningsFor?: (format: ExportFormat) => string[]
   onExport: (format: ExportFormat, filename: string, mode: ExportMode) => void
   onClose: () => void
 }
 
-export default function ExportDialog({ open, defaultName, annotationCount, itemKind, kindCounts, count = 1, itemNames, protein = false, onExport, onClose }: Props) {
+export default function ExportDialog({ open, defaultName, annotationCount, itemKind, kindCounts, count = 1, itemNames, protein = false, warningsFor, onExport, onClose }: Props) {
   const isMixed = itemKind === 'mixed'
   const singleKind: ExportItemKind = isMixed ? 'sequence' : itemKind
   const formats = isMixed ? [] : formatsForKind(singleKind, protein)
 
-  const [format, setFormat] = useState<ExportFormat>(defaultFormatForKind(singleKind))
+  const [chosen, setFormat] = useState<ExportFormat>(defaultFormatForKind(singleKind))
   const [filename, setFilename] = useState('')
   const [mode, setMode] = useState<ExportMode>('combined')
   const inputRef = useRef<HTMLInputElement>(null)
   const backdropRef = useRef<HTMLDivElement>(null)
   useFocusTrap(backdropRef, open)
 
-  const currentFmt = formats.find(f => f.id === format)
+  // The formats on offer: one sequence can also go out as its feature table.
+  const shown = formats.filter(f => count <= 1 || !f.annotationsOnly)
+  // The dialog stays mounted, so a choice from an earlier export may not be
+  // on offer now (SnapGene for a protein, GFF3 for several sequences): what
+  // is written is always a format the dialog shows.
+  const format: ExportFormat = shown.some(f => f.id === chosen) ? chosen : (shown[0]?.id ?? defaultFormatForKind(singleKind))
+  const currentFmt = shown.find(f => f.id === format)
 
-  const effectiveMode = isMixed ? 'separate'
-    : count <= 1 ? 'combined'
-    : (currentFmt?.separateOnly ? 'separate' : mode)
+  // Several items go into one file where the format holds several, or into
+  // separate files, or into one ZIP of those files (one download, not one
+  // per item).
+  const modes: ExportMode[] = count <= 1 && !isMixed ? ['combined']
+    : isMixed || currentFmt?.separateOnly ? ['separate', 'zip']
+    : ['combined', 'separate', 'zip']
+  const effectiveMode: ExportMode = modes.includes(mode) ? mode : modes[0]
+  const named = effectiveMode !== 'separate'
 
-  // Reset format when item kind changes
+  // Each export starts from the kind's default format.
   useEffect(() => {
-    if (!isMixed) setFormat(defaultFormatForKind(singleKind))
-  }, [singleKind, isMixed])
+    if (open && !isMixed) setFormat(defaultFormatForKind(singleKind))
+  }, [open, singleKind, isMixed])
 
-  // Update filename when format or defaultName changes
+  // Update filename when the format, the output or defaultName changes
   useEffect(() => {
-    if (isMixed) {
+    if (effectiveMode === 'zip') {
+      setFilename(`${defaultName}.zip`)
+    } else if (isMixed) {
       setFilename('')
     } else {
       const ext = currentFmt?.ext ?? formatsForKind(singleKind)[0]?.ext ?? ''
       setFilename(`${defaultName}${ext}`)
     }
-  }, [format, defaultName, currentFmt, isMixed, singleKind])
+  }, [format, defaultName, currentFmt, isMixed, singleKind, effectiveMode])
 
   // Reset mode when opening
   useEffect(() => {
     if (open) setMode('combined')
   }, [open])
 
-  // Focus and select the name part on open (only for combined mode)
+  // Focus and select the name part on open (when there is one name)
   useEffect(() => {
-    if (!open || effectiveMode === 'separate') return
+    if (!open || !named) return
     requestAnimationFrame(() => {
       const el = inputRef.current
       if (!el) return
@@ -97,16 +119,17 @@ export default function ExportDialog({ open, defaultName, annotationCount, itemK
         el.select()
       }
     })
-  }, [open, effectiveMode])
+  }, [open, named])
 
   const handleExport = useCallback(() => {
-    if (effectiveMode === 'separate') {
+    if (!named) {
       onExport(format, '', 'separate')
     } else {
       const trimmed = filename.trim()
-      if (trimmed) onExport(format, trimmed, 'combined')
+      if (!trimmed) return
+      onExport(format, effectiveMode === 'zip' && !/\.zip$/i.test(trimmed) ? `${trimmed}.zip` : trimmed, effectiveMode)
     }
-  }, [format, filename, effectiveMode, onExport])
+  }, [format, filename, effectiveMode, named, onExport])
 
   const { onMouseDown: handleBackdropClickDown, onClick: handleBackdropClick } = useBackdropDismiss(onClose)
 
@@ -156,7 +179,7 @@ export default function ExportDialog({ open, defaultName, annotationCount, itemK
             <>
               <div className="export-format-label">Format</div>
               <div className="export-format-list">
-                {formats.filter(f => count <= 1 || !f.annotationsOnly).map(fmt => {
+                {shown.map(fmt => {
                   const Icon = fmt.icon
                   return (
                     <button
@@ -179,10 +202,25 @@ export default function ExportDialog({ open, defaultName, annotationCount, itemK
             </>
           )}
 
+          {/* What the chosen format keeps */}
+          {!isMixed && currentFmt?.keeps && (
+            <ul className="export-keeps" aria-label="What this file keeps">
+              {currentFmt.keeps.map(x => (
+                <li key={x.label} className={x.kept ? 'kept' : 'lost'} title={x.detail}>
+                  {x.kept ? <Check size={11} aria-label="Kept:" /> : <X size={11} aria-label="Left out:" />}
+                  {x.label}
+                </li>
+              ))}
+            </ul>
+          )}
+          {open && !isMixed && warningsFor?.(format).map(w => (
+            <div key={w} className="export-format-note">{w}</div>
+          ))}
+
           {/* Mixed-kind default format note */}
           {isMixed && (
-            <div className="export-format-note" style={{ marginTop: 0 }}>
-              Each item will be exported in its default format (GenBank for sequences, FASTA for reads, Aligned FASTA for alignments).
+            <div className="export-info-note">
+              Each item is written in its kind&apos;s default format: GenBank for sequences, FASTQ for reads, aligned FASTA for alignments and contigs.
             </div>
           )}
 
@@ -193,29 +231,27 @@ export default function ExportDialog({ open, defaultName, annotationCount, itemK
             </div>
           )}
 
-          {/* Combined / Separate toggle for bulk export (uniform kind only) */}
-          {!isMixed && count > 1 && !currentFmt?.separateOnly && (
+          {/* Output: one file, separate files, or one ZIP of them */}
+          {modes.length > 1 && (
             <>
               <div className="export-filename-label">Output</div>
               <div className="toggle-group export-mode-toggle">
-                <button
-                  className={`toggle-btn ${effectiveMode === 'combined' ? 'active' : ''}`}
-                  onClick={() => setMode('combined')}
-                >
-                  Combined file
-                </button>
-                <button
-                  className={`toggle-btn ${effectiveMode === 'separate' ? 'active' : ''}`}
-                  onClick={() => setMode('separate')}
-                >
-                  Separate files
-                </button>
+                {modes.map(m => (
+                  <button
+                    key={m}
+                    className={`toggle-btn ${effectiveMode === m ? 'active' : ''}`}
+                    onClick={() => setMode(m)}
+                    title={MODE_HINT[m]}
+                  >
+                    {MODE_LABEL[m]}
+                  </button>
+                ))}
               </div>
             </>
           )}
 
           {/* Filename or file preview */}
-          {effectiveMode === 'combined' ? (
+          {named ? (
             <>
               <div className="export-filename-label">Filename</div>
               <input
@@ -232,6 +268,9 @@ export default function ExportDialog({ open, defaultName, annotationCount, itemK
                 }}
                 spellCheck={false}
               />
+              {effectiveMode === 'zip' && (
+                <div className="export-file-preview-more">{count} files inside, one per item</div>
+              )}
             </>
           ) : (
             <>

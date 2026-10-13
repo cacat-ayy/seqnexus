@@ -34,10 +34,18 @@ const ids = idSource('sg')
  * SnapGene embeds rich-text HTML in feature names and qualifier values.
  */
 function stripHtml(s: string): string {
-  if (!s.includes('<')) return s
-  // Use DOMParser to extract text content from HTML
-  const doc = new DOMParser().parseFromString(s, 'text/html')
+  if (!s.includes('<') && !s.includes('&')) return s
+  // A line break is <br>; the rest of the markup is dropped and entities decoded.
+  const doc = new DOMParser().parseFromString(s.replace(/<br\s*\/?>/gi, '\n'), 'text/html')
   return doc.body.textContent?.trim() || s
+}
+
+/**
+ * Plain text as the HTML SnapGene keeps in names and values: escaped, so a
+ * "<" in a note is not read as markup, and with <br> for a line break.
+ */
+function toHtml(s: string): string {
+  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\r?\n/g, '<br>')
 }
 
 /** Reset ID counter (for testing). */
@@ -77,6 +85,7 @@ export function parseSnapGene(buffer: ArrayBuffer): DocumentState {
   let sequence = ''
   let topology: Topology = 'linear'
   let name = 'Untitled'
+  let description: string | null = null
   const rawFeatures: RawFeature[] = []
   const rawPrimers: RawPrimer[] = []
   const metadata: SequenceMetadata = {
@@ -116,8 +125,9 @@ export function parseSnapGene(buffer: ArrayBuffer): DocumentState {
 
       case PACKET_NOTES: {
         const xml = new TextDecoder().decode(bytes.slice(dataStart, dataEnd))
-        const parsedName = parseNotesXml(xml)
-        if (parsedName) name = parsedName
+        const notes = parseNotesXml(xml)
+        if (notes.name) name = notes.name
+        if (notes.description) description = notes.description
         break
       }
 
@@ -143,6 +153,7 @@ export function parseSnapGene(buffer: ArrayBuffer): DocumentState {
   const primers = resolvePrimers(rawPrimers, seq)
   return {
     name,
+    ...(description ? { description } : {}),
     sequence: seq,
     annotations: annotations.map(d => new Annotation(d)),
     ...(primers.length > 0 ? { primers } : {}),
@@ -227,17 +238,14 @@ function parseFeatureXml(xml: string, rawFeatures: RawFeature[]): void {
   }
 }
 
-function parseNotesXml(xml: string): string | null {
+function parseNotesXml(xml: string): { name: string | null; description: string | null } {
   const doc = new DOMParser().parseFromString(xml, 'text/xml')
-
-  // Try CustomMapLabel first (user-set name), then fall back to other fields
-  const customLabel = doc.querySelector('CustomMapLabel')
-  if (customLabel?.textContent) return stripHtml(customLabel.textContent.trim())
-
-  const accession = doc.querySelector('AccessionNumber')
-  if (accession?.textContent) return stripHtml(accession.textContent.trim())
-
-  return null
+  const text = (tag: string) => {
+    const t = doc.querySelector(tag)?.textContent?.trim()
+    return t ? stripHtml(t) : null
+  }
+  // CustomMapLabel first (user-set name), then the accession.
+  return { name: text('CustomMapLabel') ?? text('AccessionNumber'), description: text('Description') }
 }
 
 /** A <Primer> as written, before the template is known. */
@@ -340,14 +348,23 @@ function buildDnaPacket(state: DocumentState): Uint8Array {
   return makePacket(PACKET_DNA, payload)
 }
 
-function buildFeaturesPacket(annotations: Annotation[], seqLen: number): Uint8Array | null {
+function buildFeaturesPacket(annotations: Annotation[], seqLen: number, source: readonly Record<string, string[]>[] = []): Uint8Array | null {
   const features = annotations.filter(a => a.type !== 'primer_bind')
-  if (features.length === 0) return null
+  if (features.length === 0 && source.length === 0) return null
 
   const parts: string[] = ['<Features>']
+  // The record's source (organism and the like) as SnapGene keeps it: a
+  // source feature over the whole sequence, which the reader takes back out.
+  for (const quals of source) {
+    parts.push(`<Feature type="source" name="source" directionality="0">`, `<Segment range="1-${seqLen}" />`)
+    for (const [key, values] of Object.entries(quals)) {
+      for (const val of values) parts.push(`<Q name="${escXml(key)}"><V text="${escXml(toHtml(val))}" /></Q>`)
+    }
+    parts.push('</Feature>')
+  }
   for (const ann of features) {
     const dir = ann.strand === 1 ? 1 : ann.strand === -1 ? 2 : 0
-    parts.push(`<Feature type="${escXml(ann.type)}" name="${escXml(ann.name)}" directionality="${dir}">`)
+    parts.push(`<Feature type="${escXml(ann.type)}" name="${escXml(toHtml(ann.name))}" directionality="${dir}">`)
     // Segment: 0-based half-open → 1-based inclusive
     const colorAttr = ann.color ? ` color="${escXml(ann.color)}"` : ''
     if (ann.segments) {
@@ -363,15 +380,13 @@ function buildFeaturesPacket(annotations: Annotation[], seqLen: number): Uint8Ar
     } else {
       parts.push(`<Segment range="${ann.start + 1}-${ann.end}"${colorAttr} />`)
     }
-    // Qualifiers
+    // Qualifiers. /label always carries the current name: the reader names a
+    // feature by its label, so a stale one would undo a rename.
     const quals = ann.qualifiers ?? {}
-    // Always write label
-    if (!quals['label']) {
-      parts.push(`<Q name="label"><V text="${escXml(ann.name)}" /></Q>`)
-    }
+    parts.push(`<Q name="label"><V text="${escXml(toHtml(ann.name))}" /></Q>`)
     for (const [key, values] of Object.entries(quals)) {
-      for (const val of values) {
-        parts.push(`<Q name="${escXml(key)}"><V text="${escXml(val)}" /></Q>`)
+      for (const val of key === 'label' ? values.slice(1) : values) {
+        parts.push(`<Q name="${escXml(key)}"><V text="${escXml(toHtml(val))}" /></Q>`)
       }
     }
     parts.push('</Feature>')
@@ -399,8 +414,8 @@ function buildPrimersPacket(state: DocumentState): Uint8Array | null {
   const sites = findBindingSites(primers, state.sequence.bases, state.sequence.topology)
   const parts: string[] = ['<Primers>']
   for (const p of primers) {
-    const desc = p.notes ? ` description="${escXml(p.notes)}"` : ''
-    parts.push(`<Primer name="${escXml(p.name)}" sequence="${escXml(p.sequence)}"${desc}>`)
+    const desc = p.notes ? ` description="${escXml(toHtml(p.notes))}"` : ''
+    parts.push(`<Primer name="${escXml(toHtml(p.name))}" sequence="${escXml(p.sequence)}"${desc}>`)
     for (const site of sites.get(p.id) ?? []) {
       // boundStrand: 1 = forward, 0 = reverse
       const boundStrand = site.strand === -1 ? '0' : '1'
@@ -413,8 +428,10 @@ function buildPrimersPacket(state: DocumentState): Uint8Array | null {
   return makePacket(PACKET_PRIMERS, new TextEncoder().encode(xml))
 }
 
-function buildNotesPacket(name: string): Uint8Array {
-  const xml = `<Notes><CustomMapLabel>${escXml(name)}</CustomMapLabel></Notes>`
+/** The Notes packet: the name as SnapGene's map label, and the description (HTML, as SnapGene keeps it). */
+function buildNotesPacket(name: string, description?: string): Uint8Array {
+  const desc = description ? `<Description>${escXml(toHtml(description))}</Description>` : ''
+  const xml = `<Notes><CustomMapLabel>${escXml(toHtml(name))}</CustomMapLabel><UseCustomMapLabel>1</UseCustomMapLabel>${desc}</Notes>`
   return makePacket(PACKET_NOTES, new TextEncoder().encode(xml))
 }
 
@@ -428,13 +445,13 @@ export function writeSnapGene(state: DocumentState): ArrayBuffer {
   packets.push(buildCookiePacket())
   packets.push(buildDnaPacket(state))
 
-  const featuresPacket = buildFeaturesPacket(state.annotations, state.sequence.length)
+  const featuresPacket = buildFeaturesPacket(state.annotations, state.sequence.length, state.metadata?.source)
   if (featuresPacket) packets.push(featuresPacket)
 
   const primersPacket = buildPrimersPacket(state)
   if (primersPacket) packets.push(primersPacket)
 
-  packets.push(buildNotesPacket(state.name))
+  packets.push(buildNotesPacket(state.name, state.description))
 
   // Concatenate all packets
   const totalLen = packets.reduce((sum, p) => sum + p.length, 0)

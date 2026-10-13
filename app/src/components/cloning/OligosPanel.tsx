@@ -17,12 +17,13 @@
 import { useMemo } from 'react'
 import { Copy, Download, FlaskConical, Library } from 'lucide-react'
 import { notify } from '../../toast'
-import { downloadText } from '../../utils/download'
+import { saveText } from '../../utils/download'
 import { useEditorStore } from '../../store'
 import { getEnzyme } from '../../enzymes/db'
 import { planJunctionReads } from '../../cloning/verify'
 import type { Assembly } from '../../cloning/product'
 import { designAssemblyOligos, planTypeIISOligos, type OligoPair, type OligoTarget } from '../../cloning/oligos'
+import { csvCell } from '../../utils/csv-cell'
 import {
   partBases,
   partLength,
@@ -76,8 +77,8 @@ function csvOf(pairs: OligoPair[]): string {
         String(oligo.sequence.length),
         oligo.tm.toFixed(1),
         oligo.tail,
-        pair.warnings.join('; ').replace(/,/g, ';'),
-      ].map(c => (/[",]/.test(c) ? `"${c.replace(/"/g, '""')}"` : c)).join(','))
+        pair.warnings.join('; '),
+      ].map(csvCell).join(','))
     }
   }
   return rows.join('\n')
@@ -156,7 +157,7 @@ export default function OligosPanel({ design, product, onClose }: Props) {
         <button
           className="cw-btn"
           disabled={usable.length === 0}
-          onClick={() => downloadText(csvOf(pairs), 'oligos.csv', 'text/csv')}
+          onClick={() => saveText(csvOf(pairs), 'oligos.csv', 'text/csv')}
         >
           <Download size={13} /> CSV
         </button>

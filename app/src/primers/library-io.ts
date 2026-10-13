@@ -13,6 +13,7 @@
  */
 
 import { cleanOligo, type OligoRole } from './oligo'
+import { csvCell, unguardCsvCell } from '../utils/csv-cell'
 
 export interface ParsedOligo {
   name: string
@@ -48,11 +49,48 @@ function splitLine(line: string, delim: string): string[] {
     else cur += ch
   }
   out.push(cur.trim())
-  return out
+  // A cell our own CSV export guarded against formula injection reads as written.
+  return out.map(unguardCsvCell)
+}
+
+/**
+ * Split delimited text into rows, keeping a quoted cell whole across line
+ * breaks (a note written over two lines). A quote opens a quoted cell only
+ * at the start of a cell, so a stray one in a name (5" primer) is a letter.
+ * Each row keeps the number of the line it starts on.
+ */
+function delimitedRows(text: string, delim: string): { text: string; line: number }[] {
+  const rows: { text: string; line: number }[] = []
+  let start = 0
+  let line = 1
+  let startLine = 1
+  let quoted = false
+  let cellStart = true
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i]
+    if (quoted) {
+      if (ch === '"' && text[i + 1] === '"') i++
+      else if (ch === '"') quoted = false
+      else if (ch === '\n') line++
+      continue
+    }
+    if (ch === '"' && cellStart) { quoted = true; cellStart = false; continue }
+    if (ch === '\n') {
+      rows.push({ text: text.slice(start, i), line: startLine })
+      start = i + 1
+      startLine = ++line
+      cellStart = true
+      continue
+    }
+    cellStart = ch === delim || (cellStart && (ch === ' ' || ch === '\t'))
+  }
+  rows.push({ text: text.slice(start), line: startLine })
+  return rows
 }
 
 export function parseOligoList(text: string, fallbackPrefix = 'Oligo'): ParseResult {
-  const lines = text.replace(/\r\n?/g, '\n').split('\n')
+  const normalized = text.replace(/\r\n?/g, '\n')
+  const lines = normalized.split('\n')
   if (lines.some(l => l.startsWith('>'))) return parseFasta(lines, fallbackPrefix)
 
   const oligos: ParsedOligo[] = []
@@ -62,8 +100,10 @@ export function parseOligoList(text: string, fallbackPrefix = 'Oligo'): ParseRes
 
   const delim = firstReal.includes('\t') ? '\t' : firstReal.includes(',') ? ',' : firstReal.includes(';') ? ';' : null
   let cols: { name: number; seq: number; notes: number; role: number } | null = null
+  const rows = delim ? delimitedRows(normalized, delim) : lines.map((l, i) => ({ text: l, line: i + 1 }))
 
-  lines.forEach((raw, i) => {
+  rows.forEach(({ text: raw, line: lineNo }) => {
+    const i = lineNo - 1
     const line = raw.trim()
     if (!line || line.startsWith('#')) return
     // Pasted lists mix separators; a line without the file's delimiter is
@@ -152,7 +192,6 @@ export interface ExportableOligo {
   notes?: string
 }
 
-const csvCell = (s: string) => (/[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s)
 
 export function toCsv(oligos: readonly ExportableOligo[]): string {
   const rows = [['Name', 'Sequence', 'Length', 'Role', 'Notes']]

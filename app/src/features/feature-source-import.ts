@@ -11,6 +11,7 @@
 import { parseGenBankMulti } from '../io/genbank'
 import { annotationBases } from '../utils/annotation-sequence'
 import type { CommonFeature } from './common-features'
+import { unguardCsvCell } from '../utils/csv-cell'
 
 export type FeatureSourceFormat = 'fasta' | 'csv' | 'genbank'
 
@@ -156,7 +157,8 @@ function splitDelimited(line: string, delim: string): string[] {
     } else field += ch
   }
   out.push(field)
-  return out.map(f => f.trim())
+  // A cell our own exports guarded against formula injection reads as written.
+  return out.map(f => unguardCsvCell(f.trim()))
 }
 
 /**

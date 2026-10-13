@@ -67,8 +67,25 @@ function option(format: string, key: string): string | undefined {
   return m[1].replace(/^["']|["']$/g, '').replace(/;$/, '')
 }
 
+/** Stands in for a ';' inside 'quoted text' while commands are split at ';'. */
+const QUOTED_SEMICOLON = '\u0000'
+
+/**
+ * The text with each ';' inside 'quoted text' replaced by a stand-in, so a
+ * taxon called 'E. coli; K-12' does not end the MATRIX command.
+ */
+function maskQuotedSemicolons(text: string): string {
+  let out = ''
+  let quoted = false
+  for (const ch of text) {
+    if (ch === "'") quoted = !quoted
+    out += quoted && ch === ';' ? QUOTED_SEMICOLON : ch
+  }
+  return out
+}
+
 export function parseNexus(text: string): ParsedAlignment {
-  const src = stripComments(stripBom(text))
+  const src = maskQuotedSemicolons(stripComments(stripBom(text)))
   if (!/^\s*#NEXUS/i.test(src)) throw new AlignmentParseError('This is not a NEXUS file: it should start with "#NEXUS"')
   const block = /\bbegin\s+(data|characters)\s*;([\s\S]*?)\bend(block)?\s*;/i.exec(src)
   if (!block) throw new AlignmentParseError('This NEXUS file has no DATA or CHARACTERS block')
@@ -102,7 +119,7 @@ export function parseNexus(text: string): ParsedAlignment {
       rows.add(name, seq)
     }
   }
-  const out = rows.rows().map(r => ({ name: r.name, seq: collapsePolymorphisms(r.seq, kind) }))
+  const out = rows.rows().map(r => ({ name: r.name.split(QUOTED_SEMICOLON).join(';'), seq: collapsePolymorphisms(r.seq, kind) }))
   if (out.length === 0) throw new AlignmentParseError('The MATRIX in this NEXUS file is empty')
   if (matchChar) expandMatchChar(out, matchChar)
   const warnings: string[] = []

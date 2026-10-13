@@ -122,6 +122,24 @@ describe('exports', () => {
     expect(vcf).toContain('EFF=Nonsense|gfp|c.11G>A|p.(Trp4Ter),Missense|orf2|c.5C>T|p.(Pro2Leu)')
     expect(vcf).toContain('EFF=Synonymous|gfp|c.9T>C|p.(Ala3%3D)')
   })
+
+  it('writes a sample column with a haploid call when given a sample', () => {
+    const v = describeVariant(evidence({ type: 'SNP', pos: 10, ref: 'G', alt: 'A' }), { refSeq: SEQ, features: [CDS], againstConsensus: false })
+    const vcf = writeVcf({ references: [{ name: 'r', bases: SEQ, variants: [{ v, filters: [] }] }], source: 'test', sample: 'clone 1', referenceName: 'r' })
+    const lines = vcf.trim().split('\n')
+    expect(lines).toContain('##FORMAT=<ID=AD,Number=R,Type=Integer,Description="Reads carrying the reference and the variant">')
+    expect(lines.find(l => l.startsWith('#CHROM'))!.split('\t').slice(-2)).toEqual(['FORMAT', 'clone 1'])
+    const row = lines[lines.length - 1].split('\t')
+    expect(row[8]).toBe('GT:AD:DP:AF')
+    expect(row[9].split(':')[0]).toBe(v.frequency >= 0.5 ? '1' : '0')
+    expect(row[9].split(':')[2]).toBe(String(v.coverage))
+  })
+
+  it('stays sites-only without a sample', () => {
+    const v = describeVariant(evidence({ type: 'SNP', pos: 10, ref: 'G', alt: 'A' }), { refSeq: SEQ, features: [CDS], againstConsensus: false })
+    const vcf = writeVcf({ references: [{ name: 'r', bases: SEQ, variants: [{ v, filters: [] }] }], source: 'test', referenceName: 'r' })
+    expect(vcf).not.toContain('FORMAT')
+  })
 })
 
 describe('features kept with a mapping', () => {

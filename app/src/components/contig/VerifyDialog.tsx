@@ -2,21 +2,23 @@
  * Clone verification report for a contig mapped to its designed construct:
  * a verdict, coverage of the construct and of each feature, and every
  * difference from the design with what it does to a protein. Settings on
- * the right recompute the report live; it saves as CSV or prints to PDF.
+ * the right recompute the report live; it saves as CSV or as a PDF report.
  */
 
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { ClipboardCopy, Download, Printer, ShieldCheck, Tag, X } from 'lucide-react'
+import { ClipboardCopy, Download, FileText, ShieldCheck, Tag, X } from 'lucide-react'
 import { useFocusTrap } from '../../hooks/useFocusTrap'
 import { notify } from '../../toast'
 import { copyText } from '../../utils/clipboard'
-import { downloadText } from '../../utils/download'
+import { downloadBlob, saveText } from '../../utils/download'
+import { verifyReportPdf } from './verifyReport'
 import type { ContigDoc } from '../../assembly/types'
 import type { RefFeature, Variant } from '../../assembly/variants'
 import { codingLabel } from '../../assembly/effects'
 import {
-  DEFAULT_VERIFY, describeChange, describeDifference, STATUS_LABEL, verifyClone, verifyCsv, verifyHtml, type VerifySettings,
+  DEFAULT_VERIFY, describeChange, describeDifference, STATUS_LABEL, verifyClone, verifyCsv, type VerifySettings,
 } from '../../assembly/verify'
+import { notifyFigureSaved } from '../../utils/cite-notice'
 
 interface Props {
   doc: ContigDoc
@@ -52,15 +54,21 @@ export default function VerifyDialog({ doc, name, consensus, features, canAnnota
   if (!report) return null
   const base = name.replace(/[\\/:*?"<>|]+/g, '_').replace(/\s+/g, '_')
   const save = (text: string, def: string, mime?: string) => {
-    const run = (n: string) => downloadText(text, n, mime)
+    const run = (n: string) => saveText(text, n, mime)
     if (onExportPrompt) onExportPrompt(def, run)
     else run(def)
   }
-  const print = () => {
-    const w = window.open('', '_blank')
-    if (!w) { notify.error('Could not open the print window', { detail: 'Allow pop-ups for this site to save a PDF.' }); return }
-    w.document.write(verifyHtml(report, name).replace('</body>', '<script>window.onload=function(){setTimeout(function(){window.print()},300)}</script></body>'))
-    w.document.close()
+  const savePdf = () => {
+    const run = (n: string) => {
+      try {
+        downloadBlob(new Blob([verifyReportPdf(report, name) as BlobPart], { type: 'application/pdf' }), n)
+        notifyFigureSaved(n)
+      } catch (err) {
+        notify.error('Could not make the PDF', { detail: err instanceof Error ? err.message : String(err) })
+      }
+    }
+    if (onExportPrompt) onExportPrompt(`${base}_verification.pdf`, run)
+    else run(`${base}_verification.pdf`)
   }
   const summary = () => [
     `${report.reference.name}: ${STATUS_LABEL[report.verdict]}`,
@@ -165,7 +173,7 @@ export default function VerifyDialog({ doc, name, consensus, features, canAnnota
               )}
             <div className="aw-section-label">Save</div>
             <div className="aw-actions">
-              <button className="aw-action" onClick={print}><Printer size={13} /> Print or save as PDF</button>
+              <button className="aw-action" onClick={savePdf}><FileText size={13} /> PDF</button>
               <button className="aw-action" onClick={() => save(verifyCsv(report), `${base}_verification.csv`, 'text/csv')}><Download size={13} /> CSV</button>
               <button className="aw-action" onClick={() => copyText(summary(), 'Copied the summary')}><ClipboardCopy size={13} /> Copy summary</button>
               <button className="aw-action" disabled={!canAnnotate || !report.differences.length} onClick={() => onAnnotate(report.differences)}

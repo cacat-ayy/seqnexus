@@ -17,6 +17,7 @@
 
 import { needlemanWunsch } from '../../alignment/nw'
 import { makeDnaScorer } from '../../alignment/matrices'
+import { csvRow } from '../../utils/csv-cell'
 
 export type AlleleKind = 'unmodified' | 'insertion' | 'deletion' | 'substitution' | 'donor' | 'mixed'
 
@@ -255,14 +256,14 @@ export function conversionByPosition(
 export function alleleCsv(table: AlleleTable): string {
   const rows = [['kind', 'indel', 'substitutions', 'reads', 'share', 'sequence'].join(',')]
   for (const allele of table.alleles) {
-    rows.push([
+    rows.push(csvRow([
       allele.kind,
       allele.indel > 0 ? `+${allele.indel}` : String(allele.indel),
-      String(allele.substitutions),
-      String(allele.reads),
+      allele.substitutions,
+      allele.reads,
       (allele.fraction * 100).toFixed(2),
       allele.sequence,
-    ].join(','))
+    ]))
   }
   return rows.join('\n')
 }

@@ -16,6 +16,7 @@ import { useMemo } from 'react'
 import { findGuideSites } from './finder'
 import { resolveNuclease } from './nucleases'
 import type { GuideCandidate, GuideRecord, GuideSite, Nuclease } from './types'
+import { csvRow } from '../utils/csv-cell'
 
 export interface LibraryMatch {
   guide: GuideRecord
@@ -115,15 +116,16 @@ export function freeName(wanted: string, guides: readonly GuideRecord[]): string
 export function libraryCsv(guides: readonly GuideRecord[]): string {
   const rows = [['name', 'spacer', 'pam', 'nuclease', 'from', 'at', 'notes'].join(',')]
   for (const g of guides) {
-    rows.push([
+    rows.push(csvRow([
       g.name,
       g.spacer,
       g.pam,
       g.nucleaseId,
       g.origin?.documentName ?? '',
       g.origin ? String(g.origin.start + 1) : '',
-      (g.notes ?? '').replace(/[\r\n,]+/g, ' '),
-    ].join(','))
+      // One line per guide, for tools that read the table a line at a time.
+      (g.notes ?? '').replace(/[\r\n]+/g, ' '),
+    ]))
   }
   return rows.join('\n')
 }

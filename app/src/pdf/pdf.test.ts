@@ -3,6 +3,7 @@ import { unzlibSync } from 'fflate'
 import { encodeWinAnsi, encodedWidth, pdfFontFor, pdfMeasure } from './fonts'
 import { PdfDocument } from './document'
 import { parseColor } from './canvas'
+import { writeReportPdf } from './report-pdf'
 import { planSequencePdf, rangeSegments, renderPdfPage, writeSequencePdf, type SequencePdfOptions, type SequencePdfSource } from './sequence-pdf'
 import { Sequence } from '../models/Sequence'
 import { Annotation } from '../models/Annotation'
@@ -212,5 +213,31 @@ describe('sequence PDF', () => {
     }) as unknown as CanvasRenderingContext2D
     renderPdfPage(ctx, plan, 0)
     expect(calls).toContain('fillText')
+  })
+})
+
+describe('images', () => {
+  it('embeds an RGB image as an XObject, transparency laid on white', () => {
+    const doc = new PdfDocument({ title: 'img' })
+    const page = doc.addPage()
+    // Two pixels: opaque red, and fully transparent (white on paper).
+    const name = doc.addImage(2, 1, new Uint8ClampedArray([255, 0, 0, 255, 0, 0, 0, 0]))
+    page.drawPdfImage(name, 10, 20, 100, 50)
+    const text = new TextDecoder('latin1').decode(doc.toBytes())
+    expect(text).toContain('/XObject << /Im1 7 0 R >>')
+    expect(text).toContain('/Subtype /Image /Width 2 /Height 1 /ColorSpace /DeviceRGB')
+    expect(text).toMatch(/xref\n0 8\n/)
+  })
+
+  it('places an image block in a report, scaled to the page', () => {
+    const bytes = writeReportPdf({
+      title: 'Gel',
+      blocks: [
+        { kind: 'image', width: 2000, height: 1000, rgba: new Uint8ClampedArray(2000 * 1000 * 4) },
+        { kind: 'table', columns: [{ label: 'Lane' }], rows: [['1']] },
+      ],
+    })
+    const text = new TextDecoder('latin1').decode(bytes)
+    expect(text).toContain('/Width 2000 /Height 1000')
   })
 })

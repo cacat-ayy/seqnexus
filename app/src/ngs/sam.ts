@@ -15,22 +15,9 @@ import { inflateSync } from 'fflate'
 import { decodePage, sequenceOf, type RefBases, type SamFields } from './alignments'
 import { BaiBuilder, bamHeader, bamRecord, BgzfWriter } from './bam'
 import { mappingStorageIds, type MappingIndex, type MappingReport, type MappingStorage } from './builder'
+import { samNames } from './refNames'
 
-/** A reference name SAM accepts: no whitespace. */
-export function samName(name: string): string {
-  return name.trim().replace(/\s+/g, '_') || 'reference'
-}
-
-/** SAM names for the references, made unique. */
-export function samNames(names: readonly string[]): string[] {
-  const seen = new Map<string, number>()
-  return names.map(n => {
-    const base = samName(n)
-    const k = (seen.get(base) ?? 0) + 1
-    seen.set(base, k)
-    return k === 1 ? base : `${base}_${k}`
-  })
-}
+export { samName, samNames } from './refNames'
 
 export async function readMappingIndex(storage: Pick<MappingStorage, 'get'>, storageId: string): Promise<MappingIndex> {
   const data = await storage.get(mappingStorageIds(storageId).index, 0)
@@ -44,10 +31,17 @@ export async function readReferenceBases(storage: Pick<MappingStorage, 'get'>, s
   return new TextDecoder().decode(inflateSync(data))
 }
 
-export function samHeaderText(names: readonly string[], lengths: readonly number[], program: MappingReport['program']): string {
+/** A read group's ID or SM value: SAM header values end at a tab or a line break. */
+const headerValue = (s: string) => s.replace(/[\t\r\n]+/g, ' ').trim() || 'sample'
+
+export function samHeaderText(
+  names: readonly string[], lengths: readonly number[], program: MappingReport['program'],
+  readGroup?: { id: string; sample: string },
+): string {
   return [
     '@HD\tVN:1.6\tSO:coordinate',
     ...names.map((n, i) => `@SQ\tSN:${n}\tLN:${lengths[i]}`),
+    ...(readGroup ? [`@RG\tID:${headerValue(readGroup.id)}\tSM:${headerValue(readGroup.sample)}`] : []),
     `@PG\tID:${program.id || program.name}\tPN:${program.name}${program.version ? `\tVN:${program.version}` : ''}${program.command ? `\tCL:${program.command}` : ''}`,
   ].join('\n') + '\n'
 }
@@ -58,12 +52,15 @@ export async function exportMapping(o: {
   storage: Pick<MappingStorage, 'get'>
   references: readonly { name: string; length: number; circular: boolean }[]
   program: MappingReport['program']
+  /** The sample as a read group: an @RG header line and an RG tag on every record. */
+  readGroup?: { id: string; sample: string }
   onProgress?: (done: number, total: number) => void
 }): Promise<{ file: Blob; index: Blob | null }> {
   const ids = mappingStorageIds(o.storageId)
   const index = await readMappingIndex(o.storage, o.storageId)
   const names = samNames(o.references.map(r => r.name))
-  const header = samHeaderText(names, o.references.map(r => r.length), o.program)
+  const header = samHeaderText(names, o.references.map(r => r.length), o.program, o.readGroup)
+  const rg = o.readGroup ? headerValue(o.readGroup.id) : undefined
   const total = index.refs.reduce((n, r) => n + r.pages.length, 0)
   let done = 0
 
@@ -91,12 +88,12 @@ export async function exportMapping(o: {
         }
         if (writer && bai) {
           const vbeg = writer.voffset
-          writer.write(bamRecord(f, a.end))
+          writer.write(bamRecord(f, a.end, rg))
           bai.add(r, a.start, a.end, vbeg, writer.voffset)
         } else {
           const rnext = f.mateRef < 0 ? '*' : f.mateRef === r ? '=' : names[f.mateRef]
           const pnext = f.mateRef < 0 || f.matePos < 0 ? 0 : f.matePos + 1
-          const line = `${f.qname}\t${f.flag}\t${names[r]}\t${f.pos + 1}\t${f.mapq}\t${f.cigar}\t${rnext}\t${pnext}\t${f.tlen}\t${f.seq}\t${f.qual}\n`
+          const line = `${f.qname}\t${f.flag}\t${names[r]}\t${f.pos + 1}\t${f.mapq}\t${f.cigar}\t${rnext}\t${pnext}\t${f.tlen}\t${f.seq}\t${f.qual}${rg ? `\tRG:Z:${rg}` : ''}\n`
           lines.push(line)
           lineBytes += line.length
           if (lineBytes > 8_000_000) { textParts.push(lines.join('')); lines = []; lineBytes = 0 }

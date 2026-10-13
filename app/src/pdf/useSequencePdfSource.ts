@@ -91,6 +91,8 @@ export function useSequencePdfSource(): SequencePdfSource {
       selection: NO_SELECTION,
       selectionSpansOrigin: false,
       selectionLength: 0,
+      // A caret is where the cursor is on screen, not part of the map.
+      showCaret: false,
       methylation,
       gc: gcSeries,
       gcPercent: gcOverall,

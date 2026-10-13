@@ -29,8 +29,8 @@ import { sceneToSvg } from '../../gel/render/svg'
 import { MAX_LANES, autoLaneLabel, newLaneId, type GelDisplay, type GelWorkspaceState, type NameLookup } from '../../gel/workspace'
 import { describeBand, describeSpecies, fragmentEnds, fragmentPosition, laneCsv, laneReport } from '../../gel/report'
 import { extractFragment, extractPeptide, pcrTemplate, selectInSequence } from '../../gel/actions'
-import { exportGelPdf } from '../../gel/exportPdf'
-import { downloadBlob, downloadText } from '../../utils/download'
+import { gelReportPdf } from '../../gel/exportPdf'
+import { downloadBlob, downloadText, saveText } from '../../utils/download'
 import { openPcrProduct } from '../primers/workbench/openProduct'
 import GelCanvas, { type BandRef } from './GelCanvas'
 import LaneInspector, { type OligoOption, type SourceOption } from './LaneInspector'
@@ -38,6 +38,9 @@ import GelSettings from './GelSettings'
 import DigestDesigner from './DigestDesigner'
 import type { DigestDesign } from '../../gel/designer'
 import { DEFAULT_LADDER_ID } from '../../gel/ladders'
+import { CSS_DPI, pngWithCredit, svgWithCredit } from '../../utils/file-credit'
+import { notifyFigureSaved } from '../../utils/cite-notice'
+import { copyImage } from '../../utils/clipboard'
 
 interface Props {
   gel: GelDoc
@@ -309,26 +312,49 @@ export default function GelWorkspace({ gel, onClose, onExportPrompt }: Props) {
 
   const baseName = gel.name.replace(/[\\/:*?"<>|]+/g, '_')
 
-  const exportPng = (scale: number) => withName(`${baseName}${scale >= 4 ? '-print' : ''}.png`, name => {
-    renderGelCanvas(exportScene(), look, paintOpts(scale))?.toBlob(b => { if (b) downloadBlob(b, name) }, 'image/png')
+  // A PNG by its print resolution: the gel is drawn in CSS pixels, 96 to the inch.
+  const exportPng = (dpi: number) => withName(`${baseName}-${dpi}dpi.png`, name => {
+    const canvas = renderGelCanvas(exportScene(), look, paintOpts(dpi / CSS_DPI))
+    const failed = () => notify.error('Could not make the PNG', { detail: 'The browser could not draw the gel at this size.' })
+    if (!canvas) { failed(); return }
+    canvas.toBlob(b => {
+      if (!b) { failed(); return }
+      void pngWithCredit(b, dpi).then(png => { downloadBlob(png, name); notifyFigureSaved(name) })
+    }, 'image/png')
   })
+
+  // At 150 dpi: the clipboard is for slides and documents, where that is plenty.
+  const copyPng = () => {
+    const canvas = renderGelCanvas(exportScene(), look, paintOpts(150 / CSS_DPI))
+    void copyImage(new Promise<Blob>((resolve, reject) => {
+      if (!canvas) { reject(new Error('The gel could not be drawn')); return }
+      canvas.toBlob(b => (b ? resolve(pngWithCredit(b, 150)) : reject(new Error('PNG encoding failed'))), 'image/png')
+    }), 'Copied the gel as an image')
+  }
 
   const exportSvg = () => withName(`${baseName}.svg`, name => {
     const scene = exportScene()
     const slabPng = look.vector ? null : rasterCanvas(scene, look, paintOpts(3))?.toDataURL('image/png') ?? null
-    downloadText(sceneToSvg(scene, look, { showDyeFronts: display.showDyeFronts, slabPng }), name, 'image/svg+xml')
+    downloadText(svgWithCredit(sceneToSvg(scene, look, { showDyeFronts: display.showDyeFronts, slabPng })), name, 'image/svg+xml')
+    notifyFigureSaved(name)
   })
 
   const exportCsv = () => withName(`${baseName}-lanes.csv`, name => {
-    downloadText(laneCsv(lanes, layout, names.sequence), name, 'text/csv')
+    saveText(laneCsv(lanes, layout, names.sequence), name, 'text/csv')
   })
 
-  const exportPdf = () => {
-    const canvas = renderGelCanvas(exportScene(), look, paintOpts(3))
-    if (!canvas) return
-    const rows = laneReport(lanes, layout, names.sequence, { enzymeSep: ' + ', sizeSep: ', ', format: s => describeSpecies(s, conditions) })
-    exportGelPdf(canvas, rows, { caption: gelCaption(conditions), unit: isProteinGel(conditions) ? 'kDa' : 'bp' })
-  }
+  const exportPdf = () => withName(`${baseName}.pdf`, name => {
+    try {
+      const canvas = renderGelCanvas(exportScene(), look, paintOpts(3))
+      if (!canvas) throw new Error('The gel could not be drawn')
+      const rows = laneReport(lanes, layout, names.sequence, { enzymeSep: ' + ', sizeSep: ', ', format: s => describeSpecies(s, conditions) })
+      const bytes = gelReportPdf(canvas, rows, { name: gel.name, caption: gelCaption(conditions), unit: isProteinGel(conditions) ? 'kDa' : 'bp' })
+      downloadBlob(new Blob([bytes as BlobPart], { type: 'application/pdf' }), name)
+      notifyFigureSaved(name)
+    } catch (err) {
+      notify.error('Could not make the PDF', { detail: err instanceof Error ? err.message : String(err) })
+    }
+  })
 
   return (
     <div className="gw">
@@ -377,8 +403,9 @@ export default function GelWorkspace({ gel, onClose, onExportPrompt }: Props) {
           {exportOpen && (
             <div className="gw-menu" role="menu">
               {([
-                ['PNG', 'Image, 2× resolution', () => exportPng(2)],
-                ['PNG', 'Print, 4× resolution', () => exportPng(4)],
+                ['PNG', '150 dpi, for slides and the screen', () => exportPng(150)],
+                ['PNG', '300 dpi, for print', () => exportPng(300)],
+                ['Copy', 'The image, to paste into slides or a document', copyPng],
                 ['SVG', 'Vector labels, embedded gel image', exportSvg],
                 ['CSV', 'Lane and fragment table', exportCsv],
                 ['PDF', 'Gel and table, to print', exportPdf],

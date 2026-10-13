@@ -1,5 +1,5 @@
 import { StrictMode } from 'react'
-import { render, act, screen } from '@testing-library/react'
+import { render, act, screen, within } from '@testing-library/react'
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import PlasmidMap from './PlasmidMap'
 import { useEditorStore } from '../store'
@@ -69,12 +69,14 @@ describe('PlasmidMap', () => {
     expect(container.querySelector('canvas')).not.toBeNull()
   })
 
-  it('offers PNG and SVG export', async () => {
+  it('opens a figure dialog with SVG, PNG and PDF and the citation', async () => {
     render(<PlasmidMap />)
-    const trigger = screen.getByRole('button', { name: 'Export map image' })
+    const trigger = screen.getByRole('button', { name: 'Export figure' })
     await act(async () => { trigger.click() })
-    expect(screen.getByRole('menuitem', { name: /PNG/ })).toBeInTheDocument()
-    expect(screen.getByRole('menuitem', { name: /SVG/ })).toBeInTheDocument()
+    const dialog = screen.getByRole('dialog', { name: 'Export figure' })
+    for (const name of ['SVG', 'PNG', 'PDF']) expect(within(dialog).getByRole('button', { name })).toBeInTheDocument()
+    expect(within(dialog).getByText(/Please cite SeqNexus/)).toBeInTheDocument()
+    expect(within(dialog).getByRole('radio', { name: 'Print' })).toHaveAttribute('aria-checked', 'true')
   })
 
   it('hides the zoom reset until the view is actually zoomed', () => {

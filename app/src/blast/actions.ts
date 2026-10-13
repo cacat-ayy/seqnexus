@@ -9,7 +9,8 @@ import { fetchNCBI } from '../fetch/ncbi'
 import { fetchUniProt } from '../fetch/uniprot'
 import { parseGenbankFile } from '../workers/genbank-parser'
 import { copyText } from '../utils/clipboard'
-import { downloadText } from '../utils/download'
+import { saveText } from '../utils/download'
+import { csvCell } from '../utils/csv-cell'
 import { queryBases } from './query'
 import { formatEvalue } from './format'
 import { uniprotFromAlphaFold } from './databases'
@@ -43,11 +44,6 @@ export function hitsFasta(hits: BlastHit[]): string {
   )).join('')
 }
 
-const csvCell = (v: string | number) => {
-  const s = String(v)
-  return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s
-}
-
 /** The hit table as CSV: one row per hit, its best HSP's numbers, coverage over all of them. */
 export function hitsCsv(search: BlastSearch): string {
   const head = [
@@ -77,11 +73,11 @@ export function copyHitFasta(hit: BlastHit): void {
 }
 
 export function downloadHitsFasta(search: BlastSearch, hits: BlastHit[]): void {
-  downloadText(hitsFasta(hits), searchFileName(search, 'fasta'))
+  saveText(hitsFasta(hits), searchFileName(search, 'fasta'))
 }
 
 export function downloadHitsCsv(search: BlastSearch): void {
-  downloadText(hitsCsv(search), searchFileName(search, 'csv'), 'text/csv')
+  saveText(hitsCsv(search), searchFileName(search, 'csv'), 'text/csv')
 }
 
 /** Whether a search's hits can be opened as documents: not a structure archive's entries. */

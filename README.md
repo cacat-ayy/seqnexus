@@ -206,6 +206,7 @@ short version.
 - [File Format Support](#file-format-support)
   - [Opening files](#opening-files)
   - [EMBL and GFF3](#embl-and-gff3)
+  - [What an export keeps](#what-an-export-keeps)
   - [Geneious files](#geneious-files)
 - [PDF Export](#pdf-export)
   - [One painter, two outputs](#one-painter-two-outputs)
@@ -214,6 +215,7 @@ short version.
   - [Colours](#colours)
   - [Limits](#limits-6)
   - [Figures and reports](#figures-and-reports)
+  - [Saving a figure](#saving-a-figure)
 - [References](#references)
 - [License](#license)
 
@@ -593,7 +595,10 @@ mappings with their contigs, which can be large. NGS reads are never
 included, since they would make the file huge: read sets, and the reads
 behind an NGS mapping (the file keeps the mapping's record), stay in the
 browser. The dialog says so and lists the read sets, each a click from its
-own view, where Export as FASTQ keeps a copy. **Import Session** offers two ways in.
+own view, where Export as FASTQ keeps a copy. The file is gzipped by default
+(`.seqnexus.json.gz`): session JSON is repetitive text and shrinks to about
+a fifth. Import Session, a drop or Open take either, compressed or not.
+**Import Session** offers two ways in.
 **Merge**, the default, adds the file to the current session, giving
 everything fresh ids and rewriting the references between items, so a
 session can be imported twice or into another session without collisions.
@@ -860,7 +865,16 @@ ranges at once.
 
 - **Copy** (Ctrl+C) puts the joined bases on the clipboard in reading order.
   The context menu also offers the reverse complement, the protein, FASTA as
-  one joined record, and FASTA with one record per range.
+  one joined record, FASTA with one record per range, and (for one range)
+  GenBank: the selection as a record of its own with the features and
+  primers inside it, which another editor or New Sequence opens.
+- **Paste with features.** The clipboard holds text, so the app remembers
+  what a copy of one stretch carried: the features lying wholly inside it
+  (a feature cut by the edge stays behind rather than pasting as a piece of
+  itself) and the primers binding wholly inside it. A paste whose text is
+  those same bases, in the same sequence or another, puts them back, shifted
+  to where the bases land, in the one undo step that pastes the bases. Text
+  copied anywhere else pastes as bases only.
 - **Delete, Backspace and Cut** remove every range in one undo step. The
   spans are deleted from the end of the sequence backwards, so each deletion
   leaves the earlier spans where they were.
@@ -5169,23 +5183,24 @@ rather than opened again.
 
 | Format | Read | Write | Notes |
 |--------|------|-------|-------|
-| GenBank (.gb, .gbk, .gbff) | Yes | Yes | Streaming parser for large files (>1 MB). Handles multi-record files. |
+| GenBank (.gb, .gbk, .gbff) | Yes | Yes | Streaming parser for large files (>1 MB). Handles multi-record files. Feature colours go out and come back as ApE's colour qualifiers. See [What an export keeps](#what-an-export-keeps). |
 | ApE (.ape) | Yes | - | ApE writes GenBank, so its files go through the GenBank reader. |
-| EMBL (.embl) | Yes | - | Read through the GenBank reader. See [EMBL and GFF3](#embl-and-gff3). |
+| EMBL (.embl) | Yes | Yes | Read through the GenBank reader, written with its feature table. See [EMBL and GFF3](#embl-and-gff3). |
 | GenPept (.gp, .gpt) | Yes | Yes | Protein records in GenBank's layout ("aa" on the LOCUS line). See [Proteins](#proteins). |
 | FASTA (.fasta, .fa, .faa) | Yes | Yes | Multi-sequence support. Each record is sorted into DNA or protein by its letters; a .faa file is all protein. A header's first word names the record and the rest of the line is kept as its description. |
-| SnapGene (.dna) | Yes | Yes | Binary TLV format. Handles sequence, features, primers, topology, methylation. |
+| SnapGene (.dna) | Yes | Yes | Binary TLV format. Handles sequence, features, primers, topology, methylation, the description and the source qualifiers. |
 | Geneious (.geneious) | Yes | - | A Geneious folder export: every sequence, protein and sequence list in it, with features and primers, and its oligos into the primer library. See [Geneious files](#geneious-files). |
 | AB1 (.ab1) | Yes | - | Sanger chromatogram traces with quality scores. |
-| SCF (.scf) | Yes | - | Sanger chromatogram traces. |
-| GFF3 (.gff, .gff3) | Yes | Yes | Features. A file with a ##FASTA section opens its sequences; one without adds its features to the open sequences it names. See [EMBL and GFF3](#embl-and-gff3). |
+| SCF (.scf) | Yes | Yes | Sanger chromatogram traces; a read exports as SCF version 3 with its calls as edited. |
+| GFF3 (.gff, .gff3) | Yes | Yes | Features, primers and topology. A file with a ##FASTA section opens its sequences; one without adds its features to the open sequences it names. See [EMBL and GFF3](#embl-and-gff3). |
 | BAM (.bam, .bai) | Yes | Yes | Read alignments, imported as a mapping onto open sequences; written with its index. See [SAM and BAM](#sam-and-bam). |
 | SAM (.sam) | Yes | Yes | The same as text. |
-| Clustal (.aln) | - | Yes | Alignment export. |
+| Alignments (.fasta, .aln, .phy, .nex, .meg, .sto, .pir, .msf) | Yes | Yes | Aligned FASTA, Clustal, PHYLIP, NEXUS, MEGA, Stockholm, PIR and GCG MSF. A file holds one alignment, so several export as separate files. |
 | PDF (.pdf) | - | Yes | The sequence as the text view draws it, with an optional map page and feature and enzyme tables. See [PDF Export](#pdf-export). |
-| CSV | - | Yes | Feature table export. |
+| CSV | - | Yes | Feature, oligo, variant, BLAST, gel and other tables. Cells are written by one rule (see [What an export keeps](#what-an-export-keeps)). |
 | Plain text | Yes | Yes | Raw sequence. |
-| Gzipped (.gz) | Yes | - | GenBank, EMBL, GFF3 and FASTA files gzipped, as NCBI and Ensembl serve them, and gzipped reads. |
+| Gzipped (.gz) | Yes | Yes | GenBank, EMBL, GFF3 and FASTA files gzipped, as NCBI and Ensembl serve them, gzipped reads, and session files (written gzipped by default). |
+| ZIP (.zip) | - | Yes | Several items in one download (the Export dialog's One ZIP), and a whole explorer folder with its subfolders (Export Folder as ZIP). |
 
 ### Opening files
 
@@ -5258,13 +5273,148 @@ left out, as their GenBank counterparts are.
   feature; its `Is_circular=true` makes the sequence circular.
 - What the writer marks as crossing the origin (`Is_circular=true` with
   `circular_end`) is put back across the origin, so a GFF3 export reads
-  back as it was written.
+  back as it was written. Parts marked that way are kept in file order
+  (along the top strand from the feature's start); other parts are sorted.
+- A one-base line with `zero_length=true` is a site between two bases,
+  after the base it names.
+- `primer_bind` lines carrying a `primer_sequence` become primers again,
+  as they do from GenBank.
+
+**GFF3 is written** with a whole-sequence `region` line (with
+`Is_circular=true` on a circular sequence), one line per part of a joined
+feature sharing its ID, and the primers as `primer_bind` lines carrying
+their oligo. The specification requires a phase on every CDS line: the
+bases to skip from the start of that part, in the direction of
+transcription, to reach the first base of a codon. It is worked out from
+`/codon_start` and the lengths of the parts read before it. A site between
+two bases (start equal to end in the app) is written on the base before
+it, the specification's convention for a zero-length feature, with
+`zero_length=true` so that it does not read back as a one-base feature.
+The source column is `SeqNexus`. Feature keys stay GenBank's (CDS,
+rep_origin), which IGV and JBrowse draw as they are.
 
 A file with a `##FASTA` section opens its sequences with their features.
 Without one, each seqid's features are added to the open sequence of that
 name (or of that name with underscores for spaces, as the writer spells
 it), one undo step per sequence; seqids with no open sequence are named in
 the notice.
+
+### What an export keeps
+
+Every writer is checked by reading its output back with the app's own
+reader. The Export dialog shows the result under the formats, as a row of
+marks for what the chosen one keeps and leaves out (features, primers,
+colours, topology; quality scores for a read; names with spaces for an
+alignment), and says before writing what a file cannot hold. A read
+exports as FASTQ by default, so its quality scores go with it. What each
+format holds, and the choices that make it come back:
+
+- **GenBank.** The LOCUS line is in the columns of the GenBank release
+  notes: name from column 13, length ending at 40, `bp` at 42,
+  strandedness at 45, molecule at 48, topology at 56, division at 65 and
+  the date at 69. The division is `SYN` (synthetic), as plasmid editors
+  write it, since the app keeps none of its own. A qualifier value is one
+  line of text in GenBank, and a raw line break ends the feature table for
+  every reader, losing all the features after it; so each line of a note
+  becomes a `/note` of its own (a primer's notes are joined back with line
+  breaks on import), and in any other value a line break becomes a space.
+  Text is wrapped at 79 columns only at spaces, never where the next line
+  would start with `/`, which readers take as a new qualifier. A word too
+  long for a line (a URL) stays whole on a longer line: readers join
+  wrapped text with a space, so breaking inside a word would put a space
+  into it. The reader, for files from elsewhere, treats a line starting
+  with `/` inside an open quoted value as its continuation unless it reads
+  as a qualifier (`/key=` or `/key`). A feature's own colour is written as
+  ApE's `/ApEinfo_fwdcolor` and `/ApEinfo_revcolor`, which ApE and
+  Benchling read and write, and read back from them (the reverse one for a
+  reverse feature); the type's default colour is left out. A primer is
+  written as `primer_bind` features where it binds, so one that binds
+  nowhere has no place in the file, and the export says which. A name with
+  spaces goes into LOCUS with underscores; with no description it is
+  written in full as DEFINITION and comes back with its spaces, with a
+  description it comes back with underscores.
+- **SnapGene (.dna).** Names and values are HTML in SnapGene's files, so
+  they are written escaped, with `<br>` for a line break, and a note
+  reading "Tm < 60" comes back as written. The `label` qualifier always
+  carries the feature's current name, since the reader names a feature by
+  it. The description goes in the Notes packet and the source qualifiers as
+  a `source` feature over the whole sequence, which the reader takes back
+  out. A primer's probe role has no place in the format.
+- **FASTA.** Readers take the first word of a header as the id, so a name
+  with spaces is written with underscores, followed by the description, or
+  by the name in full when there is none: `>pUC19_mod pUC19 mod`. The
+  reader takes such a header back as the name with spaces. Topology and
+  features have no place in FASTA.
+- **Alignments.** An alignment file holds one alignment: two written into
+  one file read back as the first (Clustal, PHYLIP, NEXUS) or as one
+  unaligned set (FASTA). So several alignments, or an assembly's several
+  contigs, are exported as separate files. Clustal, PHYLIP, Stockholm, PIR
+  and MSF end a name at whitespace and write it with underscores; FASTA,
+  NEXUS (quoted) and MEGA keep it. The NEXUS reader keeps a `;` inside a
+  quoted name.
+- **Reference names in NGS files.** The BAM and SAM header, the VCF's
+  contig lines and the bedGraph rows name a reference by one rule, SAM's
+  (which VCF follows): whitespace, backslashes, commas, quotes, backticks,
+  brackets of every kind and angle brackets become `_`, and a leading `*`
+  or `=` too. A VCF and a coverage track then line
+  up with their BAM in IGV, and a BAM exported here finds its sequence
+  again on import.
+- **CSV tables.** Every table is written by one cell rule: quoted when it
+  holds a comma, a quote or a line break, and with a leading apostrophe
+  when it would start a spreadsheet formula (`=`, `+`, `-`, `@`, a tab or
+  a carriage return), the usual guard against formula injection. A feature
+  called `=HYPERLINK(…)` or a primer called `+1_F` then opens as written.
+  Numbers (`-35`, `+3`) and a lone sign (a strand) are left as they are,
+  and the app's own CSV readers take the apostrophe back off.
+- **Several files at once.** Separate files, R1 and R2, a BAM and its
+  index: started in the same moment, browsers keep only some of them, so
+  they are saved a quarter of a second apart, and Chrome's question about
+  saving several files is announced, since refusing it keeps only the
+  first.
+- **Session files** carry the structure files attached to proteins from
+  the user's own disk. They live only in the browser's storage; a PDB
+  entry or an AlphaFold model is fetched again by its id.
+- **Colours from SnapGene.** SnapGene's GenBank export keeps a feature's
+  colour in a note of its own (`/note="color: #b7e6d7; direction: LEFT"`).
+  The reader takes the colour from it and drops that note, as it does with
+  ApE's colour qualifiers, which win when a feature has both.
+- **EMBL** is written from the GenBank writer's feature table, its
+  five-space prefix turned into `FT   ` (the same columns, the reverse of
+  what the reader does), so features, joins, primers and colours go out as
+  in GenBank. The ID line gives the name, topology, molecule (the source's
+  /mol_type, or "other DNA"), data class STD and division SYN; SQ counts
+  the bases, and each sequence line ends with the count of its last base.
+- **GFF3 with sequence** adds a `##FASTA` section, so the file opens as the
+  sequence again rather than needing one open to land on; its header is
+  written like a FASTA export's, so a name with spaces comes back.
+- **Stockholm row numbering.** A row cut from the middle of its source keeps
+  its numbering the way Pfam writes it, `name/start-end`. The reader takes
+  such a suffix back into the row's start when its numbers agree with the
+  row's residue count, so a name that only looks numbered is left alone.
+- **Read groups and samples.** A BAM or SAM has an `@RG` line naming the
+  read set as its sample (SM) and an RG tag on every record, which GATK and
+  other callers need. A VCF has a sample column, `GT:AD:DP:AF`: the reads
+  for the reference and the variant, the depth, the variant's share, and a
+  haploid call, 1 when most covering reads carry the variant. A plasmid or
+  a clone is one molecule, so the call is a majority; the share is there for
+  anything subtler.
+- **SCF traces.** A Sanger read exports as SCF version 3 (the Staden format
+  every trace viewer reads): the four channels in full, delta-delta encoded
+  as version 3 stores them, the calls as edited, each with its peak (an
+  inserted base where the layout puts it, between its neighbours) and its
+  quality on its own channel. The whole read goes out, trimmed ends
+  included: version 3 reserves the clip fields and viewers ignore them.
+- **ZIP.** Several items can go out as one ZIP instead of a download each,
+  and an explorer folder exports with its subfolders as directories: a
+  sequence as GenBank (a protein as GenPept), a read as FASTQ, an alignment
+  or a contig as aligned FASTA, an assembly as a directory of its contigs,
+  and a folder's oligos as one oligos.csv. Read sets, gels and clones have
+  their own exports and are named in the notice. Two items of one name are
+  kept as "name (2)", and files already compressed are stored, not
+  squeezed again.
+- **Copying a figure.** Every figure dialog and the gel's menu copy the
+  figure as a PNG (at the chosen resolution; 150 dpi for the gel) to paste
+  into slides or a document.
 
 ### Geneious files
 
@@ -5484,11 +5634,50 @@ Rejected alternatives:
   to itself, needed a pop-up window, and left the file name and page
   setup to the user each time.
 
-Reports (the report of an NGS mapping) are laid out down A4 pages by
+Reports (an NGS mapping, a quality report, a plate's or a single clone's
+verification, a virtual gel) are laid out down A4 pages by
 `pdf/report-pdf.ts`: figure tiles, tables that break between rows and
 repeat their header, histograms drawn as vector bars on the same axis steps
-as the screen, and terms with their explanations. Both use the figures'
-print colours on white, whatever the app's theme.
+as the screen, terms with their explanations, and raster pictures. Both use
+the figures' print colours on white, whatever the app's theme. A gel's
+photo is the one raster picture: the slab is drawn pixel by pixel (band
+blur, glow, the stained background) and has no vector form, so the writer
+embeds it as a Flate-compressed RGB image, transparency laid on white. The
+gel and the clone verification used to go through a pop-up window and the
+browser's print dialog, which pop-up blockers stopped.
+
+The plasmid, domain and clone maps export through a figure dialog like the
+alignment's: the map is drawn again for the file at a chosen size (480, 720
+or 1080 px across for a map; 720, 960 or 1280 for a domain map), whatever
+the panel's size and zoom, in the print colours on white or in the app's
+theme, never with what the pointer is over or the caret, and with the
+selection, search hits and the BLAST hit pointed at only when asked for.
+What the map shows by choice (features, enzymes, primers, guides, the
+legend) stays. Its PDF is drawn by the map's own canvas renderer through
+the PDF context, as the sequence PDF's map page is, with labels laid out
+for the PDF's fonts; the SVG route would draw the map's arcs as straight
+lines.
+
+### Saving a figure
+
+Every figure dialog (alignment, trace, mapping, map) saves the same way:
+SVG, PNG and PDF, the size the figure prints at, and a request to cite
+SeqNexus with the citation to copy. A figure is drawn in CSS pixels, 96 to
+the inch, so its printed size is fixed and a PNG's resolution only decides
+how many pixels it has. The resolutions are named by what they are for:
+150 dpi for slides and the screen, 300 for print and 600 for line art, the
+values journals ask for. A canvas has a size limit, so a very large figure
+gets the highest resolution that fits, and the file says which.
+
+Every figure and report file says where it came from: a PNG carries a
+`pHYs` chunk with its resolution (so it opens in Word or a layout program
+at the size it was made, not at 72 or 96 dpi) and `tEXt` chunks naming the
+software and the citation; an SVG has the citation as its first `<desc>`,
+which editors keep and renderers do not draw; a PDF has it in its
+Keywords and the version in Creator. Exports saved in one click (the gel's
+image, the 3D structure, the report PDFs) say the same in their toast,
+with a button to copy the citation. Every other export confirms that it
+saved, so nothing is written without a word.
 
 ---
 
@@ -5831,6 +6020,14 @@ print colours on white, whatever the app's theme.
   Format Specification" (SAMv1), sections 4 (BGZF, BAM) and 5 (BAI).
   https://samtools.github.io/hts-specs/SAMv1.pdf
 
+- Dear S, Staden R (1992) "A standard file format for data from DNA
+  sequencing instruments." *DNA Seq* 3:107-110. (SCF; version 3's layout
+  and delta-delta sample encoding as the Staden package documents them.)
+
+- Finn RD, Coggill P, Eberhardt RY, et al. (2016) "The Pfam protein
+  families database." *Nucleic Acids Res* 44:D279-D285. (Stockholm's
+  `name/start-end` row numbering.)
+
 - Danecek P, Bonfield JK, Liddle J, et al. (2021) "Twelve years of SAMtools
   and BCFtools." *GigaScience* 10:giab008. (`mpileup`, whose default base
   quality threshold of 13 the candidate sites follow.)
@@ -5938,6 +6135,16 @@ print colours on white, whatever the app's theme.
 
 - The Sequence Ontology. "Generic Feature Format Version 3 (GFF3)."
   https://github.com/The-Sequence-Ontology/Specifications/blob/master/gff3.md
+
+- NCBI. "GenBank Release Notes", section 3.4.4 (the LOCUS line's columns).
+  https://ftp.ncbi.nih.gov/genbank/gbrel.txt
+
+- Davis MW, Jorgensen EM (2022) "ApE, A Plasmid Editor: a freely available
+  DNA manipulation and visualization program." *Front Bioinform* 2:818619.
+  (The `ApEinfo_fwdcolor` and `ApEinfo_revcolor` feature colours.)
+
+- OWASP Foundation. "CSV Injection" (the leading-apostrophe guard for
+  spreadsheet formulas). https://owasp.org/www-community/attacks/CSV_Injection
 
 - Thermo Fisher Scientific. "Gateway Technology" manual (att site
   sequences).

@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
-import { copyText, readText } from './clipboard'
+import { copyImage, copyText, readText } from './clipboard'
 import { useToastStore } from '../toast'
 
 const toasts = () => useToastStore.getState().toasts
@@ -61,5 +61,29 @@ describe('clipboard', () => {
 
     await expect(readText()).resolves.toBe('ATGC')
     expect(toasts()).toHaveLength(0)
+  })
+})
+
+describe('copyImage', () => {
+  beforeEach(() => useToastStore.getState().clear())
+
+  it('hands the PNG to the clipboard as a promise and says so', async () => {
+    class FakeItem { constructor(public items: Record<string, Promise<Blob>>) {} }
+    vi.stubGlobal('ClipboardItem', FakeItem)
+    const write = vi.fn().mockResolvedValue(undefined)
+    stubClipboard({ write })
+    const png = Promise.resolve(new Blob(['x'], { type: 'image/png' }))
+    expect(await copyImage(png, 'Copied the figure as an image')).toBe(true)
+    const [[items]] = write.mock.calls
+    expect(items[0]).toBeInstanceOf(FakeItem)
+    expect(items[0].items['image/png']).toBe(png)
+    expect(toasts()[0].message).toBe('Copied the figure as an image')
+    vi.unstubAllGlobals()
+  })
+
+  it('reports a clipboard that cannot take images', async () => {
+    stubClipboard({})
+    expect(await copyImage(Promise.resolve(new Blob()), 'x')).toBe(false)
+    expect(toasts()[0].severity).toBe('error')
   })
 })

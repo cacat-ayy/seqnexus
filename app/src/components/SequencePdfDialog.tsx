@@ -10,15 +10,14 @@ import './SequencePdfDialog.css'
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { ChevronLeft, ChevronRight, Copy, X } from 'lucide-react'
+import { ChevronLeft, ChevronRight, X } from 'lucide-react'
 import { isOriginSpanningSelection } from '../store'
 import { displayPosition } from '../models/Document'
 import { useExitAnimation } from '../hooks/useExitAnimation'
 import { useFocusTrap } from '../hooks/useFocusTrap'
 import { downloadBlob } from '../utils/download'
-import { copyText } from '../utils/clipboard'
 import { notify } from '../toast'
-import { CITATION_TEXT } from '../citation'
+import CiteHint from './CiteHint'
 import { getRenderMode } from './zoom-layout'
 import { getVisibleRange } from './sequence-view-controls'
 import { useSequencePdfSource } from '../pdf/useSequencePdfSource'
@@ -362,13 +361,7 @@ function PdfDialogBody({ closing, onAnimationEnd, onClose, onExportPrompt }: {
               <p className="pdf-note">Colours, features, enzymes and translations follow the view, printed in the light theme's colours.</p>
             </div>
 
-            <div className="pdf-cite">
-              <p>Using this in a publication? Please cite SeqNexus:</p>
-              <p className="pdf-cite-text">{CITATION_TEXT}</p>
-              <button type="button" className="btn btn-sm" onClick={() => { void copyText(CITATION_TEXT, 'Citation copied') }}>
-                <Copy size={12} /> Copy citation
-              </button>
-            </div>
+            <CiteHint />
           </div>
         </div>
 

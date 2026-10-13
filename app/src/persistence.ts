@@ -6,6 +6,7 @@
  * search parameters) is stored in localStorage.
  */
 
+import { gunzipSync, gzipSync } from 'fflate'
 import { useEditorStore, type ExplorerFolder, type ViewMode, type BaseEdit, type SavedAlignment, type Assembly, type Contig, type GelDoc, type CloneDoc } from './store'
 import { sanitizeWorkspace, type GelWorkspaceState } from './gel/workspace'
 import { sanitizeDesign, type CloningDesign } from './cloning/design'
@@ -50,6 +51,8 @@ import {
   getAllStoredBlastIds,
   getStoredReadSetIds,
   deleteReadChunks,
+  loadStructure,
+  saveStructure,
 } from './storage/idb'
 import { sanitizeReadSet } from './ngs/record'
 import { mappingStorageList } from './ngs/builder'
@@ -857,6 +860,8 @@ export interface RestoredSession {
   activeCloneId?: string | null
   activeAlignmentId?: string | null
   activeContigId?: string | null
+  /** Structure files of the user's own, from a session file (see SessionStructure). */
+  structures?: SessionStructure[]
   orfParams?: { minCodons: number; startCodons: string[]; allowInterior: boolean }
   enzymeParams?: { subset: string; searchQuery: string; filterByCount: boolean; minCuts: number; maxCuts: number }
   /** Session import only: what the file named but did not contain. */
@@ -1259,6 +1264,8 @@ export interface SessionExportOptions {
   includeReads: boolean
   includeAlignments: boolean
   includeContigs: boolean
+  /** Gzip the file (.seqnexus.json.gz): session JSON compresses to about a fifth. */
+  compress?: boolean
 }
 
 interface SessionExportEnvelope {
@@ -1277,6 +1284,48 @@ interface SessionExportEnvelope {
   alignmentData?: { alignId: string; data: AlnDoc | AlignmentResult | ContigDoc }[]
   /** Each sequence's BLAST searches, by tab id. Always included: they belong to their sequence. */
   blastData?: { tabId: string; data: BlastSearch[] }[]
+  /**
+   * Structure files the user attached to proteins, by their cache key. A
+   * PDB entry or an AlphaFold model is fetched again by its id; a file of
+   * the user's own exists only in this browser's storage until it is here.
+   */
+  structures?: SessionStructure[]
+}
+
+/** A structure file's text, under the key a protein's StructureRef names. */
+export interface SessionStructure {
+  key: string
+  text: string
+}
+
+/**
+ * The structure files of the user's own that the open proteins show, read
+ * from this browser's storage for a session file. One that cannot be read
+ * is left out; the protein then opens without it, as it would have anyway.
+ */
+export async function sessionStructures(): Promise<SessionStructure[]> {
+  const keys = new Set<string>()
+  for (const tab of useEditorStore.getState().tabs) {
+    const ref = tab.doc.metadata?.structure
+    if (ref?.source === 'file') keys.add(ref.key)
+  }
+  const out: SessionStructure[] = []
+  for (const key of keys) {
+    try {
+      const text = await loadStructure(key)
+      if (text) out.push({ key, text })
+    } catch {
+      // Unreadable storage: the session still exports.
+    }
+  }
+  return out
+}
+
+/** Put a session file's structure files into this browser's storage, where the proteins look for them. */
+export async function restoreSessionStructures(structures: readonly SessionStructure[] | undefined): Promise<void> {
+  for (const s of structures ?? []) {
+    try { await saveStructure(s.key, s.text) } catch { /* the protein opens without its structure */ }
+  }
 }
 
 /**
@@ -1320,7 +1369,7 @@ export function estimateExportSize(opts: SessionExportOptions): number {
 }
 
 /** Export the current session as a JSON Blob. */
-export function exportSessionToJson(theme: string, opts: SessionExportOptions): Blob {
+export function exportSessionToJson(theme: string, opts: SessionExportOptions, extras: { structures?: SessionStructure[] } = {}): Blob {
   const { meta, sequences, traces, alignmentData, blastData } = buildSessionData(theme)
 
   // Strip undo history from the serialized session (not included in export)
@@ -1391,15 +1440,18 @@ export function exportSessionToJson(theme: string, opts: SessionExportOptions): 
     traces: opts.includeReads ? traces : undefined,
     alignmentData: alignmentData.filter(ad => alignIds.has(ad.alignId) || contigIds.has(ad.alignId)),
     blastData,
+    structures: extras.structures,
   }
 
   // Remove empty optional fields to reduce size
   if (!envelope.traces?.length) delete envelope.traces
   if (!envelope.alignmentData?.length) delete envelope.alignmentData
   if (!envelope.blastData?.length) delete envelope.blastData
+  if (!envelope.structures?.length) delete envelope.structures
 
   const json = JSON.stringify(envelope)
-  return new Blob([json], { type: 'application/json' })
+  if (!opts.compress) return new Blob([json], { type: 'application/json' })
+  return new Blob([gzipSync(new TextEncoder().encode(json), { level: 6 }) as BlobPart], { type: 'application/gzip' })
 }
 
 /** Validate and parse a session export file. Returns the envelope or throws. */
@@ -1534,6 +1586,7 @@ export function importSessionFromJson(json: string): RestoredSession {
     activeContigId: data.activeContigId ?? null,
     orfParams: data.orfParams,
     enzymeParams: data.enzymeParams,
+    structures: (envelope.structures ?? []).filter(s => typeof s?.key === 'string' && typeof s?.text === 'string'),
     warnings: [
       ...(lost.sequences.length > 0 ? [missingWarning('sequence', lost.sequences, 'not in the file')] : []),
       ...(lost.reads.length > 0 ? [missingWarning('sequencing read', lost.reads, 'not in the file')] : []),
@@ -1737,4 +1790,10 @@ export function remapSessionIds(session: RestoredSession): RestoredSession {
       ? { ...g, origin: { ...g.origin, documentId: tabIdMap.get(g.origin.documentId) ?? g.origin.documentId } }
       : g)),
   }
+}
+
+/** A session file's text, from its bytes: gunzipped first when it is a .json.gz (gzip's magic bytes 1f 8b). */
+export function sessionFileText(bytes: Uint8Array): string {
+  const gz = bytes.length > 2 && bytes[0] === 0x1f && bytes[1] === 0x8b
+  return new TextDecoder().decode(gz ? gunzipSync(bytes) : bytes)
 }

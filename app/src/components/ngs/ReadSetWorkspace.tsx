@@ -27,6 +27,7 @@ import { HistogramChart, PositionQualityChart } from './charts'
 import QualityReport, { StatusIcon } from './qc/QualityReport'
 import type { ModuleId, ModuleStatus } from '../../ngs/qcreport/types'
 import { expectedNote, worstUnexpected } from '../../ngs/qcreport/expected'
+import { downloadMany } from '../../utils/download'
 
 const TrimReadsDialog = lazy(() => import('./TrimReadsDialog'))
 const MapReadsDialog = lazy(() => import('./MapReadsDialog'))
@@ -134,14 +135,7 @@ export default function ReadSetWorkspace({ readSet: rs, onClose }: Props) {
     const h = startExport({ type: 'export', id: rs.id, chunks: rs.chunks, paired: rs.paired, layout }, (d, t) => setExporting(t ? d / t : 0))
     h.promise.then(blobs => {
       const names = blobs.length === 2 ? [`${fileBase}_R1.fastq.gz`, `${fileBase}_R2.fastq.gz`] : [`${fileBase}.fastq.gz`]
-      blobs.forEach((b, i) => {
-        const url = URL.createObjectURL(b)
-        const a = document.createElement('a')
-        a.href = url
-        a.download = names[i]
-        a.click()
-        setTimeout(() => URL.revokeObjectURL(url), 10_000)
-      })
+      void downloadMany(blobs.map((blob, i) => ({ blob, name: names[i] })))
       notify.success(`Exported ${names.join(' and ')}`)
     }).catch(err => notify.error('Export failed', { detail: err instanceof Error ? err.message : String(err) }))
       .finally(() => setExporting(null))

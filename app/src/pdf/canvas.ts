@@ -418,6 +418,16 @@ export class PdfCanvas {
   /** A PDF page starts blank; there is nothing to clear. */
   clearRect(): void {}
 
+  /**
+   * An image the document holds (PdfDocument.addImage), filling the box at
+   * x, y (its top left) of width w and height h.
+   */
+  drawPdfImage(name: string, x: number, y: number, w: number, h: number): void {
+    this.flushText()
+    // The page's y runs down, an image's up: flip it into the box.
+    this.ops.push(`q ${f(w)} 0 0 ${f(-h)} ${f(x)} ${f(y + h)} cm /${name} Do Q`)
+  }
+
   // --- Text ---
 
   measureText(text: string): TextMetrics {

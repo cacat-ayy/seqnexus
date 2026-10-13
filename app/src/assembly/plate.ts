@@ -14,6 +14,7 @@
 import type { RefFeature } from './variants'
 import { describeDifference, STATUS_LABEL, verifyClone, type VerifyReport, type VerifyStatus } from './verify'
 import type { ContigDoc } from './types'
+import { csvCell } from '../utils/csv-cell'
 
 export interface PlateVerifySettings {
   /** Reads needed over a base for it to count as covered. */
@@ -87,7 +88,7 @@ const pct = (x: number) => `${(x * 100).toFixed(x === 1 || x === 0 ? 0 : 1)}%`
 
 /** One row per clone, for a spreadsheet or a LIMS. */
 export function plateCsv(results: readonly CloneResult[], s: PlateVerifySettings): string {
-  const q = (v: string) => (/[",\n]/.test(v) ? `"${v.replace(/"/g, '""')}"` : v)
+  const q = csvCell
   const lines = [
     `Covered means,at least ${s.minDepth} ${s.minDepth === 1 ? 'read' : 'reads'}${s.bothStrands ? ' on both strands' : ''}`,
     `Not checked,${s.skipTypes.join('; ') || 'nothing'}`,

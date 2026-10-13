@@ -77,3 +77,25 @@ describe('writing oligo lists', () => {
     expect(rows[2][0]).toBe('M13F_2')
   })
 })
+
+describe('oligo CSV round trip', () => {
+  it('reads back notes with line breaks, quotes and commas, and guarded names', () => {
+    const oligos = [
+      { name: 'fwd, v2', sequence: 'ACGTACGTACGTACGTAA', role: 'probe' as const, notes: 'line1\nline2' },
+      { name: 'rev', sequence: 'TTTTACGTACGTACGTAC', notes: 'has "quotes"' },
+      { name: '+1_F', sequence: 'GGGGACGTACGTACGTAC' },
+    ]
+    const back = parseOligoList(toCsv(oligos))
+    expect(back.skipped).toEqual([])
+    expect(back.oligos).toEqual([
+      { name: 'fwd, v2', sequence: 'ACGTACGTACGTACGTAA', role: 'probe', notes: 'line1\nline2' },
+      { name: 'rev', sequence: 'TTTTACGTACGTACGTAC', role: 'primer', notes: 'has "quotes"' },
+      { name: '+1_F', sequence: 'GGGGACGTACGTACGTAC', role: 'primer' },
+    ])
+  })
+
+  it('still reports the line a bad row is on after a note over two lines', () => {
+    const text = 'Name,Sequence,Notes\nA,ACGTACGTACGTACGTAA,"one\ntwo"\nB,not-an-oligo!,\n'
+    expect(parseOligoList(text).skipped.map(s => s.line)).toEqual([4])
+  })
+})

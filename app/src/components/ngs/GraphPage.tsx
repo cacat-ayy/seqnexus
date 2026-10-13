@@ -21,6 +21,7 @@ import { mappingStorageIds } from '../../ngs/builder'
 import { components, decodeGraph, toGfa, type StoredGraph } from '../../ngs/denovo/graph'
 import { layoutGraph } from '../../ngs/denovo/layout'
 import { formatBp } from '../../utils/format'
+import { saveText } from '../../utils/download'
 
 const nf = new Intl.NumberFormat()
 
@@ -162,14 +163,7 @@ export default function GraphPage({ assembly, onShowReads }: { assembly: Assembl
     return coverageColour(s.coverage / usual)
   }
   const seqName = (i: number) => g.segments[i].name
-  const exportGfa = () => {
-    const url = URL.createObjectURL(new Blob([toGfa(g)], { type: 'text/plain' }))
-    const a = document.createElement('a')
-    a.href = url
-    a.download = `${assembly.name.replace(/[\\/:*?"<>|\s]+/g, '_')}.gfa`
-    a.click()
-    setTimeout(() => URL.revokeObjectURL(url), 10_000)
-  }
+  const exportGfa = () => saveText(toGfa(g), `${assembly.name.replace(/[\\/:*?"<>|\s]+/g, '_')}.gfa`)
   const openSegment = (i: number) => {
     const s = g.segments[i]
     const title = `${assembly.name} ${s.name}`

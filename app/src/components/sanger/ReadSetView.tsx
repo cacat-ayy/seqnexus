@@ -24,7 +24,7 @@ import {
   subscribeTraceView, updateTraceView, ZOOM_WIDTHS, type TraceView,
 } from '../../sanger/view'
 import { copyText } from '../../utils/clipboard'
-import { downloadText } from '../../utils/download'
+import { saveText } from '../../utils/download'
 import { QualitySparkline } from '../explorer/ExplorerPreview'
 import { createSignal, useSignal, type Signal } from '../alignment/signal'
 import ContextMenuPopup, { MenuItem, MenuSeparator } from '../ContextMenuPopup'
@@ -149,7 +149,7 @@ export default function ReadSetView({ readIds, onClose, onExportPrompt }: Props)
   const save = (fmt: 'fasta' | 'fastq') => {
     const text = all(fmt)
     const def = `reads.${fmt}`
-    const run = (name: string) => downloadText(text, name)
+    const run = (name: string) => saveText(text, name)
     if (onExportPrompt) onExportPrompt(def, run)
     else run(def)
   }

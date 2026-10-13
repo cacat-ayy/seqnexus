@@ -1380,47 +1380,13 @@
   cursor: pointer;
   transition: background var(--dur-fast), color var(--dur-fast);
 }
-.plasmid-tool:hover,
-.plasmid-tool.open {
+.plasmid-tool:hover {
   background: var(--bg-hover);
   color: var(--text);
 }
 .plasmid-tool:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 1px;
-}
-.plasmid-tool-menu {
-  position: relative;
-}
-.plasmid-export-menu {
-  position: absolute;
-  top: calc(100% + 4px);
-  right: 0;
-  min-width: 150px;
-  padding: var(--space-1);
-  background: var(--bg-alt);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-popover);
-  box-shadow: var(--shadow-popover);
-  z-index: var(--z-dropdown);
-}
-.plasmid-export-item {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-  width: 100%;
-  padding: var(--space-1-5) var(--space-2);
-  font-family: inherit;
-  font-size: var(--text-sm);
-  text-align: left;
-  color: var(--text);
-  background: none;
-  border: none;
-  border-radius: var(--radius-sm);
-  cursor: pointer;
-}
-.plasmid-export-item:hover {
-  background: var(--bg-hover);
 }
 
 /* --- Panel bar (secondary tab bar below view-mode tabs) --- */
@@ -2129,6 +2095,16 @@
   max-width: 100%;
   height: auto;
   box-shadow: var(--shadow-sm);
+}
+/* A map is as tall as it is wide: shown whole, centred, rather than scrolled. */
+.aw-figure-preview-fit {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.aw-figure-preview-fit img {
+  max-height: 100%;
+  width: auto;
 }
 .aw-figure-options {
   width: 260px;

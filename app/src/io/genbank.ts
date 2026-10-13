@@ -8,7 +8,7 @@
  */
 
 import { Sequence, Topology, type Alphabet } from '../models/Sequence'
-import { Annotation, AnnotationData } from '../models/Annotation'
+import { Annotation, AnnotationData, defaultColorForType } from '../models/Annotation'
 import { DocumentState, type SequenceMetadata, type Strandedness } from '../models/Document'
 import { cleanOligo, newPrimerId, type PrimerData } from '../primers/oligo'
 import { findBindingSites } from '../primers/binding'
@@ -98,6 +98,64 @@ function locationContinues(loc: string): boolean {
     else if (ch === ')') depth--
   }
   return depth > 0 || /,\s*$/.test(loc)
+}
+
+/** The start of a qualifier line: "/key=" or a bare "/key". */
+const QUALIFIER_START = /^\/[A-Za-z_][\w'-]*(=|$)/
+
+/**
+ * Whether a qualifier's raw text so far opens a quote it has not closed: it
+ * starts with '"' and does not end on a lone quote ('""' is an escaped one).
+ */
+function quoteOpen(raw: string): boolean {
+  if (!raw.startsWith('"')) return false
+  let k = 0
+  for (let i = raw.length - 1; i > 0 && raw[i] === '"'; i--) k++
+  return k % 2 === 0
+}
+
+/** ApE's feature colour qualifiers, which ApE and Benchling write and read. */
+const APE_FWD_COLOR = 'ApEinfo_fwdcolor'
+const APE_REV_COLOR = 'ApEinfo_revcolor'
+
+/** A colour value the canvas can draw: a hex code or a CSS colour name. */
+const COLOR_VALUE = /^(#[0-9a-f]{3}|#[0-9a-f]{6}|[a-z]+)$/i
+
+/**
+ * SnapGene's way of keeping a colour in GenBank: a note of its own,
+ * "color: #b7e6d7", with "; direction: LEFT" when SnapGene draws the
+ * arrow the other way.
+ */
+const SNAPGENE_COLOR_NOTE = /^color:\s*(#[0-9a-f]{3}|#[0-9a-f]{6})\s*(;\s*direction:\s*\w+\s*)?$/i
+
+/**
+ * The colour a feature's qualifiers give it, ApE's (the reverse one for a
+ * reverse feature) or SnapGene's colour note, and its qualifiers without
+ * them. The colour lives on the feature, and the writer puts it back as
+ * ApE's qualifiers.
+ */
+function takeColor(qualifiers: Record<string, string[]>, strand: number): { color?: string; qualifiers: Record<string, string[]> } {
+  const ape = takeApeColor(qualifiers, strand)
+  if (ape.color) return ape
+  const notes = qualifiers.note ?? []
+  const at = notes.findIndex(v => SNAPGENE_COLOR_NOTE.test(v.trim()))
+  if (at < 0) return { qualifiers }
+  const color = SNAPGENE_COLOR_NOTE.exec(notes[at].trim())![1]
+  const rest = { ...qualifiers, note: notes.filter((_, i) => i !== at) }
+  if (rest.note.length === 0) delete (rest as Partial<typeof rest>).note
+  return { color, qualifiers: rest }
+}
+
+/** ApE's colour qualifiers: the reverse one for a reverse feature. */
+function takeApeColor(qualifiers: Record<string, string[]>, strand: number): { color?: string; qualifiers: Record<string, string[]> } {
+  const fwd = qualifiers[APE_FWD_COLOR]?.[0]
+  const rev = qualifiers[APE_REV_COLOR]?.[0]
+  const color = (strand === -1 ? rev ?? fwd : fwd ?? rev)?.trim()
+  if (!color || !COLOR_VALUE.test(color)) return { qualifiers }
+  const rest = { ...qualifiers }
+  delete rest[APE_FWD_COLOR]
+  delete rest[APE_REV_COLOR]
+  return { color, qualifiers: rest }
 }
 
 /** A qualifier's value as written: outer quotes removed, doubled quotes undone. */
@@ -191,7 +249,10 @@ export class GenBankReader {
     if (!r.feature || !/^\s{21}/.test(line)) return
     const text = line.trim()
     if (!text) return
-    if (text.startsWith('/') && !r.locationOpen) {
+    // A line starting with "/" inside an open quoted value ("…/path/to")
+    // continues it, unless it reads as a qualifier of its own.
+    const continues = text.startsWith('/') && quoteOpen(r.qualPieces.join(' ')) && !QUALIFIER_START.test(text)
+    if (text.startsWith('/') && !r.locationOpen && !continues) {
       this.flushQualifier()
       const eq = text.indexOf('=')
       if (eq >= 0) {
@@ -262,6 +323,7 @@ function buildRecord(r: RecordInProgress): GenBankRecord {
     if (parsed.remote > 0) {
       warnings.push(`${label}: part of it lies on another record; only the part on this sequence was kept`)
     }
+    const { color, qualifiers } = takeColor(f.qualifiers, resolved.strand)
     annotations.push({
       id: ids.next(),
       name: label,
@@ -271,7 +333,8 @@ function buildRecord(r: RecordInProgress): GenBankRecord {
       start: resolved.start,
       end: resolved.end,
       strand: resolved.strand,
-      qualifiers: f.qualifiers,
+      ...(color ? { color } : {}),
+      qualifiers,
       ...(resolved.segments ? { segments: resolved.segments } : {}),
     })
   }
@@ -372,21 +435,25 @@ export function writeGenBank(state: DocumentState): string {
   const bp = seq.length
   const topo = seq.topology === 'circular' ? 'circular' : 'linear'
 
-  // LOCUS. The name is one word there; a name with spaces goes in with
-  // underscores, and DEFINITION carries it in full when there is no
-  // description (the reader puts the two back together).
-  const bpStr = bp.toString().padStart(7)
-  const strandPrefix = state.metadata?.strandedness === 'single' ? 'ss-' : 'ds-'
+  // LOCUS, in the columns of the GenBank release notes: name from 13,
+  // length ending at 40, units at 42, strandedness at 45, molecule at 48,
+  // topology at 56, division at 65 and the date at 69. The name is one word
+  // there; a name with spaces goes in with underscores, and DEFINITION
+  // carries it in full when there is no description (the reader puts the
+  // two back together). The division is SYN (synthetic), as plasmid editors
+  // write it: the app keeps no division of its own.
   const locusName = state.name.trim().replace(/\s+/g, '_') || 'Untitled'
-  // A protein is a GenPept record: residues, no molecule type, always linear,
-  // with the topology in the column GenPept puts it ("142 aa            linear").
-  const molecule = seq.alphabet === 'protein' ? 'aa         ' : `bp    ${strandPrefix}DNA  `
+  // A protein is a GenPept record: residues, no strandedness or molecule
+  // type, always linear ("142 aa            linear").
+  const units = seq.alphabet === 'protein'
+    ? `aa ${' '.repeat(3)}${' '.repeat(6)}`
+    : `bp ${state.metadata?.strandedness === 'single' ? 'ss-' : 'ds-'}${padRight('DNA', 6)}`
   lines.push(
-    `LOCUS       ${padRight(locusName, 16)} ${bpStr} ${molecule}   ${topo}   ${genbankDate(new Date())}`,
+    `LOCUS       ${padRight(locusName, 16)} ${bp.toString().padStart(11)} ${units}  ${padRight(topo, 8)} SYN ${genbankDate(new Date())}`,
   )
 
-  // DEFINITION
-  lines.push(...wrapText('DEFINITION  ', `${state.description || state.name}.`))
+  // DEFINITION. One line of text: a line break would end the record's header.
+  lines.push(...wrapText('DEFINITION  ', `${oneLine(state.description || state.name)}.`))
 
   // FEATURES
   lines.push('FEATURES             Location/Qualifiers')
@@ -412,9 +479,21 @@ export function writeGenBank(state: DocumentState): string {
     // renamed here keeps its new name in the file.
     const quals = ann.qualifiers ?? {}
     lines.push(...qualifierLines('label', ann.name))
+    // A colour of its own goes out as ApE's colour qualifiers, which ApE,
+    // Benchling and this reader take in; the type's default colour is left out.
+    const ownColor = !!ann.color && ann.color.toLowerCase() !== defaultColorForType(ann.type).toLowerCase()
+    if (ownColor) {
+      lines.push(...qualifierLines(APE_FWD_COLOR, ann.color), ...qualifierLines(APE_REV_COLOR, ann.color))
+    }
     for (const [key, values] of Object.entries(quals)) {
+      if (ownColor && (key === APE_FWD_COLOR || key === APE_REV_COLOR)) continue
       const rest = key === 'label' ? values.slice(1) : values
-      for (const val of rest) lines.push(...qualifierLines(key, val))
+      for (const val of rest) {
+        // A note's lines become notes of their own: GenBank values hold no
+        // line breaks, and a raw one would end the feature table.
+        if (key === 'note') for (const line of val.split(/\r?\n/)) lines.push(...qualifierLines(key, line))
+        else lines.push(...qualifierLines(key, val))
+      }
     }
   }
 
@@ -448,7 +527,8 @@ export function writeGenBank(state: DocumentState): string {
 const PRIMER_SEQ = 'primer_sequence'
 const PRIMER_ROLE = 'primer_role'
 
-function primerFeatures(state: DocumentState): Annotation[] {
+/** The primers as `primer_bind` features at every site they bind, carrying the oligo in /primer_sequence. */
+export function primerFeatures(state: DocumentState): Annotation[] {
   const primers = state.primers ?? []
   if (primers.length === 0) return []
   const sites = findBindingSites(primers, state.sequence.bases, state.sequence.topology)
@@ -474,7 +554,18 @@ function primerFeatures(state: DocumentState): Annotation[] {
   return out
 }
 
-function primersFromFeatures(annotations: AnnotationData[]): {
+/**
+ * Names of the primers a GenBank file cannot hold: ones that bind nowhere on
+ * the sequence have no location to write, so the export says so.
+ */
+export function unwrittenPrimers(state: DocumentState): string[] {
+  const primers = state.primers ?? []
+  if (primers.length === 0) return []
+  const sites = findBindingSites(primers, state.sequence.bases, state.sequence.topology)
+  return primers.filter(p => (sites.get(p.id) ?? []).length === 0).map(p => p.name)
+}
+
+export function primersFromFeatures(annotations: AnnotationData[]): {
   primers: PrimerData[]
   rest: AnnotationData[]
 } {
@@ -509,18 +600,30 @@ const UNQUOTED_QUALIFIERS = new Set([
 
 const QUALIFIER_INDENT = ' '.repeat(21)
 
+/** Text on one line: line breaks and tabs become spaces. */
+function oneLine(s: string): string {
+  return s.replace(/[\r\n\t]+/g, ' ')
+}
+
 /** One qualifier as file lines: quoted unless numeric/symbolic, inner quotes doubled, wrapped at 79 columns. */
 function qualifierLines(key: string, value: string): string[] {
   if (!value) return [`${QUALIFIER_INDENT}/${key}`]
-  const text = UNQUOTED_QUALIFIERS.has(key) ? value : `"${value.replace(/"/g, '""')}"`
+  const flat = oneLine(value)
+  const text = UNQUOTED_QUALIFIERS.has(key) ? flat : `"${flat.replace(/"/g, '""')}"`
   return wrapText(`${QUALIFIER_INDENT}/${key}=`, text, UNSPACED_QUALIFIERS.has(key) ? '' : ' ', QUALIFIER_INDENT)
 }
 
 /**
  * `text` after `first`, wrapped to 79 columns with continuation lines
- * indented to `indent` (default: the width of `first`). Breaks after
- * `breakAfter` characters where it can, and hard-breaks a run too long for
- * a line (a translation, a long join); `breakAfter` '' always hard-breaks.
+ * indented to `indent` (default: the width of `first`).
+ *
+ * With `breakAfter` ' ' (text) it breaks only at spaces, and never where the
+ * next line would start with "/", which readers take as a new qualifier. A
+ * word too long for a line (a URL) stays whole on a longer line: readers
+ * join text lines with a space, so a break inside the word would put one
+ * into it. Other separators (',' in a location) break where they can and
+ * hard-break a run too long for a line; '' (a translation) always
+ * hard-breaks, which is safe because those lines are joined without spaces.
  */
 function wrapText(first: string, text: string, breakAfter = ' ', indent = ' '.repeat(first.length)): string[] {
   const out: string[] = []
@@ -528,8 +631,22 @@ function wrapText(first: string, text: string, breakAfter = ' ', indent = ' '.re
   let rest = text
   while (prefix.length + rest.length > 79) {
     const room = 79 - prefix.length
-    let cut = breakAfter ? rest.lastIndexOf(breakAfter, room - 1) + 1 : 0
-    if (cut <= 0) cut = room
+    let cut: number
+    if (breakAfter === ' ') {
+      const ok = (i: number) => i > 0 && rest[i] !== '/'
+      cut = rest.lastIndexOf(' ', room - 1) + 1
+      while (cut > 0 && !ok(cut)) cut = rest.lastIndexOf(' ', cut - 2) + 1
+      if (cut <= 0) {
+        // No space in reach: the first one after it, if there is any.
+        let next = rest.indexOf(' ', room)
+        while (next >= 0 && !ok(next + 1)) next = rest.indexOf(' ', next + 1)
+        if (next < 0) break
+        cut = next + 1
+      }
+    } else {
+      cut = breakAfter ? rest.lastIndexOf(breakAfter, room - 1) + 1 : 0
+      if (cut <= 0) cut = room
+    }
     out.push(prefix + rest.slice(0, cut).trimEnd())
     rest = breakAfter === ' ' ? rest.slice(cut).trimStart() : rest.slice(cut)
     prefix = indent

@@ -17,19 +17,13 @@ import { mappingBedGraph } from '../../ngs/coverageExport'
 import { getReadChunk } from '../../storage/idb'
 import { COVERAGE_NOTE, mapperText, mappingReportPdf, sitesNote, skippedText } from './mappingReportPdf'
 import { HistogramChart } from './charts'
+import { downloadBlob, downloadMany } from '../../utils/download'
+import { notifyFigureSaved } from '../../utils/cite-notice'
 
 const nf = new Intl.NumberFormat()
 const pct = (x: number) => `${(x * 100).toFixed(1)}%`
 const safe = (s: string) => s.replace(/[\\/:*?"<>|\s]+/g, '_')
 
-function download(blob: Blob, name: string) {
-  const url = URL.createObjectURL(blob)
-  const a = document.createElement('a')
-  a.href = url
-  a.download = name
-  a.click()
-  setTimeout(() => URL.revokeObjectURL(url), 10_000)
-}
 
 export default function MappingReport({ ngs, name, onOpenReference }: {
   ngs: NgsMapping
@@ -59,13 +53,13 @@ export default function MappingReport({ ngs, name, onOpenReference }: {
       type: 'export-mapping', format, storageId: ngs.storageId,
       references: r.references.map(x => ({ name: x.name, length: x.length, circular: x.circular })),
       program: r.program,
+      readGroup: { id: safe(ngs.readSetName), sample: ngs.readSetName },
     }, (d, t) => setExporting(t ? d / t : 0))
     h.promise.then(({ file, index }) => {
       // An imported mapping is named after its file, which already says what it was mapped to.
       const stem = r.importedFrom ? safe(ngs.readSetName) : `${safe(ngs.readSetName)}_vs_${safe(r.references.map(x => x.name).join('_'))}`
       const name = `${stem}.${format}`
-      download(file, name)
-      if (index) download(index, `${name}.bai`)
+      void downloadMany([{ blob: file, name }, ...(index ? [{ blob: index, name: `${name}.bai` }] : [])])
       notify.success(index ? `Exported ${name} and its index` : `Exported ${name}`)
     }).catch(err => notify.error('Export failed', { detail: err instanceof Error ? err.message : String(err) }))
       .finally(() => setExporting(null))
@@ -75,7 +69,7 @@ export default function MappingReport({ ngs, name, onOpenReference }: {
     setMenu(false)
     const stem = r.importedFrom ? safe(ngs.readSetName) : `${safe(ngs.readSetName)}_vs_${safe(r.references.map(x => x.name).join('_'))}`
     mappingBedGraph({ get: getReadChunk }, ngs.storageId, r.references.map(x => x.name), `${name} depth`)
-      .then(blob => { download(blob, `${stem}_depth.bedgraph`); notify.success(`Exported ${stem}_depth.bedgraph`) })
+      .then(blob => { downloadBlob(blob, `${stem}_depth.bedgraph`); notify.success(`Exported ${stem}_depth.bedgraph`) })
       .catch(err => notify.error('Could not export the coverage', { detail: err instanceof Error ? err.message : String(err) }))
   }
 
@@ -83,7 +77,8 @@ export default function MappingReport({ ngs, name, onOpenReference }: {
     setMenu(false)
     try {
       const bytes = mappingReportPdf(ngs, { title: `${name} mapping report`, readsName: r.importedFrom ?? readSet?.name ?? ngs.readSetName })
-      download(new Blob([bytes], { type: 'application/pdf' }), `${safe(name)}_report.pdf`)
+      downloadBlob(new Blob([bytes], { type: 'application/pdf' }), `${safe(name)}_report.pdf`)
+      notifyFigureSaved(`${safe(name)}_report.pdf`)
     } catch (err) {
       notify.error('Could not make the PDF', { detail: err instanceof Error ? err.message : String(err) })
     }

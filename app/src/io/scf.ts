@@ -12,7 +12,7 @@
  */
 
 import type { Ab1Data } from './ab1'
-import { alignCallArrays, type TraceMetadata } from './trace'
+import { alignCallArrays, TRACE_BASES, type TraceBase, type TraceData, type TraceMetadata } from './trace'
 
 // SCF magic: ".scf" at offset 0
 const SCF_MAGIC = 0x2E736366
@@ -215,6 +215,84 @@ export function parseScf(buffer: ArrayBuffer): Ab1Data {
     traces,
     metadata,
   }
+}
+
+/**
+ * A trace as SCF version 3, the Staden format every trace viewer and
+ * assembler reads (Phred, Gap4, Chromas, SnapGene, 4Peaks).
+ *
+ * The four channels go in full, as 16-bit samples delta-delta encoded the
+ * way version 3 stores them; each call gets its peak, its quality on its
+ * own channel's probability (0 on the other three), and its base. The name
+ * and the instrument's details go in the comments as Staden's KEY=value
+ * lines. The clip fields are left at 0: version 3 reserves them.
+ */
+export function writeScf(t: Pick<TraceData, 'name' | 'bases' | 'peakLocations' | 'qualityScores' | 'traces' | 'metadata'>): ArrayBuffer {
+  const numSamples = Math.max(...TRACE_BASES.map(b => t.traces[b].length), 0)
+  const numBases = t.bases.length
+  const comments = [
+    `NAME=${t.name}`,
+    ...(t.metadata.machineName ? [`MACH=${t.metadata.machineName}`] : []),
+    ...(t.metadata.instrument ? [`MODL=${t.metadata.instrument}`] : []),
+    ...(t.metadata.lane !== undefined ? [`LANE=${t.metadata.lane}`] : []),
+    ...(t.metadata.dyeSet ? [`DYEP=${t.metadata.dyeSet}`] : []),
+    ...(t.metadata.basecaller ? [`BCSW=${t.metadata.basecaller}`] : []),
+    ...(t.metadata.averageSpacing ? [`SPAC=${t.metadata.averageSpacing}`] : []),
+    'CONV=SeqNexus',
+  ].map(l => l.replace(/[\r\n\0]+/g, ' ')).join('\n') + '\n\0'
+  const commentBytes = new Uint8Array([...comments].map(c => (c.charCodeAt(0) < 256 ? c.charCodeAt(0) : 0x3f)))
+
+  const samplesOffset = 128
+  const samplesSize = numSamples * 4 * 2
+  const basesOffset = samplesOffset + samplesSize
+  const basesSize = numBases * (4 + 4 + 1 + 3)
+  const commentsOffset = basesOffset + basesSize
+  const buffer = new ArrayBuffer(commentsOffset + commentBytes.length)
+  const view = new DataView(buffer)
+  const bytes = new Uint8Array(buffer)
+
+  view.setUint32(0, SCF_MAGIC, false)
+  view.setUint32(4, numSamples, false)
+  view.setUint32(8, samplesOffset, false)
+  view.setUint32(12, numBases, false)
+  view.setUint32(24, basesOffset, false)
+  view.setUint32(28, commentBytes.length, false)
+  view.setUint32(32, commentsOffset, false)
+  bytes.set([0x33, 0x2e, 0x30, 0x30], 36) // "3.00"
+  view.setUint32(40, 2, false) // 16-bit samples
+
+  TRACE_BASES.forEach((b, ch) => {
+    const encoded = deltaDelta(t.traces[b], numSamples)
+    const at = samplesOffset + ch * numSamples * 2
+    for (let i = 0; i < numSamples; i++) view.setUint16(at + i * 2, encoded[i], false)
+  })
+
+  const probOff = basesOffset + numBases * 4
+  for (let i = 0; i < numBases; i++) {
+    view.setUint32(basesOffset + i * 4, Math.max(0, Math.round(t.peakLocations[i] ?? 0)), false)
+    const base = t.bases[i].toUpperCase()
+    const q = Math.max(0, Math.min(255, Math.round(t.qualityScores[i] ?? 0)))
+    const ch = TRACE_BASES.indexOf(base as TraceBase)
+    // An ambiguous call carries its quality on every channel.
+    for (let c = 0; c < 4; c++) bytes[probOff + c * numBases + i] = ch < 0 || ch === c ? q : 0
+    bytes[probOff + 4 * numBases + i] = base.charCodeAt(0) & 0xff
+  }
+  bytes.set(commentBytes, commentsOffset)
+  return buffer
+}
+
+/** Samples as SCF v3 stores them: differenced twice, 16-bit, clamped to what fits. */
+function deltaDelta(values: readonly number[], n: number): Uint16Array {
+  const out = new Uint16Array(n)
+  for (let pass = 0; pass < 2; pass++) {
+    let prev = 0
+    for (let i = 0; i < n; i++) {
+      const v = pass === 0 ? Math.max(0, Math.min(65535, Math.round(values[i] ?? 0))) : out[i]
+      out[i] = (v - prev + 65536) % 65536
+      prev = v
+    }
+  }
+  return out
 }
 
 /** SCF stores a probability per channel; the call's quality is its own channel's. */

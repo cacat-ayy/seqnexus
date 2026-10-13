@@ -13,7 +13,7 @@
 import { useCallback, useRef, useState } from 'react'
 import { Download, FileUp, FolderPlus, Play, Trash2, X } from 'lucide-react'
 import { notify } from '../../toast'
-import { downloadText } from '../../utils/download'
+import { saveText } from '../../utils/download'
 import {
   combinationCount,
   summarise,
@@ -215,14 +215,14 @@ export default function LibraryPanel({ design, bins, onBinsChange, onOpenRow, on
             </button>
             <button
               className="cw-btn"
-              onClick={() => downloadText(productTableCsv(result), 'constructs.csv', 'text/csv')}
+              onClick={() => saveText(productTableCsv(result), 'constructs.csv', 'text/csv')}
             >
               <Download size={13} /> Table
             </button>
             <button
               className="cw-btn"
               disabled={keepable.length === 0}
-              onClick={() => downloadText(productsFasta(result.rows), 'constructs.fasta', 'text/plain')}
+              onClick={() => saveText(productsFasta(result.rows), 'constructs.fasta', 'text/plain')}
             >
               <Download size={13} /> FASTA
             </button>

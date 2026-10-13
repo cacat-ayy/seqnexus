@@ -49,6 +49,19 @@ describe('round trips', () => {
     expect(names('mega')).toEqual(['Homo sapiens', 'Mus musculus', "O'Brien clone"])
   })
 
+  it('keeps a row numbering in Stockholm as name/start-end', () => {
+    const doc = makeDoc([{ name: 'kinase domain', seq: 'MK-VLA', start: 101 }, { name: 'clone/1-2', seq: 'MKAVLA' }], origin)
+    const text = writeAlignment(doc, 'stockholm')
+    expect(text).toContain('kinase_domain/101-105 ')
+    const back = readAlignment(text).doc.rows
+    expect(back.map(r => [r.name, r.start])).toEqual([['kinase_domain', 101], ['clone/1-2', undefined]])
+  })
+
+  it('keeps a NEXUS name with a semicolon, and the rows after it', () => {
+    const doc = makeDoc([{ name: 'E. coli; K-12', seq: 'ACGT' }, { name: 'other', seq: 'ACGA' }], origin)
+    expect(readAlignment(writeAlignment(doc, 'nexus')).doc.rows.map(r => r.name)).toEqual(['E. coli; K-12', 'other'])
+  })
+
   it('writes strict and interleaved PHYLIP that reads back', () => {
     const many = makeDoc(Array.from({ length: 3 }, (_, i) => ({ name: 'Sequence-number', seq: 'ACGT'.repeat(40).slice(i) })), origin)
     for (const phylipNames of ['strict', 'relaxed'] as const) {

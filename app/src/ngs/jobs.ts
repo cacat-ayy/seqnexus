@@ -63,6 +63,8 @@ export type ReadSetJob =
       storageId: string
       references: { name: string; length: number; circular: boolean }[]
       program: MappingReport['program']
+      /** The sample, as a read group (@RG with SM) on every record, which GATK and others need. */
+      readGroup?: { id: string; sample: string }
     }
   | {
       type: 'call-variants'
@@ -252,6 +254,7 @@ export async function runReadSetJob(
       storage: { get: (id, i) => { check(); return getReadChunk(id, i) } },
       references: job.references,
       program: job.program,
+      readGroup: job.readGroup,
       onProgress: progress,
     })
   }

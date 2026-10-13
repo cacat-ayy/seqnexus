@@ -29,6 +29,12 @@ interface Props {
   onExport: (filename: string, opts: SessionExportOptions) => void
 }
 
+/** A file name without its session extension (.seqnexus.json, .json, .gz). */
+const sessionStem = (name: string) => name.trim().replace(/(\.seqnexus)?\.json(\.gz)?$/i, '').replace(/\.gz$/i, '')
+
+/** A session file's name: .seqnexus.json, gzipped as .seqnexus.json.gz. */
+const sessionFileName = (stem: string, compressed: boolean) => `${stem}.seqnexus.json${compressed ? '.gz' : ''}`
+
 export default function SessionExportDialog({ open, onClose, onExport }: Props) {
   const tabs = useEditorStore(s => s.tabs)
   const reads = useEditorStore(s => s.sequencingReads)
@@ -53,7 +59,8 @@ export default function SessionExportDialog({ open, onClose, onExport }: Props) 
   const [includeReads, setIncludeReads] = useState(true)
   const [includeAlignments, setIncludeAlignments] = useState(true)
   const [includeContigs, setIncludeContigs] = useState(true)
-  const [filename, setFilename] = useState('session.seqnexus.json')
+  const [compress, setCompress] = useState(true)
+  const [filename, setFilename] = useState(sessionFileName('session', true))
 
   // Reset state when opening
   useEffect(() => {
@@ -61,9 +68,16 @@ export default function SessionExportDialog({ open, onClose, onExport }: Props) 
       setIncludeReads(reads.length > 0)
       setIncludeAlignments(alignments.length > 0)
       setIncludeContigs(assemblyCount > 0)
-      setFilename('session.seqnexus.json')
+      setCompress(true)
+      setFilename(sessionFileName('session', true))
     }
   }, [open, reads.length, alignments.length, assemblyCount])
+
+  // The name follows the choice: .json.gz when compressed, .json when not.
+  const toggleCompress = (on: boolean) => {
+    setCompress(on)
+    setFilename(f => sessionFileName(sessionStem(f), on))
+  }
 
   const filenameRef = useRef<HTMLInputElement>(null)
   useEffect(() => {
@@ -74,7 +88,8 @@ export default function SessionExportDialog({ open, onClose, onExport }: Props) 
     includeReads,
     includeAlignments,
     includeContigs,
-  }), [includeReads, includeAlignments, includeContigs])
+    compress,
+  }), [includeReads, includeAlignments, includeContigs, compress])
 
   const estimatedSize = useMemo(() => open ? estimateExportSize(opts) : 0, [opts, open])
 
@@ -88,10 +103,9 @@ export default function SessionExportDialog({ open, onClose, onExport }: Props) 
   }, [onClose])
 
   const handleExport = useCallback(() => {
-    const name = filename.trim() || 'session.seqnexus.json'
-    onExport(name.endsWith('.json') ? name : name + '.json', opts)
+    onExport(sessionFileName(sessionStem(filename) || 'session', compress), opts)
     onClose()
-  }, [filename, opts, onExport, onClose])
+  }, [filename, compress, opts, onExport, onClose])
 
   if (!visible) return null
 
@@ -160,6 +174,11 @@ export default function SessionExportDialog({ open, onClose, onExport }: Props) 
             <span>Assemblies and mappings ({assemblyCount})</span>
           </label>
 
+          <label className="session-option">
+            <input type="checkbox" checked={compress} onChange={e => toggleCompress(e.target.checked)} />
+            <span>Compress the file (gzip), usually to a fifth of its size</span>
+          </label>
+
           {always.length > 0 && (
             <p className="session-note">Also included: {always.join(', ')}.</p>
           )}
@@ -194,7 +213,7 @@ export default function SessionExportDialog({ open, onClose, onExport }: Props) 
 
           <div className="session-filename">
             <div className="session-size">
-              Estimated size: <strong>{formatBytes(estimatedSize)}</strong>
+              Estimated size: <strong>{formatBytes(estimatedSize)}</strong>{compress ? ' before compression' : ''}
             </div>
             <label className="session-field">
               Filename

@@ -16,6 +16,7 @@
 import { reverseComplement } from '../models/complement'
 import { asRna, fullGuide, type Scaffold } from './scaffolds'
 import type { Nuclease, PromoterId } from './types'
+import { csvRow } from '../utils/csv-cell'
 
 export type OrderFormat = 'annealed' | 'template' | 'synthetic' | 'peg'
 
@@ -221,7 +222,7 @@ export function buildOrder(format: OrderFormat, req: OrderRequest): OrderedConst
 export function orderCsv(constructs: readonly OrderedConstruct[]): string {
   const rows = [['name', 'sequence', 'length', 'format'].join(',')]
   for (const c of constructs) {
-    for (const o of c.oligos) rows.push([o.name, o.sequence, String(o.length), c.format].join(','))
+    for (const o of c.oligos) rows.push(csvRow([o.name, o.sequence, o.length, c.format]))
   }
   return rows.join('\n')
 }

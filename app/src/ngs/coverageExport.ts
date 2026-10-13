@@ -9,6 +9,7 @@
 
 import { inflateSync } from 'fflate'
 import { mappingStorageIds, type MappingStorage } from './builder'
+import { samNames } from './refNames'
 
 /** Lines per string handed back, so a genome's millions of lines are never one string. */
 const LINES_PER_PART = 65536
@@ -41,6 +42,8 @@ export async function mappingBedGraph(
   storage: Pick<MappingStorage, 'get'>, storageId: string, refNames: readonly string[], trackName: string,
 ): Promise<Blob> {
   const parts: string[] = [`track type=bedGraph name="${trackName.replace(/"/g, "'")}" description="Read depth"\n`]
-  for (let r = 0; r < refNames.length; r++) parts.push(...coverageBedGraph(refNames[r], await readCoverage(storage, storageId, r)))
+  // The names the BAM export writes, so the track lines up with it in IGV.
+  const names = samNames(refNames)
+  for (let r = 0; r < refNames.length; r++) parts.push(...coverageBedGraph(names[r], await readCoverage(storage, storageId, r)))
   return new Blob(parts, { type: 'text/plain' })
 }

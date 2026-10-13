@@ -7,17 +7,17 @@
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Download, Image as ImageIcon, FileCode2 } from 'lucide-react'
+import { Download } from 'lucide-react'
 import { useEditorStore } from '../store'
-import { buildDomainMapScene } from '../protein/domain-map'
+import { buildDomainMapScene, type DomainMapInput } from '../protein/domain-map'
 import type { PlasmidScene } from '../plasmid/scene'
 import { renderSceneToCanvas } from '../plasmid/renderCanvas'
 import { hitTestScene } from '../plasmid/hit'
-import { plasmidToPng, plasmidToSvgBlob } from '../plasmid/exportImage'
+import type { MapFigureOptions } from '../plasmid/exportImage'
+import MapFigureDialog from './MapFigureDialog'
 import { getPlasmidStyle, resolvePlasmidColors, type PlasmidColors } from '../plasmid/styles'
+import { printPlasmidColors } from '../pdf/print-colors'
 import { measureText } from '../utils/measure-text'
-import { downloadBlob } from '../utils/download'
-import { notify } from '../toast'
 import { displayPosition } from '../models/Document'
 import { useDelayedHover } from '../hooks/useDelayedHover'
 import AnnotationTooltip from './AnnotationTooltip'
@@ -30,6 +30,9 @@ interface Props {
 }
 
 interface HoverTarget { x: number; y: number; key: string }
+
+/** The default width of an exported domain map, in CSS pixels, whatever the panel's width. */
+const DOMAIN_FIGURE_WIDTH = 960
 
 export default function DomainMap({ onExportPrompt, fill }: Props) {
   const doc = useEditorStore(s => s.doc)
@@ -44,7 +47,7 @@ export default function DomainMap({ onExportPrompt, fill }: Props) {
   const containerRef = useRef<HTMLDivElement>(null)
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const [width, setWidth] = useState(0)
-  const [exportOpen, setExportOpen] = useState(false)
+  const [figureOpen, setFigureOpen] = useState(false)
   const { target: tooltip, show: showTooltip, hide: hideTooltip } = useDelayedHover<HoverTarget>()
 
   useEffect(() => {
@@ -74,10 +77,10 @@ export default function DomainMap({ onExportPrompt, fill }: Props) {
     return doc.annotations.filter(a => !hidden.has(a.id))
   }, [doc.annotations, hiddenAnnotationIds])
 
-  const scene = useMemo<PlasmidScene | null>(() => {
+  const sceneInput = useMemo<DomainMapInput | null>(() => {
     if (width <= 0 || !colors) return null
     const [s, e] = [Math.min(selection.anchor, selection.caret), Math.max(selection.anchor, selection.caret)]
-    return buildDomainMapScene({
+    return {
       width,
       seqLen: doc.sequence.length,
       name: doc.name,
@@ -89,11 +92,14 @@ export default function DomainMap({ onExportPrompt, fill }: Props) {
       measureText,
       hoveredAnnotationId,
       selection: e > s ? [s, e] : null,
-    })
+    }
   }, [width, colors, doc.sequence.length, doc.name, doc.description, doc.metadata, features, style, hoveredAnnotationId, selection])
+  const scene = useMemo(() => (sceneInput ? buildDomainMapScene(sceneInput) : null), [sceneInput])
 
   const sceneRef = useRef<PlasmidScene | null>(null)
   sceneRef.current = scene
+  const sceneInputRef = useRef(sceneInput)
+  sceneInputRef.current = sceneInput
 
   useEffect(() => {
     const canvas = canvasRef.current
@@ -139,24 +145,20 @@ export default function DomainMap({ onExportPrompt, fill }: Props) {
     if (ann) setSelection({ anchor: ann.start, caret: ann.end })
   }, [hitAt, doc.annotations, setSelection])
 
-  const runExport = useCallback((kind: 'png' | 'svg') => {
-    setExportOpen(false)
-    const s = sceneRef.current
-    if (!s) return
-    const base = (doc.name || 'protein').replace(/[^\w.-]+/g, '_')
-    const defaultName = `${base}-domains.${kind}`
-    const write = async (filename: string) => {
-      try {
-        const blob = kind === 'png' ? await plasmidToPng(s) : plasmidToSvgBlob(s)
-        downloadBlob(blob, filename)
-        notify.success(`Exported ${filename}`)
-      } catch (err) {
-        notify.error('Could not export the map', { detail: err instanceof Error ? err.message : undefined })
-      }
-    }
-    if (onExportPrompt) onExportPrompt(defaultName, name => { void write(name) })
-    else void write(defaultName)
-  }, [doc.name, onExportPrompt])
+  // The map as a figure: drawn again at a fixed width, nothing hovered, the
+  // selection only when asked for (see MapFigureDialog).
+  const buildFigure = useCallback((o: MapFigureOptions): PlasmidScene | null => {
+    const input = sceneInputRef.current
+    if (!input) return null
+    return buildDomainMapScene({
+      ...input,
+      width: o.size ?? DOMAIN_FIGURE_WIDTH,
+      colors: o.print === false ? input.colors : printPlasmidColors(input.style),
+      ...(o.measureText ? { measureText: o.measureText } : {}),
+      hoveredAnnotationId: null,
+      selection: o.highlights ? input.selection : null,
+    })
+  }, [])
 
   const hoveredAnn = tooltip ? doc.annotations.find(a => a.id === tooltip.key) ?? null : null
 
@@ -169,29 +171,26 @@ export default function DomainMap({ onExportPrompt, fill }: Props) {
         onClick={handleClick}
       />
       <div className="plasmid-tools">
-        <div className="plasmid-tool-menu">
-          <button
-            className={`plasmid-tool ${exportOpen ? 'open' : ''}`}
-            onClick={() => setExportOpen(v => !v)}
-            title="Export map image"
-            aria-label="Export map image"
-            aria-haspopup="menu"
-            aria-expanded={exportOpen}
-          >
-            <Download size={13} />
-          </button>
-          {exportOpen && (
-            <div className="plasmid-export-menu" role="menu">
-              <button className="plasmid-export-item" role="menuitem" onClick={() => runExport('png')}>
-                <ImageIcon size={13} /> PNG image
-              </button>
-              <button className="plasmid-export-item" role="menuitem" onClick={() => runExport('svg')}>
-                <FileCode2 size={13} /> SVG vector
-              </button>
-            </div>
-          )}
-        </div>
+        <button
+          className="plasmid-tool"
+          onClick={() => setFigureOpen(true)}
+          title="Export figure (SVG, PNG or PDF)"
+          aria-label="Export figure"
+        >
+          <Download size={13} />
+        </button>
       </div>
+      {figureOpen && (
+        <MapFigureDialog
+          name={`${doc.name || 'protein'}-domains`}
+          sizes={[720, DOMAIN_FIGURE_WIDTH, 1280]}
+          defaultSize={DOMAIN_FIGURE_WIDTH}
+          hasHighlights={selection.anchor !== selection.caret}
+          build={buildFigure}
+          onClose={() => setFigureOpen(false)}
+          onExportPrompt={onExportPrompt}
+        />
+      )}
       {tooltip && hoveredAnn && (
         <AnnotationTooltip ann={hoveredAnn} sequence={doc.sequence} x={tooltip.x} y={tooltip.y} />
       )}

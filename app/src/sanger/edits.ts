@@ -168,6 +168,32 @@ export function editedRead(
   return { bases, quality }
 }
 
+/**
+ * The read's trace with its calls as edited, for a trace file: the raw
+ * channels as recorded, every call that was not deleted, and each call's
+ * peak where the read's layout puts it (an inserted base between its
+ * neighbours). Untrimmed: the trim is a view of the read, and a trace file
+ * has no field that viewers honour for it.
+ */
+export function editedTrace(data: TraceData, edits: readonly BaseEdit[]): TraceData {
+  const layout = buildLayout(data, edits)
+  let bases = ''
+  const peakLocations: number[] = []
+  const qualityScores: number[] = []
+  let last = -1
+  for (let c = 0; c < layout.n; c++) {
+    const k = layout.kind[c]
+    if (k === KIND_DELETE) continue
+    bases += layout.bases[c]
+    // Strictly increasing whole samples, as trace readers expect.
+    const peak = Math.max(last + 1, Math.round(layout.sample[c]))
+    peakLocations.push(peak)
+    last = peak
+    qualityScores.push(k === 0 ? (data.qualityScores[layout.origin[c]] ?? 0) : MANUAL_QUALITY)
+  }
+  return { ...data, bases, peakLocations, qualityScores }
+}
+
 /** Phred scores as FASTQ quality characters (Sanger offset 33). */
 export function fastqQuality(quality: readonly number[]): string {
   return quality.map(q => String.fromCharCode(Math.max(0, Math.min(93, Math.round(q))) + 33)).join('')

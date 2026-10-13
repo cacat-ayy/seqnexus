@@ -58,6 +58,18 @@ function arcTo(cx: number, cy: number, r: number, from: number, to: number): str
   return out.join(' ')
 }
 
+/**
+ * A line to the point at angle `a` on the circle of radius `r`. An SVG arc
+ * starts wherever the path is, unlike canvas `arc`, which first draws a line
+ * to its own start: without this step from the outer edge to the inner one,
+ * the inner arc would run between points at two radii and bend the band into
+ * a crescent.
+ */
+function lineTo(cx: number, cy: number, r: number, a: number): string {
+  const [x, y] = polarPoint(cx, cy, r, a)
+  return `L ${n(x)} ${n(y)}`
+}
+
 function arcBandPath(item: Extract<SceneItem, { kind: 'arcBand' }>): string {
   const { cx, cy, radius, startAngle, span, width, strand } = item
   const inner = radius - width / 2
@@ -82,12 +94,14 @@ function arcBandPath(item: Extract<SceneItem, { kind: 'arcBand' }>): string {
     const [tx, ty] = polarPoint(cx, cy, radius, startAngle)
     d.push(`M ${n(sx)} ${n(sy)}`)
     d.push(arcTo(cx, cy, outer, bodyStart, startAngle + span))
+    d.push(lineTo(cx, cy, inner, startAngle + span))
     d.push(arcTo(cx, cy, inner, startAngle + span, bodyStart))
     d.push(`L ${n(tx)} ${n(ty)}`)
   } else {
     const [sx, sy] = polarPoint(cx, cy, outer, startAngle)
     d.push(`M ${n(sx)} ${n(sy)}`)
     d.push(arcTo(cx, cy, outer, startAngle, startAngle + span))
+    d.push(lineTo(cx, cy, inner, startAngle + span))
     d.push(arcTo(cx, cy, inner, startAngle + span, startAngle))
   }
   d.push('Z')

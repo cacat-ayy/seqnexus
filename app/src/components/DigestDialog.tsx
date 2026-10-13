@@ -13,7 +13,7 @@ import { PROTEASES, DEFAULT_PROTEASE_ID, digest, coverage, type Peptide } from '
 import { proteinDigestWorkspace } from '../gel/workspace'
 import { displayPosition } from '../models/Document'
 import { formatMass } from '../protein/properties'
-import { downloadText } from '../utils/download'
+import { saveText } from '../utils/download'
 import { useExitAnimation } from '../hooks/useExitAnimation'
 import { useFocusTrap } from '../hooks/useFocusTrap'
 import { useBackdropDismiss } from '../hooks/useBackdropDismiss'
@@ -107,7 +107,7 @@ export default function DigestDialog({ open, onClose }: Props) {
       p.mono.toFixed(4), p.average.toFixed(2), p.mz[0].toFixed(4), p.mz[1].toFixed(4), p.mz[2].toFixed(4),
       p.pI === null ? '' : p.pI.toFixed(2), p.gravy === null ? '' : p.gravy.toFixed(3),
     ].join(','))
-    downloadText([header, ...rows].join('\n'), `${doc.name.replace(/[^\w.-]+/g, '_')}-${proteaseIds.join('+')}-peptides.csv`, 'text/csv')
+    saveText([header, ...rows].join('\n'), `${doc.name.replace(/[^\w.-]+/g, '_')}-${proteaseIds.join('+')}-peptides.csv`, 'text/csv')
   }, [shown, doc.name, proteaseIds, origin, seqLen]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const backdropRef = useRef<HTMLDivElement>(null)

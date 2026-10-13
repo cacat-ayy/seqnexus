@@ -24,6 +24,32 @@ export interface FastaRead {
   unreadable: string[]
 }
 
+/**
+ * One sequence as a FASTA record, wrapped at 80 columns. The id is the name
+ * with spaces as underscores, since readers take the first word as the id;
+ * the rest of the header is the description, or the name in full when there
+ * is no description, which is how `recordName` gets a name with spaces back.
+ */
+export function writeFastaRecord(name: string, bases: string, description?: string): string {
+  const clean = (s: string) => s.replace(/[\r\n\t]+/g, ' ').trim()
+  const id = clean(name).replace(/\s+/g, '_') || 'sequence'
+  const rest = clean(description ?? '') || (id !== clean(name) ? clean(name) : '')
+  const lines = [`>${id}${rest ? ` ${rest}` : ''}`]
+  for (let i = 0; i < bases.length; i += 80) lines.push(bases.slice(i, i + 80))
+  return lines.join('\n') + '\n'
+}
+
+/**
+ * The name and description a record was written with. An id that is its
+ * description with spaces as underscores ("pUC19_mod pUC19 mod") is a name
+ * with spaces, written that way by `writeFastaRecord`.
+ */
+export function recordName(rec: FastaRecord): { name: string; description?: string } {
+  const d = rec.description
+  if (d && rec.name.includes('_') && rec.name === d.replace(/\s+/g, '_')) return { name: d }
+  return d ? { name: rec.name, description: d } : { name: rec.name }
+}
+
 const NUCLEOTIDE = /^[ACGTURYSWKMBDHVN]*$/
 /** Letters that are amino-acid codes but not nucleotide codes. */
 const PROTEIN_ONLY = /[EFIJLOPQXZ*]/

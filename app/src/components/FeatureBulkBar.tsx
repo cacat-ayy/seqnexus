@@ -13,7 +13,7 @@ import type { DocumentState } from '../models/Document'
 import { useEditorStore } from '../store'
 import { featureTypesFor } from '../utils/annotation-constants'
 import { annotationBases } from '../utils/annotation-sequence'
-import { downloadText } from '../utils/download'
+import { saveText } from '../utils/download'
 import { copyText } from '../utils/clipboard'
 import { writeGff3 } from '../io/gff3'
 import { writeCsv } from '../io/csv'
@@ -62,13 +62,13 @@ export default function FeatureBulkBar({
 
   /**
    * The writers take a whole DocumentState, so a shallow clone carrying only
-   * the selected annotations reuses them unchanged.
+   * the selected annotations (and none of the primers) reuses them unchanged.
    */
   const exportSubset = useCallback((format: 'gff3' | 'csv') => {
-    const subset: DocumentState = { ...doc, annotations: selected }
+    const subset: DocumentState = { ...doc, annotations: selected, primers: undefined }
     const base = (doc.name || 'features').replace(/\.[^.]+$/, '')
-    if (format === 'gff3') downloadText(writeGff3(subset), `${base}_features.gff3`, 'text/plain')
-    else downloadText(writeCsv(subset), `${base}_features.csv`, 'text/csv')
+    if (format === 'gff3') saveText(writeGff3(subset), `${base}_features.gff3`, 'text/plain')
+    else saveText(writeCsv(subset), `${base}_features.csv`, 'text/csv')
     setExportOpen(false)
   }, [doc, selected])
 

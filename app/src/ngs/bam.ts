@@ -152,9 +152,13 @@ function cigarOps(cigar: string): number[] {
   return ops
 }
 
-/** One BAM record. `end` is the exclusive end on the reference, for the bin. */
-export function bamRecord(f: SamFields, end: number): Uint8Array {
+/**
+ * One BAM record. `end` is the exclusive end on the reference, for the bin.
+ * `readGroup` adds an RG:Z tag naming the record's read group.
+ */
+export function bamRecord(f: SamFields, end: number, readGroup?: string): Uint8Array {
   const name = enc.encode(f.qname.slice(0, 254))
+  const rg = readGroup ? enc.encode(readGroup) : null
   let ops = cigarOps(f.cigar)
   const seq = f.seq === '*' ? '' : f.seq
   const l = seq.length
@@ -166,6 +170,7 @@ export function bamRecord(f: SamFields, end: number): Uint8Array {
     ops = [l * 16 + 4, Math.max(0, end - f.pos) * 16 + 3]
   }
   const size = 32 + name.length + 1 + ops.length * 4 + ((l + 1) >> 1) + l + (cg ? 3 + 1 + 4 + cg.length * 4 : 0)
+    + (rg ? 3 + rg.length + 1 : 0)
   const out = new Uint8Array(4 + size)
   const dv = new DataView(out.buffer)
   dv.setInt32(0, size, true)
@@ -195,6 +200,11 @@ export function bamRecord(f: SamFields, end: number): Uint8Array {
     dv.setUint32(at + 4, cg.length, true)
     at += 8
     for (const op of cg) { dv.setUint32(at, op, true); at += 4 }
+  }
+  if (rg) {
+    out.set([82, 71, 90], at) // "RG", type Z: a NUL-terminated string
+    out.set(rg, at + 3)
+    at += 3 + rg.length + 1
   }
   return out
 }

@@ -14,18 +14,17 @@
  */
 
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Download, FileCode2, Image as ImageIcon, Maximize2 } from 'lucide-react'
+import { Download, Maximize2 } from 'lucide-react'
 import { useEditorStore } from '../../store'
 import { Annotation, type AnnotationData } from '../../models/Annotation'
-import { buildPlasmidScene, type PlasmidScene, type SceneEnzymeGroup } from '../../plasmid/scene'
+import { buildPlasmidScene, type PlasmidScene, type PlasmidSceneInput, type SceneEnzymeGroup } from '../../plasmid/scene'
 import { renderSceneToCanvas, type Viewport } from '../../plasmid/renderCanvas'
 import { getPlasmidStyle, resolvePlasmidColors } from '../../plasmid/styles'
 import { angleToPos, stackAnnotations } from '../../plasmid/geometry'
 import { hitTestScene } from '../../plasmid/hit'
-import { plasmidToPng, plasmidToSvgBlob } from '../../plasmid/exportImage'
+import { FIGURE_SIZE, figureSceneInput, type MapFigureOptions } from '../../plasmid/exportImage'
+import MapFigureDialog from '../MapFigureDialog'
 import { gcPercent } from '../../primers/thermodynamics'
-import { downloadBlob } from '../../utils/download'
-import { notify } from '../../toast'
 import type { MapSite } from '../../cloning/sites'
 import { measureText } from '../../utils/measure-text'
 
@@ -84,7 +83,7 @@ function CloneMap({
   const [hoveredSite, setHoveredSite] = useState<string | null>(null)
   const [hoveredFeature, setHoveredFeature] = useState<string | null>(null)
   const [tip, setTip] = useState<Tip | null>(null)
-  const [exportOpen, setExportOpen] = useState(false)
+  const [figureOpen, setFigureOpen] = useState(false)
   const panRef = useRef<{ x: number; y: number; tx: number; ty: number; moved: boolean } | null>(null)
 
   // A new molecule opens fitted.
@@ -122,9 +121,9 @@ function CloneMap({
   const enzymeGroups = useMemo((): SceneEnzymeGroup[] =>
     sites.map(s => ({ key: s.key, label: s.label, cutPos: s.cutPos, methEffect: s.methEffect })), [sites])
 
-  const scene = useMemo<PlasmidScene | null>(() => {
+  const sceneInput = useMemo<PlasmidSceneInput | null>(() => {
     if (size.width <= 0 || size.height <= 0) return null
-    return buildPlasmidScene({
+    return {
       size: size.width,
       height: size.height,
       seqLen: bases.length,
@@ -154,10 +153,11 @@ function CloneMap({
       showCaret: false,
       openEnds: true,
       layout,
-    })
+    }
     // themeVersion re-resolves the colours on a theme switch.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [size, bases.length, name, topology, style, layout, rings, hoveredFeature, enzymeGroups, hoveredSite, gc, picked, regions, note, themeVersion])
+  const scene = useMemo(() => (sceneInput ? buildPlasmidScene(sceneInput) : null), [sceneInput])
 
   const sceneRef = useRef(scene)
   sceneRef.current = scene
@@ -293,7 +293,6 @@ function CloneMap({
   const suppressClick = useRef(false)
 
   const onClick = (e: React.MouseEvent) => {
-    setExportOpen(false)
     if (suppressClick.current) { suppressClick.current = false; return }
     const pt = toScene(e.clientX, e.clientY)
     if (!pt) return
@@ -333,18 +332,14 @@ function CloneMap({
     return () => canvas.removeEventListener('wheel', wheel)
   }, [])
 
-  const runExport = async (kind: 'png' | 'svg') => {
-    setExportOpen(false)
-    const s = sceneRef.current
-    if (!s || !exportName) return
-    const file = `${exportName.replace(/[^\w.-]+/g, '_')}-map.${kind}`
-    try {
-      downloadBlob(kind === 'png' ? await plasmidToPng(s) : plasmidToSvgBlob(s), file)
-      notify.success(`Exported ${file}`)
-    } catch (err) {
-      notify.error('Could not export the map', { detail: err instanceof Error ? err.message : undefined })
-    }
-  }
+  // The whole map as a figure, drawn again for the file (see figureSceneInput).
+  // The design's marked parts and picked sites are part of the map and stay.
+  const sceneInputRef = useRef(sceneInput)
+  sceneInputRef.current = sceneInput
+  const buildFigure = useCallback((o: MapFigureOptions) => {
+    const input = sceneInputRef.current
+    return input ? buildPlasmidScene(figureSceneInput(input, o)) : null
+  }, [])
 
   return (
     <div ref={containerRef} className="cm">
@@ -366,30 +361,26 @@ function CloneMap({
           </button>
         )}
         {exportName && (
-          <div className="plasmid-tool-menu">
-            <button
-              className={`plasmid-tool ${exportOpen ? 'open' : ''}`}
-              onClick={() => setExportOpen(o => !o)}
-              title="Export the map"
-              aria-label="Export the map"
-              aria-haspopup="menu"
-              aria-expanded={exportOpen}
-            >
-              <Download size={13} />
-            </button>
-            {exportOpen && (
-              <div className="plasmid-export-menu" role="menu">
-                <button className="plasmid-export-item" role="menuitem" onClick={() => void runExport('png')}>
-                  <ImageIcon size={13} /> PNG image
-                </button>
-                <button className="plasmid-export-item" role="menuitem" onClick={() => void runExport('svg')}>
-                  <FileCode2 size={13} /> SVG vector
-                </button>
-              </div>
-            )}
-          </div>
+          <button
+            className="plasmid-tool"
+            onClick={() => setFigureOpen(true)}
+            title="Export figure (SVG, PNG or PDF)"
+            aria-label="Export figure"
+          >
+            <Download size={13} />
+          </button>
         )}
       </div>
+      {figureOpen && exportName && (
+        <MapFigureDialog
+          name={`${exportName}-map`}
+          sizes={[480, FIGURE_SIZE, 1080]}
+          defaultSize={FIGURE_SIZE}
+          hasHighlights={false}
+          build={buildFigure}
+          onClose={() => setFigureOpen(false)}
+        />
+      )}
       {tip && (
         <div className="cm-tip" style={{ left: tip.x, top: tip.y }} role="tooltip">
           {tip.lines.map((line, i) => <div key={i} className={i === 0 ? 'cm-tip-title' : ''}>{line}</div>)}

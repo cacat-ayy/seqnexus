@@ -10,7 +10,7 @@ import { FileOutput, X } from 'lucide-react'
 import { useFocusTrap } from '../../hooks/useFocusTrap'
 import { useEditorStore } from '../../store'
 import { notify } from '../../toast'
-import { downloadText } from '../../utils/download'
+import { saveText } from '../../utils/download'
 import { toFasta } from '../../sanger/edits'
 import { DEFAULT_CONSENSUS_SETTINGS, siteConsensus, type ConsensusSettings } from '../../ngs/calls'
 import type { MappingSource } from '../../ngs/view'
@@ -80,7 +80,7 @@ export default function ConsensusDialog({ source, refIndex, name, assemblyId, on
         const r = await build(i)
         parts.push(toFasta(title(i).replace(/\s+/g, '_'), r.bases))
       }
-      downloadText(parts.join(''), `${name.replace(/[\\/:*?"<>|\s]+/g, '_')}_consensus.fasta`)
+      saveText(parts.join(''), `${name.replace(/[\\/:*?"<>|\s]+/g, '_')}_consensus.fasta`)
       onClose()
     } catch (err) {
       notify.error('Could not build the consensus', { detail: err instanceof Error ? err.message : String(err) })

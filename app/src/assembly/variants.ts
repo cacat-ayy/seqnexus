@@ -33,6 +33,7 @@ import { baseBits } from '../msa/iupac'
 import type { ContigDoc } from './types'
 import { findTandemRepeats, type TandemRepeat } from './repeats'
 import { codingChanges, codingSummary, type CodingChange } from './effects'
+import { csvCell } from '../utils/csv-cell'
 
 export interface RefFeature {
   id: string
@@ -516,7 +517,7 @@ export function fisherExact(a: number, b: number, c: number, d: number): number 
 /** Variants as CSV, one row each. */
 export function variantsCsv(vs: readonly Variant[]): string {
   const head = ['Position', 'Type', 'Substitution', 'Reference', 'Variant', 'Frequency', 'Reference frequency', 'Coverage', 'Reads with variant', 'P-value', 'Strand bias P', 'Forward ref/alt', 'Reverse ref/alt', 'Mean quality', 'Features', 'Coding feature', 'cDNA change', 'Protein change', 'HGVS protein', 'Effect', 'Other coding changes', 'Tandem repeat', 'Homopolymer']
-  const q = (s: string) => (/[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s)
+  const q = csvCell
   const rows = vs.map(v => [
     String(v.position), v.type, substitutionKind(v) ?? '', v.ref || '-', v.alt || '-', v.frequency.toFixed(3), referenceFrequency(v).toFixed(3), String(v.coverage), v.count.toFixed(1).replace(/\.0$/, ''),
     v.pValue.toExponential(2), v.strandBiasP.toPrecision(3), `${v.forward.ref}/${v.forward.alt}`, `${v.reverse.ref}/${v.reverse.alt}`,

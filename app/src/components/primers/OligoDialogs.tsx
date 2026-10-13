@@ -16,7 +16,7 @@ import {
   parseOligoList, toCsv, toFasta, toOrderSheet, DEFAULT_ORDER,
   type ExportableOligo, type ParsedOligo,
 } from '../../primers/library-io'
-import { downloadText } from '../../utils/download'
+import { saveText } from '../../utils/download'
 import './primers.css'
 
 function Modal({ open, title, onClose, children, footer }: {
@@ -158,9 +158,9 @@ export function OligoExportDialog({ open, onClose, oligos, baseName }: {
 
   const download = () => {
     const safe = baseName.replace(/[^\w.-]+/g, '_') || 'oligos'
-    if (format === 'csv') downloadText(toCsv(oligos), `${safe}.csv`, 'text/csv')
-    else if (format === 'fasta') downloadText(toFasta(oligos), `${safe}.fasta`, 'text/plain')
-    else downloadText(toOrderSheet(oligos, { scale, purification }), `${safe}_order.tsv`, 'text/tab-separated-values')
+    if (format === 'csv') saveText(toCsv(oligos), `${safe}.csv`, 'text/csv')
+    else if (format === 'fasta') saveText(toFasta(oligos), `${safe}.fasta`, 'text/plain')
+    else saveText(toOrderSheet(oligos, { scale, purification }), `${safe}_order.tsv`, 'text/tab-separated-values')
     onClose()
   }
 

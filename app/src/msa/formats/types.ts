@@ -4,7 +4,7 @@ export type AlnFormatId = 'fasta' | 'clustal' | 'phylip' | 'nexus' | 'mega' | 'p
 
 /** What a parser hands back: raw row text, cleaned later by makeDoc. */
 export interface ParsedAlignment {
-  rows: { name: string; seq: string }[]
+  rows: { name: string; seq: string; start?: number }[]
   /** The kind the file declares, when it declares one. */
   kind?: AlnKind
   warnings: string[]

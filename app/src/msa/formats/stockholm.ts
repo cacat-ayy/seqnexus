@@ -2,12 +2,20 @@
  * Stockholm, the Pfam / Rfam / HMMER format. Annotation lines (#=GF, #=GS,
  * #=GR, #=GC) are skipped; '//' ends the alignment. Only the first alignment
  * of a multi-alignment file is read.
+ *
+ * A row cut from the middle of its source keeps its numbering the way Pfam
+ * writes it, as `name/start-end` (1-based, inclusive, residues not gaps).
+ * The reader takes such a suffix off the name and back into the row's start
+ * when its numbers agree with the row's residue count.
  */
 
 import { consensus, docProfile } from '../stats'
-import type { AlnDoc } from '../model'
+import { ungapped, type AlnDoc } from '../model'
 import { noSpaces, RowCollector, splitLines } from './util'
 import { AlignmentParseError, type AlnFormat, type ParsedAlignment, type WriteOptions } from './types'
+
+/** A name's `/start-end` numbering, when it has one. */
+const NUMBERED = /^(.+)\/(\d+)-(\d+)$/
 
 export function parseStockholm(text: string): ParsedAlignment {
   const lines = splitLines(text)
@@ -31,11 +39,26 @@ export function parseStockholm(text: string): ParsedAlignment {
     if (m) rows.add(m[1], m[2])
   }
   if (rows.size === 0) throw new AlignmentParseError('No sequences found in this Stockholm file')
-  return { rows: rows.rows(), warnings }
+  return {
+    rows: rows.rows().map(r => {
+      const m = NUMBERED.exec(r.name)
+      if (!m) return r
+      const start = Number(m[2])
+      const end = Number(m[3])
+      const residues = ungapped(r.seq.replace(/\./g, '-')).length
+      return end - start + 1 === residues ? { name: m[1], seq: r.seq, start } : r
+    }),
+    warnings,
+  }
 }
 
 export function writeStockholm(doc: AlnDoc, opts: WriteOptions = {}): string {
-  const names = doc.rows.map(r => noSpaces(r.name))
+  const names = doc.rows.map(r => {
+    const name = noSpaces(r.name)
+    if (r.start === undefined || r.start === 1) return name
+    const residues = ungapped(r.seq).length
+    return `${name}/${r.start}-${r.start + residues - 1}`
+  })
   const pad = Math.max(12, ...names.map(n => n.length)) + 2
   const out = ['# STOCKHOLM 1.0']
   if (opts.title) out.push(`#=GF ID ${noSpaces(opts.title)}`)

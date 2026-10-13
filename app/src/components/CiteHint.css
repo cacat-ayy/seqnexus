@@ -1,0 +1,27 @@
+/* The citation request in export dialogs. */
+.cite-hint {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-1);
+  padding: var(--space-2-5) var(--space-3);
+  background: var(--accent-bg);
+  border: 1px solid color-mix(in srgb, var(--accent) 25%, transparent);
+  border-radius: var(--radius-input);
+  font-size: var(--text-xs);
+  color: var(--text-secondary);
+}
+
+.cite-hint p {
+  margin: 0;
+  line-height: 1.45;
+}
+
+.cite-hint-text {
+  color: var(--text);
+  user-select: all;
+}
+
+.cite-hint .btn {
+  margin-top: var(--space-1);
+}
