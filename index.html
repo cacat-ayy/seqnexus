@@ -830,31 +830,6 @@
     </div>
   </section>
 
-  <section class="facts" aria-label="Key facts">
-    <dl class="facts-grid">
-      <div class="fact fact-free">
-        <dt>Price</dt>
-        <dd>Free<small>No trial, no tier, no fee</small></dd>
-      </div>
-      <div class="fact">
-        <dt>Installation</dt>
-        <dd>None<small>Open a tab and start working</small></dd>
-      </div>
-      <div class="fact">
-        <dt>Account</dt>
-        <dd>Not required<small>Nothing to sign up for</small></dd>
-      </div>
-      <div class="fact">
-        <dt>Your data</dt>
-        <dd>Stays local<small>Stored in your browser, never uploaded</small></dd>
-      </div>
-      <div class="fact">
-        <dt>Licence</dt>
-        <dd>AGPL v3<small>Open source, on GitHub</small></dd>
-      </div>
-    </dl>
-  </section>
-
   <div class="seq-rule" data-from="1" aria-hidden="true"></div>
 
   <section class="band" id="bench">
@@ -1013,7 +988,7 @@
             <li><b>Computed</b><span>In Web Workers and WebAssembly on your own CPU. Long jobs run in the background and can be cancelled.</span></li>
             <li><b>Stored</b><span>In your browser's IndexedDB, auto-saved as you work. Export a session file to move it to another machine.</span></li>
             <li><b>Offline</b><span>Load the page once and it keeps working without a connection. Only NCBI, UniProt and BLAST need the network, and only when you ask.</span></li>
-            <li><b>Open</b><span>The source is on GitHub under the AGPL. Read it, build it, host your own copy.</span></li>
+            <li><b>Open</b><span>The source is on GitHub under the AGPL. The <a class="link" href="https://github.com/cacat-ayy/seqnexus#readme">README</a> explains every method, its parameters and the papers behind it.</span></li>
           </ul>
         </div>
       </div>
@@ -1079,7 +1054,7 @@
           <div class="free-cols">
             <div>
               <p><strong>There is nothing to pay and nothing to unlock.</strong> Every tool on this page is available to everyone, for academic and commercial work alike, and all output may be used in publications, theses, presentations and products without restriction or fee.</p>
-              <p>SeqNexus is open source under the <a class="link" href="https://www.gnu.org/licenses/agpl-3.0.html">GNU AGPL v3</a>: use it, read it, change it and share it. Modified versions you distribute or host must publish their source under the same licence.</p>
+              <p>SeqNexus is open source under the <a class="link" href="https://www.gnu.org/licenses/agpl-3.0.html">GNU AGPL v3</a>, with the full source on <a class="link" href="https://github.com/cacat-ayy/seqnexus">GitHub</a>. Bug reports and suggestions are welcome there.</p>
             </div>
             <div>
               <p class="label cite-head">Cite SeqNexus</p>
@@ -1107,16 +1082,46 @@
 
 <footer class="site-foot">
   <div class="wrap">
-    <div class="foot-inner">
-      <p class="foot-author">SeqNexus, by Christopher Acatay</p>
-      <div class="foot-links">
-        <a href="app.html">Editor</a>
-        <a href="features.html">Features</a>
-        <a href="https://github.com/cacat-ayy/seqnexus">GitHub</a>
-        <a href="mailto:contact@seqnexus.app">Contact</a>
-        <a href="impressum.html">Impressum</a>
-        <a href="datenschutz.html">Datenschutz</a>
+    <div class="foot-grid">
+      <div class="foot-about">
+        <a class="brand" href="index.html">
+          <svg width="22" height="22" viewBox="-2 -2 28 28" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <circle cx="12" cy="12" r="13" stroke-width="1.5"/>
+            <g stroke-width="2">
+              <path d="m10 16 1.5 1.5"/><path d="m14 8-1.5-1.5"/>
+              <path d="M15 2c-1.798 1.998-2.518 3.995-2.807 5.993"/>
+              <path d="m16.5 10.5 1 1"/><path d="m17 6-2.891-2.891"/>
+              <path d="M2 15c6.667-6 13.333 0 20-6"/><path d="m20 9 .891.891"/>
+              <path d="M3.109 14.109 4 15"/><path d="m6.5 12.5 1 1"/>
+              <path d="m7 18 2.891 2.891"/>
+              <path d="M9 22c1.798-1.998 2.518-3.995 2.807-5.993"/>
+            </g>
+          </svg>
+          SeqNexus
+        </a>
+        <p><strong>Free to use.</strong> Open source under the GNU AGPL v3. Figures and files you make are yours for publications, theses, talks and commercial work, with no fee.</p>
       </div>
+      <nav class="foot-col" aria-label="Product">
+        <p class="label">Product</p>
+        <a href="app.html">Editor</a>
+        <a href="index.html">Overview</a>
+        <a href="features.html">Features</a>
+        <a href="index.html#formats">Formats</a>
+      </nav>
+      <nav class="foot-col" aria-label="Project">
+        <p class="label">Project</p>
+        <a href="https://github.com/cacat-ayy/seqnexus">Source on GitHub</a>
+        <a href="https://github.com/cacat-ayy/seqnexus/issues">Report an issue</a>
+        <a href="mailto:contact@seqnexus.app">Contact</a>
+      </nav>
+      <div class="foot-col">
+        <p class="label">Cite this tool</p>
+        <p class="foot-cite">Acatay, C. (2026). SeqNexus: a browser-based molecular biology sequence editor. https://seqnexus.app</p>
+      </div>
+    </div>
+    <div class="foot-base">
+      <p>&copy; 2026 Christopher Acatay <a href="https://www.gnu.org/licenses/agpl-3.0.html">AGPL v3 licence</a></p>
+      <p><a href="impressum.html">Impressum</a> <a href="datenschutz.html">Datenschutz</a></p>
     </div>
   </div>
 </footer>

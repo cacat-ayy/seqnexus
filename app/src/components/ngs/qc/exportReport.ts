@@ -101,7 +101,7 @@ const mateLabel = (input: ExportInput, k: number) => (input.report.mates.length 
 
 const esc = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
 
-/* The page's own palette: fixed output that does not follow the app's theme (AGENTS.md, case 3). */
+/* The page's own palette: fixed output that does not follow the app's theme (CLAUDE.md, case 3). */
 const HTML_STYLE = `
 *{box-sizing:border-box}
 body{margin:0;font:14px/1.5 system-ui,-apple-system,"Segoe UI",Helvetica,Arial,sans-serif;color:#1f2937;background:#f5f6f8}

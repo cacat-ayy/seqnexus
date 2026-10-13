@@ -546,58 +546,6 @@ h1 em { font-style: normal; color: var(--accent); }
   .strip-replay { display: none; }
 }
 
-/* --- Fact strip ------------------------------------------------------------- */
-
-.facts { border-bottom: 1px solid var(--rule); background: var(--surface); }
-
-.facts-grid {
-  max-width: var(--measure);
-  margin: 0 auto;
-  padding: 0 var(--gutter);
-  display: grid;
-  grid-template-columns: repeat(5, 1fr);
-}
-
-.fact {
-  padding: 24px 24px 24px 0;
-  border-right: 1px solid var(--rule);
-}
-
-.fact + .fact { padding-left: 24px; }
-.fact:last-child { border-right: 0; }
-
-.fact dt {
-  font-family: var(--mono);
-  font-size: 10.5px;
-  letter-spacing: .13em;
-  text-transform: uppercase;
-  color: var(--muted);
-  margin: 0 0 6px;
-}
-
-.fact dd {
-  margin: 0;
-  font-family: var(--display);
-  font-weight: 650;
-  letter-spacing: -.02em;
-  font-size: 1.35rem;
-  line-height: 1.1;
-  color: var(--ink);
-}
-
-.fact dd small {
-  display: block;
-  margin-top: 5px;
-  font-family: var(--sans);
-  font-weight: 400;
-  font-size: 12.5px;
-  letter-spacing: 0;
-  line-height: 1.4;
-  color: var(--muted);
-}
-
-.fact.fact-free dd { color: var(--accent); }
-
 /* --- Bands ------------------------------------------------------------------ */
 
 .band { padding: 96px 0; border-bottom: 1px solid var(--rule); }
@@ -769,14 +717,16 @@ h1 em { font-style: normal; color: var(--accent); }
 .pl-ring { fill: none; stroke: var(--rule-2); stroke-width: 1; }
 .pl-ticks { fill: none; stroke: var(--rule-2); stroke-width: 1; }
 .pl-tick-label { fill: var(--faint); font-size: 9.5px; letter-spacing: .04em; }
-.pl-feat { fill: none; stroke-width: 11; stroke-linecap: butt; }
-.pl-arrow { stroke: none; }
-.pl-cds   { stroke: var(--pl-cds);    fill: var(--pl-cds); }
-.pl-pbind { stroke: var(--pl-pbind);  fill: var(--pl-pbind); }
-.pl-ori   { stroke: var(--pl-ori);    fill: var(--pl-ori); }
-.pl-term  { stroke: var(--pl-term);   fill: var(--pl-term); }
-.pl-prom  { stroke: var(--pl-prom);   fill: var(--pl-prom); }
-.pl-primer{ stroke: var(--pl-primer); fill: var(--pl-primer); }
+/* The type classes set only the colour. If they set fill too, they would win
+   over .pl-feat's fill: none and every arc would fill its chord. */
+.pl-feat { fill: none; stroke: currentColor; stroke-width: 11; stroke-linecap: butt; }
+.pl-arrow { fill: currentColor; stroke: none; }
+.pl-cds   { color: var(--pl-cds); }
+.pl-pbind { color: var(--pl-pbind); }
+.pl-ori   { color: var(--pl-ori); }
+.pl-term  { color: var(--pl-term); }
+.pl-prom  { color: var(--pl-prom); }
+.pl-primer{ color: var(--pl-primer); }
 .pl-feat.pl-primer { stroke-width: 6; }
 .pl-leader { fill: none; stroke: var(--rule-2); stroke-width: 1; }
 .pl-label { fill: var(--ink); font-size: 12.5px; font-weight: 500; }
@@ -896,22 +846,64 @@ h1 em { font-style: normal; color: var(--accent); }
 
 /* --- Footer --------------------------------------------------------------------- */
 
-.site-foot { padding: 34px 0 44px; font-size: 13.5px; color: var(--muted); }
+/* Four columns over a base bar: who and on what terms, two link lists, and
+   the citation. The base bar carries the copyright and the legal pages. */
 
-.foot-inner {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 16px 28px;
-  align-items: baseline;
-  justify-content: space-between;
+.site-foot { padding: 64px 0 0; color: var(--muted); }
+
+.foot-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.6fr) minmax(0, .8fr) minmax(0, .8fr) minmax(0, 1.3fr);
+  gap: 48px;
+  padding-bottom: 56px;
 }
 
-.foot-author { margin: 0; }
+.foot-about p {
+  margin: 22px 0 0;
+  max-width: 24em;
+  font-size: 14.5px;
+  line-height: 1.6;
+  color: var(--ink-2);
+}
 
-.foot-links { display: flex; flex-wrap: wrap; gap: 22px; }
+.foot-about strong { color: var(--ink); font-weight: 600; }
 
-.site-foot a { color: var(--muted); text-decoration: none; }
-.site-foot a:hover { color: var(--ink); }
+.foot-col { display: flex; flex-direction: column; align-items: flex-start; gap: 12px; }
+.foot-col .label { margin-bottom: 8px; }
+
+.foot-col a { color: var(--ink-2); text-decoration: none; font-size: 15px; }
+.foot-col a:hover { color: var(--ink); }
+
+.foot-cite {
+  margin: 0;
+  padding-left: 16px;
+  border-left: 1px solid var(--rule-2);
+  font-family: var(--mono);
+  font-size: 12.5px;
+  line-height: 1.7;
+  color: var(--ink-2);
+  overflow-wrap: anywhere;
+  user-select: all;
+  cursor: text;
+}
+
+.foot-base {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px 28px;
+  justify-content: space-between;
+  padding: 22px 0 36px;
+  border-top: 1px solid var(--rule);
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: .1em;
+  text-transform: uppercase;
+}
+
+.foot-base p { margin: 0; display: flex; flex-wrap: wrap; gap: 6px 18px; }
+
+.foot-base a { color: var(--muted); text-decoration: none; }
+.foot-base a:hover { color: var(--ink); }
 
 /* --- Features page ----------------------------------------------------------------- */
 
@@ -1025,10 +1017,6 @@ h1 em { font-style: normal; color: var(--accent); }
   .bench-col + .bench-col { border-left: 0; padding-left: 0; margin-left: 0; }
   .bench-col:nth-child(2n) { border-left: 1px solid var(--rule); padding-left: 24px; margin-left: -24px; }
   .bench-col:nth-child(n+3) { border-top: 1px solid var(--rule); }
-  .facts-grid { grid-template-columns: repeat(3, 1fr); }
-  .fact:nth-child(3) { border-right: 0; }
-  .fact:nth-child(-n+3) { border-bottom: 1px solid var(--rule); }
-  .fact:nth-child(4) { padding-left: 0; }
   .feat-layout { grid-template-columns: 1fr; gap: 0; }
   .toc { position: static; display: none; }
 }
@@ -1044,15 +1032,14 @@ h1 em { font-style: normal; color: var(--accent); }
   .feat-head { gap: 16px; }
   .fmt-table th { width: auto; display: block; padding-bottom: 8px; border-bottom: 0; }
   .fmt-table td { display: block; padding-top: 0; }
+  .foot-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 40px 32px; }
+  .foot-about, .foot-grid > .foot-col:last-child { grid-column: 1 / -1; }
 }
 
 @media (max-width: 600px) {
   :root { --gutter: 20px; }
   .masthead nav { gap: 16px; font-size: 13.5px; }
   .masthead nav a.hide-sm { display: none; }
-  .facts-grid { grid-template-columns: 1fr; }
-  .fact { border-right: 0; border-bottom: 1px solid var(--rule); padding-left: 0 !important; }
-  .fact:last-child { border-bottom: 0; }
   .bench { grid-template-columns: 1fr; }
   .bench-col:nth-child(2n) { border-left: 0; padding-left: 0; margin-left: 0; }
   .bench-col:nth-child(n+2) { border-top: 1px solid var(--rule); }
