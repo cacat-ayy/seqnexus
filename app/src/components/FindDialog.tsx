@@ -102,6 +102,10 @@ export default function FindDialog({ open, focusRequest, preset, onClose }: Find
   // The store's search is cleared as the panel starts to close, so the
   // highlights go with it rather than after the animation.
   const wasOpen = useRef(false)
+  const openRef = useRef(open)
+  openRef.current = open
+  // Every request to find shows the panel, not only a change of `open`: a
+  // request made while it is already open must not find it hidden.
   useEffect(() => {
     if (open) {
       setClosing(false)
@@ -111,10 +115,15 @@ export default function FindDialog({ open, focusRequest, preset, onClose }: Find
       setClosing(true)
     }
     wasOpen.current = open
-  }, [open, clearSearch])
+  }, [open, focusRequest, clearSearch])
 
-  const handleAnimationEnd = useCallback(() => {
-    if (!closing) return
+  // Reopened just as the exit animation ended, the handler still saw the
+  // panel closing and hid it after the reopen had shown it: `open` stayed
+  // true, so no later Find (Ctrl+F or the toolbar) could bring it back. The
+  // end of the exit animation hides the panel only while it is still closed,
+  // and only its own animation counts, not one bubbling from inside it.
+  const handleAnimationEnd = useCallback((e: React.AnimationEvent) => {
+    if (e.target !== e.currentTarget || !closing || openRef.current) return
     setVisible(false)
     setClosing(false)
   }, [closing])

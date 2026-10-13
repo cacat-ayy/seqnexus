@@ -28,6 +28,7 @@ import type { MappingReport, MappingStorage } from './builder'
 import { deleteReadChunks, getReadChunk, putReadChunk } from '../storage/idb'
 import { runTool } from '../msa/engines/emscripten'
 import { isLongRead, type Technology, type TrimSettings } from './types'
+import { NEEDS_WEB, openedAsFile } from '../utils/opened-as-file'
 
 export type ReadSetJob =
   | { type: 'import'; id: string; files: File[]; layout: ReadLayout; technology: Technology }
@@ -98,15 +99,10 @@ export class CancelledError extends Error {
   constructor() { super('Cancelled') }
 }
 
-/** True when the page was opened from disk, where fastp cannot be loaded. */
-export function openedAsFile(): boolean {
-  return typeof location !== 'undefined' && location.protocol === 'file:'
-}
+export { NEEDS_WEB, openedAsFile }
 
 /** A mapping's storage: the read chunk store in IndexedDB. */
 const idbStorage: MappingStorage = { put: putReadChunk, get: getReadChunk, remove: deleteReadChunks }
-
-export const NEEDS_WEB = (tool: string) => `${tool} cannot run while SeqNexus is opened as a file (file://): the browser does not let such a page load the program. Start serve.bat in the SeqNexus folder and open http://localhost:8080/app.html, or open SeqNexus from its web address.`
 
 export const FASTP_NEEDS_WEB = NEEDS_WEB('fastp')
 

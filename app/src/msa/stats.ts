@@ -7,6 +7,12 @@
  * every pair of rows: in a column with counts c_k, the identical pairs are
  * the sum of C(c_k, 2). That keeps a selection's statistics linear in its
  * size, so they can update on every edit.
+ *
+ * A row's end gaps (before its first residue or after its last) are missing
+ * data, not differences: a partial sequence has nothing there to compare.
+ * Counted as gaps, a stretch that matches its full-length relative base for
+ * base came out at 91%. Pairs with a row in its end gaps are not compared;
+ * internal gaps (an insertion or deletion) still count against identity.
  */
 
 import { isSimilar } from '../alignment/matrices'
@@ -41,14 +47,28 @@ export interface Profile {
   rows: number
   /** counts[col * NSYM + sym]. */
   counts: Uint32Array
+  /** endGaps[col]: rows whose gap there is one of their end gaps (also counted under GAP_SYM). */
+  endGaps: Uint32Array
 }
 
-function addRow(counts: Uint32Array, seq: string, c0: number, c1: number, sign: 1 | -1): void {
+function addRow(counts: Uint32Array, endGaps: Uint32Array, seq: string, c0: number, c1: number, sign: 1 | -1): void {
   for (let c = c0; c < c1; c++) {
     const code = seq.charCodeAt(c)
     const s = code < 128 ? SYM[code] : -1
     if (s >= 0) counts[(c - c0) * NSYM + s] += sign
   }
+  const [first, last] = residueSpan(seq)
+  for (let c = c0; c < Math.min(c1, first); c++) endGaps[c - c0] += sign
+  for (let c = Math.max(c0, last + 1); c < c1; c++) endGaps[c - c0] += sign
+}
+
+/** Columns of a row's first and last residue; [length, -1] for a row of gaps only. */
+function residueSpan(seq: string): [number, number] {
+  let first = 0
+  while (first < seq.length && seq.charCodeAt(first) === 45) first++
+  let last = seq.length - 1
+  while (last >= first && seq.charCodeAt(last) === 45) last--
+  return [first, last]
 }
 
 /** Profile of the given rows (default: all) over columns [c0, c1). Not cached. */
@@ -57,8 +77,9 @@ export function profileOf(rows: readonly AlnRow[], c0 = 0, c1?: number): Profile
   const end = Math.min(w, c1 ?? w)
   const start = Math.max(0, Math.min(c0, end))
   const counts = new Uint32Array((end - start) * NSYM)
-  for (const r of rows) addRow(counts, r.seq, start, end, 1)
-  return { width: end - start, rows: rows.length, counts }
+  const endGaps = new Uint32Array(end - start)
+  for (const r of rows) addRow(counts, endGaps, r.seq, start, end, 1)
+  return { width: end - start, rows: rows.length, counts, endGaps }
 }
 
 // The whole-document profile, kept for the last document seen. An edit that
@@ -79,9 +100,10 @@ export function docProfile(doc: AlnDoc): Profile {
     const added = doc.rows.filter(r => !prev.has(r))
     if (added.length <= Math.max(4, doc.rows.length / 4)) {
       const counts = lastProfile.counts.slice()
-      for (const r of gone) addRow(counts, r.seq, 0, w, -1)
-      for (const r of added) addRow(counts, r.seq, 0, w, 1)
-      p = { width: w, rows: doc.rows.length, counts }
+      const endGaps = lastProfile.endGaps.slice()
+      for (const r of gone) addRow(counts, endGaps, r.seq, 0, w, -1)
+      for (const r of added) addRow(counts, endGaps, r.seq, 0, w, 1)
+      p = { width: w, rows: doc.rows.length, counts, endGaps }
     }
   }
   p ??= profileOf(doc.rows)
@@ -170,13 +192,24 @@ function columnPairs(p: Profile, col: number): { identical: number; compared: nu
   const o = col * NSYM
   let identical = 0
   for (let s = 0; s < GAP_SYM; s++) identical += pairs(p.counts[o + s])
-  return { identical, compared: pairs(p.rows) - pairs(p.counts[o + GAP_SYM]) }
+  return { identical, compared: comparedPairsAt(p, col) }
+}
+
+/**
+ * Pairs of rows compared in a column: every pair but those with a row in
+ * its end gaps, or with two gaps. A residue against an internal gap is
+ * compared, and differs.
+ */
+function comparedPairsAt(p: Profile, col: number): number {
+  const ends = p.endGaps[col]
+  return pairs(p.rows - ends) - pairs(p.counts[col * NSYM + GAP_SYM] - ends)
 }
 
 /**
  * Fraction of identical pairs in each column, 0-1. A column where every row
- * has the same residue scores 1; a gap against a residue counts as a
- * difference; an all-gap column scores 0.
+ * has the same residue scores 1; a residue against an internal gap counts
+ * as a difference, rows in their end gaps are left out, and a column with
+ * nothing to compare scores 0.
  */
 export function columnIdentity(p: Profile): Float32Array {
   const out = new Float32Array(p.width)
@@ -393,7 +426,7 @@ export function selectionStats(doc: AlnDoc, rowIds?: Iterable<string> | null, c0
     if (types === 1 && g === 0 && p.rows > 0) identicalSites++
     if (types > 1) variableSites++
     if (repeated >= 2) informativeSites++
-    comparedPairs += pairs(p.rows) - pairs(g)
+    comparedPairs += comparedPairsAt(p, c)
     if (doc.kind === 'protein') similarPairs += similarPairsAt(p, c)
   }
 
@@ -443,13 +476,16 @@ export function selectionStats(doc: AlnDoc, rowIds?: Iterable<string> | null, c0
 
 /**
  * Identity between two gapped rows: identical columns over compared columns,
- * where a column is compared unless both rows have a gap there. Null when
- * there is nothing to compare.
+ * where a column is compared where both rows have begun and not yet ended
+ * (outside either row's end gaps) and not both have a gap. Null when there
+ * is nothing to compare.
  */
 export function pairIdentity(a: string, b: string, c0 = 0, c1 = Math.min(a.length, b.length)): number | null {
+  const [a0, a1] = residueSpan(a)
+  const [b0, b1] = residueSpan(b)
   let same = 0
   let compared = 0
-  for (let c = c0; c < c1; c++) {
+  for (let c = Math.max(c0, a0, b0); c < Math.min(c1, a1 + 1, b1 + 1); c++) {
     const x = a.charCodeAt(c)
     const y = b.charCodeAt(c)
     if (x === 45 && y === 45) continue

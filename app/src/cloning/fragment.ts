@@ -58,6 +58,36 @@ function withoutSegments(ann: AnnotationData): AnnotationData {
   return copy
 }
 
+/** The feature types read in a reading frame, as the sequence view translates them. */
+const CODING_TYPES = new Set(['CDS', 'gene', 'ORF'])
+
+/**
+ * How many bases a cut took off a feature's 5' end, given the span
+ * [start, end) left of it in the same coordinates. Zero for a joined
+ * feature, whose frame runs through its exons: the bases removed include
+ * introns, and a cut one loses its segments anyway.
+ */
+export function clippedFrom5(ann: AnnotationData, start: number, end: number): number {
+  if (ann.segments && ann.segments.length > 1) return 0
+  return ann.strand === 1 ? start - ann.start : ann.strand === -1 ? ann.end - end : 0
+}
+
+/**
+ * A coding feature cut short at its 5' end, with its reading frame kept.
+ *
+ * `removed` bases of the feature went before its first remaining one. The
+ * piece is translated from /codon_start, so unless that says how many of the
+ * bases left come before the first whole codon, it is read from its first
+ * base: out of frame two times in three, with stop codons that are not there.
+ */
+export function keepReadingFrame(ann: AnnotationData, removed: number): AnnotationData {
+  if (removed <= 0 || !CODING_TYPES.has(ann.type)) return ann
+  const raw = Number(ann.qualifiers?.codon_start?.[0])
+  const before = raw === 2 || raw === 3 ? raw - 1 : 0
+  const skip = (((before - removed) % 3) + 3) % 3
+  return { ...ann, qualifiers: { ...ann.qualifiers, codon_start: [String(skip + 1)] } }
+}
+
 /** How many bases of `top` the left end's protrusion takes up. */
 function leftOverhangOnTop(f: Fragment): number {
   return f.left?.kind === 'five_prime' ? f.left.span.length : 0
@@ -155,13 +185,13 @@ function mirrorAnnotations(
     // Within the core, counted from its start, then reversed.
     const a = start - oldCoreStart
     const b = end - oldCoreStart
-    out.push({
+    out.push(keepReadingFrame({
       ...withoutSegments(ann),
       start: newCoreStart + (coreLen - b),
       end: newCoreStart + (coreLen - a),
       strand: ann.strand === 1 ? -1 : ann.strand === -1 ? 1 : ann.strand,
       ...(clipped || ann.truncated ? { truncated: true } : {}),
-    })
+    }, clippedFrom5(ann, start, end)))
   }
 
   return out

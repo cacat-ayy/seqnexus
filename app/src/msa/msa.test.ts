@@ -10,7 +10,7 @@ import {
 } from './edit'
 import {
   docProfile, profileOf, consensus, consensusAt, columnIdentity, columnSimilarity, columnGaps,
-  clustalMark, logoColumn, selectionStats, pairIdentity, identityMatrix, columnsMatching, smooth,
+  clustalMark, logoColumn, selectionStats, pairIdentity, identityMatrix, columnsMatching, smooth, summarize,
 } from './stats'
 
 const origin = { method: 'manual' as const, at: 0 }
@@ -352,6 +352,37 @@ describe('statistics', () => {
     expect(s.pairwiseIdentity).toBe(0.5)
     expect(s.pairwiseSimilarity).toBe(1)
     expect(s.gc).toBeNull()
+  })
+
+  it('leaves a row\'s end gaps out of identity, and counts internal gaps', () => {
+    // A partial copy, base for base: 100%, however much shorter it is.
+    expect(pairIdentity('ACGTACGT', '--GTACG-')).toBe(1)
+    const partial = doc('ACGTACGT', '--GTACG-')
+    expect(selectionStats(partial).pairwiseIdentity).toBe(1)
+    expect(summarize(partial).identity).toBe(1)
+    expect(columnIdentity(docProfile(partial))[2]).toBe(1)
+    // A deletion inside a row is a difference.
+    expect(pairIdentity('ACGTAC', 'AC--AC')).toBeCloseTo(4 / 6)
+    // Counts agree with comparing every pair, also after an edit uses the cached profile.
+    const d = doc('ACGTACGTAA', '--GTA-GTA-', 'ACG-ACTT--', '----ACGTAA')
+    const brute = (x: AlnDoc) => {
+      let same = 0, compared = 0
+      for (let i = 0; i < x.rows.length; i++) for (let j = i + 1; j < x.rows.length; j++) {
+        const a = x.rows[i].seq, b = x.rows[j].seq
+        const span = (s: string) => [s.search(/[^-]/), s.length - 1 - [...s].reverse().join('').search(/[^-]/)]
+        const [a0, a1] = span(a), [b0, b1] = span(b)
+        for (let c = Math.max(a0, b0); c <= Math.min(a1, b1); c++) {
+          if (a[c] === '-' && b[c] === '-') continue
+          compared++
+          if (a[c] === b[c]) same++
+        }
+      }
+      return same / compared
+    }
+    expect(selectionStats(d).pairwiseIdentity).toBeCloseTo(brute(d))
+    const e = overwrite(d, d.rows[1].id, 0, 'A')
+    expect(selectionStats(e).pairwiseIdentity).toBeCloseTo(brute(e))
+    expect([...docProfile(e).endGaps]).toEqual([...profileOf(e.rows).endGaps])
   })
 
   it('computes pairwise identity', () => {

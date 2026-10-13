@@ -23,7 +23,7 @@ import { calcTm } from '../primers/thermodynamics'
 import type { AnnotationData } from '../models/Annotation'
 import type { DocumentState } from '../models/Document'
 import { sliceAnnotations, formatSize } from './cut'
-import { withoutSegments } from './fragment'
+import { clippedFrom5, keepReadingFrame, withoutSegments } from './fragment'
 import type { Assembly, AssemblyPart, Junction, Overlap } from './product'
 import { assemblyName, canonical, rankAssemblies } from './product'
 import { KITS, targetOverlap, type Kit, type KitId } from './kits'
@@ -547,7 +547,7 @@ function buildAssembly(
     } else if (circular && ann.end - size < ann.start && ann.end - size < size) {
       placed.push({ ...ann, end: ann.end - size })
     } else {
-      placed.push({ ...ann, end: size, truncated: true })
+      placed.push(keepReadingFrame({ ...ann, end: size, truncated: true }, clippedFrom5(ann, ann.start, size)))
     }
   }
 

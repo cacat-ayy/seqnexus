@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 
 /**
  * Keeps a component mounted during its CSS exit animation.
@@ -18,6 +18,8 @@ export function useExitAnimation(open: boolean): {
 } {
   const [visible, setVisible] = useState(false)
   const [closing, setClosing] = useState(false)
+  const openRef = useRef(open)
+  openRef.current = open
 
   useEffect(() => {
     if (open) {
@@ -33,8 +35,11 @@ export function useExitAnimation(open: boolean): {
   }, [open])
 
   const onAnimationEnd = useCallback((e: React.AnimationEvent) => {
-    // Only respond to the backdrop's own animation, not bubbled child events
-    if (closing && e.currentTarget === e.target) {
+    // Only respond to the backdrop's own animation, not bubbled child events,
+    // and not once it has been opened again: reopened just as the exit
+    // animation ended, this closure still saw it closing and hid it while
+    // `open` stayed true, so it could not be shown again.
+    if (closing && !openRef.current && e.currentTarget === e.target) {
       setVisible(false)
       setClosing(false)
     }

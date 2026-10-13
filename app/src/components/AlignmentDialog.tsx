@@ -19,6 +19,7 @@ import {
   methodOf, settingsFromChoice, shapeOf, type ConcreteEngine, type EngineSettings,
 } from '../msa/engines/catalog'
 import { AlignCancelled, startAlignment } from '../msa/engines/runner'
+import { NEEDS_WEB, openedAsFile } from '../utils/opened-as-file'
 import { useExitAnimation } from '../hooks/useExitAnimation'
 import { useFocusTrap } from '../hooks/useFocusTrap'
 import { useBackdropDismiss } from '../hooks/useBackdropDismiss'
@@ -312,6 +313,9 @@ export default function AlignmentDialog({ open, onClose, onResult, onReadAlignRe
 
   // The built-in pairwise aligner is the only one that takes a mode and scoring.
   const isPairwise = !readAlignPattern && plan?.engine === 'pairwise'
+  // Opened from disk, only the built-in pairwise aligner can run: MAFFT,
+  // MUSCLE and Kalign are WebAssembly programs the page cannot load.
+  const needsWeb = !readAlignPattern && !!plan && plan.engine !== 'pairwise' && openedAsFile()
   const [alnName, setAlnName] = useState('')
 
   // ── Run alignment ──
@@ -588,6 +592,12 @@ export default function AlignmentDialog({ open, onClose, onResult, onReadAlignRe
                     {plan.label} may take {formatDuration(plan.estimate)} for these sequences.
                     {plan.engine !== 'kalign' && ' Kalign 3 would take seconds.'}
                   </span>
+                </div>
+              )}
+              {needsWeb && plan && (
+                <div className="align-warning">
+                  <AlertTriangle size={13} />
+                  <span>{NEEDS_WEB(plan.label)}</span>
                 </div>
               )}
               </>
@@ -963,7 +973,7 @@ export default function AlignmentDialog({ open, onClose, onResult, onReadAlignRe
               <button
                 className="btn btn-primary"
                 onClick={handleAlign}
-                disabled={entries.length < 2}
+                disabled={entries.length < 2 || needsWeb}
               >
                 {readAlignPattern
                   ? `Align ${readAlignPattern.readEntries.length} read${readAlignPattern.readEntries.length > 1 ? 's' : ''}`

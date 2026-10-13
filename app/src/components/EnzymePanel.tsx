@@ -69,6 +69,11 @@ export default function EnzymePanel({ open, onClose }: Props) {
   const [scanning, setScanning] = useState(false)
   const [perEnzymeSites, setPerEnzymeSites] = useState<Map<string, CutSite[]>>(new Map())
   const scanGeneration = useRef(0)
+  // Edits rewrite the piece table in place, so `sequence` is the same object
+  // before and after one: its version is what changes. Keyed on the object
+  // alone, the list kept the sites of the sequence as it was before the edit.
+  const seqVersion = sequence.pieceTable.version
+  const scanned = useRef<{ sequence: unknown; enzymes: unknown; topology: string; version: number } | null>(null)
 
   // Compute all sites for the selected subset, filtered by search query
   const candidateEnzymes = useMemo(() => {
@@ -89,6 +94,14 @@ export default function EnzymePanel({ open, onClose }: Props) {
       setPerEnzymeSites(new Map())
       return
     }
+    // The dialog is modal, so edits happen while it is closed. Rescanning
+    // every candidate enzyme on each keystroke would be wasted work: an edit
+    // marks the scan stale and it runs when the dialog opens. The sites on
+    // the map follow edits meanwhile through App's rescan of those shown.
+    const prev = scanned.current
+    if (prev && prev.sequence === sequence && prev.enzymes === candidateEnzymes && prev.topology === topology
+      && (prev.version === seqVersion || !open)) return
+    scanned.current = { sequence, enzymes: candidateEnzymes, topology, version: seqVersion }
     const gen = ++scanGeneration.current
     setScanning(true)
     const bases = sequence.bases // materialize once
@@ -106,7 +119,7 @@ export default function EnzymePanel({ open, onClose }: Props) {
     }).catch(() => {
       if (gen === scanGeneration.current) setScanning(false)
     })
-  }, [sequence, topology, candidateEnzymes]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [sequence, seqVersion, topology, candidateEnzymes, open]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Apply filters to get the final set of enzymes and sites
   const filteredResult = useMemo(() => {

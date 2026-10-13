@@ -88,11 +88,14 @@ export default function ProductsPanel({
 
   if (products.length === 0 || !selected) {
     const onePart = design.parts.length === 1 && design.method !== 'gateway' && design.method !== 'topo'
+    // With one part there is nothing to join it to, so the engine's reasons
+    // (no shared ends, no homology between parts) only restate that.
+    const missing = design.parts[0]?.role === 'vector' ? 'an insert' : 'the vector'
     return (
       <div className="cw-outcome">
         <Diagnosis
           title="Nothing assembles yet"
-          problems={onePart ? [...problems, 'There is only one part so far. Add the insert under Parts.'] : problems}
+          problems={onePart ? [`There is only one part so far. Add ${missing} under Parts.`] : problems}
           fixes={fixes}
           onFix={onFix}
         />

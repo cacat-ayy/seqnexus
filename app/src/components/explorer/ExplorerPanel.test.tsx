@@ -84,6 +84,29 @@ describe('ExplorerPanel', () => {
     expect(onImportInto).toHaveBeenCalledWith(folderId)
   })
 
+  it('assembles the reads filed in a folder, subfolders included, from the folder\'s menu', () => {
+    const f = store().addSequencingRead(trace('clone3_M13F'))
+    const r = store().addSequencingRead(trace('clone3_M13R'))
+    const folderId = store().createFolder('clone3')
+    const sub = store().createFolder('repeats', folderId)
+    store().moveItemToFolder(toUid('read', f), folderId)
+    store().moveItemToFolder(toUid('read', r), sub)
+    const plain = store().createFolder('Plasmids')
+    store().moveTabToFolder(store().openDocument('pIn', 'ATGC'), plain)
+    const onAlignToRef = vi.fn()
+    render(<ExplorerPanel open onCollapse={noop} onExpand={noop} onImportFiles={noop} onAlignToRef={onAlignToRef} />)
+    const folder = (name: string) => [...document.querySelectorAll<HTMLElement>('.ex-folder')].find(el => el.textContent?.includes(name))!
+    const item = (text: string) => [...document.querySelectorAll<HTMLElement>('.ctx-menu-item')].find(el => el.textContent?.includes(text))
+
+    fireEvent.contextMenu(folder('Plasmids'))
+    expect(item('Assemble')).toBeUndefined()
+    fireEvent.keyDown(document, { key: 'Escape' })
+
+    fireEvent.contextMenu(folder('clone3'))
+    fireEvent.click(item('Assemble 2 Reads')!)
+    expect(onAlignToRef).toHaveBeenCalledWith([f, r])
+  })
+
   it('shows only Sequences when there is nothing but sequences', () => {
     store().openDocument('pTest', 'ATGC')
     renderPanel()

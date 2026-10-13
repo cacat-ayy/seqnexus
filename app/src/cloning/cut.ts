@@ -17,7 +17,7 @@ import type { AnnotationData } from '../models/Annotation'
 import type { DocumentState } from '../models/Document'
 import { cutEnds, bluntEnd, type End } from './ends'
 import type { Fragment, FragmentSource } from './fragment'
-import { withoutSegments } from './fragment'
+import { clippedFrom5, keepReadingFrame, withoutSegments } from './fragment'
 import { findUnblockedSites } from './methylation'
 
 export interface DigestResult {
@@ -82,12 +82,12 @@ export function sliceAnnotations(
       const e = Math.min(annEnd + shift, windowEnd)
       if (e <= s) continue
       const clipped = s !== ann.start + shift || e !== annEnd + shift
-      out.push({
+      out.push(keepReadingFrame({
         ...withoutSegments(ann),
         start: s - start,
         end: e - start,
         ...(clipped || ann.truncated ? { truncated: true } : {}),
-      })
+      }, clippedFrom5({ ...ann, start: ann.start + shift, end: annEnd + shift }, s, e)))
     }
   }
 

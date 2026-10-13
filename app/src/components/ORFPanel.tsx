@@ -72,23 +72,36 @@ export default function ORFPanel({ open, onClose }: Props) {
     geneticCode,
   }), [minCodons, startCodons, allowInterior, topology, geneticCode])
 
+  // Edits rewrite the piece table in place, so `sequence` is the same object
+  // before and after one: its version is what changes. The ORFs stay drawn
+  // after the panel closes, so they follow edits too, once the typing stops.
+  const seqVersion = sequence.pieceTable.version
+  const scanned = useRef<{ sequence: unknown; options: ORFOptions } | null>(null)
+
   // Scan for ORFs asynchronously in a Web Worker
   useEffect(() => {
     if (seqLen === 0) {
       setAllOrfs([])
       return
     }
-    const gen = ++scanGeneration.current
-    setScanning(true)
-    const bases = sequence.bases
-    findORFs(bases, options).then(orfs => {
-      if (gen !== scanGeneration.current) return
-      setAllOrfs(orfs)
-      setScanning(false)
-    }).catch(() => {
-      if (gen === scanGeneration.current) setScanning(false)
-    })
-  }, [sequence, options]) // eslint-disable-line react-hooks/exhaustive-deps
+    const edited = scanned.current?.sequence === sequence && scanned.current.options === options
+    scanned.current = { sequence, options }
+    const scan = () => {
+      const gen = ++scanGeneration.current
+      setScanning(true)
+      const bases = sequence.bases
+      findORFs(bases, options).then(orfs => {
+        if (gen !== scanGeneration.current) return
+        setAllOrfs(orfs)
+        setScanning(false)
+      }).catch(() => {
+        if (gen === scanGeneration.current) setScanning(false)
+      })
+    }
+    if (!edited) { scan(); return }
+    const timer = setTimeout(scan, 300)
+    return () => clearTimeout(timer)
+  }, [sequence, seqVersion, options]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Always push results to store
   useEffect(() => {
@@ -174,14 +187,19 @@ export default function ORFPanel({ open, onClose }: Props) {
           {/* Settings */}
           <div className="re-settings">
             <div className="re-field">
-              <label className="re-field-label">Minimum ORF size (codons):</label>
-              <input
-                type="number"
-                className="re-num re-num-wide"
-                min={1}
-                value={minCodonsInput}
-                onChange={e => setMinCodonsInput(Math.max(1, parseInt(e.target.value) || 1))}
-              />
+              <label className="re-field-label" htmlFor="orf-min-codons">Minimum ORF size:</label>
+              <div className="orf-min-row">
+                <input
+                  id="orf-min-codons"
+                  type="number"
+                  className="re-num re-num-wide"
+                  min={1}
+                  value={minCodonsInput}
+                  onChange={e => setMinCodonsInput(Math.max(1, parseInt(e.target.value) || 1))}
+                />
+                {/* Codons, stop included, so the bases are three times that. */}
+                <span>codons, {(minCodonsInput * 3).toLocaleString()} bp</span>
+              </div>
             </div>
 
             <div className="re-field">

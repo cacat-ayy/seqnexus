@@ -18,6 +18,9 @@ import { useEditorStore, type CloneDoc } from '../../store'
 import { toUid } from '../../explorer/types'
 import { digestWorkspace } from '../../gel/workspace'
 import { notify } from '../../toast'
+import { openTwin } from '../../import/duplicates'
+import { directReporter } from '../../import/report'
+import type { DocumentState } from '../../models/Document'
 import { ENZYME_GROUPS } from '../../enzymes/db'
 import { KIT_LIST } from '../../cloning/kits'
 import {
@@ -206,11 +209,26 @@ export default function CloneWorkspace({ clone, onClose }: Props) {
     [setActiveTab, setSelection],
   )
 
+  /**
+   * Open a construct as a sequence, or show it when the same construct is
+   * already open, with the offer of a copy that importing makes. "Open
+   * product" and then "Check on a gel" used to leave two identical copies.
+   */
+  const openConstruct = useCallback((doc: DocumentState) => {
+    const store = useEditorStore.getState()
+    const twin = openTwin(doc, store.tabs)
+    if (!twin) {
+      store.openDocumentState(doc)
+      notify.success(`${doc.name} opened as a sequence`)
+      return
+    }
+    store.setActiveTab(twin.id)
+    directReporter.duplicates([doc], () => { useEditorStore.getState().openDocumentState(doc) })
+  }, [])
+
   const openProduct = useCallback(() => {
-    if (!chosen) return
-    openDocumentState(productDocument(design, chosen))
-    notify.success(`${chosen.name} opened as a sequence`)
-  }, [chosen, design, openDocumentState])
+    if (chosen) openConstruct(productDocument(design, chosen))
+  }, [chosen, design, openConstruct])
 
   const openRow = useCallback((row: BulkRow) => {
     if (!row.product) return
@@ -241,7 +259,8 @@ export default function CloneWorkspace({ clone, onClose }: Props) {
   const checkOnGel = useCallback(() => {
     if (!chosen) return
     const store = useEditorStore.getState()
-    const id = store.openDocumentState(productDocument(design, chosen))
+    const doc = productDocument(design, chosen)
+    const id = openTwin(doc, store.tabs)?.id ?? store.openDocumentState(doc)
     const enzymes = design.method === 'golden-gate'
       ? [design.typeIIS]
       : [...new Set(design.parts.flatMap(p => partEnzymes(p, design)))]
@@ -518,10 +537,7 @@ export default function CloneWorkspace({ clone, onClose }: Props) {
               onTab={setTab}
               onPart={patchPart}
               onSelectProduct={key => patch({ selected: key })}
-              onOpenProduct={product => {
-                openDocumentState(productDocument(design, product))
-                notify.success(`${product.name} opened as a sequence`)
-              }}
+              onOpenProduct={product => openConstruct(productDocument(design, product))}
               onFix={applyFix}
             />
           )}

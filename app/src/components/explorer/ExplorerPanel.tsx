@@ -465,6 +465,15 @@ function ExplorerPanel({
     setFilePickerOpen(false)
   }, [selectedIds])
 
+  // The Sanger reads in the folder a menu is open on, subfolders included:
+  // traces imported together land in a folder of their own, and assembling
+  // them should not first mean selecting every read in it.
+  const folderReads = useMemo(() => {
+    if (ctxMenu?.type !== 'folder') return []
+    const ids = folderSubtree(folders, ctxMenu.folderId)
+    return groupSelection(folders.filter(f => ids.has(f.id)).flatMap(f => f.itemUids)).read ?? []
+  }, [ctxMenu, folders])
+
   // --- Selection capabilities, for the multi-selection menu ---
   const selectionCaps = useMemo<SelectionCapabilities>(() => {
     const grouped = groupSelection(selectedIds)
@@ -782,6 +791,8 @@ function ExplorerPanel({
             newSequenceHere: !!onNewSequenceIn,
             exportFolder: !!onExportFolder,
           }}
+          folderReads={onAlignToRef ? folderReads.length : 0}
+          onAssembleFolder={() => { setCtxMenu(null); onAlignToRef?.(folderReads) }}
           onExportFolder={() => { if (ctxMenu.type === 'folder') onExportFolder?.(ctxMenu.folderId); setCtxMenu(null) }}
           onImportHere={() => { if (ctxMenu.type === 'folder') onImportInto?.(ctxMenu.folderId); setCtxMenu(null) }}
           onNewSequenceHere={() => { if (ctxMenu.type === 'folder') onNewSequenceIn?.(ctxMenu.folderId); setCtxMenu(null) }}

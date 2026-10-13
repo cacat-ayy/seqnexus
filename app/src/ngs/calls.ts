@@ -348,8 +348,11 @@ const IUPAC: Record<string, string> = {
  * from the sites at least 95% of the counted reads match the reference (the
  * sites are where 5% did not), so the reference base stands there for any
  * threshold up to 0.95.
+ *
+ * `toConsensus[p]` is where reference base p went in the consensus, or -1
+ * when the reads delete it: what carries the reference's features over.
  */
-export function siteConsensus(refSeq: string, coverage: ArrayLike<number> | null, calls: readonly SiteCall[], s: ConsensusSettings): { bases: string; masked: number; changed: number } {
+export function siteConsensus(refSeq: string, coverage: ArrayLike<number> | null, calls: readonly SiteCall[], s: ConsensusSettings): { bases: string; masked: number; changed: number; toConsensus: Int32Array } {
   const L = refSeq.length
   const out: string[] = new Array(L)
   let masked = 0
@@ -393,5 +396,12 @@ export function siteConsensus(refSeq: string, coverage: ArrayLike<number> | null
     if (ins && (ins.f + ins.r) >= s.threshold * total) out[p] += ins.a.slice(1)
     if (out[p] !== before) changed++
   }
-  return { bases: out.join(''), masked, changed }
+  // A base is written first at its position, any insertion after it.
+  const toConsensus = new Int32Array(L)
+  let at = 0
+  for (let p = 0; p < L; p++) {
+    toConsensus[p] = out[p] ? at : -1
+    at += out[p].length
+  }
+  return { bases: out.join(''), masked, changed, toConsensus }
 }

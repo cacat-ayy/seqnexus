@@ -210,6 +210,36 @@ describe('digestFragments', () => {
     expect(frags[1].annotations[0].end).toBe(6)   // 10 - 4 = 6 (fragment-local)
     expect(frags[1].annotations[0].truncated).toBe(true)
   })
+
+  // ATG AAA GAA TTC AAA CCC GGG TAA: M K E F K P G *, with EcoRI in codons 3-4.
+  const ORF = 'ATGAAAGAATTCAAACCCGGGTAA'
+
+  it('keeps the reading frame of a CDS cut at its 5\' end with /codon_start', () => {
+    const ann = new Annotation({ id: 'cds', name: 'orf', type: 'CDS', start: 0, end: 24, strand: 1 })
+    const { fragments: frags } = digestFragments(makeDoc('t', ORF, 'linear', [ann]), [EcoRI])
+    // The left piece keeps the start codon: nothing to skip.
+    expect(frags[0].annotations[0].qualifiers?.codon_start).toBeUndefined()
+    // The right piece starts at AATTC, the second base of GAA: skip two, read TTC AAA CCC GGG TAA.
+    const right = frags[1].annotations[0]
+    expect(right.qualifiers?.codon_start).toEqual(['3'])
+    expect(frags[1].sequence.slice(right.start + 2, right.end)).toBe('TTCAAACCCGGGTAA')
+  })
+
+  it('keeps the frame of a minus-strand CDS, whose 5\' end is its end', () => {
+    const rc = 'TTACCCGGGTTTGAATTCTTTCAT' // ORF reversed
+    const ann = new Annotation({ id: 'cds', name: 'orf', type: 'CDS', start: 0, end: 24, strand: -1 })
+    const { fragments: frags } = digestFragments(makeDoc('t', rc, 'linear', [ann]), [EcoRI])
+    // The left piece lost the 11 bases from the start codon on: read on the
+    // minus strand it is CAAACCCGGGTAA, so skip one, then AAA CCC GGG TAA.
+    expect(frags[0].annotations[0].qualifiers?.codon_start).toEqual(['2'])
+    expect(frags[1].annotations[0].qualifiers?.codon_start).toBeUndefined()
+  })
+
+  it('leaves a non-coding feature cut at its 5\' end alone', () => {
+    const ann = new Annotation({ id: 'm', name: 'site', type: 'misc_feature', start: 0, end: 24, strand: 1 })
+    const { fragments: frags } = digestFragments(makeDoc('t', ORF, 'linear', [ann]), [EcoRI])
+    expect(frags[1].annotations[0].qualifiers?.codon_start).toBeUndefined()
+  })
 })
 
 describe('ligateFragments', () => {

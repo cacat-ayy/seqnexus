@@ -119,7 +119,20 @@ export function useFocusTrap(
 
     document.addEventListener('keydown', onKeyDown)
 
+    // A control that removes itself (an "Add all" whose list empties, a row
+    // deleted from the dialog) takes focus with it, and the browser drops it
+    // on <body>. The dialog's Escape and Tab handling sit on the dialog, so
+    // from there the keyboard reached nothing until the user clicked back
+    // in. Take focus back whenever a change inside the dialog strands it.
+    const observer = new MutationObserver(() => {
+      if (trapStack[trapStack.length - 1] !== container) return
+      const activeEl = document.activeElement
+      if (!activeEl || activeEl === document.body || !activeEl.isConnected) container.focus({ preventScroll: true })
+    })
+    observer.observe(container, { childList: true, subtree: true })
+
     return () => {
+      observer.disconnect()
       document.removeEventListener('keydown', onKeyDown)
       const i = trapStack.lastIndexOf(container)
       if (i !== -1) trapStack.splice(i, 1)

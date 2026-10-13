@@ -51,7 +51,10 @@ export const DEFAULT_CONSTRAINTS: PrimerConstraints = {
   primerConc: 250,
   naConc: 50,
   mgConc: 1.5,
-  dntpConc: 0.6,
+  // The design workbench's Standard PCR buffer (primers/design/settings.ts),
+  // so a primer's Tm reads the same in the workbench list, on its card and
+  // in its hover card. At 0.6 mM the cards quoted about 0.5 °C more.
+  dntpConc: 0.8,
 }
 
 export interface PrimerCandidate {

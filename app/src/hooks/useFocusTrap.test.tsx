@@ -200,3 +200,20 @@ describe('useFocusTrap with a dialog that mounts late', () => {
     expect(isFocusTrapActive()).toBe(true)
   })
 })
+
+describe('useFocusTrap when the focused control goes away', () => {
+  it('takes focus back to the dialog, so Escape still reaches it', async () => {
+    const user = userEvent.setup()
+    function Vanishing() {
+      const [shown, setShown] = useState(true)
+      return (
+        <Dialog open>
+          {shown ? <button onClick={() => setShown(false)}>add all</button> : <p>nothing left</p>}
+        </Dialog>
+      )
+    }
+    render(<Vanishing />)
+    await user.click(screen.getByText('add all'))
+    expect(screen.getByTestId('dialog')).toHaveFocus()
+  })
+})

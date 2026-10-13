@@ -1190,7 +1190,9 @@ map, listed in a panel grouped by strand and frame with clickable positions.
 - **What counts.** An ORF runs from a start codon to the next in-frame stop
   codon of the document's genetic code. The start codons are chosen from
   ATG, GTG, TTG and CTG (ATG by default); the minimum size is given in
-  codons, stop included. Interior ORFs (one that starts at a downstream
+  codons, stop included, and is 100 codons (300 bases) by default: long
+  enough to pass over most chance ORFs, short enough to find the genes a
+  plasmid carries (bla is 287 codons, GFP 240). Interior ORFs (one that starts at a downstream
   start codon inside a longer ORF on the same strand) are shown by default
   and can be filtered out, leaving only the longest ORF ending at each stop.
 - **Circular sequences.** Reading continues past the end into the start, at
@@ -2408,7 +2410,10 @@ detects DNA or protein itself.
 
 "Automatic" uses the built-in pairwise aligner for exactly two sequences,
 MAFFT L-INS-i when its estimated running time is 20 seconds or less, and
-Kalign otherwise. The estimate comes from timing the WebAssembly builds on
+Kalign otherwise. Opened from disk (`file://`), the page can load none of the
+three tools (see the [Limits](#limits-5) of NGS read sets), so only the
+built-in pairwise aligner runs; for more sequences the dialog says why and
+how to serve the folder, rather than starting a job that cannot finish. The estimate comes from timing the WebAssembly builds on
 one thread and is good to a factor of two or three: enough to warn before
 starting something that will take minutes, which the dialog does.
 
@@ -2449,7 +2454,15 @@ an edit), and saved with it:
   identity for a selection is computed from the column counts (the
   identical pairs in a column with counts c_k are the sum of C(c_k, 2))
   rather than by comparing every pair of rows, so the statistics stay
-  linear in the selection's size and update on every edit.
+  linear in the selection's size and update on every edit. A row's end
+  gaps, before its first residue and after its last, are missing data
+  rather than differences: a partial sequence has nothing there to
+  compare, so pairs with a row in its end gaps are left out. A stretch
+  that matches a longer sequence base for base is 100% identical to it
+  (counted as gaps, the end columns put a 660 bp piece of EGFP at 91%).
+  A residue against a gap inside a row still counts as a difference. The
+  same rule gives the identity graph, the identity matrix and the figure
+  shown with each alignment in the explorer.
 - **Translation.** A DNA alignment can show a translation strip, or colour
   bases by the amino acid they encode. Each row is read from its own first
   residue in the chosen frame, skipping gaps, so a codon can straddle a gap.
@@ -3272,6 +3285,16 @@ rotation moves bases, features, part spans and junctions together; a feature
 that now runs across the origin ends below its start, as elsewhere in the app.
 It is skipped when the vector's own first base was cut away or the vector went
 in reversed, since then there is no base 1 to keep.
+
+A feature a cut runs through comes along clipped to what is left of it and
+marked truncated. A coding feature (CDS, gene or ORF) that loses its 5' end
+keeps its reading frame: its `/codon_start` is set to how many of the bases
+left come before its first whole codon. Without it the piece would be read
+from its first base, which is out of frame two times in three. lacZα in
+pUC19, cut at EcoRI and HindIII for an insert, keeps translating as lacZα up
+to the insert instead of showing stop codons that are not there. A joined
+feature is left without one: its frame runs through its exons, and a cut one
+loses its exons anyway.
 
 ### Ends and ligation
 
@@ -4471,7 +4494,13 @@ VCF can name the thresholds a variant failed.
   up to 95%. Mapped back from the test reads to a copy of their genome with
   two bases changed, three bases added and two removed, the consensus gives
   the original genome back base for base, apart from its poorly covered
-  ends.
+  ends. Opened as a sequence, the consensus carries the reference's
+  features (the open sequence's when it is still the length mapped to,
+  otherwise the copy the mapping kept), moved past the reads' insertions and
+  deletions as a de novo contig's are when it is lined up with the expected
+  sequence (see De novo assembly): a feature the reads delete entirely is
+  left out, one that lost or gained bases is moved and named in the notice,
+  so a CDS with a frameshift shows it in its translation.
 
 ### Samples
 

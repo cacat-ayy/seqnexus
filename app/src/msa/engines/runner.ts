@@ -4,6 +4,7 @@
  */
 
 import { runAlignment } from '../../workers/alignment'
+import { NEEDS_WEB, openedAsFile } from '../../utils/opened-as-file'
 import { DEFAULT_DNA_SCORING } from '../../alignment/types'
 import type { AlnKind } from '../model'
 import {
@@ -54,7 +55,18 @@ function wasmBase(): string {
 }
 
 function runInWorker(program: string, run: { args: string[]; files: Record<string, string>; outputs: string[] }) {
-  const worker = new Worker(new URL('../../workers/aligner.worker.ts', import.meta.url), { type: 'module' })
+  let worker: Worker
+  try {
+    worker = new Worker(new URL('../../workers/aligner.worker.ts', import.meta.url), { type: 'module' })
+  } catch (err) {
+    // Opened from disk, Chrome refuses module workers outright (it throws
+    // here rather than failing later), and the tools could not be fetched
+    // anyway. Uncaught, this left the dialog on "Aligning…" for good.
+    const why = openedAsFile()
+      ? NEEDS_WEB('MAFFT, MUSCLE and Kalign')
+      : `The aligner could not start: ${err instanceof Error ? err.message : String(err)}`
+    return { promise: Promise.reject<ToolResult>(new Error(why)), cancel: () => {} }
+  }
   let settle: ((r: ToolResult) => void) | null = null
   let fail: ((e: Error) => void) | null = null
   const promise = new Promise<ToolResult>((resolve, reject) => { settle = resolve; fail = reject })

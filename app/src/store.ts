@@ -2078,7 +2078,9 @@ export const useEditorStore = create<EditorStore>((set, get) => {
       updateActiveTab({ showOrfs: false })
       return chosen.length
     },
-    orfMinCodons: 300,
+    // 300 bases, stop included. 300 codons hid most plasmid genes (bla is
+    // 287 codons, GFP 240), so the demo pUC19 showed no ORFs at all.
+    orfMinCodons: 100,
     orfStartCodons: ['ATG'],
     orfAllowInterior: true,
     setOrfParams: (params) => set(params),

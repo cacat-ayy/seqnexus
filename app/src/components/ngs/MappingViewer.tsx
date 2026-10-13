@@ -28,7 +28,7 @@ import { notify } from '../../toast'
 import { saveText } from '../../utils/download'
 import { startCallVariants } from '../../workers/readset'
 import { siteVariants, technologyOfPreset, variantPresetOf, type SiteCall } from '../../ngs/calls'
-import { mappedFeatures, variantAnnotations } from '../../assembly/features'
+import { mappedFeatures, refFeatureData, variantAnnotations } from '../../assembly/features'
 import {
   VARIANT_PRESETS, variantFilters, variantKey, variantsCsv, type Variant, type VariantPreset, type VariantSettings,
 } from '../../assembly/variants'
@@ -265,6 +265,11 @@ export default function MappingViewer({ ngs, assemblyId, name, refIndex, onRefIn
   const refTab = refTabOf(ref)
   // With the sequence closed, the copy of its features the mapping kept.
   const features = useMemo(() => mappedFeatures(refs[ref], refTab ? [refTab] : []), [refs, ref, refTab])
+  /** A reference's features in full for a sequence made from the mapping: the open sequence's, else the kept copy. */
+  const featuresOf = useCallback((i: number): AnnotationData[] => {
+    const t = refTabOf(i)
+    return t ? t.doc.annotations.map(a => a.toData()) : (refs[i].features ?? []).map(refFeatureData)
+  }, [refTabOf, refs])
   const variants = useMemo(() => (calls && calls.ref === ref && refData?.ref === ref ? siteVariants(calls.list, refData.bases, features, technology, refs[ref].circular) : []),
     [calls, ref, refData, features, technology, refs])
   const passing = useMemo(() => variants.filter(v => variantFilters(v, vstate.settings).length === 0).sort((a, b) => a.c0 - b.c0), [variants, vstate.settings])
@@ -793,7 +798,7 @@ export default function MappingViewer({ ngs, assemblyId, name, refIndex, onRefIn
         />
       )}
       {consensusOpen && (
-        <ConsensusDialog source={source} refIndex={ref} name={name} assemblyId={assemblyId} onClose={() => setConsensusOpen(false)} />
+        <ConsensusDialog source={source} refIndex={ref} name={name} assemblyId={assemblyId} featuresOf={featuresOf} onClose={() => setConsensusOpen(false)} />
       )}
       {menu && (
         <ContextMenuPopup x={menu.x} y={menu.y} onClose={() => setMenu(null)} label="Mapping actions">

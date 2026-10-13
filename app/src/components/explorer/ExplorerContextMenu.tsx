@@ -50,6 +50,10 @@ interface Props {
   onNewSequenceHere: () => void
   /** A folder's: everything in it as one ZIP. */
   onExportFolder?: () => void
+  /** How many Sanger reads a folder holds, subfolders included; Assemble shows when there are any. */
+  folderReads?: number
+  /** A folder's: map its reads to a reference, or assemble them de novo. */
+  onAssembleFolder?: () => void
   selection: SelectionCapabilities
   /** Whether the host wired up each optional action. */
   has: { properties: boolean; exportItems: boolean; alignToRef: boolean; quickAlign: boolean; importHere: boolean; newSequenceHere: boolean; exportFolder?: boolean }
@@ -58,7 +62,7 @@ interface Props {
 export default function ExplorerContextMenu({
   target, starred, onClose, onRename, onDuplicate, onProperties, onExport, onDelete,
   onToggleStar, onEditNote, onEditTags, onAlignToRef, onAlignSelected, onJoinAlignments, onImportHere, onNewSequenceHere,
-  onExportFolder, selection, has,
+  onExportFolder, folderReads = 0, onAssembleFolder, selection, has,
 }: Props) {
   const ref = useRef<HTMLDivElement>(null)
   usePopoverDismiss(true, onClose, ref)
@@ -95,6 +99,15 @@ export default function ExplorerContextMenu({
           </>
         ) : target.type === 'folder' ? (
           <>
+            {folderReads > 0 && onAssembleFolder && (
+              <>
+                <button className="ctx-menu-item" onClick={onAssembleFolder}
+                  title={`Map the ${folderReads === 1 ? 'read' : `${folderReads} reads`} in this folder to a reference, or assemble them de novo`}>
+                  <Layers size={13} /> Assemble {folderReads === 1 ? 'Read' : `${folderReads} Reads`}…
+                </button>
+                <div className="ctx-menu-sep" />
+              </>
+            )}
             {has.newSequenceHere && (
               <button className="ctx-menu-item" onClick={onNewSequenceHere}>
                 <Dna size={13} /> New Sequence Here…

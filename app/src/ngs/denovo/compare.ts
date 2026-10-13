@@ -241,8 +241,12 @@ export function compareToExpected(o: { contig: string; contigCircular: boolean; 
  * Move features of the expected sequence onto the turned contig. A feature
  * whose every base was deleted (or lies outside a linear contig) is left
  * out; one that lost or gained bases is moved and listed as changed.
+ *
+ * Only the map from expected to contig positions and the contig's bases are
+ * read, so a mapping's consensus (siteConsensus) carries its reference's
+ * features over the same way.
  */
-export function liftFeatures(features: readonly AnnotationData[], cmp: Comparison, circular: boolean): { features: AnnotationData[]; dropped: string[]; changed: string[] } {
+export function liftFeatures(features: readonly AnnotationData[], cmp: Pick<Comparison, 'toContig' | 'bases'>, circular: boolean): { features: AnnotationData[]; dropped: string[]; changed: string[] } {
   const L = cmp.toContig.length
   const C = cmp.bases.length
   const out: AnnotationData[] = []

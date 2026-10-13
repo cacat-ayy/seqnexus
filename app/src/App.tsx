@@ -98,6 +98,7 @@ import { describeSession, exportSessionToJson, importSessionFromJson, remapSessi
 import FilenamePrompt from './components/FilenamePrompt'
 import SequencePdfDialog from './components/SequencePdfDialog'
 import { isFocusTrapActive } from './hooks/useFocusTrap'
+import { isWidgetKeyTarget } from './utils/key-target'
 import { BUILD_DATE, CITATION_BIBTEX, CITATION_TEXT } from './citation'
 import { copyText } from './utils/clipboard'
 import FetchDialog from './components/FetchDialog'
@@ -292,6 +293,10 @@ export default function App() {
   const zoomLevel = useEditorStore(s => s.zoomLevel)
   const setZoom = useEditorStore(s => s.setZoom)
   const seqLength = useEditorStore(s => s.doc.sequence.length)
+  // Edits rewrite the piece table in place, so doc.sequence stays the same
+  // object through them; its version is what changes, even when the length
+  // does not (a replace, a mutation).
+  const seqVersion = useEditorStore(s => s.doc.sequence.pieceTable.version)
   // The open document is a protein: no map, no strands, no enzymes, ORFs or
   // primers. The tools that need DNA say so instead of running on residues.
   const isProtein = useEditorStore(s => s.doc.sequence.alphabet === 'protein')
@@ -535,6 +540,9 @@ export default function App() {
   /** The text view or map is what the workspace shows, so a sequence PDF makes sense. */
   const sequenceShown = !!activeTabId && !activeClone && !activeGel && !activeContigId && !activeAssembly && !activeReadSet
     && activeSequencingReadIds.length === 0 && !activeAlignmentId
+  // For the key handlers registered once, on window.
+  const sequenceShownRef = useRef(sequenceShown)
+  sequenceShownRef.current = sequenceShown
   const undoAlignment = useEditorStore(s => s.undoAlignment)
   const redoAlignment = useEditorStore(s => s.redoAlignment)
   const gelOpen = activeGel !== null
@@ -710,13 +718,15 @@ export default function App() {
       })
     }, 300)
     return () => { if (enzymeScanTimer.current) clearTimeout(enzymeScanTimer.current) }
-  }, [doc.sequence, enzymeNames, seqLength, isProtein, setEnzymeCutSites])
+  }, [doc.sequence, seqVersion, enzymeNames, seqLength, isProtein, setEnzymeCutSites])
 
   // Ctrl+G to activate goto position input
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       if ((e.ctrlKey || e.metaKey) && e.key === 'g') {
         e.preventDefault()
+        // The page behind an open dialog is inert.
+        if (isFocusTrapActive()) return
         setGotoValue('')
         setGotoActive(true)
         requestAnimationFrame(() => gotoInputRef.current?.focus())
@@ -745,6 +755,8 @@ export default function App() {
     const handler = (e: KeyboardEvent) => {
       if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key === 'S') {
         e.preventDefault()
+        // Not on top of another dialog: the page behind it is inert.
+        if (isFocusTrapActive()) return
         const s = useEditorStore.getState()
         if (s.activeTabId || s.activeSequencingReadIds.length > 0 || s.activeAlignmentId || s.activeContigId || s.activeAssemblyId) {
           setBulkExportItems(activeExportItems(s))
@@ -767,6 +779,13 @@ export default function App() {
         } else if (state.activeAlignmentId) {
           e.preventDefault()
           setAlignSearchOpen(true)
+        } else if (sequenceShownRef.current && !e.defaultPrevented && !isFocusTrapActive() && isWidgetKeyTarget(e.target)) {
+          // The sequence view takes Ctrl+F itself, but not from a widget that
+          // runs its own keys: with focus in the explorer or the feature list
+          // the key went to the browser's own find bar instead.
+          e.preventDefault()
+          setShowFind(true)
+          setFindRequest(n => n + 1)
         }
       }
     }

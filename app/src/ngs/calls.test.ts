@@ -6,6 +6,7 @@ import {
   DEFAULT_VARIANT_SETTINGS, homopolymerRun, poissonTail, VARIANT_PRESETS, variantFilters, variantQual, type RefFeature,
 } from '../assembly/variants'
 import { vcfAlleles, writeVcf } from '../assembly/vcf'
+import { liftFeatures } from './denovo/compare'
 
 function memoryStorage(): MappingStorage {
   const map = new Map<string, Uint8Array>()
@@ -80,6 +81,32 @@ describe('NGS variant calling', () => {
     expect(half.masked).toBe(1)
     const strict = siteConsensus(REF, cov, calls, { threshold: 0.9, minDepth: 10, iupac: true })
     expect(strict.bases[7]).toBe('R')
+  })
+
+  it('maps reference positions onto the consensus, so the reference\'s features come along', async () => {
+    const reads = [
+      ...Array.from({ length: 12 }, () => ({ seq: del, cigar: '20M2D19M' })),
+      ...Array.from({ length: 12 }, () => ({ seq: ins, cigar: '30M2I11M' })),
+    ]
+    const calls = await mapping(reads)
+    const r = siteConsensus(REF, null, calls, { threshold: 0.5, minDepth: 0, iupac: true })
+    expect(r.bases).toBe(REF.slice(0, 20) + REF.slice(22, 30) + 'TT' + REF.slice(30))
+    // Before the deletion nothing moves, the deleted bases have no place, and after it everything is two
+    // back, until the inserted TT (written after reference base 29) puts it level again.
+    expect(r.toConsensus[3]).toBe(3)
+    expect([r.toConsensus[20], r.toConsensus[21]]).toEqual([-1, -1])
+    expect(r.toConsensus[25]).toBe(23)
+    expect(r.toConsensus[35]).toBe(35)
+    const lifted = liftFeatures([
+      { id: 'cds', name: 'gene', type: 'CDS', start: 3, end: 18, strand: 1 },
+      { id: 'run', name: 'G run', type: 'misc_feature', start: 18, end: 24, strand: 1 },
+      { id: 'gone', name: 'gone', type: 'misc_feature', start: 20, end: 22, strand: 1 },
+      { id: 'tail', name: 'tail', type: 'misc_feature', start: 28, end: 41, strand: 1 },
+    ], { toContig: r.toConsensus, bases: r.bases }, false)
+    expect(lifted.features.map(f => [f.id, f.start, f.end])).toEqual([['cds', 3, 18], ['run', 18, 22], ['tail', 26, 41]])
+    expect(lifted.dropped).toEqual(['gone'])
+    // The G run lost the deleted Gs; the tail holds the inserted TT.
+    expect(lifted.changed).toEqual(['G run', 'tail'])
   })
 
   it('counts a read across a circular origin at the sites at the start', async () => {

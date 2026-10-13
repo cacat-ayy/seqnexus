@@ -31,6 +31,22 @@ export function refFeatures(annotations: readonly AnnotationData[]): RefFeature[
   })
 }
 
+/**
+ * A kept reference feature as a feature again, for a sequence made from the
+ * mapping once the reference itself is closed: its name, place, colour,
+ * reading frame, genetic code and exons, which is all the copy keeps.
+ */
+export function refFeatureData(f: RefFeature): AnnotationData {
+  const qualifiers: Record<string, string[]> = {}
+  if (f.frame) qualifiers.codon_start = [String(f.frame + 1)]
+  if (f.code) qualifiers.transl_table = [String(f.code)]
+  return {
+    id: f.id, name: f.name, type: f.type, start: f.start, end: f.end, strand: f.strand, color: f.color,
+    ...(Object.keys(qualifiers).length ? { qualifiers } : {}),
+    ...(f.segments ? { segments: f.segments.map(([s, e]): [number, number] => [s, e]) } : {}),
+  }
+}
+
 /** What tabReference reads of an open sequence. */
 export interface ReferenceTab {
   id: string

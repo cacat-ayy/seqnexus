@@ -14,6 +14,9 @@ import { saveText } from '../../utils/download'
 import { toFasta } from '../../sanger/edits'
 import { DEFAULT_CONSENSUS_SETTINGS, siteConsensus, type ConsensusSettings } from '../../ngs/calls'
 import type { MappingSource } from '../../ngs/view'
+import { liftFeatures } from '../../ngs/denovo/compare'
+import { Sequence } from '../../models/Sequence'
+import { Annotation, type AnnotationData } from '../../models/Annotation'
 
 const nf = new Intl.NumberFormat()
 let remembered: ConsensusSettings = DEFAULT_CONSENSUS_SETTINGS
@@ -25,10 +28,12 @@ interface Props {
   name: string
   /** Comes back to the mapping after opening sequences. */
   assemblyId: string
+  /** A reference's features, carried over to its consensus. */
+  featuresOf: (refIndex: number) => AnnotationData[]
   onClose: () => void
 }
 
-export default function ConsensusDialog({ source, refIndex, name, assemblyId, onClose }: Props) {
+export default function ConsensusDialog({ source, refIndex, name, assemblyId, featuresOf, onClose }: Props) {
   const [s, setS] = useState(remembered)
   const [all, setAll] = useState(false)
   const [busy, setBusy] = useState(false)
@@ -59,13 +64,33 @@ export default function ConsensusDialog({ source, refIndex, name, assemblyId, on
     try {
       const store = useEditorStore.getState()
       let last = ''
+      let carried = 0
+      const dropped: string[] = []
+      const changed: string[] = []
       for (const i of which) {
         const r = await build(i)
-        last = store.openDocument(title(i), r.bases, r.ref.circular ? 'circular' : 'linear', describe(r), 'consensus')
+        // The reference's features, moved past the reads' insertions and
+        // deletions; one the reads delete entirely is left out.
+        const lifted = liftFeatures(featuresOf(i).filter(f => f.type !== 'source'), { toContig: r.toConsensus, bases: r.bases }, r.ref.circular)
+        carried += lifted.features.length
+        dropped.push(...lifted.dropped)
+        changed.push(...lifted.changed)
+        last = store.openDocumentState({
+          name: title(i),
+          description: describe(r),
+          sequence: new Sequence(r.bases, r.ref.circular ? 'circular' : 'linear'),
+          annotations: lifted.features.map(f => new Annotation(f)),
+          metadata: { origin: 'consensus' },
+        })
       }
       store.setActiveAssembly(assemblyId)
-      notify.success(which.length === 1 ? 'Opened the consensus as a new sequence' : `Opened ${which.length} consensus sequences`,
-        { action: { label: 'Show', onClick: () => useEditorStore.getState().setActiveTab(last) } })
+      const detail = [
+        dropped.length ? `Left out, deleted in the reads: ${dropped.join(', ')}` : '',
+        changed.length ? `Length changed: ${changed.join(', ')}` : '',
+      ].filter(Boolean).join('. ')
+      const what = which.length === 1 ? 'Opened the consensus as a new sequence' : `Opened ${which.length} consensus sequences`
+      notify.success(`${what}, with ${carried} ${carried === 1 ? 'feature' : 'features'}`,
+        { ...(detail ? { detail } : {}), action: { label: 'Show', onClick: () => useEditorStore.getState().setActiveTab(last) } })
       onClose()
     } catch (err) {
       notify.error('Could not build the consensus', { detail: err instanceof Error ? err.message : String(err) })

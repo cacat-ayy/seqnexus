@@ -111,6 +111,14 @@
 .re-num-wide {
   width: 60px;
 }
+/* The ORF finder's minimum, with its length in bases beside it. */
+.orf-min-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1-5);
+  font-size: var(--text-sm);
+  color: var(--text-secondary);
+}
 
 /* Results */
 .re-results {
