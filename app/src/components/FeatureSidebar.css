@@ -529,6 +529,50 @@
   background: var(--accent);
 }
 
+/* --- Along the bottom (Appearance > Layout) ---
+   Under the sequence view and over the status bar, as wide as the view. It
+   takes a height rather than a width. Whatever height was saved, the column
+   above keeps at least 320px for the view tabs, the panel bar and the view
+   (PANEL_VIEW_ROOM in the component), and the panel at least its 140px
+   minimum, which wins on a very short window. */
+.feature-sidebar.is-bottom {
+  position: relative;
+  min-width: 0;
+  max-width: none;
+  min-height: 140px;
+  max-height: calc(100% - 320px);
+  border-left: none;
+  border-top: 1px solid var(--border);
+  animation: pop-up var(--dur-normal) var(--ease-out);
+}
+
+/* Maximized from the BLAST tab: the panel takes the view's room, as the
+   BLAST drawer does on its own; the view keeps its state underneath. */
+.feature-sidebar.is-bottom.is-maximized {
+  flex: 1 1 auto;
+  max-height: none;
+}
+.center-panel:has(> .feature-sidebar.is-maximized) > .view-and-panels {
+  flex: 0 0 0;
+}
+
+/* The top edge, dragged (or arrowed) to resize; straddles the border. */
+.fs-resize-top {
+  position: absolute;
+  top: calc(-1 * var(--space-1));
+  left: 0;
+  right: 0;
+  height: var(--space-2);
+  cursor: ns-resize;
+  z-index: var(--z-sticky);
+  transition: background var(--dur-fast);
+}
+.fs-resize-top:hover,
+.fs-resize-top:focus-visible {
+  background: color-mix(in srgb, var(--accent) 35%, transparent);
+  outline: none;
+}
+
 /* Header: matches .view-tabs height so the border-bottom aligns across columns */
 .fs-header {
   display: flex;
@@ -1098,4 +1142,164 @@ fieldset.ft-editor {
   font-size: var(--text-2xs);
   line-height: 1.4;
   color: var(--text-muted);
+}
+
+/* ===== Features along the bottom: a table, the editor beside it =====
+   The header and every row share one set of columns (--ft-cols), so the
+   names, types and numbers line up down the panel. */
+.fs-wide {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+}
+
+.fs-wide-main {
+  /* The tables below answer to this column's width, not the window's: a
+     wide explorer or a narrow window both leave less room for them. */
+  container: wide-main / inline-size;
+  --ft-cols: minmax(160px, 3fr) minmax(90px, 1.4fr) 84px 84px 84px 52px 24px;
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+}
+
+.ft-table-head {
+  display: grid;
+  grid-template-columns: var(--ft-cols);
+  gap: var(--space-2);
+  align-items: center;
+  /* The row's own inset: its padding, the 3px selection bar, the summary's padding. */
+  padding: 0 var(--space-2) 0 calc(2 * var(--space-1-5) + 3px);
+  border-bottom: 1px solid var(--border-light);
+  flex-shrink: 0;
+}
+
+.ft-th {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  padding: var(--space-1) 0;
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  font-size: var(--text-2xs);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  cursor: pointer;
+  text-align: left;
+  min-width: 0;
+}
+.ft-th.num { justify-content: flex-end; }
+.ft-th:hover { color: var(--text); }
+.ft-th.on { color: var(--accent); }
+.ft-th-dir { font-size: var(--text-2xs); }
+
+.fs-item.wide > .ft-summary {
+  display: grid;
+  grid-template-columns: var(--ft-cols);
+  gap: var(--space-2);
+  position: relative;
+}
+
+.ft-col-name {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  min-width: 0;
+}
+
+.ft-col-type {
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ft-col-num {
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  color: var(--text-secondary);
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+/* The row being edited beside the table: marked, not opened in place. */
+.fs-item.wide.expanded {
+  margin: 0;
+  padding: 0 var(--space-1-5);
+  border-radius: 0;
+  background: none;
+}
+.fs-item.wide.expanded > .ft-summary {
+  background: var(--bg-hover);
+  border-left-color: var(--border-hover);
+}
+
+.fs-detail {
+  width: clamp(260px, 32%, 340px);
+  flex-shrink: 0;
+  overflow-y: auto;
+  border-left: 1px solid var(--border);
+  background: var(--bg-sidebar);
+}
+
+.fs-detail-head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1-5);
+  padding: var(--space-1-5) var(--space-1-5) var(--space-1-5) var(--space-2-5);
+  border-bottom: 1px solid var(--border-light);
+  position: sticky;
+  top: 0;
+  z-index: var(--z-sticky);
+  background: var(--bg-sidebar);
+}
+
+.fs-detail-name {
+  flex: 1;
+  min-width: 0;
+  font-size: var(--text-sm);
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.fs-detail .ft-editor {
+  padding: var(--space-2) var(--space-2-5);
+}
+
+.fs-detail-empty {
+  padding: var(--space-5) var(--space-3);
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+  text-align: center;
+}
+
+/* Narrower, the table gives up columns rather than spill past its edge:
+   End first (Start and Length still place the feature), then Type. */
+@container wide-main (max-width: 600px) {
+  .ft-table-head,
+  .fs-list {
+    --ft-cols: minmax(120px, 3fr) minmax(80px, 1.4fr) 72px 72px 44px 24px;
+  }
+  .ft-table-head .col-end,
+  .fs-item.wide .col-end {
+    display: none;
+  }
+}
+@container wide-main (max-width: 460px) {
+  .ft-table-head,
+  .fs-list {
+    --ft-cols: minmax(110px, 1fr) 64px 64px 40px 24px;
+  }
+  .ft-table-head .col-type,
+  .fs-item.wide .col-type {
+    display: none;
+  }
 }

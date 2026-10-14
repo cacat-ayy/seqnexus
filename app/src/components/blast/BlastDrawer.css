@@ -19,6 +19,13 @@
   flex: 0 0 0;
 }
 
+/* As the BLAST tab of the features panel along the bottom: fills the tab,
+   under the panel's own header, which already draws the line above it. */
+.bd.bd-embedded {
+  flex: 1 1 auto;
+  border-top: none;
+}
+
 /* The top edge, dragged (or arrowed) to resize. */
 .bd-resize {
   position: absolute;

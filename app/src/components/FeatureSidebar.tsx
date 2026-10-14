@@ -10,9 +10,9 @@
  * scrolled into view, and hovering a row highlights the feature there.
  */
 
-import { useState, useCallback, useRef, useEffect, useLayoutEffect, useMemo, memo } from 'react'
+import { useState, useCallback, useRef, useEffect, useLayoutEffect, useMemo, memo, lazy, Suspense, type ReactNode } from 'react'
 import {
-  useEditorStore, allSelectionsOf, joinedSegments, extraSelectionsOf, selectionSegments,
+  useEditorStore, allSelectionsOf, joinedSegments, extraSelectionsOf, selectionSegments, type SidebarTab,
 } from '../store'
 import type { Annotation, Strand } from '../models/Annotation'
 import { defaultColorForType } from '../models/Annotation'
@@ -29,23 +29,44 @@ import { FeatureContextMenu, GroupContextMenu } from './features/FeatureMenus'
 import { deleteFeaturesWithUndo, rowDomId, selectAndCenterFeature, selectFeature } from './features/feature-actions'
 import { useListMultiSelect } from '../hooks/useListMultiSelect'
 import {
-  Plus, X, Eye, EyeOff, Search, PanelRightClose, ChevronsDownUp, ChevronsUpDown,
-  SlidersHorizontal, MoreHorizontal, List, FlaskConical, Crosshair,
+  Plus, X, Eye, EyeOff, Search, PanelRightClose, PanelBottomClose, PanelBottom, PanelRight, ChevronsDownUp, ChevronsUpDown,
+  SlidersHorizontal, MoreHorizontal, List, FlaskConical, Crosshair, Globe,
 } from 'lucide-react'
 import './FeatureSidebar.css'
 
 import { defaultFeatureType, featureTypesFor, PRESET_COLORS } from '../utils/annotation-constants'
-import { annotationBases, issueMessages, translationIssues, type IssueMessage } from '../utils/annotation-sequence'
+import { annotationBases, annotationLength, issueMessages, translationIssues, type IssueMessage } from '../utils/annotation-sequence'
 import { isEmptyQuery, matchesFeatureQuery, parseFeatureQuery } from '../utils/feature-filter'
 import { featureOverlaps } from '../utils/feature-location'
 import { copyText } from '../utils/clipboard'
 import { STORAGE_KEYS } from '../storage/keys'
 import Chevron from './Chevron'
+import { useBlastStore, openDrawer as openBlast, closeDrawer as closeBlast } from '../blast/session'
+
+const BlastDrawer = lazy(() => import('./blast/BlastDrawer'))
 
 const SIDEBAR_MIN = 200
 const SIDEBAR_MAX = 500
 const SIDEBAR_DEFAULT = 280
 const STORAGE_KEY_WIDTH = STORAGE_KEYS.featureSidebarWidth
+/**
+ * Along the bottom: 140px holds the header and a few rows, and the column
+ * above always keeps PANEL_VIEW_ROOM (the view tabs, the panel bar and some
+ * 250px of view). The stylesheet enforces it too, so a window made shorter
+ * later does not leave the panel taller than allowed.
+ */
+const PANEL_MIN = 140
+const PANEL_DEFAULT = 260
+const PANEL_VIEW_ROOM = 320
+
+function loadPanelHeight(): number {
+  try {
+    const n = parseInt(localStorage.getItem(STORAGE_KEYS.featurePanelHeight) ?? '', 10)
+    return Number.isFinite(n) && n >= PANEL_MIN ? n : PANEL_DEFAULT
+  } catch {
+    return PANEL_DEFAULT
+  }
+}
 
 function loadView(): FeatureListView {
   try {
@@ -58,6 +79,36 @@ function loadView(): FeatureListView {
 /** Position order: by start, the longer of two that start together first. */
 function byPosition(a: Annotation, b: Annotation): number {
   return a.start - b.start || (b.end - b.start) - (a.end - a.start) || a.name.localeCompare(b.name)
+}
+
+/** A column of the feature table (the panel along the bottom) to sort by. */
+type SortKey = 'name' | 'type' | 'start' | 'end' | 'length' | 'strand'
+interface TableSort { key: SortKey; dir: 1 | -1 }
+/** Position order, which is also the sidebar's only flat order. */
+const DEFAULT_SORT: TableSort = { key: 'start', dir: 1 }
+
+const TABLE_COLUMNS: { key: SortKey; label: string; numeric?: boolean }[] = [
+  { key: 'name', label: 'Name' },
+  { key: 'type', label: 'Type' },
+  { key: 'start', label: 'Start', numeric: true },
+  { key: 'end', label: 'End', numeric: true },
+  { key: 'length', label: 'Length', numeric: true },
+  { key: 'strand', label: 'Strand' },
+]
+
+/** One column, ascending or descending, then position to settle ties. */
+function tableComparator({ key, dir }: TableSort, seqLen: number): (a: Annotation, b: Annotation) => number {
+  const by = (a: Annotation, b: Annotation): number => {
+    switch (key) {
+      case 'name': return a.name.localeCompare(b.name, undefined, { numeric: true })
+      case 'type': return a.type.localeCompare(b.type)
+      case 'start': return a.start - b.start
+      case 'end': return a.end - b.end
+      case 'length': return annotationLength(a, seqLen) - annotationLength(b, seqLen)
+      case 'strand': return a.strand - b.strand
+    }
+  }
+  return (a, b) => by(a, b) * dir || byPosition(a, b)
 }
 
 /**
@@ -97,12 +148,31 @@ function useCompactTabs(
   return compact
 }
 
+/** Along the bottom, the Features tab and the editor column beside it. */
+function WideSplit({ detail, children }: { detail: ReactNode; children: ReactNode }) {
+  if (!detail) return <>{children}</>
+  return (
+    <div className="fs-wide">
+      <div className="fs-wide-main">{children}</div>
+      {detail}
+    </div>
+  )
+}
+
 interface FeatureSidebarProps {
   open: boolean
   onClose: () => void
+  /**
+   * On the right of the main area, or along the bottom of the sequence
+   * view (Appearance > Layout). Along the bottom it takes a height instead
+   * of a width, and its tabs keep their words: there is room for them.
+   */
+  placement?: 'right' | 'bottom'
 }
 
-function FeatureSidebar({ open, onClose }: FeatureSidebarProps) {
+function FeatureSidebar({ open, onClose, placement = 'right' }: FeatureSidebarProps) {
+  const bottom = placement === 'bottom'
+  const setPanelPlacement = useEditorStore(s => s.setPanelPlacement)
   const doc = useEditorStore(s => s.doc)
   const annotations = doc.annotations
   const sequence = doc.sequence
@@ -136,6 +206,9 @@ function FeatureSidebar({ open, onClose }: FeatureSidebarProps) {
     setViewState(v)
     try { localStorage.setItem(STORAGE_KEYS.featureSidebarView, v) } catch { /* private mode */ }
   }, [])
+  // Along the bottom the Features tab is a table with the editor beside it.
+  const wide = bottom
+  const [tableSort, setTableSort] = useState<TableSort>(DEFAULT_SORT)
   const [inSelection, setInSelection] = useState(false)
   const [optionsOpen, setOptionsOpen] = useState(false)
   const optionsBtnRef = useRef<HTMLButtonElement>(null)
@@ -196,11 +269,58 @@ function FeatureSidebar({ open, onClose }: FeatureSidebarProps) {
     localStorage.setItem(STORAGE_KEY_WIDTH, String(finalWidth))
   }, [])
 
+  // Along the bottom: the height, dragged from the top edge or stepped with
+  // the arrow keys on it, as the BLAST drawer is.
+  const asideRef = useRef<HTMLElement>(null)
+  const [height, setHeight] = useState(loadPanelHeight)
+  const heightDrag = useRef<{ y: number; h: number } | null>(null)
+  const maxHeight = useCallback(() => {
+    const room = asideRef.current?.parentElement?.clientHeight ?? 0
+    return Math.max(PANEL_MIN, room - PANEL_VIEW_ROOM)
+  }, [])
+  const commitHeight = useCallback((h: number) => {
+    const next = Math.round(Math.max(PANEL_MIN, Math.min(maxHeight(), h)))
+    setHeight(next)
+    try { localStorage.setItem(STORAGE_KEYS.featurePanelHeight, String(next)) } catch { /* quota: a nicety */ }
+  }, [maxHeight])
+  const onHeightDown = useCallback((e: React.PointerEvent) => {
+    e.preventDefault()
+    ;(e.target as HTMLElement).setPointerCapture(e.pointerId)
+    // What is on screen, which a window made shorter may have capped.
+    heightDrag.current = { y: e.clientY, h: asideRef.current?.offsetHeight || height }
+  }, [height])
+  const onHeightMove = useCallback((e: React.PointerEvent) => {
+    if (!heightDrag.current) return
+    commitHeight(heightDrag.current.h + heightDrag.current.y - e.clientY)
+  }, [commitHeight])
+  const onHeightUp = useCallback(() => { heightDrag.current = null }, [])
+  const onHeightKey = useCallback((e: React.KeyboardEvent) => {
+    const step = e.shiftKey ? 64 : 16
+    const shown = asideRef.current?.offsetHeight || height
+    if (e.key === 'ArrowUp') { e.preventDefault(); commitHeight(shown + step) }
+    else if (e.key === 'ArrowDown') { e.preventDefault(); commitHeight(shown - step) }
+  }, [commitHeight, height])
+
   // Features, Primers and Guides share the sidebar as tabs; the Primers tab
   // has a list view and the design workbench. Both live in the store so the
   // toolbar, panel bar and canvas can send the user to either.
   const tab = useEditorStore(s => s.sidebarTab)
   const switchTab = useEditorStore(s => s.setSidebarTab)
+  // Along the bottom, BLAST being open is its tab showing: App opens the
+  // panel when BLAST opens, and closing the panel closes BLAST. Another tab
+  // picked closes it, so the sidebar's own tab is never BLAST.
+  const blastOpen = useBlastStore(s => s.open)
+  const blastRunning = useBlastStore(s => !!s.run)
+  const blastUnseen = useBlastStore(s => s.unseen)
+  const blastMaximized = useBlastStore(s => s.maximized)
+  const blastShown = bottom && blastOpen
+  const shownTab = blastShown ? 'blast' : tab
+  const pickTab = useCallback((id: SidebarTab | 'blast') => {
+    if (id === 'blast') { openBlast(); return }
+    if (blastShown) closeBlast()
+    switchTab(id)
+  }, [blastShown, switchTab])
+  const maximized = blastShown && blastMaximized
   const primerView = useEditorStore(s => s.primerView)
   const setPrimerView = useEditorStore(s => s.setPrimerView)
   const [addingPrimer, setAddingPrimer] = useState(false)
@@ -230,9 +350,10 @@ function FeatureSidebar({ open, onClose }: FeatureSidebarProps) {
     if (!e || !ann) { setTooltip(null); return }
     const rect = (e.currentTarget as HTMLElement).getBoundingClientRect()
     tooltipTimer.current = setTimeout(() => {
-      setTooltip({ ann, x: rect.left, y: rect.bottom + 4 })
+      // Along the bottom the card opens above the row, where there is room.
+      setTooltip(bottom ? { ann, x: rect.left, y: rect.top - 4 } : { ann, x: rect.left, y: rect.bottom + 4 })
     }, 400)
-  }, [setHoveredAnnotation])
+  }, [setHoveredAnnotation, bottom])
   // Leave nothing highlighted on the canvas when the sidebar goes away.
   useEffect(() => {
     if (open) return
@@ -394,7 +515,17 @@ function FeatureSidebar({ open, onClose }: FeatureSidebarProps) {
     return [...map.entries()].sort((a, b) => b[1].length - a[1].length || a[0].localeCompare(b[0]))
   }, [filteredAnnotations])
 
-  const sorted = useMemo(() => [...filteredAnnotations].sort(byPosition), [filteredAnnotations])
+  // The flat list's order: position in the sidebar, any column in the table.
+  const activeSort = wide ? tableSort : DEFAULT_SORT
+  const sorted = useMemo(
+    () => [...filteredAnnotations].sort(tableComparator(activeSort, seqLen)),
+    [filteredAnnotations, activeSort, seqLen],
+  )
+  /** A column header clicked: sort the flat list by it, again to reverse. */
+  const sortBy = useCallback((key: SortKey) => {
+    setTableSort(prev => (view === 'position' && prev.key === key ? { key, dir: prev.dir === 1 ? -1 : 1 } : { key, dir: 1 }))
+    if (view !== 'position') setView('position')
+  }, [view, setView])
 
   const allCollapsed = grouped.length > 0 && grouped.every(([t]) => collapsedTypes.has(t))
 
@@ -459,7 +590,9 @@ function FeatureSidebar({ open, onClose }: FeatureSidebarProps) {
     setActiveId(ann.id)
     setKbd(false)
     handleItemClick(e, ann.id, () => selectFeature(ann))
-  }, [handleItemClick])
+    // In the table a plain click also shows the feature in the editor beside it.
+    if (wide && !e.ctrlKey && !e.metaKey && !e.shiftKey) openEditor(ann.id)
+  }, [handleItemClick, wide, openEditor])
 
   const handleRowDoubleClick = useCallback((ann: Annotation) => {
     setExpandedId(prev => (prev === ann.id ? null : ann.id))
@@ -477,20 +610,28 @@ function FeatureSidebar({ open, onClose }: FeatureSidebarProps) {
   }, [])
 
   // --- Keyboard ---
+  /**
+   * Inside an open editor the fields keep their keys. Escape (and Enter in
+   * the name) closes it and hands the keyboard back to the list. True when
+   * the key was the editor's, whether in a row or in the column beside the
+   * table.
+   */
+  const handleEditorKeys = (e: React.KeyboardEvent<HTMLElement>): boolean => {
+    const target = e.target as HTMLElement
+    if (!target.closest('.ft-editor')) return false
+    const commitOnEnter = e.key === 'Enter' && target.dataset.commitOnEnter !== undefined
+    if (e.key === 'Escape' || commitOnEnter) {
+      e.preventDefault()
+      e.stopPropagation()
+      openEditor(null)
+      listRef.current?.focus()
+    }
+    return true
+  }
+
   const handleListKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
     const target = e.target as HTMLElement
-    // Inside an open editor the fields keep their keys. Escape (and Enter in
-    // the name) closes it and hands the keyboard back to the list.
-    if (target.closest('.ft-editor')) {
-      const commitOnEnter = e.key === 'Enter' && target.dataset.commitOnEnter !== undefined
-      if (e.key === 'Escape' || commitOnEnter) {
-        e.preventDefault()
-        e.stopPropagation()
-        openEditor(null)
-        listRef.current?.focus()
-      }
-      return
-    }
+    if (handleEditorKeys(e)) return
     // A button in a row or group header runs its own Enter and Space.
     if (target !== e.currentTarget && (e.key === 'Enter' || e.key === ' ')) return
 
@@ -506,6 +647,8 @@ function FeatureSidebar({ open, onClose }: FeatureSidebarProps) {
       setActiveId(next.id)
       if (e.shiftKey) handleItemClick({ ctrlKey: false, metaKey: false, shiftKey: true }, next.id)
       else handleItemClick({ ctrlKey: false, metaKey: false, shiftKey: false }, next.id, () => selectFeature(next))
+      // The editor beside the table follows the keyboard's row.
+      if (wide && expandedId && !e.shiftKey) openEditor(next.id)
       scrollToRow(next.id)
     }
 
@@ -563,14 +706,155 @@ function FeatureSidebar({ open, onClose }: FeatureSidebarProps) {
     // only exists while the tab is open, so selecting it would widen the
     // header and tip all three tabs into icons. The panel says how many.
     ...(isProteinDoc ? [] : [{ id: 'guides' as const, label: 'Guides', Icon: Crosshair, count: null }]),
+    // Along the bottom BLAST is a tab here too; on the right it keeps its
+    // own drawer under the view.
+    ...(bottom ? [{ id: 'blast' as const, label: 'BLAST', Icon: Globe, count: null }] : []),
   ]
-  const compactTabs = useCompactTabs(tabsRef, measureRef, tabDefs.map(t => `${t.label}${t.count}`).join('|') + `|${width}`)
+  // Along the bottom the tabs always have room for their words.
+  const compactTabs = useCompactTabs(tabsRef, measureRef, tabDefs.map(t => `${t.label}${t.count}`).join('|') + `|${width}`) && !bottom
 
   if (!open) return null
 
   const featureIssues = (id: string) => issuesById.get(id)
   const groupMenuAnns = groupMenu ? grouped.find(([t]) => t === groupMenu.type)?.[1] ?? [] : []
   const nonDefaultOptions = view !== 'type' || inSelection
+
+  /** The new feature's form: under the filter in the sidebar, beside the table at the bottom. */
+  const addForm = (
+    <div className="ft-editor ft-add-form fs-add-form">
+      <div className="ft-row">
+        <label>Name</label>
+        <input
+          className="input ft-input"
+          value={newName}
+          onChange={e => setNewName(e.target.value)}
+          onKeyDown={e => e.key === 'Enter' && handleAdd()}
+          autoFocus
+        />
+      </div>
+      <div className="ft-row">
+        <label>Type</label>
+        <select className="select ft-select" value={newType} onChange={e => handleNewTypeChange(e.target.value)}>
+          {FEATURE_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
+        </select>
+      </div>
+      {newParts ? (
+        <div className="ft-row">
+          <label>Parts</label>
+          <div className="ft-join">
+            <span className="ft-join-text" title="Joined parts, in reading order">
+              {newParts.map(([s, e]) => `${s + 1}..${e}`).join(', ')}
+            </span>
+            <button
+              className="btn btn-sm"
+              title="Annotate the whole span instead, from the first part to the last"
+              onClick={() => setNewParts(null)}
+            >One Span</button>
+          </div>
+        </div>
+      ) : (
+      <div className="ft-row">
+        <label>Range</label>
+        <div className="ft-range-inputs">
+          <input
+            className="input ft-input ft-num"
+            type="number"
+            min={1}
+            max={seqLen}
+            value={newStart}
+            onChange={e => setNewStart(parseInt(e.target.value) || 1)}
+          />
+          <span>..</span>
+          <input
+            className="input ft-input ft-num"
+            type="number"
+            min={1}
+            max={seqLen}
+            value={newEnd}
+            onChange={e => setNewEnd(parseInt(e.target.value) || 1)}
+          />
+        </div>
+      </div>
+      )}
+      <div className="ft-row">
+        <label>Strand</label>
+        <select
+          className="select ft-select"
+          value={newStrand}
+          onChange={e => setNewStrand(parseInt(e.target.value) as Strand)}
+        >
+          <option value={1}>Forward (+)</option>
+          <option value={-1}>Reverse (−)</option>
+          <option value={0}>None</option>
+        </select>
+      </div>
+      <div className="ft-row">
+        <label>Color</label>
+        <div className="ft-color-row">
+          <div className="ft-color-presets">
+            {PRESET_COLORS.map(c => (
+              <button
+                key={c}
+                className={`ft-color-dot ${c === newColor ? 'active' : ''}`}
+                style={{ backgroundColor: c }}
+                onClick={() => { setNewColor(c); setColorManuallySet(true) }}
+              />
+            ))}
+            <label className="ft-color-dot ft-color-custom" style={{ backgroundColor: newColor }} title="Custom color">
+              <input
+                type="color"
+                value={newColor}
+                onChange={e => { setNewColor(e.target.value); setColorManuallySet(true) }}
+              />
+            </label>
+          </div>
+        </div>
+      </div>
+      <div className="ft-actions">
+        <button className="btn btn-primary btn-sm" onClick={handleAdd}>Add Feature</button>
+        <button className="btn btn-sm" onClick={() => { setAdding(false); setNewParts(null) }}>Cancel</button>
+      </div>
+    </div>
+  )
+
+  // Beside the table: the editor of the feature clicked, or how to get one.
+  const editing = wide && expandedId ? userAnnotations.find(a => a.id === expandedId) ?? null : null
+  const detail = wide ? (
+    <section className="fs-detail" aria-label="Feature details" onKeyDown={handleEditorKeys}>
+      {adding ? (
+        <>
+          <div className="fs-detail-head">
+            <span className="fs-detail-name">New feature</span>
+          </div>
+          {addForm}
+        </>
+      ) : editing ? (
+        <>
+          <div className="fs-detail-head">
+            <span className="ann-swatch" style={{ backgroundColor: editing.color }} />
+            <span className="fs-detail-name">{editing.name}</span>
+            <span className="ft-type-badge">{editing.type}</span>
+            <button className="fs-icon-btn" onClick={() => { openEditor(null); listRef.current?.focus() }} title="Close the editor" aria-label="Close the editor">
+              <X size={13} />
+            </button>
+          </div>
+          <FeatureEditor
+            key={editing.id}
+            annotation={editing}
+            featureTypes={FEATURE_TYPES}
+            readOnly={readOnly}
+            focusName={renameRequest?.id === editing.id ? renameRequest.n : 0}
+            onDone={() => { openEditor(null); listRef.current?.focus() }}
+            onDelete={() => deleteNow([editing])}
+          />
+        </>
+      ) : (
+        <div className="fs-detail-empty">
+          {userAnnotations.length > 0 ? 'Click a feature to see and edit it here.' : 'A feature you add shows here.'}
+        </div>
+      )}
+    </section>
+  ) : null
 
   const renderRow = (a: Annotation) => (
     <FeatureRow
@@ -585,14 +869,17 @@ function FeatureSidebar({ open, onClose }: FeatureSidebarProps) {
       active={activeId === a.id}
       here={hereIds.has(a.id)}
       hovered={hoveredAnnotationId === a.id}
-      showLocation={view === 'position'}
+      // The table has Start and End columns; a hairline across its full width
+      // would read as underlining whichever column it ran under.
+      showLocation={view === 'position' && !wide}
+      wide={wide}
       onClick={handleRowClick}
       onDoubleClick={handleRowDoubleClick}
       onContextMenu={handleContextMenu}
       onToggleHidden={handleToggleHidden}
       onHover={handleHover}
     >
-      {expandedId === a.id && (
+      {expandedId === a.id && !wide && (
         <FeatureEditor
           annotation={a}
           featureTypes={FEATURE_TYPES}
@@ -607,30 +894,57 @@ function FeatureSidebar({ open, onClose }: FeatureSidebarProps) {
 
   return (
     <>
-      {/* Resize handle */}
-      <div
-        className="fs-resize-handle"
-        onPointerDown={handleResizeStart}
-        onPointerMove={handleResizeMove}
-        onPointerUp={handleResizeEnd}
-      />
-      <aside className="feature-sidebar" style={{ width }}>
+      {/* Resize handle: a strip to the left of the sidebar on the right; along
+          the bottom, the panel's top edge, inside it. */}
+      {!bottom && (
+        <div
+          className="fs-resize-handle"
+          onPointerDown={handleResizeStart}
+          onPointerMove={handleResizeMove}
+          onPointerUp={handleResizeEnd}
+        />
+      )}
+      <aside
+        ref={asideRef}
+        className={`feature-sidebar${bottom ? ' is-bottom' : ''}${maximized ? ' is-maximized' : ''}`}
+        // Maximized (from the BLAST tab), it takes the view's room instead.
+        style={maximized ? undefined : bottom ? { height } : { width }}
+        aria-label="Features panel"
+      >
+        {bottom && !maximized && (
+          <div
+            className="fs-resize-top"
+            role="separator"
+            aria-orientation="horizontal"
+            aria-label="Resize the features panel"
+            aria-valuemin={PANEL_MIN}
+            aria-valuenow={height}
+            tabIndex={0}
+            onPointerDown={onHeightDown}
+            onPointerMove={onHeightMove}
+            onPointerUp={onHeightUp}
+            onPointerCancel={onHeightUp}
+            onKeyDown={onHeightKey}
+          />
+        )}
         {/* Header */}
         <div className="fs-header">
           <div ref={tabsRef} className={`fs-tabs ${compactTabs ? 'compact' : ''}`} role="tablist" aria-label="Sidebar">
             {tabDefs.map(({ id, label, Icon, count }) => (
               <button
                 key={id}
-                className={`panel-tab fs-tab ${tab === id ? 'active' : ''}`}
+                className={`panel-tab fs-tab ${shownTab === id ? 'active' : ''}`}
                 role="tab"
-                aria-selected={tab === id}
+                aria-selected={shownTab === id}
                 aria-label={compactTabs ? label : undefined}
                 title={compactTabs ? label : undefined}
-                onClick={() => switchTab(id)}
+                onClick={() => pickTab(id)}
               >
                 {compactTabs && <Icon size={14} className="fs-tab-icon" />}
                 {!compactTabs && <span className="fs-title">{label}</span>}
                 {count !== null && <span key={count} className="fs-count">{count}</span>}
+                {id === 'blast' && blastRunning && <span className="tb-badge tb-badge-pulse" title="Search running" />}
+                {id === 'blast' && !blastRunning && blastUnseen && <span className="tb-badge tb-badge-done" title="Results ready" />}
               </button>
             ))}
           </div>
@@ -643,21 +957,34 @@ function FeatureSidebar({ open, onClose }: FeatureSidebarProps) {
               </span>
             ))}
           </div>
-          {/* Only the close button lives up here. Each tab's own actions sit
-              in that tab's filter row, so three tabs and their counts never
-              push a button off the edge of a narrow sidebar. */}
+          {/* Only the panel's own controls live up here: where it sits, and
+              close. Each tab's actions sit in that tab's filter row, so three
+              tabs and their counts never push a button off the edge of a
+              narrow sidebar. */}
           <div className="fs-header-actions">
             <button
               className="fs-icon-btn"
-              onClick={onClose}
-              title="Close sidebar"
+              onClick={() => setPanelPlacement(bottom ? 'right' : 'bottom')}
+              title={bottom ? 'Move the panel to the right' : 'Move the panel to the bottom'}
+              aria-label={bottom ? 'Move the panel to the right' : 'Move the panel to the bottom'}
             >
-              <PanelRightClose size={14} />
+              {bottom ? <PanelRight size={14} /> : <PanelBottom size={14} />}
+            </button>
+            <button
+              className="fs-icon-btn"
+              onClick={onClose}
+              title={bottom ? 'Close panel' : 'Close sidebar'}
+            >
+              {bottom ? <PanelBottomClose size={14} /> : <PanelRightClose size={14} />}
             </button>
           </div>
         </div>
 
-        {tab === 'guides' ? (
+        {shownTab === 'blast' ? (
+          <Suspense fallback={null}>
+            <BlastDrawer containerRef={asideRef} embedded />
+          </Suspense>
+        ) : tab === 'guides' ? (
           <GuidePanel />
         ) : tab === 'primers' ? (
           <>
@@ -683,10 +1010,10 @@ function FeatureSidebar({ open, onClose }: FeatureSidebarProps) {
               // Keyed by tab: a target or excluded region from another
               // sequence means nothing here.
               ? <PrimerWorkbench key={activeTabId ?? 'none'} />
-              : <PrimerList adding={addingPrimer} onAddingChange={setAddingPrimer} />}
+              : <PrimerList adding={addingPrimer} onAddingChange={setAddingPrimer} wide={bottom} />}
           </>
         ) : (
-        <>
+        <WideSplit detail={detail}>
         {selectedAnnotations.length > 0 && (
           <FeatureBulkBar
             selected={selectedAnnotations}
@@ -769,7 +1096,7 @@ function FeatureSidebar({ open, onClose }: FeatureSidebarProps) {
           {optionsOpen && (
             <FeatureListOptions
               view={view}
-              onViewChange={setView}
+              onViewChange={v => { setView(v); if (v === 'position') setTableSort(DEFAULT_SORT) }}
               inSelection={inSelection}
               onInSelectionChange={setInSelection}
               onInsertTerm={term => setFilter(f => (f.trim() ? `${f.trim()} ${term}` : term))}
@@ -780,100 +1107,28 @@ function FeatureSidebar({ open, onClose }: FeatureSidebarProps) {
         </div>
 
         {/* Add new annotation form */}
-        {adding && (
-          <div className="ft-editor ft-add-form fs-add-form">
-            <div className="ft-row">
-              <label>Name</label>
-              <input
-                className="input ft-input"
-                value={newName}
-                onChange={e => setNewName(e.target.value)}
-                onKeyDown={e => e.key === 'Enter' && handleAdd()}
-                autoFocus
-              />
-            </div>
-            <div className="ft-row">
-              <label>Type</label>
-              <select className="select ft-select" value={newType} onChange={e => handleNewTypeChange(e.target.value)}>
-                {FEATURE_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
-              </select>
-            </div>
-            {newParts ? (
-              <div className="ft-row">
-                <label>Parts</label>
-                <div className="ft-join">
-                  <span className="ft-join-text" title="Joined parts, in reading order">
-                    {newParts.map(([s, e]) => `${s + 1}..${e}`).join(', ')}
-                  </span>
-                  <button
-                    className="btn btn-sm"
-                    title="Annotate the whole span instead, from the first part to the last"
-                    onClick={() => setNewParts(null)}
-                  >One Span</button>
-                </div>
-              </div>
-            ) : (
-            <div className="ft-row">
-              <label>Range</label>
-              <div className="ft-range-inputs">
-                <input
-                  className="input ft-input ft-num"
-                  type="number"
-                  min={1}
-                  max={seqLen}
-                  value={newStart}
-                  onChange={e => setNewStart(parseInt(e.target.value) || 1)}
-                />
-                <span>..</span>
-                <input
-                  className="input ft-input ft-num"
-                  type="number"
-                  min={1}
-                  max={seqLen}
-                  value={newEnd}
-                  onChange={e => setNewEnd(parseInt(e.target.value) || 1)}
-                />
-              </div>
-            </div>
-            )}
-            <div className="ft-row">
-              <label>Strand</label>
-              <select
-                className="select ft-select"
-                value={newStrand}
-                onChange={e => setNewStrand(parseInt(e.target.value) as Strand)}
-              >
-                <option value={1}>Forward (+)</option>
-                <option value={-1}>Reverse (−)</option>
-                <option value={0}>None</option>
-              </select>
-            </div>
-            <div className="ft-row">
-              <label>Color</label>
-              <div className="ft-color-row">
-                <div className="ft-color-presets">
-                  {PRESET_COLORS.map(c => (
-                    <button
-                      key={c}
-                      className={`ft-color-dot ${c === newColor ? 'active' : ''}`}
-                      style={{ backgroundColor: c }}
-                      onClick={() => { setNewColor(c); setColorManuallySet(true) }}
-                    />
-                  ))}
-                  <label className="ft-color-dot ft-color-custom" style={{ backgroundColor: newColor }} title="Custom color">
-                    <input
-                      type="color"
-                      value={newColor}
-                      onChange={e => { setNewColor(e.target.value); setColorManuallySet(true) }}
-                    />
-                  </label>
-                </div>
-              </div>
-            </div>
-            <div className="ft-actions">
-              <button className="btn btn-primary btn-sm" onClick={handleAdd}>Add Feature</button>
-              <button className="btn btn-sm" onClick={() => { setAdding(false); setNewParts(null) }}>Cancel</button>
-            </div>
+        {adding && !wide && addForm}
+
+        {/* The table's header: each column sorts the flat list, again to
+            reverse it. Grouped by type, no column is on until one is picked. */}
+        {wide && (
+          <div className="ft-table-head">
+            {TABLE_COLUMNS.map(c => {
+              const on = view === 'position' && activeSort.key === c.key
+              return (
+                <button
+                  key={c.key}
+                  className={`ft-th col-${c.key}${c.numeric ? ' num' : ''}${on ? ' on' : ''}`}
+                  onClick={() => sortBy(c.key)}
+                  aria-pressed={on}
+                  title={on ? 'Click to reverse' : `Sort by ${c.label.toLowerCase()}`}
+                >
+                  {c.label}
+                  {on && <span className="ft-th-dir" aria-hidden>{activeSort.dir === 1 ? '▲' : '▼'}</span>}
+                </button>
+              )
+            })}
+            <span />
           </div>
         )}
 
@@ -974,7 +1229,7 @@ function FeatureSidebar({ open, onClose }: FeatureSidebarProps) {
             </div>
           )}
         </div>
-        </>
+        </WideSplit>
         )}
 
         {/* Hover tooltip, never while a menu is open over the rows */}
@@ -984,6 +1239,7 @@ function FeatureSidebar({ open, onClose }: FeatureSidebarProps) {
             sequence={sequence}
             x={tooltip.x}
             y={tooltip.y}
+            above={bottom}
           />
         )}
 

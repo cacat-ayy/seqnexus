@@ -157,3 +157,51 @@ describe('useToolbarDensity', () => {
     expect(result.current.density).toBe('full')
   })
 })
+
+/**
+ * The same toolbar run down the left: icons from the start, measured by
+ * height. It needs 900px with every tool and 600px with them in one menu.
+ */
+describe('useToolbarDensity, vertical', () => {
+  const HEIGHTS = { icons: 900, collapsed: 600 }
+
+  function makeRail(available: number) {
+    const el = document.createElement('div')
+    el.style.paddingBottom = `${PADDING}px`
+    const needed = () => (el.classList.contains('is-collapsed') ? HEIGHTS.collapsed : HEIGHTS.icons)
+    const box = (bottom: number) =>
+      ({ left: 0, right: 44, top: 0, bottom, width: 44, height: bottom, x: 0, y: 0, toJSON: () => ({}) }) as DOMRect
+    Object.defineProperty(el, 'clientHeight', { get: () => available })
+    Object.defineProperty(el, 'clientWidth', { get: () => 44 })
+    el.getBoundingClientRect = () => box(available)
+    const last = document.createElement('button')
+    // Wrapping starts a second column, so nothing sticks out at the bottom.
+    last.getBoundingClientRect = () =>
+      box(el.classList.contains('is-wrap') ? Math.min(needed(), available - PADDING) : needed())
+    el.appendChild(last)
+    document.body.appendChild(el)
+    return el
+  }
+
+  function mountRail(el: HTMLElement) {
+    return renderHook(() => {
+      const ref = useRef<HTMLElement | null>(el)
+      return useToolbarDensity(ref, true)
+    })
+  }
+
+  it('starts at icons, never at labels', () => {
+    const el = makeRail(1000)
+    const { result } = mountRail(el)
+    expect(result.current).toEqual({ density: 'icons', wrapped: false })
+    expect(el.classList.contains('is-icons')).toBe(true)
+  })
+
+  it('folds the tools into one menu when the window is too short', () => {
+    expect(mountRail(makeRail(700)).result.current).toEqual({ density: 'collapsed', wrapped: false })
+  })
+
+  it('wraps into a second column as a last resort', () => {
+    expect(mountRail(makeRail(500)).result.current).toEqual({ density: 'collapsed', wrapped: true })
+  })
+})

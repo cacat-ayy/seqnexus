@@ -282,3 +282,82 @@
   outline: 2px solid var(--accent);
   outline-offset: -2px;
 }
+
+/* ===== The saved primers as a table (the panel along the bottom) =====
+   The header and each row share --pl-cols; the header's left inset is the
+   row's own (the 3px selection bar and the summary's padding). */
+.pl-wide {
+  --pl-cols: minmax(140px, 3fr) 72px 72px 72px minmax(120px, 1.6fr);
+}
+
+.pl-table-head {
+  display: grid;
+  grid-template-columns: var(--pl-cols);
+  gap: var(--space-2);
+  padding: var(--space-1) var(--space-0-5) var(--space-1) calc(var(--space-1-5) + 3px);
+  border-bottom: 1px solid var(--border-light);
+  position: sticky;
+  top: 0;
+  z-index: var(--z-base);
+  background: var(--bg-sidebar);
+  color: var(--text-muted);
+  font-size: var(--text-2xs);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.pl-table-head .num { text-align: right; }
+
+.ft-item.pl-wide-row > .ft-summary {
+  display: grid;
+  grid-template-columns: var(--pl-cols);
+  gap: var(--space-2);
+}
+
+.pl-col-name {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  min-width: 0;
+}
+
+.pl-col {
+  font-size: var(--text-xs);
+  color: var(--text-secondary);
+}
+.pl-col.num {
+  font-family: var(--font-mono);
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+/* The row being edited beside the table: marked, not opened in place. */
+.ft-item.pl-wide-row.expanded {
+  margin: 0;
+  border-radius: 0;
+  border-bottom: 1px solid var(--border-light);
+}
+.ft-item.pl-wide-row.expanded > .ft-summary {
+  border-left-color: var(--border-hover);
+}
+
+/* Narrower, the primer table gives up Role, then Length (the Tm and the
+   site matter more when choosing between primers). */
+@container wide-main (max-width: 520px) {
+  .pl-table-head,
+  .fs-list {
+    --pl-cols: minmax(120px, 3fr) 64px 64px minmax(100px, 1.6fr);
+  }
+  .pl-wide .col-role {
+    display: none;
+  }
+}
+@container wide-main (max-width: 420px) {
+  .pl-table-head,
+  .fs-list {
+    --pl-cols: minmax(110px, 1fr) 64px minmax(90px, 1fr);
+  }
+  .pl-wide .col-len {
+    display: none;
+  }
+}

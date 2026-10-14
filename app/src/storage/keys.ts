@@ -9,8 +9,12 @@ export const STORAGE_KEYS = {
   backup: 'seqnexus:backup',
   displaySettings: 'seqnexus:display-settings',
   explorerSettings: 'seqnexus:explorer-settings',
+  /** Toolbar on top or left, features panel on the right or at the bottom. */
+  layout: 'seqnexus:layout',
   splitFraction: 'seqnexus_split_fraction',
   featureSidebarWidth: 'seqnexus_feature_sidebar_width',
+  /** The features panel's height when it sits along the bottom. */
+  featurePanelHeight: 'seqnexus:feature-panel-height',
   featureSidebarTab: 'seqnexus_feature_sidebar_tab',
   /** The feature list grouped by type or sorted by position. */
   featureSidebarView: 'seqnexus:feature-sidebar-view',

@@ -156,215 +156,224 @@ export default function GuidePanel() {
 
   return (
     <div className="gp">
-      <div className="seg seg-sm fs-segmented" role="tablist" aria-label="Guides view">
-        <button role="tab" aria-selected className="active">Design</button>
-        <button role="tab" aria-selected={false} onClick={() => setView('library')}>Library</button>
-      </div>
+      {/* Three groups: the scan's setup, the task's results, and the one
+          guide in focus. In the sidebar they run on as one column (display:
+          contents); in the panel along the bottom they sit side by side. */}
+      <div className="gp-setup">
+        <div className="seg seg-sm fs-segmented" role="tablist" aria-label="Guides view">
+          <button role="tab" aria-selected className="active">Design</button>
+          <button role="tab" aria-selected={false} onClick={() => setView('library')}>Library</button>
+        </div>
 
-      <div className="seg seg-sm gp-tasks" role="tablist" aria-label="What to design">
-        {TASKS.map(t => (
-          <button
-            key={t.id}
-            role="tab"
-            aria-selected={task === t.id}
-            className={task === t.id ? 'active' : ''}
-            onClick={() => setTask(t.id)}
-            title={t.hint}
-          >
-            {t.label}
-          </button>
-        ))}
-      </div>
+        <div className="seg seg-sm gp-tasks" role="tablist" aria-label="What to design">
+          {TASKS.map(t => (
+            <button
+              key={t.id}
+              role="tab"
+              aria-selected={task === t.id}
+              className={task === t.id ? 'active' : ''}
+              onClick={() => setTask(t.id)}
+              title={t.hint}
+            >
+              {t.label}
+            </button>
+          ))}
+        </div>
 
-      <div className="gp-settings">
-        <div className="gp-field gp-field-wide">
-          <label htmlFor="gp-nuclease">Nuclease</label>
-          <select
-            id="gp-nuclease"
-            value={nucleaseId}
-            onChange={e => {
-              if (e.target.value === '__custom__') setDialogOpen(true)
-              else setParams({ crisprNucleaseId: e.target.value, crisprSpacerLength: 0 })
-            }}
-          >
-            <optgroup label="Shipped">
-              {NUCLEASES.map(n => (
-                <option key={n.id} value={n.id}>
-                  {n.name} ({n.pamSide === 'threePrime' ? `N-${n.pam}` : `${n.pam}-N`})
-                </option>
-              ))}
-            </optgroup>
-            {customNucleases.length > 0 && (
-              <optgroup label="Yours">
-                {customNucleases.map(n => (
+        <div className="gp-settings">
+          <div className="gp-field gp-field-wide">
+            <label htmlFor="gp-nuclease">Nuclease</label>
+            <select
+              id="gp-nuclease"
+              value={nucleaseId}
+              onChange={e => {
+                if (e.target.value === '__custom__') setDialogOpen(true)
+                else setParams({ crisprNucleaseId: e.target.value, crisprSpacerLength: 0 })
+              }}
+            >
+              <optgroup label="Shipped">
+                {NUCLEASES.map(n => (
                   <option key={n.id} value={n.id}>
                     {n.name} ({n.pamSide === 'threePrime' ? `N-${n.pam}` : `${n.pam}-N`})
                   </option>
                 ))}
               </optgroup>
-            )}
-            <option value="__custom__">Describe a nuclease…</option>
-          </select>
-        </div>
-
-        {nuclease && (
-          <div className="gp-field">
-            <label htmlFor="gp-spacer">Spacer</label>
-            <select
-              id="gp-spacer"
-              value={spacerLength || defaultSpacerLength(nuclease)}
-              onChange={e => setParams({ crisprSpacerLength: Number(e.target.value) })}
-            >
-              {nuclease.spacerLengths.map(l => (
-                <option key={l} value={l}>{l} nt</option>
-              ))}
+              {customNucleases.length > 0 && (
+                <optgroup label="Yours">
+                  {customNucleases.map(n => (
+                    <option key={n.id} value={n.id}>
+                      {n.name} ({n.pamSide === 'threePrime' ? `N-${n.pam}` : `${n.pam}-N`})
+                    </option>
+                  ))}
+                </optgroup>
+              )}
+              <option value="__custom__">Describe a nuclease…</option>
             </select>
           </div>
-        )}
 
-        <div className="gp-checks">
-          <label className="gp-check">
-            <input type="checkbox" checked={selectionOnly} onChange={e => setParams({ crisprSelectionOnly: e.target.checked })} />
-            Selection only
-          </label>
-          <label className="gp-check">
-            <input type="checkbox" checked={showGuides} onChange={toggleGuides} />
-            Show on the sequence
-          </label>
-          {showGuides && (
-            <select
-              value={drawScope}
-              aria-label="Which guides to draw"
-              onChange={e => setParams({ crisprDraw: e.target.value as GuideDrawScope })}
-              title="A relaxed PAM finds a site every few bases, and all of them at once is a wall rather than a figure."
+          {nuclease && (
+            <div className="gp-field">
+              <label htmlFor="gp-spacer">Spacer</label>
+              <select
+                id="gp-spacer"
+                value={spacerLength || defaultSpacerLength(nuclease)}
+                onChange={e => setParams({ crisprSpacerLength: Number(e.target.value) })}
+              >
+                {nuclease.spacerLengths.map(l => (
+                  <option key={l} value={l}>{l} nt</option>
+                ))}
+              </select>
+            </div>
+          )}
+
+          <div className="gp-checks">
+            <label className="gp-check">
+              <input type="checkbox" checked={selectionOnly} onChange={e => setParams({ crisprSelectionOnly: e.target.checked })} />
+              Selection only
+            </label>
+            <label className="gp-check">
+              <input type="checkbox" checked={showGuides} onChange={toggleGuides} />
+              Show on the sequence
+            </label>
+            {showGuides && (
+              <select
+                value={drawScope}
+                aria-label="Which guides to draw"
+                onChange={e => setParams({ crisprDraw: e.target.value as GuideDrawScope })}
+                title="A relaxed PAM finds a site every few bases, and all of them at once is a wall rather than a figure."
+              >
+                <option value="all">Draw all</option>
+                <option value="picked">Draw picked</option>
+                <option value="selected">Draw selected</option>
+              </select>
+            )}
+          </div>
+
+          {nuclease?.note && <p className="gp-note">{nuclease.note}</p>}
+        </div>
+
+        {candidates.length > 0 && (
+          <OffTargetSection
+            pickedKeys={[...picks]}
+            hasSelection={selectedKey !== null}
+          />
+        )}
+      </div>
+
+      <div className="gp-main">
+        {task === 'knockout' && <KnockoutTask candidates={candidates} nuclease={nuclease!} onSelect={handleRow} />}
+        {task === 'deletion' && <DeletionTask candidates={candidates} nuclease={nuclease!} />}
+        {task === 'knockin' && <KnockinTask candidates={candidates} nuclease={nuclease!} />}
+        {task === 'baseedit' && <BaseEditTask candidates={candidates} nuclease={nuclease!} onSelect={handleRow} />}
+        {task === 'primeedit' && <PrimeEditTask candidates={candidates} nuclease={nuclease!} />}
+        {task === 'tile' && <TileTask candidates={candidates} nuclease={nuclease!} onSelect={handleRow} />}
+        {task === 'order' && <OrderTask candidates={candidates} nuclease={nuclease!} />}
+        {task === 'analyse' && <AnalyseTask candidates={candidates} nuclease={nuclease!} />}
+
+        {task === 'find' && (
+          <>
+        <div className="gp-status">
+          <span className="gp-status-count">
+            {info.running
+              ? 'Scanning…'
+              : `${candidates.length} site${candidates.length === 1 ? '' : 's'}`}
+            {pickedCount > 0 && <span className="gp-picked">{pickedCount} picked</span>}
+          </span>
+          {convertible.length > 0 && !readOnly && (
+            // Adding every site is a bulk write, so it is a plain button and,
+            // past a handful, asks first; adding a deliberate pick is primary.
+            <button
+              className={`btn btn-sm ${pickedCount > 0 ? 'btn-primary' : ''}`}
+              onClick={() => {
+                if (pickedCount > 0) applyGuides(picks)
+                else if (convertible.length > CONFIRM_ADD_ALL) setConfirmAddAll(true)
+                else applyGuides()
+              }}
+              title="Add these guides to the document as features"
             >
-              <option value="all">Draw all</option>
-              <option value="picked">Draw picked</option>
-              <option value="selected">Draw selected</option>
-            </select>
+              {pickedCount > 0 ? `Add picked (${pickedCount})` : `Add all (${convertible.length})`}
+            </button>
           )}
         </div>
 
-        {nuclease?.note && <p className="gp-note">{nuclease.note}</p>}
+        {(info.truncated || info.skippedAmbiguous > 0 || candidates.length > REPAIR_CAP) && (
+          <p className="gp-note gp-warn gp-note-row">
+            {info.truncated && 'The scan stopped at its site cap, so this is not every site. Narrow it to a selection. '}
+            {info.skippedAmbiguous > 0 && `${info.skippedAmbiguous} site${info.skippedAmbiguous === 1 ? '' : 's'} passed over for an ambiguous base in the spacer. `}
+            {candidates.length > REPAIR_CAP && 'Too many sites to predict repair for all of them; the selected one is predicted in full.'}
+          </p>
+        )}
+
+        <GuideLandscape
+          candidates={candidates}
+          seqLen={seqLen}
+          selectedKey={selectedKey}
+          onPick={key => {
+            const found = candidates.find(c => guideKey(c.site) === key)
+            if (!found) return
+            setSelectedKey(key)
+            setSelection({ anchor: found.site.start, caret: found.site.end })
+          }}
+        />
+
+        {candidates.length > 0 && (
+          <div className="gp-toolbar">
+            <label className="gp-check" htmlFor="gp-sort">Sort</label>
+            <select id="gp-sort" value={sort} onChange={e => setSort(e.target.value as Sort)}>
+              {SORTS.map(s => <option key={s.id} value={s.id}>{s.label}</option>)}
+            </select>
+            <span className="gp-spacer" />
+          </div>
+        )}
+
+        <ul className="gp-list">
+          {shown.map(candidate => {
+            const key = guideKey(candidate.site)
+            return (
+              <GuideRow
+                key={key}
+                candidate={candidate}
+                nuclease={nuclease!}
+                at={at}
+                selected={key === selectedKey}
+                picked={picks.has(key)}
+                specificity={offTargetReports[key]?.specificity}
+                onClick={handleRow}
+              />
+            )
+          })}
+          {sorted.length > shown.length && (
+            <li className="gp-more">
+              Showing {shown.length} of {sorted.length}. Sort or narrow the scan to see the rest.
+            </li>
+          )}
+          {candidates.length === 0 && info.running && (
+            <li className="gp-skeleton"><SkeletonRows label="Scanning for sites" /></li>
+          )}
+          {candidates.length === 0 && !info.running && (
+            <li className="gp-empty">
+              {seqLen === 0
+                ? 'Open a sequence to find guides in it.'
+                : selectionOnly
+                  ? 'No site for this nuclease in the selection.'
+                  : 'No site for this nuclease in this sequence.'}
+            </li>
+          )}
+        </ul>
+          </>
+        )}
       </div>
 
-      {candidates.length > 0 && (
-        <OffTargetSection
-          pickedKeys={[...picks]}
-          hasSelection={selectedKey !== null}
-        />
-      )}
-
-      {task === 'knockout' && <KnockoutTask candidates={candidates} nuclease={nuclease!} onSelect={handleRow} />}
-      {task === 'deletion' && <DeletionTask candidates={candidates} nuclease={nuclease!} />}
-      {task === 'knockin' && <KnockinTask candidates={candidates} nuclease={nuclease!} />}
-      {task === 'baseedit' && <BaseEditTask candidates={candidates} nuclease={nuclease!} onSelect={handleRow} />}
-      {task === 'primeedit' && <PrimeEditTask candidates={candidates} nuclease={nuclease!} />}
-      {task === 'tile' && <TileTask candidates={candidates} nuclease={nuclease!} onSelect={handleRow} />}
-      {task === 'order' && <OrderTask candidates={candidates} nuclease={nuclease!} />}
-      {task === 'analyse' && <AnalyseTask candidates={candidates} nuclease={nuclease!} />}
-
-      {task === 'find' && (
-        <>
-      <div className="gp-status">
-        <span className="gp-status-count">
-          {info.running
-            ? 'Scanning…'
-            : `${candidates.length} site${candidates.length === 1 ? '' : 's'}`}
-          {pickedCount > 0 && <span className="gp-picked">{pickedCount} picked</span>}
-        </span>
-        {convertible.length > 0 && !readOnly && (
-          // Adding every site is a bulk write, so it is a plain button and,
-          // past a handful, asks first; adding a deliberate pick is primary.
-          <button
-            className={`btn btn-sm ${pickedCount > 0 ? 'btn-primary' : ''}`}
-            onClick={() => {
-              if (pickedCount > 0) applyGuides(picks)
-              else if (convertible.length > CONFIRM_ADD_ALL) setConfirmAddAll(true)
-              else applyGuides()
-            }}
-            title="Add these guides to the document as features"
-          >
-            {pickedCount > 0 ? `Add picked (${pickedCount})` : `Add all (${convertible.length})`}
-          </button>
+      <div className="gp-side">
+        {/* The inspector belongs to whichever task picks one guide at a time. */}
+        {selected && nuclease && task !== 'deletion' && task !== 'knockin' && task !== 'primeedit' && task !== 'order' && task !== 'analyse' && (
+          <GuideInspector
+            key={guideKey(selected.site)}
+            candidate={selected}
+            nuclease={nuclease}
+          />
         )}
       </div>
-
-      {(info.truncated || info.skippedAmbiguous > 0 || candidates.length > REPAIR_CAP) && (
-        <p className="gp-note gp-warn gp-note-row">
-          {info.truncated && 'The scan stopped at its site cap, so this is not every site. Narrow it to a selection. '}
-          {info.skippedAmbiguous > 0 && `${info.skippedAmbiguous} site${info.skippedAmbiguous === 1 ? '' : 's'} passed over for an ambiguous base in the spacer. `}
-          {candidates.length > REPAIR_CAP && 'Too many sites to predict repair for all of them; the selected one is predicted in full.'}
-        </p>
-      )}
-
-      <GuideLandscape
-        candidates={candidates}
-        seqLen={seqLen}
-        selectedKey={selectedKey}
-        onPick={key => {
-          const found = candidates.find(c => guideKey(c.site) === key)
-          if (!found) return
-          setSelectedKey(key)
-          setSelection({ anchor: found.site.start, caret: found.site.end })
-        }}
-      />
-
-      {candidates.length > 0 && (
-        <div className="gp-toolbar">
-          <label className="gp-check" htmlFor="gp-sort">Sort</label>
-          <select id="gp-sort" value={sort} onChange={e => setSort(e.target.value as Sort)}>
-            {SORTS.map(s => <option key={s.id} value={s.id}>{s.label}</option>)}
-          </select>
-          <span className="gp-spacer" />
-        </div>
-      )}
-
-      <ul className="gp-list">
-        {shown.map(candidate => {
-          const key = guideKey(candidate.site)
-          return (
-            <GuideRow
-              key={key}
-              candidate={candidate}
-              nuclease={nuclease!}
-              at={at}
-              selected={key === selectedKey}
-              picked={picks.has(key)}
-              specificity={offTargetReports[key]?.specificity}
-              onClick={handleRow}
-            />
-          )
-        })}
-        {sorted.length > shown.length && (
-          <li className="gp-more">
-            Showing {shown.length} of {sorted.length}. Sort or narrow the scan to see the rest.
-          </li>
-        )}
-        {candidates.length === 0 && info.running && (
-          <li className="gp-skeleton"><SkeletonRows label="Scanning for sites" /></li>
-        )}
-        {candidates.length === 0 && !info.running && (
-          <li className="gp-empty">
-            {seqLen === 0
-              ? 'Open a sequence to find guides in it.'
-              : selectionOnly
-                ? 'No site for this nuclease in the selection.'
-                : 'No site for this nuclease in this sequence.'}
-          </li>
-        )}
-      </ul>
-        </>
-      )}
-
-      {/* The inspector belongs to whichever task picks one guide at a time. */}
-      {selected && nuclease && task !== 'deletion' && task !== 'knockin' && task !== 'primeedit' && task !== 'order' && task !== 'analyse' && (
-        <GuideInspector
-          key={guideKey(selected.site)}
-          candidate={selected}
-          nuclease={nuclease}
-        />
-      )}
 
       <NucleaseDialog
         open={dialogOpen}

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, useCallback, useMemo, lazy, Suspense, useSyncExternalStore } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState, useCallback, useMemo, lazy, Suspense, useSyncExternalStore } from 'react'
 import { flushSync } from 'react-dom'
 import { formatAa, formatBp } from './utils/format'
 import { gcPercent } from './primers/thermodynamics'
@@ -81,7 +81,7 @@ import { findEnzymeSitesAsync } from './workers/enzyme-finder'
 import {
   File, Dna, FolderPlus, FileUp, FolderUp, ClipboardPaste, Save, FileText,
   Undo2, Redo2, Search, TextSearch, Scissors, FlaskConical,
-  BarChart3, ZoomOut, ZoomIn, Scan, PanelLeftOpen,
+  BarChart3, ZoomOut, ZoomIn, Scan, PanelLeftOpen, PanelTop, PanelLeft, PanelRight, PanelBottom,
   X, ChevronDown as ChevronDownSmall,
   SunMoon, Info, List, Lock, LockOpen, Tag, Globe, GalleryVertical, AlignLeft, ArrowLeft, Wand2, Route, Shapes,
   Combine,
@@ -89,7 +89,7 @@ import {
   Crosshair, MoveRight, FileDown, Files, Archive, ArchiveRestore, Upload, Wrench,
 } from 'lucide-react'
 const BlastDrawer = lazy(() => import('./components/blast/BlastDrawer'))
-import { useBlastStore, toggleDrawer, openDrawer as openBlastDrawer, clearAlignRequest as clearBlastAlignRequest } from './blast/session'
+import { useBlastStore, toggleDrawer, openDrawer as openBlastDrawer, closeDrawer as closeBlastDrawer, clearAlignRequest as clearBlastAlignRequest } from './blast/session'
 const CommandPalette = lazy(() => import('./components/CommandPalette'))
 import type { Command } from './commands'
 import ExportDialog, { type ExportMode } from './components/ExportDialog'
@@ -256,15 +256,49 @@ function topLabel(stack: readonly { label?: string }[] | undefined): string | nu
  * The sequence zoom as bases per row, which says what the user will see,
  * unlike a percentage of an arbitrary scale. Its own component so the value,
  * which the view publishes as it draws, re-renders only this label.
+ *
+ * `stacked` is for the toolbar down the left, too narrow for "1.2 kb/row":
+ * the number over its unit, with the per row left to the title.
  */
-function SequenceZoomLabel({ zoomLevel }: { zoomLevel: number }) {
+function SequenceZoomLabel({ zoomLevel, stacked = false }: { zoomLevel: number; stacked?: boolean }) {
   const bpr = useBasesPerRow()
   const protein = useEditorStore(s => s.doc.sequence.alphabet === 'protein')
+  const amount = bpr > 0 ? (protein ? `${bpr} aa` : formatBasesPerRow(bpr)) : null
+  const [num, unit] = amount?.split(' ') ?? []
   return (
     <span className="tb zoom-label" title={`${protein ? 'Residues' : 'Bases'} per row (zoom level ${zoomLevel} of 20)`}>
-      {bpr > 0 ? `${protein ? `${bpr} aa` : formatBasesPerRow(bpr)}/row` : `${Math.round(zoomLevel / 20 * 100)}%`}
+      {!amount ? `${Math.round(zoomLevel / 20 * 100)}%`
+        : stacked ? <><span className="zoom-label-num">{num}</span><span className="zoom-label-unit">{unit}</span></>
+        : `${amount}/row`}
     </span>
   )
+}
+
+/**
+ * Where the Appearance and About popovers open from their toolbar buttons:
+ * below and right-aligned for a toolbar along the top, beside and
+ * bottom-aligned for one down the left, whose buttons for them sit at the
+ * bottom of the rail.
+ */
+function popoverAnchor(btn: HTMLElement | null, vertical: boolean): React.CSSProperties {
+  const r = btn?.getBoundingClientRect()
+  if (vertical) {
+    return r ? { left: r.right + 10, bottom: Math.max(8, window.innerHeight - r.bottom) } : { left: 64, bottom: 14 }
+  }
+  return r ? { top: r.bottom + 10, right: window.innerWidth - r.right } : { top: 46, right: 14 }
+}
+
+/**
+ * Keeps a menu that opens beside the toolbar down the left inside the window,
+ * by lifting it until its bottom clears the edge. A menu below a toolbar
+ * along the top opens downward from near the top and needs none of this.
+ */
+function keepMenuInView(el: HTMLElement | null) {
+  if (!el || !el.closest('.toolbar.is-vertical')) return
+  const margin = 8
+  const top = el.getBoundingClientRect().top
+  const over = top + el.offsetHeight - (window.innerHeight - margin)
+  if (over > 0) el.style.top = `${-Math.min(over, top - margin)}px`
 }
 
 /**
@@ -667,13 +701,35 @@ export default function App() {
 
   // Bottom panels
   const [featuresPanelOpen, setFeaturesPanelOpen] = useState(false)
+  const panelPlacement = useEditorStore(s => s.panelPlacement)
+  const setPanelPlacement = useEditorStore(s => s.setPanelPlacement)
+  // Along the bottom, BLAST is the features panel's fourth tab, and BLAST
+  // being open is that tab showing: opening BLAST opens the panel on it,
+  // anything that asks for another tab closes BLAST, and closing the panel
+  // closes BLAST too. On the right, BLAST keeps its own drawer.
+  const blastInPanel = panelPlacement === 'bottom'
+  const blastTabShown = blastInPanel && blastOpen
+  /** A tab of the panel is showing: the panel open on it, BLAST not in front. */
+  const panelTabOn = (tab: SidebarTab) => featuresPanelOpen && sidebarTab === tab && !blastTabShown
   // The guide scan runs for the overlay and for the Guides tab alike.
-  useGuideScan(featuresPanelOpen && sidebarTab === 'guides')
+  useGuideScan(panelTabOn('guides'))
   const editAnnotationId = useEditorStore(s => s.editAnnotationId)
+
+  // Whether the panel was open before BLAST opened it, so the toolbar's
+  // BLAST button, pressed again, leaves things as they were.
+  const featuresPanelOpenRef = useRef(featuresPanelOpen)
+  featuresPanelOpenRef.current = featuresPanelOpen
+  const panelOpenBeforeBlast = useRef(false)
+  useEffect(() => {
+    if (!blastTabShown) return
+    panelOpenBeforeBlast.current = featuresPanelOpenRef.current
+    setFeaturesPanelOpen(true)
+  }, [blastTabShown])
 
   // Open Features panel when editAnnotationId is set (e.g. from context menu)
   useEffect(() => {
     if (editAnnotationId) {
+      if (useEditorStore.getState().panelPlacement === 'bottom') closeBlastDrawer()
       setFeaturesPanelOpen(true)
     }
   }, [editAnnotationId])
@@ -683,8 +739,17 @@ export default function App() {
   // which bumps this counter.
   const sidebarRequest = useEditorStore(s => s.sidebarRequest)
   useEffect(() => {
-    if (sidebarRequest > 0) setFeaturesPanelOpen(true)
+    if (sidebarRequest === 0) return
+    if (useEditorStore.getState().panelPlacement === 'bottom') closeBlastDrawer()
+    setFeaturesPanelOpen(true)
   }, [sidebarRequest])
+
+  /** The toolbar's BLAST button: on the right it opens and closes the drawer. */
+  const toggleBlast = useCallback(() => {
+    if (!blastTabShown) { toggleDrawer(); return }
+    closeBlastDrawer()
+    if (!panelOpenBeforeBlast.current) setFeaturesPanelOpen(false)
+  }, [blastTabShown])
 
 
   // A sequence the user just opened: say if primers in the library bind it,
@@ -709,9 +774,9 @@ export default function App() {
 
   /** Panel-bar buttons: show that tab, or close the sidebar if it is showing. */
   const toggleSidebarTab = useCallback((tab: SidebarTab) => {
-    if (featuresPanelOpen && useEditorStore.getState().sidebarTab === tab) setFeaturesPanelOpen(false)
+    if (featuresPanelOpen && !blastTabShown && useEditorStore.getState().sidebarTab === tab) setFeaturesPanelOpen(false)
     else openSidebar(tab)
-  }, [featuresPanelOpen, openSidebar])
+  }, [featuresPanelOpen, blastTabShown, openSidebar])
   const openPrimerDesign = useCallback(() => openSidebar('primers', 'design'), [openSidebar])
 
   // Re-scan enzyme cut sites when the sequence changes and enzymes are active.
@@ -860,12 +925,17 @@ export default function App() {
 
   // The toolbar must stay a single row: the theme and info buttons sit at its
   // right end, and a second row moves them, along with the popovers they
-  // anchor. Density is measured rather than guessed; see the hook.
+  // anchor. Density is measured rather than guessed; see the hook. Down the
+  // left it is a rail of icons, and the same holds for its one column.
+  const toolbarPlacement = useEditorStore(s => s.toolbarPlacement)
+  const setToolbarPlacement = useEditorStore(s => s.setToolbarPlacement)
+  const verticalToolbar = toolbarPlacement === 'left'
   const toolbarRef = useRef<HTMLDivElement>(null)
-  const toolbarFit = useToolbarDensity(toolbarRef)
+  const toolbarFit = useToolbarDensity(toolbarRef, verticalToolbar)
   useSlidingIndicators()
   const toolbarClass = [
     'toolbar',
+    verticalToolbar && 'is-vertical',
     toolbarFit.density !== 'full' && 'is-tight',
     (toolbarFit.density === 'icons' || toolbarFit.density === 'collapsed') && 'is-icons',
     toolbarFit.density === 'collapsed' && 'is-collapsed',
@@ -889,6 +959,15 @@ export default function App() {
   usePopoverDismiss(fileMenuOpen, () => setFileMenuOpen(false), fileMenuRef)
   usePopoverDismiss(themeOpen, () => setThemeOpen(false), themePopRef, themeBtnRef)
   usePopoverDismiss(infoOpen, () => setInfoOpen(false), infoPopRef, infoBtnRef)
+  // The popovers read their button's position as they render, which a layout
+  // switch moves after the render that made it. One more render, after
+  // layout and before paint, puts them back beside their buttons.
+  const [, reanchor] = useState(0)
+  useLayoutEffect(() => {
+    if (themeOpen || infoOpen) reanchor(n => n + 1)
+    // Only a move of the toolbar should trigger this, not the opening itself.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [toolbarPlacement, toolbarFit.density, toolbarFit.wrapped])
   usePopoverDismiss(cloningDropdownOpen, () => setCloningDropdownOpen(false), cloningBtnRef)
   usePopoverDismiss(toolsMenuOpen, () => setToolsMenuOpen(false), toolsMenuRef)
 
@@ -944,7 +1023,10 @@ export default function App() {
     useEditorStore.getState().setRequestAddAnnotation(true)
     setFeaturesPanelOpen(true)
   }, [])
-  const handleCloseFeaturesPanel = useCallback(() => setFeaturesPanelOpen(false), [])
+  const handleCloseFeaturesPanel = useCallback(() => {
+    setFeaturesPanelOpen(false)
+    if (useEditorStore.getState().panelPlacement === 'bottom') closeBlastDrawer()
+  }, [])
 
   // Same reasoning for the file explorer, which subscribes to 36 store slices
   // and was previously re-rendered by every unrelated App state change.
@@ -1546,11 +1628,17 @@ export default function App() {
     { id: 'toggle-features', label: 'Toggle Feature Sidebar', group: 'View', icon: List, disabled: noDoc, run: () => setFeaturesPanelOpen(v => !v) },
     { id: 'toggle-sidebar', label: 'Toggle File Explorer', group: 'View', icon: PanelLeftOpen, run: () => setSidebarOpen(v => !v) },
     { id: 'theme', label: 'Change Theme', group: 'View', icon: SunMoon, keywords: 'dark light appearance', run: () => setThemeOpen(true) },
+    verticalToolbar
+      ? { id: 'toolbar-top', label: 'Move Toolbar to the Top', group: 'View', icon: PanelTop, keywords: 'layout horizontal appearance', run: () => setToolbarPlacement('top') }
+      : { id: 'toolbar-left', label: 'Move Toolbar to the Left', group: 'View', icon: PanelLeft, keywords: 'layout vertical rail sidebar appearance', run: () => setToolbarPlacement('left') },
+    panelPlacement === 'bottom'
+      ? { id: 'panel-right', label: 'Move Features Panel to the Right', group: 'View', icon: PanelRight, keywords: 'layout sidebar primers guides appearance', run: () => setPanelPlacement('right') }
+      : { id: 'panel-bottom', label: 'Move Features Panel to the Bottom', group: 'View', icon: PanelBottom, keywords: 'layout sidebar drawer primers guides appearance', run: () => setPanelPlacement('bottom') },
     { id: 'about', label: 'About SeqNexus', group: 'View', icon: Info, keywords: 'help version', run: () => setInfoOpen(true) },
   ], [
     mod, shift, redoKey, noDoc, noDna, isProtein, sequenceShown, openPdfExport, undoDisabled, redoDisabled, handleOpenFind, handleNewSequence, handleNewProtein, handleNewFolder, openGel, openCloning, runUndo, runRedo,
     handleImportClipboard, pickFiles, pickFolder, toggleOrfs, toggleMotifs, toggleGuides, toggleEnzymes, setViewMode, openSidebar, openPrimerDesign, toggleAutoAnnotations,
-    viewMode,
+    viewMode, verticalToolbar, setToolbarPlacement, panelPlacement, setPanelPlacement,
   ])
 
   // The toolbar's tools as one menu, for a window too narrow even for their
@@ -1572,6 +1660,8 @@ export default function App() {
     <div
       className="app-root"
       data-theme={theme}
+      data-toolbar={toolbarPlacement}
+      data-panel={panelPlacement}
       onDrop={e => {
         dragCounterRef.current = 0
         // The explorer imports files dropped on it itself; opening them here
@@ -1614,7 +1704,7 @@ export default function App() {
             <span className="tb-icon"><File size={14} /></span><span className="tb-text">File</span> <ChevronDownSmall size={10} />
           </button>
           {fileMenuOpen && (
-            <div className="file-menu" role="menu">
+            <div className="file-menu" role="menu" ref={keepMenuInView}>
               <MenuGroups
                 variant="file"
                 onPicked={() => setFileMenuOpen(false)}
@@ -1724,7 +1814,7 @@ export default function App() {
           </button>
           </>)}
           <div className="tb-split" ref={cloningBtnRef}>
-            <button className={`tb ${activeClone ? 'active' : ''}`} onClick={openCloning} {...tip({ label: 'Cloning', desc: 'Design a construct and see what the reaction gives' })}>
+            <button className={`tb ${activeClone ? 'active' : ''}`} onClick={openCloning} onContextMenu={e => { e.preventDefault(); setCloningDropdownOpen(true) }} {...tip({ label: 'Cloning', desc: 'Design a construct and see what the reaction gives' })}>
               <span className="tb-icon"><Combine size={14} /></span><span className="tb-text">Cloning</span>
             </button>
             <button
@@ -1737,7 +1827,7 @@ export default function App() {
               <ChevronDownSmall size={12} />
             </button>
             {cloningDropdownOpen && (
-              <div className="tb-dropdown" role="menu">
+              <div className="tb-dropdown" role="menu" ref={keepMenuInView}>
                 {(['restriction', 'golden-gate', 'homology', 'gateway', 'topo'] as CloningMethodId[]).map(method => (
                   <button
                     key={method}
@@ -1753,7 +1843,7 @@ export default function App() {
             )}
           </div>
           {!otherWorkspace && (
-          <button className={`tb ${blastOpen ? 'active' : ''}`} onClick={toggleDrawer} disabled={noDoc} aria-pressed={blastOpen} {...tip({
+          <button className={`tb ${blastOpen ? 'active' : ''}`} onClick={toggleBlast} disabled={noDoc} aria-pressed={blastOpen} {...tip({
             label: 'BLAST',
             desc: isProtein ? 'Search NCBI for similar proteins or coding sequences' : 'Search NCBI for similar sequences',
             status: blastRunning ? 'Search running…' : blastUnseen ? 'Results ready' : undefined,
@@ -1771,7 +1861,7 @@ export default function App() {
               kind the document needs, the caret starts a new one or jumps
               to any gel in the session. */}
           <div className="tb-split" ref={gelBtnRef}>
-            <button className={`tb ${gelOpen ? 'active' : ''}`} onClick={() => (gelOpen ? setActiveGel(null) : openGel())} aria-pressed={gelOpen} {...tip({
+            <button className={`tb ${gelOpen ? 'active' : ''}`} onClick={() => (gelOpen ? setActiveGel(null) : openGel())} onContextMenu={e => { e.preventDefault(); setGelDropdownOpen(true) }} aria-pressed={gelOpen} {...tip({
               label: 'Gel',
               desc: gelOpen ? 'Close the gel and return to the sequence'
                 : gelSourceIsProtein ? 'Simulate SDS-PAGE: open the latest protein gel or start one'
@@ -1789,7 +1879,7 @@ export default function App() {
               <ChevronDownSmall size={12} />
             </button>
             {gelDropdownOpen && (
-              <div className="tb-dropdown" role="menu">
+              <div className="tb-dropdown" role="menu" ref={keepMenuInView}>
                 <button
                   className="tb-dropdown-item"
                   role="menuitem"
@@ -1842,7 +1932,7 @@ export default function App() {
             <span className="tb-icon"><Wrench size={14} /></span><ChevronDownSmall size={10} />
           </button>
           {toolsMenuOpen && (
-            <div className="file-menu" role="menu">
+            <div className="file-menu" role="menu" ref={keepMenuInView}>
               <MenuGroups variant="file" groups={toolsMenu} onPicked={() => setToolsMenuOpen(false)} />
             </div>
           )}
@@ -1850,64 +1940,50 @@ export default function App() {
 
         <div className="toolbar-group">
           {(() => {
+            // Each workspace zooms its own view: out, the level, in, and for
+            // the sequence a fit. Down the left, in goes on top, where "more"
+            // sits in a column; reordered here rather than with CSS `order` so
+            // the keyboard walks the buttons in the order they are drawn.
+            const zoomControls = (out: React.ReactNode, level: React.ReactNode, zoomIn: React.ReactNode, extra?: React.ReactNode) => (
+              verticalToolbar ? <>{zoomIn}{level}{out}{extra}</> : <>{out}{level}{zoomIn}{extra}</>
+            )
+            const outIcon = <span className="tb-icon"><ZoomOut size={14} /></span>
+            const inIcon = <span className="tb-icon"><ZoomIn size={14} /></span>
             const activeContig = activeContigId ? contigs.find(c => c.id === activeContigId) : null
             if (activeContig) {
               const cz = activeContig.view.zoom
-              return (
-                <>
-                  <button className="tb" onClick={() => setContigView(activeContig.id, { zoom: cz - 1 })} disabled={cz <= 0} {...tip({ label: 'Zoom out' })}>
-                    <span className="tb-icon"><ZoomOut size={14} /></span>
-                  </button>
-                  <span className="tb zoom-label" title={`Zoom level ${cz}`}>{Math.round(cz / (CONTIG_ZOOM.length - 1) * 100)}%</span>
-                  <button className="tb" onClick={() => setContigView(activeContig.id, { zoom: cz + 1 })} disabled={cz >= CONTIG_ZOOM.length - 1} {...tip({ label: 'Zoom in' })}>
-                    <span className="tb-icon"><ZoomIn size={14} /></span>
-                  </button>
-                </>
+              return zoomControls(
+                <button className="tb" onClick={() => setContigView(activeContig.id, { zoom: cz - 1 })} disabled={cz <= 0} {...tip({ label: 'Zoom out' })}>{outIcon}</button>,
+                <span className="tb zoom-label" title={`Zoom level ${cz}`}>{Math.round(cz / (CONTIG_ZOOM.length - 1) * 100)}%</span>,
+                <button className="tb" onClick={() => setContigView(activeContig.id, { zoom: cz + 1 })} disabled={cz >= CONTIG_ZOOM.length - 1} {...tip({ label: 'Zoom in' })}>{inIcon}</button>,
               )
             }
             const activeAlign = activeAlignmentId ? alignments.find(a => a.id === activeAlignmentId) : null
             if (activeAlign) {
               const az = activeAlign.view.zoom
-              return (
-                <>
-                  <button className="tb" onClick={() => setAlignmentView(activeAlign.id, { zoom: az - 1 })} disabled={az <= 0} {...tip({ label: 'Zoom out' })}>
-                    <span className="tb-icon"><ZoomOut size={14} /></span>
-                  </button>
-                  <span className="tb zoom-label" title={`Zoom level ${az}`}>{Math.round(az / 9 * 100)}%</span>
-                  <button className="tb" onClick={() => setAlignmentView(activeAlign.id, { zoom: az + 1 })} disabled={az >= 9} {...tip({ label: 'Zoom in' })}>
-                    <span className="tb-icon"><ZoomIn size={14} /></span>
-                  </button>
-                </>
+              return zoomControls(
+                <button className="tb" onClick={() => setAlignmentView(activeAlign.id, { zoom: az - 1 })} disabled={az <= 0} {...tip({ label: 'Zoom out' })}>{outIcon}</button>,
+                <span className="tb zoom-label" title={`Zoom level ${az}`}>{Math.round(az / 9 * 100)}%</span>,
+                <button className="tb" onClick={() => setAlignmentView(activeAlign.id, { zoom: az + 1 })} disabled={az >= 9} {...tip({ label: 'Zoom in' })}>{inIcon}</button>,
               )
             }
             if (activeSequencingReadIds.length > 0) {
-              return (
-                <>
-                  <button className="tb" onClick={() => updateTraceView({ zoom: Math.max(0, traceZoom - 1) })} disabled={traceZoom <= 0 || (activeSequencingReadIds.length > 1 && traceReadSet === 'table')} {...tip({ label: 'Zoom out' })}>
-                    <span className="tb-icon"><ZoomOut size={14} /></span>
-                  </button>
-                  <span className="tb zoom-label" title={`${ZOOM_WIDTHS[traceZoom]} px per base`}>{Math.round(traceZoom / (ZOOM_WIDTHS.length - 1) * 100)}%</span>
-                  <button className="tb" onClick={() => updateTraceView({ zoom: Math.min(ZOOM_WIDTHS.length - 1, traceZoom + 1) })} disabled={traceZoom >= ZOOM_WIDTHS.length - 1 || (activeSequencingReadIds.length > 1 && traceReadSet === 'table')} {...tip({ label: 'Zoom in' })}>
-                    <span className="tb-icon"><ZoomIn size={14} /></span>
-                  </button>
-                </>
+              const table = activeSequencingReadIds.length > 1 && traceReadSet === 'table'
+              return zoomControls(
+                <button className="tb" onClick={() => updateTraceView({ zoom: Math.max(0, traceZoom - 1) })} disabled={traceZoom <= 0 || table} {...tip({ label: 'Zoom out' })}>{outIcon}</button>,
+                <span className="tb zoom-label" title={`${ZOOM_WIDTHS[traceZoom]} px per base`}>{Math.round(traceZoom / (ZOOM_WIDTHS.length - 1) * 100)}%</span>,
+                <button className="tb" onClick={() => updateTraceView({ zoom: Math.min(ZOOM_WIDTHS.length - 1, traceZoom + 1) })} disabled={traceZoom >= ZOOM_WIDTHS.length - 1 || table} {...tip({ label: 'Zoom in' })}>{inIcon}</button>,
               )
             }
             // The sequence zoom has nothing to act on in a gel or a cloning design.
             if (otherWorkspace) return null
-            return (
-              <>
-                <button className="tb" onClick={() => setZoom(zoomLevel - 1)} disabled={!activeTabId || zoomLevel <= 0} {...tip({ label: 'Zoom out' })}>
-                  <span className="tb-icon"><ZoomOut size={14} /></span>
-                </button>
-                <SequenceZoomLabel zoomLevel={zoomLevel} />
-                <button className="tb" onClick={() => setZoom(zoomLevel + 1)} disabled={!activeTabId || zoomLevel >= 20} {...tip({ label: 'Zoom in' })}>
-                  <span className="tb-icon"><ZoomIn size={14} /></span>
-                </button>
-                <button className="tb" onClick={() => fitSequenceView()} disabled={!activeTabId || viewMode === 'circular'} {...tip({ label: 'Fit whole sequence', desc: 'Zoom so the whole sequence fits the view' })}>
-                  <span className="tb-icon"><Scan size={14} /></span>
-                </button>
-              </>
+            return zoomControls(
+              <button className="tb" onClick={() => setZoom(zoomLevel - 1)} disabled={!activeTabId || zoomLevel <= 0} {...tip({ label: 'Zoom out' })}>{outIcon}</button>,
+              <SequenceZoomLabel zoomLevel={zoomLevel} stacked={verticalToolbar} />,
+              <button className="tb" onClick={() => setZoom(zoomLevel + 1)} disabled={!activeTabId || zoomLevel >= 20} {...tip({ label: 'Zoom in' })}>{inIcon}</button>,
+              <button className="tb" onClick={() => fitSequenceView()} disabled={!activeTabId || viewMode === 'circular'} {...tip({ label: 'Fit whole sequence', desc: 'Zoom so the whole sequence fits the view' })}>
+                <span className="tb-icon"><Scan size={14} /></span>
+              </button>,
             )
           })()}
         </div>
@@ -1931,7 +2007,7 @@ export default function App() {
           ref={themeBtnRef}
           className="tb toolbar-icon-btn"
           onClick={() => { setThemeOpen(v => !v); setInfoOpen(false) }}
-          {...tip({ label: 'Theme' })}
+          {...tip({ label: 'Appearance', desc: 'Theme and layout' })}
           aria-haspopup="dialog"
           aria-expanded={themeOpen}
         >
@@ -1949,104 +2025,121 @@ export default function App() {
         </button>
       </div>
 
-      <ToolbarTooltip container={toolbarRef} />
+      <ToolbarTooltip container={toolbarRef} placement={verticalToolbar ? 'right' : 'below'} />
 
-      {/* Theme popover - rendered outside toolbar to avoid overflow clipping */}
-      {themeOpen && (() => {
-        const r = themeBtnRef.current?.getBoundingClientRect()
-        const top = r ? r.bottom + 10 : 46
-        const right = r ? window.innerWidth - r.right : 14
-        return (
-          <div className="theme-popover" ref={themePopRef} style={{ top, right }}>
-            <div className="popover-header">
-              <span>Theme</span>
-              <button className="popover-close" onClick={() => setThemeOpen(false)}><X size={14} /></button>
-            </div>
-            {/* Light and dark side by side: all ten at once, no scrolling. */}
-            <div className="theme-popover-body">
-              {(['light', 'dark'] as const).map(group => (
-                <div key={group} className="theme-col">
-                  <div className="theme-group-label">{group === 'light' ? 'Light' : 'Dark'}</div>
-                  {THEMES.filter(t => t.group === group).map(t => (
-                    <button
-                      key={t.id}
-                      className={`theme-option ${theme === t.id ? 'active' : ''}`}
-                      onClick={() => { switchTheme(t.id); setThemeOpen(false) }}
-                    >
-                      <span className="theme-preview" style={{ background: t.outer }}>
-                        <span className="tp-card" style={{ background: t.bg }}>
-                          <span className="tp-accent" style={{ background: t.accent }} />
-                          <span className="tp-line" style={{ background: t.text }} />
-                          <span className="tp-line short" style={{ background: t.muted }} />
-                        </span>
+      {/* Appearance popover - rendered outside toolbar to avoid overflow clipping */}
+      {themeOpen && (
+        <div className={`theme-popover${verticalToolbar ? ' beside' : ''}`} ref={themePopRef} style={popoverAnchor(themeBtnRef.current, verticalToolbar)}>
+          <div className="popover-header">
+            <span>Appearance</span>
+            <button className="popover-close" onClick={() => setThemeOpen(false)}><X size={14} /></button>
+          </div>
+          {/* Light and dark side by side: all ten at once, no scrolling. */}
+          <div className="theme-popover-body">
+            {(['light', 'dark'] as const).map(group => (
+              <div key={group} className="theme-col">
+                <div className="theme-group-label">{group === 'light' ? 'Light' : 'Dark'}</div>
+                {THEMES.filter(t => t.group === group).map(t => (
+                  <button
+                    key={t.id}
+                    className={`theme-option ${theme === t.id ? 'active' : ''}`}
+                    onClick={() => { switchTheme(t.id); setThemeOpen(false) }}
+                  >
+                    <span className="theme-preview" style={{ background: t.outer }}>
+                      <span className="tp-card" style={{ background: t.bg }}>
+                        <span className="tp-accent" style={{ background: t.accent }} />
+                        <span className="tp-line" style={{ background: t.text }} />
+                        <span className="tp-line short" style={{ background: t.muted }} />
                       </span>
-                      <span className="theme-label">{t.label}</span>
-                    </button>
-                  ))}
-                </div>
-              ))}
+                    </span>
+                    <span className="theme-label">{t.label}</span>
+                  </button>
+                ))}
+              </div>
+            ))}
+          </div>
+          {/* Stays open on a switch, so the two layouts can be compared;
+              the popover follows its button to wherever the toolbar went. */}
+          <div className="layout-section">
+            <div className="theme-group-label">Layout</div>
+            <div className="layout-row">
+              <span className="layout-label" id="layout-toolbar-label">Toolbar</span>
+              <div className="seg seg-sm" role="radiogroup" aria-labelledby="layout-toolbar-label">
+                <button role="radio" aria-checked={!verticalToolbar} onClick={() => setToolbarPlacement('top')}>
+                  <PanelTop size={12} aria-hidden="true" /> Top
+                </button>
+                <button role="radio" aria-checked={verticalToolbar} onClick={() => setToolbarPlacement('left')}>
+                  <PanelLeft size={12} aria-hidden="true" /> Left
+                </button>
+              </div>
+            </div>
+            <div className="layout-row">
+              <span className="layout-label" id="layout-panel-label">Features panel</span>
+              <div className="seg seg-sm" role="radiogroup" aria-labelledby="layout-panel-label">
+                <button role="radio" aria-checked={panelPlacement === 'right'} onClick={() => setPanelPlacement('right')}>
+                  <PanelRight size={12} aria-hidden="true" /> Right
+                </button>
+                <button role="radio" aria-checked={panelPlacement === 'bottom'} onClick={() => setPanelPlacement('bottom')}>
+                  <PanelBottom size={12} aria-hidden="true" /> Bottom
+                </button>
+              </div>
             </div>
           </div>
-        )
-      })()}
+        </div>
+      )}
 
       {/* Info popover - rendered outside toolbar */}
-      {infoOpen && (() => {
-        const r = infoBtnRef.current?.getBoundingClientRect()
-        const top = r ? r.bottom + 10 : 46
-        const right = r ? window.innerWidth - r.right : 14
-        return (
-          <div className="info-popover" ref={infoPopRef} style={{ top, right }}>
-            <div className="popover-header">
-              <span>About</span>
-              <button className="popover-close" onClick={() => setInfoOpen(false)}><X size={14} /></button>
+      {infoOpen && (
+        <div className={`info-popover${verticalToolbar ? ' beside' : ''}`} ref={infoPopRef} style={popoverAnchor(infoBtnRef.current, verticalToolbar)}>
+          <div className="popover-header">
+            <span>About</span>
+            <button className="popover-close" onClick={() => setInfoOpen(false)}><X size={14} /></button>
+          </div>
+          <div className="info-body">
+            <div className="info-logo"><Dna size={28} /></div>
+            <div className="info-title">SeqNexus</div>
+            <div className="info-version">Version {BUILD_DATE}</div>
+            {/* No feature list: one fell behind the app, and any would again. */}
+            <div className="info-desc">
+              A sequence editor for molecular cloning that runs entirely in your browser.
             </div>
-            <div className="info-body">
-              <div className="info-logo"><Dna size={28} /></div>
-              <div className="info-title">SeqNexus</div>
-              <div className="info-version">Version {BUILD_DATE}</div>
-              {/* No feature list: one fell behind the app, and any would again. */}
-              <div className="info-desc">
-                A sequence editor for molecular cloning that runs entirely in your browser.
-              </div>
-              <hr />
-              <div className="info-row"><span className="info-label">Contact</span><span><a href="mailto:contact@seqnexus.app">Christopher Acatay</a></span></div>
-              <div className="info-row"><span className="info-label">License</span><span><a href="https://www.gnu.org/licenses/agpl-3.0.html" target="_blank" rel="noopener noreferrer">GNU AGPL v3</a></span></div>
-              {/* The AGPL obliges anyone running a modified copy to offer its
-                  source to the people using it; a link here is how this copy
-                  does that, and one a fork keeps by default. */}
-              <div className="info-row"><span className="info-label">Source</span><span><a href="https://github.com/cacat-ayy/seqnexus" target="_blank" rel="noopener noreferrer">github.com/cacat-ayy/seqnexus</a></span></div>
-              <hr />
-              {/* The two questions users actually have. Only BLAST sends a
-                  sequence anywhere: to EMBL-EBI (blast/ebi.ts), or to NCBI when
-                  the user hands a search to NCBI's site (blast/session.ts
-                  searchAtNcbi). NCBI, UniProt, RCSB and AlphaFold fetches only
-                  send an id. Keep this true if that changes. */}
-              <div className="info-notice">
-                <p><strong>Your data stays here.</strong> Sequences are kept in this browser and never uploaded, except to EMBL-EBI when you run a BLAST search, or to NCBI when you choose Search at NCBI. Fetching a record or a structure sends only its id.</p>
-                <p>Figures you make may be used freely in publications, theses and commercial work.</p>
-              </div>
-              <hr />
-              <div className="info-section-title">How to Cite</div>
-              <div className="info-cite">{CITATION_TEXT}</div>
-              <div className="info-cite-actions">
-                <button className="info-copy-cite" onClick={() => { void copyText(CITATION_TEXT, 'Citation copied') }}>
-                  Copy citation
-                </button>
-                <button className="info-copy-cite" onClick={() => { void copyText(CITATION_BIBTEX, 'BibTeX copied') }}>
-                  Copy BibTeX
-                </button>
-              </div>
-              <hr />
-              <div className="info-legal">
-                <a href="impressum.html" target="_blank" rel="noopener noreferrer">Legal notice</a>
-                <span className="info-legal-sep">&middot;</span>
-                <a href="datenschutz.html" target="_blank" rel="noopener noreferrer">Privacy</a>
-              </div>
+            <hr />
+            <div className="info-row"><span className="info-label">Contact</span><span><a href="mailto:contact@seqnexus.app">Christopher Acatay</a></span></div>
+            <div className="info-row"><span className="info-label">License</span><span><a href="https://www.gnu.org/licenses/agpl-3.0.html" target="_blank" rel="noopener noreferrer">GNU AGPL v3</a></span></div>
+            {/* The AGPL obliges anyone running a modified copy to offer its
+                source to the people using it; a link here is how this copy
+                does that, and one a fork keeps by default. */}
+            <div className="info-row"><span className="info-label">Source</span><span><a href="https://github.com/cacat-ayy/seqnexus" target="_blank" rel="noopener noreferrer">github.com/cacat-ayy/seqnexus</a></span></div>
+            <hr />
+            {/* The two questions users actually have. Only BLAST sends a
+                sequence anywhere: to EMBL-EBI (blast/ebi.ts), or to NCBI when
+                the user hands a search to NCBI's site (blast/session.ts
+                searchAtNcbi). NCBI, UniProt, RCSB and AlphaFold fetches only
+                send an id. Keep this true if that changes. */}
+            <div className="info-notice">
+              <p><strong>Your data stays here.</strong> Sequences are kept in this browser and never uploaded, except to EMBL-EBI when you run a BLAST search, or to NCBI when you choose Search at NCBI. Fetching a record or a structure sends only its id.</p>
+              <p>Figures you make may be used freely in publications, theses and commercial work.</p>
+            </div>
+            <hr />
+            <div className="info-section-title">How to Cite</div>
+            <div className="info-cite">{CITATION_TEXT}</div>
+            <div className="info-cite-actions">
+              <button className="info-copy-cite" onClick={() => { void copyText(CITATION_TEXT, 'Citation copied') }}>
+                Copy citation
+              </button>
+              <button className="info-copy-cite" onClick={() => { void copyText(CITATION_BIBTEX, 'BibTeX copied') }}>
+                Copy BibTeX
+              </button>
+            </div>
+            <hr />
+            <div className="info-legal">
+              <a href="impressum.html" target="_blank" rel="noopener noreferrer">Legal notice</a>
+              <span className="info-legal-sep">&middot;</span>
+              <a href="datenschutz.html" target="_blank" rel="noopener noreferrer">Privacy</a>
             </div>
           </div>
-        )
-      })()}
+        </div>
+      )}
 
       {/* === Main Area === */}
       <div className="main-area">
@@ -2297,9 +2390,9 @@ export default function App() {
                   toolbar's ORFs and Enzymes open the finders). */}
               <div className="panel-bar">
                 <button
-                  className={`panel-bar-btn ${featuresPanelOpen && sidebarTab === 'features' ? 'active' : ''}`}
+                  className={`panel-bar-btn ${panelTabOn('features') ? 'active' : ''}`}
                   onClick={() => toggleSidebarTab('features')}
-                  aria-pressed={featuresPanelOpen && sidebarTab === 'features'}
+                  aria-pressed={panelTabOn('features')}
                   title="Toggle feature sidebar"
                 >
                   <List size={13} /> Features
@@ -2309,9 +2402,9 @@ export default function App() {
                     than shown greyed: this bar belongs to the document. */}
                 {!isProtein && (
                 <button
-                  className={`panel-bar-btn ${featuresPanelOpen && sidebarTab === 'primers' ? 'active' : ''}`}
+                  className={`panel-bar-btn ${panelTabOn('primers') ? 'active' : ''}`}
                   onClick={() => toggleSidebarTab('primers')}
-                  aria-pressed={featuresPanelOpen && sidebarTab === 'primers'}
+                  aria-pressed={panelTabOn('primers')}
                   title="Toggle the primers sidebar"
                 >
                   <FlaskConical size={13} /> Primers
@@ -2320,9 +2413,9 @@ export default function App() {
                 )}
                 {!isProtein && (
                 <button
-                  className={`panel-bar-btn ${featuresPanelOpen && sidebarTab === 'guides' ? 'active' : ''}`}
+                  className={`panel-bar-btn ${panelTabOn('guides') ? 'active' : ''}`}
                   onClick={() => toggleSidebarTab('guides')}
-                  aria-pressed={featuresPanelOpen && sidebarTab === 'guides'}
+                  aria-pressed={panelTabOn('guides')}
                   title="Toggle the guide design sidebar"
                 >
                   <Crosshair size={13} /> Guides
@@ -2443,7 +2536,7 @@ export default function App() {
               </div>
 
               {/* View area */}
-                <div ref={viewAndPanelsRef} className={`view-and-panels${blastOpen && blastMaximized ? ' blast-maximized' : ''}`}>
+                <div ref={viewAndPanelsRef} className={`view-and-panels${blastOpen && blastMaximized && !blastInPanel ? ' blast-maximized' : ''}`}>
                   <div className="view-area">
                     <FindDialog open={showFind} focusRequest={findRequest} preset={findPreset} onClose={handleCloseFind} />
                     {/* Empty state hints for active panels with no results */}
@@ -2507,12 +2600,19 @@ export default function App() {
                       </div>
                     )}
                   </div>
-                  {blastOpen && (
+                  {blastOpen && !blastInPanel && (
                     <Suspense fallback={null}>
                       <BlastDrawer containerRef={viewAndPanelsRef} />
                     </Suspense>
                   )}
                 </div>
+
+              {/* The features panel, when it sits along the bottom: as wide as
+                  the view, so opening it costs rows rather than re-wrapping
+                  the sequence to a narrower width. */}
+              {panelPlacement === 'bottom' && (
+                <FeatureSidebar open={featuresPanelOpen} onClose={handleCloseFeaturesPanel} placement="bottom" />
+              )}
 
               {/* Status bar */}
               <div className="status-bar">
@@ -2643,8 +2743,11 @@ export default function App() {
           )}
         </div>
         {/* The sidebar belongs to the sequence: another workspace in front hides
-            it, and it comes back as it was with the sequence. */}
-        <FeatureSidebar open={featuresPanelOpen && !otherWorkspace} onClose={handleCloseFeaturesPanel} />
+            it, and it comes back as it was with the sequence. Along the bottom
+            it is mounted under the view instead, above the status bar. */}
+        {panelPlacement === 'right' && (
+          <FeatureSidebar open={featuresPanelOpen && !otherWorkspace} onClose={handleCloseFeaturesPanel} />
+        )}
       </div>
 
       <Toaster />

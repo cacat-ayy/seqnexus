@@ -51,6 +51,11 @@ export interface FeatureRowProps {
   /** Hovered here or on the map or sequence. */
   hovered: boolean
   showLocation: boolean
+  /**
+   * A row of the table in the panel along the bottom: the type, start, end
+   * and length in columns of their own, lined up under the table's header.
+   */
+  wide?: boolean
   onClick: (e: React.MouseEvent, ann: Annotation) => void
   onDoubleClick: (ann: Annotation) => void
   onContextMenu: (e: React.MouseEvent, ann: Annotation) => void
@@ -60,7 +65,7 @@ export interface FeatureRowProps {
 }
 
 function FeatureRow({
-  ann, seqLen, alphabet, issues, expanded, hidden, picked, active, here, hovered, showLocation,
+  ann, seqLen, alphabet, issues, expanded, hidden, picked, active, here, hovered, showLocation, wide = false,
   onClick, onDoubleClick, onContextMenu, onToggleHidden, onHover, children,
 }: FeatureRowProps) {
   const len = annotationLength(ann, seqLen)
@@ -74,7 +79,25 @@ function FeatureRow({
     here && 'here',
     hovered && 'hovered',
     showLocation && 'with-loc',
+    wide && 'wide',
   ].filter(Boolean).join(' ')
+
+  const name = (
+    <>
+      <span className="ann-swatch" style={{ backgroundColor: ann.color }} />
+      <span className="ft-name">{ann.name}</span>
+      {ann.truncated && <span className="ft-truncated" title="Cut short at a cloning junction">truncated</span>}
+      {issues && issues.length > 0 && (
+        <span
+          className={`ft-issue-icon ${warning ? 'warning' : 'note'}`}
+          title={issues.map(m => m.text).join('\n')}
+          aria-label={issues.map(m => m.text).join('. ')}
+        >
+          {warning ? <TriangleAlert size={11} /> : <Info size={11} />}
+        </span>
+      )}
+    </>
+  )
 
   return (
     <div id={rowDomId(ann.id)} className={classes} role="option" aria-selected={picked}>
@@ -88,22 +111,23 @@ function FeatureRow({
         onMouseEnter={e => onHover(e, ann)}
         onMouseLeave={() => onHover(null, null)}
       >
-        <span className="ann-swatch" style={{ backgroundColor: ann.color }} />
-        <span className="ft-name">{ann.name}</span>
-        {ann.truncated && <span className="ft-truncated" title="Cut short at a cloning junction">truncated</span>}
-        {issues && issues.length > 0 && (
-          <span
-            className={`ft-issue-icon ${warning ? 'warning' : 'note'}`}
-            title={issues.map(m => m.text).join('\n')}
-            aria-label={issues.map(m => m.text).join('. ')}
-          >
-            {warning ? <TriangleAlert size={11} /> : <Info size={11} />}
-          </span>
+        {wide ? (
+          <>
+            <span className="ft-col-name">{name}</span>
+            <span className="ft-col-type col-type" title={ann.type}>{ann.type}</span>
+            <span className="ft-col-num">{(ann.start + 1).toLocaleString('en-US')}</span>
+            <span className="ft-col-num col-end">{ann.end.toLocaleString('en-US')}</span>
+            <span className="ft-col-num">{formatLength(len, alphabet)}</span>
+          </>
+        ) : (
+          <>
+            {name}
+            <span className="ft-pos">
+              <span className="ann-range">{ann.start + 1}..{ann.end}</span>
+              <span className="ft-len">{formatLength(len, alphabet)}</span>
+            </span>
+          </>
         )}
-        <span className="ft-pos">
-          <span className="ann-range">{ann.start + 1}..{ann.end}</span>
-          <span className="ft-len">{formatLength(len, alphabet)}</span>
-        </span>
         <span className="ft-strand-badge" aria-label={ann.strand === 1 ? 'forward' : ann.strand === -1 ? 'reverse' : 'no strand'}>
           {ann.strand === 1 ? '→' : ann.strand === -1 ? '←' : '·'}
         </span>

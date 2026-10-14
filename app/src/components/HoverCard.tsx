@@ -38,14 +38,16 @@ function usePinnedCard(): PinnedCard | null {
   )
 }
 
-export default function HoverCard({ x, y, pinKey, className = 'ft-tooltip', children }: {
+export default function HoverCard({ x, y, pinKey, className = 'ft-tooltip', above = false, children }: {
   x: number
   y: number
   pinKey: string
   className?: string
+  /** Open above (x, y) instead of below it. */
+  above?: boolean
   children: ReactNode
 }) {
-  const { ref, pos } = useClampedPosition(x, y)
+  const { ref, pos } = useClampedPosition(x, y, { above })
   const current = usePinnedCard()
   const latest = useRef({ pinKey, pos, className, children })
   latest.current = { pinKey, pos, className, children }

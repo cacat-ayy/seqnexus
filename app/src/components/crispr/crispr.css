@@ -931,3 +931,39 @@
 .nd-dialog .nd-pam {
   width: 11ch;
 }
+
+/* ===== Along the bottom: setup, results and the guide in focus =====
+   The three groups (GuidePanel) are display: contents in the sidebar, so
+   it reads as one column; in the panel along the bottom they become
+   columns, each scrolling on its own. */
+.gp-setup,
+.gp-main,
+.gp-side {
+  display: contents;
+}
+
+.feature-sidebar.is-bottom .gp {
+  display: grid;
+  grid-template-columns: 320px minmax(0, 1fr) minmax(0, 380px);
+  grid-template-rows: minmax(0, 1fr);
+}
+/* No guide in focus: the results take its room. */
+.feature-sidebar.is-bottom .gp:has(> .gp-side:empty) {
+  grid-template-columns: 320px minmax(0, 1fr);
+}
+.feature-sidebar.is-bottom .gp > :is(.gp-setup, .gp-main, .gp-side) {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  overflow-y: auto;
+}
+.feature-sidebar.is-bottom .gp-setup { border-right: 1px solid var(--border); }
+.feature-sidebar.is-bottom .gp-side { border-left: 1px solid var(--border); }
+.feature-sidebar.is-bottom .gp-side:empty { display: none; }
+/* The inspector has the column to itself: no cap on its height. */
+.feature-sidebar.is-bottom .gp-side > .gi {
+  flex: 1 0 auto;
+  max-height: none;
+  border-top: none;
+}

@@ -4,7 +4,7 @@ import { useRef } from 'react'
 import { ToolbarTooltip } from './ToolbarTooltip'
 import { tip } from './toolbarTip'
 
-function Bar({ disabled = false }: { disabled?: boolean }) {
+function Bar({ disabled = false, placement }: { disabled?: boolean; placement?: 'below' | 'right' }) {
   const ref = useRef<HTMLDivElement>(null)
   return (
     <>
@@ -14,7 +14,7 @@ function Bar({ disabled = false }: { disabled?: boolean }) {
         </button>
         <button {...tip({ label: 'Align' })}>A</button>
       </div>
-      <ToolbarTooltip container={ref} />
+      <ToolbarTooltip container={ref} placement={placement} />
     </>
   )
 }
@@ -70,5 +70,17 @@ describe('ToolbarTooltip', () => {
     hover(btn.firstElementChild ?? btn)
     act(() => { vi.advanceTimersByTime(500) })
     expect(screen.queryByRole('tooltip')).toBeNull()
+  })
+
+  it('opens to the right of a button in a toolbar down the left', () => {
+    render(<Bar placement="right" />)
+    const btn = screen.getByRole('button', { name: 'Primers' })
+    btn.getBoundingClientRect = () => ({ left: 8, right: 40, top: 200, bottom: 232, width: 32, height: 32, x: 8, y: 200, toJSON: () => ({}) }) as DOMRect
+    hover(btn)
+    act(() => { vi.advanceTimersByTime(500) })
+    const t = screen.getByRole('tooltip')
+    expect(t.classList.contains('tb-tooltip-right')).toBe(true)
+    // Beside the button, not under it.
+    expect(t.style.left).toBe('46px')
   })
 })

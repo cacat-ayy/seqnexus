@@ -56,13 +56,18 @@ const clock = (sec: number) => `${Math.floor(sec / 60)}:${String(sec % 60).padSt
 /** The program a search ran, as it was chosen (megablast, not the blastn NCBI reports). */
 const programOf = (s: BlastSearch) => s.settings.program
 
-export default function BlastDrawer({ containerRef }: { containerRef: React.RefObject<HTMLElement | null> }) {
+/**
+ * `embedded` is BLAST as a tab of the features panel along the bottom: the
+ * same search and results, without a frame of its own. The panel resizes
+ * and closes it; only Maximize stays, letting the panel take the view's room.
+ */
+export default function BlastDrawer({ containerRef, embedded = false }: { containerRef: React.RefObject<HTMLElement | null>; embedded?: boolean }) {
   const open = useBlastStore(s => s.open)
   if (!open) return null
-  return <Drawer containerRef={containerRef} />
+  return <Drawer containerRef={containerRef} embedded={embedded} />
 }
 
-function Drawer({ containerRef }: { containerRef: React.RefObject<HTMLElement | null> }) {
+function Drawer({ containerRef, embedded }: { containerRef: React.RefObject<HTMLElement | null>; embedded: boolean }) {
   const tabId = useEditorStore(s => s.activeTabId) ?? ''
   const doc = useEditorStore(s => s.doc)
   const selection = useEditorStore(s => s.selection)
@@ -71,7 +76,8 @@ function Drawer({ containerRef }: { containerRef: React.RefObject<HTMLElement | 
   const run = useBlastStore(s => s.run)
   const failure = useBlastStore(s => s.failure)
   const shownRid = useBlastStore(s => s.shown[tabId])
-  const collapsed = useBlastStore(s => s.collapsed)
+  // Embedded, the panel does the collapsing (it closes) and the sizing.
+  const collapsed = useBlastStore(s => s.collapsed) && !embedded
   const maximized = useBlastStore(s => s.maximized)
   const height = useBlastStore(s => s.height)
 
@@ -99,15 +105,15 @@ function Drawer({ containerRef }: { containerRef: React.RefObject<HTMLElement | 
     else if (e.key === 'ArrowDown') { e.preventDefault(); setDrawerHeight(height - step) }
   }
 
-  const style = collapsed || maximized ? undefined : { height: Math.min(height, maxHeight()) }
+  const style = collapsed || maximized || embedded ? undefined : { height: Math.min(height, maxHeight()) }
 
   return (
     <section
-      className={`bd${collapsed ? ' bd-collapsed' : ''}${maximized ? ' bd-maximized' : ''}`}
+      className={`bd${collapsed ? ' bd-collapsed' : ''}${maximized && !embedded ? ' bd-maximized' : ''}${embedded ? ' bd-embedded' : ''}`}
       style={style}
       aria-label="BLAST"
     >
-      {!collapsed && !maximized && (
+      {!collapsed && !maximized && !embedded && (
         <div
           className="bd-resize"
           role="separator"
@@ -123,7 +129,7 @@ function Drawer({ containerRef }: { containerRef: React.RefObject<HTMLElement | 
           onKeyDown={onResizeKey}
         />
       )}
-      <SearchHeader tabId={tabId} searches={searches} search={search} />
+      <SearchHeader tabId={tabId} searches={searches} search={search} embedded={embedded} />
       <RunStrip tabId={tabId} />
       {failure && failure.tabId === tabId && !run && (
         <div className="bd-failure" role="alert">
@@ -151,7 +157,7 @@ const EMPTY: BlastSearch[] = []
 
 // --- Header: the search form and the drawer's own controls ---
 
-function SearchHeader({ tabId, searches, search }: { tabId: string; searches: BlastSearch[]; search: BlastSearch | null }) {
+function SearchHeader({ tabId, searches, search, embedded }: { tabId: string; searches: BlastSearch[]; search: BlastSearch | null; embedded: boolean }) {
   const doc = useEditorStore(s => s.doc)
   const selection = useEditorStore(s => s.selection)
   const querySource = useBlastStore(s => s.querySource)
@@ -236,10 +242,13 @@ function SearchHeader({ tabId, searches, search }: { tabId: string; searches: Bl
 
   return (
     <header className="bd-head">
-      <div className="bd-brand">
-        <Globe size={14} aria-hidden="true" />
-        <span>BLAST</span>
-      </div>
+      {/* Embedded, the panel's tab already says BLAST. */}
+      {!embedded && (
+        <div className="bd-brand">
+          <Globe size={14} aria-hidden="true" />
+          <span>BLAST</span>
+        </div>
+      )}
 
       <div className="bd-form" role="group" aria-label="Search settings">
         <div className="seg seg-sm bd-seg" role="radiogroup" aria-label="Query">
@@ -328,21 +337,27 @@ function SearchHeader({ tabId, searches, search }: { tabId: string; searches: Bl
           <History size={13} aria-hidden="true" /> Recent
         </button>
         {recentAt && <RecentMenu at={recentAt} tabId={tabId} current={search} searches={searches} onClose={() => setRecentAt(null)} />}
-        <button
-          className="bd-icon-btn"
-          onClick={() => setCollapsed(!collapsed)}
-          aria-label={collapsed ? 'Expand the BLAST drawer' : 'Collapse the BLAST drawer'}
-          title={collapsed ? 'Expand' : 'Collapse'}
-        >{collapsed ? <ChevronUp size={15} /> : <ChevronDown size={15} />}</button>
+        {!embedded && (
+          <button
+            className="bd-icon-btn"
+            onClick={() => setCollapsed(!collapsed)}
+            aria-label={collapsed ? 'Expand the BLAST drawer' : 'Collapse the BLAST drawer'}
+            title={collapsed ? 'Expand' : 'Collapse'}
+          >{collapsed ? <ChevronUp size={15} /> : <ChevronDown size={15} />}</button>
+        )}
         <button
           className="bd-icon-btn"
           onClick={() => setMaximized(!maximized)}
-          aria-label={maximized ? 'Restore the BLAST drawer' : 'Maximize the BLAST drawer'}
+          aria-label={embedded
+            ? (maximized ? 'Restore the panel' : 'Maximize the panel')
+            : (maximized ? 'Restore the BLAST drawer' : 'Maximize the BLAST drawer')}
           title={maximized ? 'Restore' : 'Maximize'}
         >{maximized ? <Minimize2 size={14} /> : <Maximize2 size={14} />}</button>
-        <button className="bd-icon-btn" onClick={closeDrawer} aria-label="Close the BLAST drawer" title="Close (a running search continues)">
-          <X size={15} />
-        </button>
+        {!embedded && (
+          <button className="bd-icon-btn" onClick={closeDrawer} aria-label="Close the BLAST drawer" title="Close (a running search continues)">
+            <X size={15} />
+          </button>
+        )}
       </div>
     </header>
   )

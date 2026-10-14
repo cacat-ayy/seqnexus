@@ -38,7 +38,9 @@ describe('dropping files', () => {
     const bam = new File(['x'], 'mapped.bam')
     fireEvent.drop(document.querySelector('.app-root')!, { dataTransfer: { files: [bam], types: ['Files'] } })
     expect(document.querySelector('.drop-error')).toBeNull()
-    expect(await screen.findByText(/mapped\.bam/)).toBeTruthy()
+    // Its dialog loads lazily, which can take over a second while the other
+    // App suites run alongside.
+    expect(await screen.findByText(/mapped\.bam/, undefined, { timeout: 5000 })).toBeTruthy()
   })
 
   it('opens a file dropped elsewhere once', async () => {

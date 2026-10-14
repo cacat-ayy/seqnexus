@@ -485,3 +485,27 @@
 .fs-segmented > button {
   flex: 1;
 }
+
+/* ===== Along the bottom: the setup beside the task =====
+   The two groups (PrimerWorkbench) are display: contents in the sidebar;
+   in the panel along the bottom they become columns, each scrolling on
+   its own, so the settings stay in view beside a long list of picks. */
+.wb-setup,
+.wb-main {
+  display: contents;
+}
+
+.feature-sidebar.is-bottom .wb {
+  display: grid;
+  grid-template-columns: 340px minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr);
+  overflow: hidden;
+}
+.feature-sidebar.is-bottom .wb > :is(.wb-setup, .wb-main) {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  overflow-y: auto;
+}
+.feature-sidebar.is-bottom .wb-setup { border-right: 1px solid var(--border); }

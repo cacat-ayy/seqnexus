@@ -39,6 +39,7 @@ import type { ProteinSchemeId } from './utils/residue-colors'
 import type { PkaSetId } from './protein/properties'
 import { codingLength, residuesToDna, translationDocument, translationSource, type TranslationRequest } from './protein/link'
 import { loadDisplaySettings, saveDisplaySettings, type DisplaySettings } from './utils/display-settings'
+import { loadLayoutSettings, saveLayoutSettings, type PanelPlacement, type ToolbarPlacement } from './utils/layout-settings'
 import type { PlasmidLayout, PlasmidStyleId } from './plasmid/styles'
 import type { Ab1Data } from './io/ab1'
 import type { CutSite } from './enzymes/finder'
@@ -669,6 +670,13 @@ interface EditorStore {
   /** Record replaced and deleted residues of a protein as variant features. */
   trackVariants: boolean
   setTrackVariants: (on: boolean) => void
+
+  /** Where the toolbar sits: along the top, or down the left as a rail of icons. */
+  toolbarPlacement: ToolbarPlacement
+  setToolbarPlacement: (p: ToolbarPlacement) => void
+  /** Where the features panel sits: on the right, or along the bottom. */
+  panelPlacement: PanelPlacement
+  setPanelPlacement: (p: PanelPlacement) => void
 
   // Hover state (cross-view, not per-tab)
   hoveredAnnotationId: string | null
@@ -1830,6 +1838,21 @@ export const useEditorStore = create<EditorStore>((set, get) => {
     setAllAnnotationsVisible: () => {
       updateActiveTab({ hiddenAnnotationIds: [] })
     },
+
+    // --- Layout of the app's chrome ---
+    ...(() => {
+      const initial = loadLayoutSettings()
+      const persist = () => {
+        const s = get()
+        saveLayoutSettings({ toolbar: s.toolbarPlacement, panel: s.panelPlacement })
+      }
+      return {
+        toolbarPlacement: initial.toolbar,
+        setToolbarPlacement: (p: ToolbarPlacement) => { set({ toolbarPlacement: p }); persist() },
+        panelPlacement: initial.panel,
+        setPanelPlacement: (p: PanelPlacement) => { set({ panelPlacement: p }); persist() },
+      }
+    })(),
 
     // --- Global display preferences ---
     ...(() => {

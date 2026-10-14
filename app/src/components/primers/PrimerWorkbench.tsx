@@ -75,37 +75,44 @@ export default function PrimerWorkbench() {
 
   return (
     <div className="wb">
-      <section className="wb-section">
-        <div className="wb-row">
-          <label htmlFor="wb-task">Task</label>
-          <select id="wb-task" className="input ft-select" value={task} onChange={e => switchTask(e.target.value as Task)}>
-            {TASKS.map(t => <option key={t.id} value={t.id}>{t.label}</option>)}
-          </select>
-        </div>
-      </section>
+      {/* Two groups: what to design and with which settings, then the task's
+          own inputs and results. In the sidebar they run on as one column
+          (display: contents); along the bottom they sit side by side. */}
+      <div className="wb-setup">
+        <section className="wb-section">
+          <div className="wb-row">
+            <label htmlFor="wb-task">Task</label>
+            <select id="wb-task" className="input ft-select" value={task} onChange={e => switchTask(e.target.value as Task)}>
+              {TASKS.map(t => <option key={t.id} value={t.id}>{t.label}</option>)}
+            </select>
+          </div>
+        </section>
 
-      {task !== 'check' && (
-        <SettingsSection
-          settings={settings}
-          onChange={setSettings}
-          product={task === 'pcr'}
-          probe={task === 'pcr'}
-        />
-      )}
+        {task !== 'check' && (
+          <SettingsSection
+            settings={settings}
+            onChange={setSettings}
+            product={task === 'pcr'}
+            probe={task === 'pcr'}
+          />
+        )}
+      </div>
 
-      {task === 'pcr' && <PcrTask settings={settings} onSettings={setSettings} />}
-      {task === 'cloning' && <CloningTask settings={settings} />}
-      {task === 'mutagenesis' && <MutagenesisTask settings={settings} />}
-      {task === 'sequencing' && <SequencingTask settings={settings} />}
-      {task === 'check' && <CheckTask settings={settings} />}
+      <div className="wb-main">
+        {task === 'pcr' && <PcrTask settings={settings} onSettings={setSettings} />}
+        {task === 'cloning' && <CloningTask settings={settings} />}
+        {task === 'mutagenesis' && <MutagenesisTask settings={settings} />}
+        {task === 'sequencing' && <SequencingTask settings={settings} />}
+        {task === 'check' && <CheckTask settings={settings} />}
 
-      {hasDesign && (
-        <div className="wb-footer">
-          <button className="btn btn-sm" onClick={() => { clearDesign(); setPrimerView('list') }}>
-            Close design
-          </button>
-        </div>
-      )}
+        {hasDesign && (
+          <div className="wb-footer">
+            <button className="btn btn-sm" onClick={() => { clearDesign(); setPrimerView('list') }}>
+              Close design
+            </button>
+          </div>
+        )}
+      </div>
     </div>
   )
 }

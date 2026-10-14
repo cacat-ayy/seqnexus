@@ -35,8 +35,15 @@ function read(el: HTMLElement): Shown {
  * Rendered in place rather than portalled to <body>, because the theme's
  * variables live on .app-root and a tooltip outside it would render unstyled;
  * `position: fixed` takes it out of the toolbar's layout all the same.
+ *
+ * `placement` is where the tooltip goes relative to the button: below for a
+ * toolbar along the top, to the right for one down the left, where a
+ * tooltip below would land on the next button.
  */
-export function ToolbarTooltip({ container }: { container: RefObject<HTMLElement | null> }) {
+export function ToolbarTooltip({ container, placement = 'below' }: {
+  container: RefObject<HTMLElement | null>
+  placement?: 'below' | 'right'
+}) {
   const [shown, setShown] = useState<Shown | null>(null)
   const [pos, setPos] = useState<{ left: number; top: number } | null>(null)
   const tipRef = useRef<HTMLDivElement>(null)
@@ -121,24 +128,33 @@ export function ToolbarTooltip({ container }: { container: RefObject<HTMLElement
     }
   }, [container])
 
-  // Centre under the button, then pull back inside the window: the buttons at
+  // Centre on the button, then pull back inside the window: the buttons at
   // either end of the toolbar would otherwise push half the tooltip off-screen.
   useLayoutEffect(() => {
     if (!shown || !tipRef.current) { setPos(null); return }
     const r = shown.el.getBoundingClientRect()
+    if (placement === 'right') {
+      const h = tipRef.current.offsetHeight
+      const top = Math.min(
+        Math.max(EDGE, r.top + r.height / 2 - h / 2),
+        window.innerHeight - h - EDGE,
+      )
+      setPos({ left: r.right + GAP, top })
+      return
+    }
     const w = tipRef.current.offsetWidth
     const left = Math.min(
       Math.max(EDGE, r.left + r.width / 2 - w / 2),
       window.innerWidth - w - EDGE,
     )
     setPos({ left, top: r.bottom + GAP })
-  }, [shown])
+  }, [shown, placement])
 
   if (!shown) return null
   return (
     <div
       ref={tipRef}
-      className="tb-tooltip"
+      className={`tb-tooltip${placement === 'right' ? ' tb-tooltip-right' : ''}`}
       role="tooltip"
       style={pos ? { left: pos.left, top: pos.top } : { left: 0, top: 0, visibility: 'hidden' }}
     >

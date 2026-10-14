@@ -1,9 +1,14 @@
 /* ===== Status bar properties button ===== */
 
+/* One line, always: when the column is narrow (a toolbar down the left, a
+   sidebar on the right) the summary is cut short rather than wrapped onto a
+   second line the 24px bar has no room for. */
 .status-props-btn {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--space-1);
+  display: inline-block;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
   background: none;
   border: 1px solid transparent;
   border-radius: var(--radius-sm);

@@ -80,14 +80,16 @@ export function AnnotationTooltipContent({ ann, sequence }: { ann: Annotation; s
   )
 }
 
-export default function AnnotationTooltip({ ann, sequence, x, y }: {
+export default function AnnotationTooltip({ ann, sequence, x, y, above = false }: {
   ann: Annotation
   sequence: Sequence
   x: number
   y: number
+  /** Open above (x, y): from a row in the panel along the bottom. */
+  above?: boolean
 }) {
   return (
-    <HoverCard x={x} y={y} pinKey={`ann:${ann.id}`}>
+    <HoverCard x={x} y={y} above={above} pinKey={`ann:${ann.id}`}>
       <AnnotationTooltipContent ann={ann} sequence={sequence} />
     </HoverCard>
   )

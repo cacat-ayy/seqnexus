@@ -7,7 +7,7 @@
  * in the list, flagged, rather than disappearing.
  */
 
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import { Copy, AlertTriangle, Plus, X, Search } from 'lucide-react'
 import { useEditorStore } from '../../store'
 import { usePrimerSites } from '../../primers/usePrimerSites'
@@ -34,9 +34,22 @@ function siteLabel(site: BindingSite): string {
   return `${site.start + 1}..${site.end} ${site.strand === 1 ? '(+)' : '(−)'}`
 }
 
-export default function PrimerList({ adding, onAddingChange }: {
+/** Where a primer binds, for its row: the one site, how many, or that it does not. */
+function bindLabel(pSites: BindingSite[]): ReactNode {
+  if (pSites.length === 0) {
+    return <span className="pl-unbound" title="Does not bind this sequence"><AlertTriangle size={11} /> unbound</span>
+  }
+  return pSites.length === 1 ? siteLabel(pSites[0]) : `${pSites.length} sites`
+}
+
+export default function PrimerList({ adding, onAddingChange, wide = false }: {
   adding: boolean
   onAddingChange: (v: boolean) => void
+  /**
+   * In the panel along the bottom: a table (name, role, length, Tm, where it
+   * binds) with the primer's editor in a column beside it, not under its row.
+   */
+  wide?: boolean
 }) {
   const doc = useEditorStore(s => s.doc)
   const readOnly = useEditorStore(s => s.readOnly)
@@ -101,7 +114,13 @@ export default function PrimerList({ adding, onAddingChange }: {
     if (site) setSelection({ anchor: site.start, caret: site.end })
   }
 
-  return (
+  /** The Tm the editor leads with: the annealed part's when a tail or a mismatch makes it differ. */
+  const rowTm = (p: PrimerData, first: BindingSite | undefined) => {
+    const s = summarizeOligo(p, first ?? null, { bases: doc.sequence.bases, topology: doc.sequence.topology })
+    return first && (first.tail5 || first.tail3 || first.mismatches.length > 0) ? s.tmAnneal : s.tmFull
+  }
+
+  const body = (
     <>
       <div className="fs-search">
         <Search size={12} className="fs-search-icon" />
@@ -213,6 +232,11 @@ export default function PrimerList({ adding, onAddingChange }: {
           </div>
         )}
 
+        {wide && shown.length > 0 && (
+          <div className="pl-table-head" aria-hidden>
+            <span>Name</span><span className="col-role">Role</span><span className="num col-len">Length</span><span className="num">Tm</span><span>Binds</span>
+          </div>
+        )}
         {shown.map(p => {
           const pSites = sites.get(p.id) ?? []
           const first = pSites[0]
@@ -222,7 +246,7 @@ export default function PrimerList({ adding, onAddingChange }: {
             <div
               key={p.id}
               data-primer-id={p.id}
-              className={`ft-item ${expanded ? 'expanded' : ''}`}
+              className={`ft-item ${expanded ? 'expanded' : ''}${wide ? ' pl-wide-row' : ''}`}
             >
               <div
                 className="ft-summary"
@@ -233,17 +257,29 @@ export default function PrimerList({ adding, onAddingChange }: {
                 onMouseEnter={() => { if (first) setHoveredAnnotation(primerItemId(p.id, 0)) }}
                 onMouseLeave={() => setHoveredAnnotation(null)}
               >
-                <span className="ann-swatch" style={{ backgroundColor: primerColor(p, first?.strand ?? 1) }} />
-                <span className="ft-name">{p.name}</span>
-                {p.role === 'probe' && <span className="ft-type-badge">probe</span>}
-                {tails && <span className="ft-type-badge" title={tails}>tail</span>}
-                <span className="pl-sites">
-                  {pSites.length === 0
-                    ? <span className="pl-unbound" title="Does not bind this sequence"><AlertTriangle size={11} /> unbound</span>
-                    : pSites.length === 1 ? siteLabel(first) : `${pSites.length} sites`}
-                </span>
+                {wide ? (
+                  <>
+                    <span className="pl-col-name">
+                      <span className="ann-swatch" style={{ backgroundColor: primerColor(p, first?.strand ?? 1) }} />
+                      <span className="ft-name">{p.name}</span>
+                      {tails && <span className="ft-type-badge" title={tails}>tail</span>}
+                    </span>
+                    <span className="pl-col col-role">{p.role}</span>
+                    <span className="pl-col num col-len">{p.sequence.length} nt</span>
+                    <span className="pl-col num">{fmtTm(rowTm(p, first))}</span>
+                    <span className="pl-sites">{bindLabel(pSites)}</span>
+                  </>
+                ) : (
+                  <>
+                    <span className="ann-swatch" style={{ backgroundColor: primerColor(p, first?.strand ?? 1) }} />
+                    <span className="ft-name">{p.name}</span>
+                    {p.role === 'probe' && <span className="ft-type-badge">probe</span>}
+                    {tails && <span className="ft-type-badge" title={tails}>tail</span>}
+                    <span className="pl-sites">{bindLabel(pSites)}</span>
+                  </>
+                )}
               </div>
-              {expanded && (
+              {expanded && !wide && (
                 <PrimerEditor
                   primer={p}
                   sites={pSites}
@@ -265,6 +301,41 @@ export default function PrimerList({ adding, onAddingChange }: {
         )}
       </div>
     </>
+  )
+
+  if (!wide) return body
+
+  // Beside the table: the editor of the primer clicked.
+  const editingPrimer = expandedId ? primers.find(p => p.id === expandedId) ?? null : null
+  return (
+    <div className="fs-wide">
+      <div className="fs-wide-main pl-wide">{body}</div>
+      <section className="fs-detail" aria-label="Primer details">
+        {editingPrimer ? (
+          <>
+            <div className="fs-detail-head">
+              <span className="ann-swatch" style={{ backgroundColor: primerColor(editingPrimer, (sites.get(editingPrimer.id) ?? [])[0]?.strand ?? 1) }} />
+              <span className="fs-detail-name">{editingPrimer.name}</span>
+              <button className="fs-icon-btn" onClick={() => setExpandedId(null)} title="Close the editor" aria-label="Close the editor">
+                <X size={13} />
+              </button>
+            </div>
+            <PrimerEditor
+              key={editingPrimer.id}
+              primer={editingPrimer}
+              sites={sites.get(editingPrimer.id) ?? []}
+              readOnly={readOnly}
+              onSelectSite={selectSite}
+              onClose={() => setExpandedId(null)}
+            />
+          </>
+        ) : (
+          <div className="fs-detail-empty">
+            {primers.length > 0 ? 'Click a primer to see and edit it here.' : 'A primer you add shows here.'}
+          </div>
+        )}
+      </section>
+    </div>
   )
 }
 

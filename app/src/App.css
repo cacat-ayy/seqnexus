@@ -252,6 +252,12 @@
   from { opacity: 0; transform: translateX(8px); }
   to   { opacity: 1; transform: none; }
 }
+/* For anything that opens to the right of its trigger: the menus, tooltips
+   and popovers of the toolbar when it runs down the left. */
+@keyframes pop-right {
+  from { opacity: 0; transform: translateX(-4px) scale(.98); }
+  to   { opacity: 1; transform: none; }
+}
 @keyframes modal-in {
   from { opacity: 0; transform: translateY(8px) scale(.96); }
   to   { opacity: 1; transform: none; }
@@ -667,6 +673,119 @@
    them: at that width the popover offset is the smaller problem. */
 .toolbar.is-wrap { flex-wrap: wrap; }
 
+/* --- Toolbar down the left (Appearance > Layout) ---
+   The same buttons, as a rail of icons beside the main area. The density
+   hook measures it by height and always applies is-tight and is-icons, so
+   labels, the palette's word and its shortcut are gone; it may add
+   is-collapsed (the Tools menu) and, last, is-wrap (a second column).
+   Menus, tooltips and popovers open to the right of it. These rules come
+   after the density steps, which they share a specificity with. */
+.app-root[data-toolbar="left"] { flex-direction: row; }
+.app-root[data-toolbar="left"] > .main-area { min-width: 0; }
+
+.toolbar.is-vertical {
+  flex-direction: column;
+  align-content: flex-start;
+  padding: var(--space-2) var(--space-1);
+}
+
+.toolbar.is-vertical .toolbar-group {
+  flex-direction: column;
+  padding: var(--space-1) 0;
+  border-right: none;
+  border-bottom: 1px solid var(--border);
+}
+
+.toolbar.is-vertical .tb {
+  position: relative;
+  padding: var(--space-1-5);
+}
+
+.toolbar.is-vertical .tb-palette {
+  min-width: 0;
+  justify-content: center;
+}
+
+.toolbar.is-vertical .toolbar-back {
+  margin: 0 0 var(--space-1);
+  padding: var(--space-1-5);
+}
+.toolbar.is-vertical .toolbar-back::after {
+  top: auto;
+  bottom: calc(-1 * var(--space-0-5));
+  left: var(--space-0-5);
+  right: var(--space-0-5);
+  width: auto;
+  height: 1px;
+}
+
+/* A menu button says so with a small arrow in its corner, pointing the way
+   the menu opens; the split buttons' arrow is a button of its own there, and
+   a right-click on the button opens the same menu. */
+.toolbar.is-vertical .tb[aria-haspopup="menu"]:not(.tb-split-caret) > svg {
+  position: absolute;
+  right: 1px;
+  bottom: 1px;
+  width: 8px;
+  height: 8px;
+  transform: rotate(-90deg);
+  color: var(--text-muted);
+}
+
+.toolbar.is-vertical .tb-split > .tb:first-child {
+  border-radius: var(--radius-input);
+  padding: var(--space-1-5);
+}
+
+.toolbar.is-vertical .tb.tb-split-caret {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  width: 12px;
+  height: 12px;
+  padding: 0;
+  border: none;
+  border-radius: var(--radius-xs);
+  background: transparent;
+  color: var(--text-muted);
+}
+.toolbar.is-vertical .tb-split-caret > svg {
+  width: 8px;
+  height: 8px;
+  transform: rotate(-90deg);
+}
+.toolbar.is-vertical .tb-split-caret:hover {
+  color: var(--accent);
+  background: var(--bg-hover);
+}
+
+/* The BLAST dot sits on the icon's corner rather than widening the button. */
+.toolbar.is-vertical .tb-badge {
+  position: absolute;
+  top: var(--space-0-5);
+  right: var(--space-0-5);
+  margin: 0;
+}
+
+/* "1.2 kb/row" does not fit: the number over its unit. */
+.toolbar.is-vertical .zoom-label {
+  flex-direction: column;
+  gap: 0;
+  min-width: 0;
+  padding: var(--space-0-5) 0;
+  font-size: var(--text-2xs);
+  line-height: 1.2;
+}
+.zoom-label-unit { color: var(--text-muted); }
+
+.toolbar.is-vertical .file-menu,
+.toolbar.is-vertical .tb-dropdown {
+  top: 0;
+  left: calc(100% + var(--space-2));
+  margin-top: 0;
+  animation: pop-right var(--dur-fast) var(--ease-out);
+}
+
 /* --- Command palette trigger ---
    Styled as a search field rather than a button: it reads as "type here to
    find things", which is what it does, and distinguishes it from the action
@@ -876,6 +995,9 @@
   font-weight: 500;
 }
 
+/* Beside a button of the toolbar down the left. */
+.tb-tooltip-right { animation-name: pop-right; }
+
 @media (prefers-reduced-motion: reduce) {
   .tb-tooltip { animation: none; }
 }
@@ -1051,6 +1173,36 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+/* Opened beside the toolbar down the left, the popovers come in from it. */
+.theme-popover.beside,
+.info-popover.beside { animation: pop-right var(--dur-fast) var(--ease-out); }
+
+/* Layout, under the themes: where the toolbar and the features panel sit.
+   Indented to line up with the theme group labels above. */
+.layout-section {
+  border-top: 1px solid var(--border);
+  padding: 0 var(--space-2) var(--space-2-5);
+}
+
+.layout-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  padding: var(--space-0-5) var(--space-1) 0;
+}
+
+.layout-label {
+  font-size: var(--text-sm);
+  color: var(--text-secondary);
+}
+
+.layout-row .seg > button {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
 }
 
 /* --- Info Popover --- */

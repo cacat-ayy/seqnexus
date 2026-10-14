@@ -23,12 +23,17 @@ export interface ClampOptions {
    * pointer puts a different item under it than the user aimed at.
    */
   flip?: boolean
+  /**
+   * Open above the point rather than below it: for a card shown from a row
+   * near the bottom of the window, which sliding up would cover.
+   */
+  above?: boolean
 }
 
 export function useClampedPosition(
   x: number,
   y: number,
-  { flip = false }: ClampOptions = {},
+  { flip = false, above = false }: ClampOptions = {},
 ): { ref: React.RefCallback<HTMLDivElement>; pos: ClampedPosition } {
   const elRef = useRef<HTMLDivElement | null>(null)
   const [pos, setPos] = useState<ClampedPosition>({ left: x, top: y })
@@ -67,7 +72,7 @@ export function useClampedPosition(
     const vh = window.innerHeight
 
     let left = x
-    let top = y
+    let top = above ? y - rect.height : y
 
     if (flip) {
       if (left + rect.width > vw - MARGIN && x - rect.width >= MARGIN) left = x - rect.width
@@ -79,7 +84,7 @@ export function useClampedPosition(
     if (top < MARGIN) top = MARGIN
 
     setPos({ left, top })
-  }, [x, y, flip, size])
+  }, [x, y, flip, above, size])
 
   return { ref, pos }
 }
