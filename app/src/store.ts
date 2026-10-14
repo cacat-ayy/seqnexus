@@ -62,8 +62,8 @@ import { PRESET_COLORS } from './utils/annotation-constants'
 import type { AnnotationMatch } from './workers/annotate-list'
 import { matchToAnnotationData } from './workers/annotate-list'
 import { matchKey, proposalsFrom } from './utils/auto-annotations'
-import { orfKey, convertibleOrfs, orfToAnnotationData } from './utils/orf-features'
-import { motifKey, convertibleMotifs, motifToAnnotationData } from './utils/motif-features'
+import { orfKey, convertibleOrfs, orfToAnnotationData, isOrfAnnotated } from './utils/orf-features'
+import { motifKey, convertibleMotifs, motifToAnnotationData, isMotifAnnotated } from './utils/motif-features'
 import type { MotifHit } from './protein/motifs'
 import type { CrisprTask, CrisprView, GuideCandidate, GuideDrawScope, GuideRecord, GuideScanInfo, Nuclease } from './crispr/types'
 import type { Scaffold } from './crispr/scaffolds'
@@ -205,7 +205,8 @@ export const EMPTY_DESIGN: PrimerDesignState = {
   batch: [],
 }
 
-export type SidebarTab = 'features' | 'primers' | 'guides'
+/** The panel's tabs. 'orfs' and 'motifs' are one finder slot: ORFs on DNA, motifs on a protein. */
+export type SidebarTab = 'features' | 'primers' | 'guides' | 'orfs' | 'motifs'
 export type PrimerView = 'list' | 'design'
 
 export interface ExplorerFolder {
@@ -840,10 +841,16 @@ interface EditorStore {
    */
   applyOrfs: (keys?: Iterable<string>) => number
   // ORF panel params (persisted)
-  orfMinCodons: number
+  /** The fewest residues an ORF must encode, the stop not counted. */
+  orfMinAminoAcids: number
+  /** An ORF scan is running (useOrfScan). */
+  orfScanning: boolean
+  setOrfScanning: (running: boolean) => void
   orfStartCodons: string[]
   orfAllowInterior: boolean
-  setOrfParams: (params: Partial<{ orfMinCodons: number; orfStartCodons: string[]; orfAllowInterior: boolean }>) => void
+  /** Also list ORFs cut off by the ends of a linear sequence. */
+  orfIncludePartial: boolean
+  setOrfParams: (params: Partial<{ orfMinAminoAcids: number; orfStartCodons: string[]; orfAllowInterior: boolean; orfIncludePartial: boolean }>) => void
 
   // Primer workbench session for the active tab (cross-view: the sequence
   // and map draw the picks as previews)
@@ -1331,7 +1338,7 @@ const SIDEBAR_TAB_KEY = STORAGE_KEYS.featureSidebarTab
 function loadSidebarTab(): SidebarTab {
   try {
     const saved = localStorage.getItem(SIDEBAR_TAB_KEY)
-    return saved === 'primers' || saved === 'guides' ? saved : 'features'
+    return saved === 'primers' || saved === 'guides' || saved === 'orfs' || saved === 'motifs' ? saved : 'features'
   } catch {
     return 'features'
   }
@@ -2043,9 +2050,16 @@ export const useEditorStore = create<EditorStore>((set, get) => {
     clearOrfs: () => { set({ orfResults: [], orfPicks: new Set() }); updateActiveTab({ orfResults: [] }) },
     orfPicks: new Set<string>(),
     toggleOrfPick: (key) => {
-      const next = new Set(get().orfPicks)
+      const state = get()
+      const next = new Set(state.orfPicks)
       if (next.has(key)) next.delete(key)
-      else next.add(key)
+      else {
+        // An ORF that already has its CDS is not added again, so it cannot be
+        // picked for adding: a pick Add then ignored would read as broken.
+        const orf = state.orfResults.find(o => orfKey(o) === key)
+        if (orf && isOrfAnnotated(orf, state.doc.annotations)) return
+        next.add(key)
+      }
       set({ orfPicks: next })
     },
     clearOrfPicks: () => set({ orfPicks: new Set() }),
@@ -2065,9 +2079,15 @@ export const useEditorStore = create<EditorStore>((set, get) => {
     },
     motifPicks: new Set<string>(),
     toggleMotifPick: (key) => {
-      const next = new Set(get().motifPicks)
+      const state = get()
+      const next = new Set(state.motifPicks)
       if (next.has(key)) next.delete(key)
-      else next.add(key)
+      else {
+        // A hit the document already has as a feature cannot be picked for adding.
+        const hit = state.motifResults.find(h => motifKey(h) === key)
+        if (hit && isMotifAnnotated(hit, state.doc.annotations)) return
+        next.add(key)
+      }
       set({ motifPicks: next })
     },
     clearMotifPicks: () => set({ motifPicks: new Set() }),
@@ -2096,16 +2116,19 @@ export const useEditorStore = create<EditorStore>((set, get) => {
       const chosen = wanted ? convertible.filter(o => wanted.has(orfKey(o))) : convertible
       if (chosen.length === 0) return 0
 
-      get().addAnnotations(chosen.map(orfToAnnotationData))
+      get().addAnnotations(chosen.map(o => orfToAnnotationData(o, state.translationCodeId)))
       set({ orfPicks: new Set() })
       updateActiveTab({ showOrfs: false })
       return chosen.length
     },
-    // 300 bases, stop included. 300 codons hid most plasmid genes (bla is
+    // 100 residues, about 300 bases. 300 codons hid most plasmid genes (bla is
     // 287 codons, GFP 240), so the demo pUC19 showed no ORFs at all.
-    orfMinCodons: 100,
+    orfMinAminoAcids: 100,
+    orfScanning: false,
+    setOrfScanning: (orfScanning) => set({ orfScanning }),
     orfStartCodons: ['ATG'],
     orfAllowInterior: true,
+    orfIncludePartial: false,
     setOrfParams: (params) => set(params),
 
     // Primer workbench

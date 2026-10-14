@@ -116,8 +116,7 @@ nav a:hover{background:#eef0f4}
 .mark{display:inline-block;width:10px;height:10px;border-radius:999px;flex-shrink:0}
 .pass{background:#16a34a}.warn{background:#d97706}.fail{background:#dc2626}.skip{background:#d1d5db}
 .muted{opacity:.45}
-section{margin-bottom:14px;padding:14px 16px;background:#fff;border:1px solid #e5e7eb;border-left:3px solid #e5e7eb;border-radius:10px;break-inside:avoid}
-section.s-pass{border-left-color:#16a34a}section.s-warn{border-left-color:#d97706}section.s-fail{border-left-color:#dc2626}section.s-expected{border-left-color:#9ca3af}
+section{margin-bottom:14px;padding:14px 16px;background:#fff;border:1px solid #e5e7eb;border-radius:10px;break-inside:avoid}
 section h3{display:flex;gap:8px;align-items:center;margin:0 0 8px;font-size:15px}
 .chip{padding:0 8px;border-radius:999px;font-size:11px;font-weight:600;background:#f3f4f6;color:#4b5563}
 .chip.pass{background:#dcfce7;color:#166534}.chip.warn{background:#fef3c7;color:#92400e}.chip.fail{background:#fee2e2;color:#991b1b}
@@ -163,7 +162,7 @@ export function reportHtml(input: ExportInput, pal: FigurePalette = figurePalett
         }
         if (m.notes[mod]) body += `<p class="note">${esc(m.notes[mod]!)}</p>`
       }
-      return `<section id="${id(mod)}" class="s-${why ? 'expected' : st}"><h3><span class="mark ${st}${why ? ' muted' : ''}"></span>${esc(name)} <span class="chip ${why ? '' : st}">${STATUS_TEXT[st]}${why ? ', expected' : ''}</span></h3>${why ? `<p class="why">${esc(why)}</p>` : ''}${body}</section>`
+      return `<section id="${id(mod)}"><h3><span class="mark ${st}${why ? ' muted' : ''}"></span>${esc(name)} <span class="chip ${why ? '' : st}">${STATUS_TEXT[st]}${why ? ', expected' : ''}</span></h3>${why ? `<p class="why">${esc(why)}</p>` : ''}${body}</section>`
     }).join('')
     const title = mateLabel(input, k)
     return `${title ? `<h2 class="mate-title">${title}: ${esc(fileName)}</h2>` : ''}<div class="mate"><nav><h2>Summary</h2>${nav}</nav><main>${sections}</main></div>`

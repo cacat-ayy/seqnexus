@@ -920,7 +920,6 @@
   width: 100%;
   background: none;
   border: none;
-  border-left: 3px solid transparent;
   color: var(--text);
   font-size: var(--text-sm);
   font-weight: 500;
@@ -928,12 +927,11 @@
   cursor: pointer;
   text-align: left;
   white-space: nowrap;
-  transition: background var(--dur-fast), border-color var(--dur-fast);
+  transition: background var(--dur-fast);
 }
 
 .tb-dropdown-item:hover {
   background: color-mix(in srgb, var(--accent) 8%, transparent);
-  border-left-color: var(--accent);
 }
 
 /* --- Toolbar tooltips (ToolbarTooltip.tsx) ---
@@ -1869,7 +1867,6 @@
   color: var(--text);
   background: var(--bg);
   border: 1px solid var(--border);
-  border-left: 3px solid var(--accent);
   border-radius: var(--radius-sm);
   box-shadow: var(--shadow-sm);
   pointer-events: auto;
@@ -2016,20 +2013,6 @@
 .modal-dialog.enzyme-modal {
   width: 420px;
 }
-.modal-dialog.orf-modal {
-  width: 480px;
-}
-
-.orf-modal .re-enzyme-name {
-  padding: var(--space-1) 0;
-  border-radius: var(--radius-sm);
-  user-select: none;
-}
-
-.orf-modal .re-enzyme-name:hover {
-  opacity: 0.8;
-}
-
 
 .modal-header {
   display: flex;
@@ -2618,6 +2601,5 @@
   color: var(--text-muted);
 }
 .tb-dropdown-item.current {
-  border-left-color: var(--accent);
   color: var(--accent);
 }

@@ -48,14 +48,13 @@
   width: 100%;
   background: none;
   border: none;
-  border-left: 3px solid transparent;
   color: var(--text);
   font-size: var(--text-sm);
-  padding: var(--space-1-5) var(--space-3-5) var(--space-1-5) var(--space-3);
+  padding: var(--space-1-5) var(--space-3-5);
   cursor: pointer;
   text-align: left;
   white-space: nowrap;
-  transition: background var(--dur-fast), border-color var(--dur-fast), color var(--dur-fast);
+  transition: background var(--dur-fast), color var(--dur-fast);
 }
 
 .ctx-menu-item:hover,
@@ -63,7 +62,6 @@
 .ctx-menu-trigger.open {
   outline: none;
   background: color-mix(in srgb, var(--accent) 8%, transparent);
-  border-left-color: var(--accent);
 }
 
 .ctx-menu-item:disabled {
@@ -78,7 +76,6 @@
 .ctx-menu-item.ctx-menu-danger:hover,
 .ctx-menu-item.ctx-menu-danger:focus {
   background: var(--danger-bg);
-  border-left-color: var(--danger);
 }
 
 .ctx-menu-icon {

@@ -7,18 +7,21 @@ import { findOrfs, type ORFResult, type ORFRequest } from '../orfs/finder'
 export type { ORFResult, ORFRequest }
 
 export interface ORFOptions {
-  minCodons: number
-  maxCodons: number       // 0 = no limit
+  /** The fewest residues an ORF must encode, the stop not counted. */
+  minAminoAcids: number
+  maxAminoAcids: number   // 0 = no limit
   startCodons: string[]   // e.g. ['ATG'] or ['ATG', 'GTG', 'TTG']
   allowInterior: boolean
   topology?: 'linear' | 'circular'
   /** NCBI translation table id for the stop codons; standard code when absent. */
   geneticCode?: number
+  /** Also report ORFs cut off by the ends of a linear sequence. */
+  includePartial?: boolean
 }
 
 export const DEFAULT_ORF_OPTIONS: ORFOptions = {
-  minCodons: 100,
-  maxCodons: 0,
+  minAminoAcids: 100,
+  maxAminoAcids: 0,
   startCodons: ['ATG'],
   allowInterior: true,
 }
@@ -37,18 +40,29 @@ export function orfColor(strand: 1 | -1, frame: number): string {
   return ORF_COLORS[`${strand}_${frame}`] ?? '#adb5bd'
 }
 
+/** The scan still running. A new one stops it: only the latest answer is wanted. */
+let activeWorker: Worker | null = null
+
 /**
- * Run the ORF finder in a Web Worker.
+ * Run the ORF finder in a Web Worker. A scan started before this one is
+ * stopped, and its promise never settles; edits made while typing would
+ * otherwise leave a worker running for every pause.
  */
 export function findORFs(bases: string, options: ORFOptions = DEFAULT_ORF_OPTIONS): Promise<ORFResult[]> {
   const request: ORFRequest = {
     bases,
-    minCodons: options.minCodons,
-    maxCodons: options.maxCodons,
+    minAminoAcids: options.minAminoAcids,
+    maxAminoAcids: options.maxAminoAcids,
     startCodons: options.startCodons,
     allowInterior: options.allowInterior,
     topology: options.topology,
     geneticCode: options.geneticCode,
+    includePartial: options.includePartial,
+  }
+
+  if (activeWorker) {
+    activeWorker.terminate()
+    activeWorker = null
   }
 
   return new Promise((resolve, reject) => {
@@ -69,14 +83,27 @@ export function findORFs(bases: string, options: ORFOptions = DEFAULT_ORF_OPTION
       return
     }
 
-    worker.onmessage = (e: MessageEvent<{ orfs: ORFResult[] }>) => {
-      resolve(e.data.orfs)
+    activeWorker = worker
+    const done = () => {
+      if (activeWorker === worker) activeWorker = null
       worker.terminate()
     }
 
+    worker.onmessage = (e: MessageEvent<{ orfs: ORFResult[] }>) => {
+      resolve(e.data.orfs)
+      done()
+    }
+
     worker.onerror = (err) => {
-      reject(err)
-      worker.terminate()
+      // A worker that can't load (a page opened from disk) is not a reason to
+      // show no ORFs: run the same finder here instead.
+      err.preventDefault?.()
+      done()
+      try {
+        resolve(findOrfs(request))
+      } catch {
+        reject(err)
+      }
     }
 
     worker.postMessage(request)

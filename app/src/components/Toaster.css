@@ -1,6 +1,6 @@
 /* --- Toasts ---
-   One card shape for all four severities, distinguished by a left rule and a
-   coloured icon rather than a filled background. The filled variants this
+   One card shape for all four severities, distinguished by a coloured icon
+   rather than a filled background or a coloured edge. The filled variants this
    replaced hardcoded #dc2626 and painted white text onto var(--warning), which
    is a light amber on every dark theme: about 1.9:1, effectively unreadable.
    Tinting a neutral surface keeps the body text at the theme's own contrast
@@ -37,7 +37,6 @@
   color: var(--text);
   font-size: var(--text-sm);
   border: 1px solid var(--border);
-  border-left: 3px solid var(--toast-accent);
   border-radius: var(--radius-popover);
   box-shadow: var(--shadow-popover);
   animation: pop-up var(--dur-normal) var(--ease-out);

@@ -227,7 +227,6 @@
   margin: var(--space-0-5) 0;
   padding: var(--space-1) var(--space-2);
   border-radius: var(--radius-sm);
-  border-left: 2px solid transparent;
   cursor: pointer;
 }
 
@@ -240,7 +239,6 @@
 
 .find-hit.current {
   background: var(--accent-bg);
-  border-left-color: var(--accent);
 }
 
 .find-hit-meta {

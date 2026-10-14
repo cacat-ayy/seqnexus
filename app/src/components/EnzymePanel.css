@@ -110,14 +110,6 @@
 .re-num-wide {
   width: 60px;
 }
-/* The ORF finder's minimum, with its length in bases beside it. */
-.orf-min-row {
-  display: flex;
-  align-items: center;
-  gap: var(--space-1-5);
-  font-size: var(--text-sm);
-  color: var(--text-secondary);
-}
 
 /* Results */
 .re-results {
@@ -129,13 +121,6 @@
   color: var(--text-muted);
   font-weight: 500;
   margin-bottom: var(--space-1);
-}
-/* The ORF panel puts its conversion button on this line, opposite the count. */
-.orf-results-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--space-2);
 }
 .re-site-list {
   list-style: none;
@@ -353,3 +338,4 @@
 .re-results-status {
   margin-top: var(--space-3);
 }
+

@@ -20,6 +20,8 @@ import AnnotationTooltip from './AnnotationTooltip'
 import FeatureBulkBar from './FeatureBulkBar'
 import PrimerList from './primers/PrimerList'
 import GuidePanel from './crispr/GuidePanel'
+import OrfTab from './finder/OrfTab'
+import MotifTab from './finder/MotifTab'
 import PrimerWorkbench from './primers/PrimerWorkbench'
 import ConfirmDialog from './ConfirmDialog'
 import FeatureEditor from './features/FeatureEditor'
@@ -30,7 +32,7 @@ import { deleteFeaturesWithUndo, rowDomId, selectAndCenterFeature, selectFeature
 import { useListMultiSelect } from '../hooks/useListMultiSelect'
 import {
   Plus, X, Eye, EyeOff, Search, PanelRightClose, PanelBottomClose, PanelBottom, PanelRight, ChevronsDownUp, ChevronsUpDown,
-  SlidersHorizontal, MoreHorizontal, List, FlaskConical, Crosshair, Globe,
+  SlidersHorizontal, MoreHorizontal, List, FlaskConical, Crosshair, Globe, Dna, Atom,
 } from 'lucide-react'
 import './FeatureSidebar.css'
 
@@ -143,6 +145,9 @@ function useCompactTabs(
     if (typeof ResizeObserver === 'undefined') return
     const ro = new ResizeObserver(check)
     ro.observe(tabs)
+    // The words' own width settles after the first check (the font loads,
+    // a count arrives), and it is that change the tabs must answer to.
+    ro.observe(measure)
     return () => ro.disconnect()
   }, [tabsRef, measureRef, contentKey])
   return compact
@@ -301,7 +306,7 @@ function FeatureSidebar({ open, onClose, placement = 'right' }: FeatureSidebarPr
     else if (e.key === 'ArrowDown') { e.preventDefault(); commitHeight(shown - step) }
   }, [commitHeight, height])
 
-  // Features, Primers and Guides share the sidebar as tabs; the Primers tab
+  // Features, Primers, Guides and the finder share the sidebar as tabs; the Primers tab
   // has a list view and the design workbench. Both live in the store so the
   // toolbar, panel bar and canvas can send the user to either.
   const tab = useEditorStore(s => s.sidebarTab)
@@ -314,7 +319,10 @@ function FeatureSidebar({ open, onClose, placement = 'right' }: FeatureSidebarPr
   const blastUnseen = useBlastStore(s => s.unseen)
   const blastMaximized = useBlastStore(s => s.maximized)
   const blastShown = bottom && blastOpen
-  const shownTab = blastShown ? 'blast' : tab
+  // ORFs and Motifs are one slot, the finder: ORFs on DNA, motifs on a
+  // protein. Either one asked for shows the one this sequence has.
+  const slotTab: SidebarTab = tab === 'orfs' || tab === 'motifs' ? (alphabet === 'protein' ? 'motifs' : 'orfs') : tab
+  const shownTab = blastShown ? 'blast' : slotTab
   const pickTab = useCallback((id: SidebarTab | 'blast') => {
     if (id === 'blast') { openBlast(); return }
     if (blastShown) closeBlast()
@@ -706,12 +714,19 @@ function FeatureSidebar({ open, onClose, placement = 'right' }: FeatureSidebarPr
     // only exists while the tab is open, so selecting it would widen the
     // header and tip all three tabs into icons. The panel says how many.
     ...(isProteinDoc ? [] : [{ id: 'guides' as const, label: 'Guides', Icon: Crosshair, count: null }]),
+    // The finder slot, without a count for the same reason as Guides: its
+    // results exist only while it or the overlay is showing.
+    isProteinDoc
+      ? { id: 'motifs' as const, label: 'Motifs', Icon: Atom, count: null }
+      : { id: 'orfs' as const, label: 'ORFs', Icon: Dna, count: null },
     // Along the bottom BLAST is a tab here too; on the right it keeps its
     // own drawer under the view.
     ...(bottom ? [{ id: 'blast' as const, label: 'BLAST', Icon: Globe, count: null }] : []),
   ]
   // Along the bottom the tabs always have room for their words.
-  const compactTabs = useCompactTabs(tabsRef, measureRef, tabDefs.map(t => `${t.label}${t.count}`).join('|') + `|${width}`) && !bottom
+  // The panel's being open is part of the key: closed, there is nothing to
+  // measure, and the check has to run again once it opens.
+  const compactTabs = useCompactTabs(tabsRef, measureRef, tabDefs.map(t => `${t.label}${t.count}`).join('|') + `|${width}|${open}`) && !bottom
 
   if (!open) return null
 
@@ -984,6 +999,10 @@ function FeatureSidebar({ open, onClose, placement = 'right' }: FeatureSidebarPr
           <Suspense fallback={null}>
             <BlastDrawer containerRef={asideRef} embedded />
           </Suspense>
+        ) : slotTab === 'orfs' ? (
+          <OrfTab />
+        ) : slotTab === 'motifs' ? (
+          <MotifTab />
         ) : tab === 'guides' ? (
           <GuidePanel />
         ) : tab === 'primers' ? (

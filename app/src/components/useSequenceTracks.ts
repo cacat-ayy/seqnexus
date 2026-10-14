@@ -9,12 +9,11 @@
 
 import { useMemo } from 'react'
 import { useEditorStore } from '../store'
-import { Annotation, type AnnotationData } from '../models/Annotation'
+import { Annotation } from '../models/Annotation'
 import type { DocumentState } from '../models/Document'
 import type { Alphabet } from '../models/alphabet'
 import { IntervalTree } from '../models/IntervalTree'
-import { orfColor } from '../workers/orf-finder'
-import { orfIdFor, orfName } from '../utils/orf-features'
+import { orfOverlayData } from '../utils/orf-features'
 import { motifIdFor, PEPTIDE_ID_PREFIX } from '../utils/motif-features'
 import { proteinScale, scaleProfile } from '../protein/scales'
 import type { GraphTrack } from './sequence-paint'
@@ -51,21 +50,11 @@ export function useSequenceTracks(doc: DocumentState) {
   // Convert ORF results to Annotation objects for unified rendering.
   // The id carries the ORF's identity rather than its index in the list, so a
   // pick survives the re-scan that changing the ORF settings triggers.
-  const orfAnnotations = useMemo(() => {
-    if (!showOrfs) return []
-    return allOrfResults.map(orf => {
-      const data: AnnotationData = {
-        id: orfIdFor(orf),
-        name: orfName(orf),
-        type: 'CDS',
-        start: orf.start,
-        end: orf.end,
-        strand: orf.strand,
-        color: orfColor(orf.strand, orf.frame),
-      }
-      return new Annotation(data)
-    })
-  }, [showOrfs, allOrfResults])
+  const orfCodeId = useEditorStore(s => s.translationCodeId)
+  const orfAnnotations = useMemo(
+    () => (showOrfs ? allOrfResults.map(orf => new Annotation(orfOverlayData(orf, orfCodeId))) : []),
+    [showOrfs, allOrfResults, orfCodeId],
+  )
 
   // Motif hits on a protein, drawn like ORFs: an overlay of what the scan
   // found, with the id carrying the hit's identity so a pick survives a

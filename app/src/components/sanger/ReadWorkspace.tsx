@@ -546,9 +546,9 @@ export default function ReadWorkspace({ read, onClose, onExportPrompt, findReque
         </button>
         {view.translate && (
           <select className="select aw-select" value={view.frame} aria-label="Reading frame" onChange={e => onView({ frame: Number(e.target.value) as 0 | 1 | 2 })}>
-            <option value={0}>Frame 1</option>
-            <option value={1}>Frame 2</option>
-            <option value={2}>Frame 3</option>
+            <option value={0}>Frame +1</option>
+            <option value={1}>Frame +2</option>
+            <option value={2}>Frame +3</option>
           </select>
         )}
         <button className={`aw-tool-btn ${view.wrap ? 'active' : ''}`} aria-pressed={view.wrap} onClick={() => onView({ wrap: !view.wrap })} title="Wrap the read into rows that fit the window">

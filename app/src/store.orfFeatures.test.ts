@@ -54,7 +54,7 @@ describe('ORF conversion', () => {
 
     expect(store().doc.annotations).toHaveLength(1)
     expect(store().doc.annotations[0]).toMatchObject({
-      name: 'ORF +1 (10 aa)', type: 'CDS', start: 0, end: 30, strand: 1,
+      name: 'ORF +1 (9 aa)', type: 'CDS', start: 0, end: 30, strand: 1,
     })
   })
 

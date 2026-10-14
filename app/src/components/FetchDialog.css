@@ -164,3 +164,49 @@
   cursor: pointer;
 }
 .fetch-recent-chip:hover { color: var(--accent); border-color: var(--accent); }
+
+/* Where a region or gene comes from, under the looked-up title. */
+.fetch-preview-detail {
+  margin-top: var(--space-0-5);
+  font-family: var(--font-mono);
+  font-size: var(--text-2xs);
+  color: var(--text-secondary);
+  overflow-wrap: anywhere;
+}
+
+/* The forms besides a plain accession; an example fills the box. */
+.fetch-formats {
+  margin-top: var(--space-2);
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+}
+.fetch-formats summary {
+  cursor: pointer;
+  width: fit-content;
+}
+.fetch-formats summary:hover { color: var(--text-secondary); }
+.fetch-formats ul {
+  display: grid;
+  gap: var(--space-1);
+  margin: var(--space-1-5) 0 0;
+  padding: 0;
+  list-style: none;
+}
+.fetch-formats li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--space-1) var(--space-2);
+}
+.fetch-format-example {
+  padding: var(--space-0-5) var(--space-1-5);
+  font-family: var(--font-mono);
+  font-size: var(--text-2xs);
+  color: var(--text-secondary);
+  background: var(--input-bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-xs);
+  cursor: pointer;
+}
+.fetch-format-example:hover:not(:disabled) { color: var(--accent); border-color: var(--accent); }
+.fetch-format-example:disabled { opacity: 0.6; cursor: default; }

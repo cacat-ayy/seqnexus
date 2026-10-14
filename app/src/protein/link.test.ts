@@ -74,6 +74,19 @@ describe('translation document', () => {
     expect(p.annotations.map(a => [a.name, a.start, a.end, a.color])).toEqual([['site', 1, 2, '#123456']])
   })
 
+  it('opens a CDS that starts on GTG as a protein that starts with methionine', () => {
+    const gtg: DocumentState = {
+      name: 'gtg',
+      sequence: new Sequence('CC' + 'GTGAAACGTTAA' + 'CC'),
+      annotations: [new Annotation({ id: 'cds', name: 'gene', type: 'CDS', start: 2, end: 14, strand: 1 })],
+    }
+    const req = { annotation: gtg.annotations[0] }
+    expect(translationDocument(gtg, translationSource(gtg, 'tab1', req, 1), req).sequence.bases).toBe('MKR')
+    // A selection is not a CDS: its first codon reads as itself.
+    const sel = { start: 2, end: 14, reverse: false }
+    expect(translationDocument(gtg, translationSource(gtg, 'tab1', sel, 1), sel).sequence.bases).toBe('VKR')
+  })
+
   it('translates a reverse selection off the other strand', () => {
     // Reverse complement of ATGAAACGTTAA is TTAACGTTTCAT: L T F H.
     const req = { start: 3, end: 15, reverse: true }

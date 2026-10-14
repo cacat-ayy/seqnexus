@@ -430,7 +430,7 @@ function DisplayPanel({ doc, view, onView }: { doc: AlnDoc; view: AlnView; onVie
               label="Reading frame"
               value={view.frame}
               onChange={frame => onView({ frame })}
-              options={[{ value: 0, label: 'Frame 1' }, { value: 1, label: 'Frame 2' }, { value: 2, label: 'Frame 3' }]}
+              options={[{ value: 0, label: 'Frame +1' }, { value: 1, label: 'Frame +2' }, { value: 2, label: 'Frame +3' }]}
             />
             <select className="select aw-select-full" value={view.geneticCode} aria-label="Genetic code" onChange={e => onView({ geneticCode: Number(e.target.value) })}>
               {GENETIC_CODES.map(c => <option key={c.id} value={c.id}>{c.id}. {c.name}</option>)}

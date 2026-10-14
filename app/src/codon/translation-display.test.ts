@@ -60,7 +60,7 @@ describe('frame options', () => {
   })
 
   it('labels an unknown option as itself rather than blank', () => {
-    expect(frameLabel('f1')).toBe('Frame 1')
+    expect(frameLabel('f1')).toBe('Frame +1')
     expect(frameLabel('nonsense' as never)).toBe('nonsense')
   })
 })

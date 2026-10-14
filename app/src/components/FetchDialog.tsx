@@ -3,12 +3,14 @@ import './FetchDialog.css'
  * Modal for fetching sequences by accession: NCBI Nucleotide, NCBI Protein
  * (GenPept) and UniProtKB. The source is guessed from the accession's
  * shape as it is typed and can be overridden. Several accessions, separated
- * by commas or spaces, are fetched one after another.
+ * by commas or spaces, are fetched one after another. NCBI Gene IDs, ranges
+ * of accessions, regions and reverse complements are written as in SnapGene
+ * (see fetch/accessionQuery.ts).
  *
- * A single accession is looked up as it is typed (debounced), and the
- * record's title and length shown under the box, so a typo is caught
- * before anything is downloaded. The last few accessions fetched are kept
- * in this browser and offered when the box is empty.
+ * A single entry is looked up as it is typed (debounced), and the record's
+ * title and length shown under the box, so a typo is caught before
+ * anything is downloaded. The last few entries fetched are kept in this
+ * browser and offered when the box is empty.
  *
  * Addgene and SnapGene were offered too, but neither site lets another
  * website download its files (no CORS), so those buttons failed every time.
@@ -17,7 +19,10 @@ import './FetchDialog.css'
 
 import { useState, useRef, useEffect, useCallback, useMemo } from 'react'
 import { X } from 'lucide-react'
-import { fetchNCBI, ncbiRecordSummary, looksLikeNcbiProtein } from '../fetch/ncbi'
+import { fetchNCBI, ncbiRecordSummary, looksLikeNcbiProtein, ncbiGene } from '../fetch/ncbi'
+import type { NcbiGene, NcbiPart } from '../fetch/ncbi'
+import { parseAccessionQuery } from '../fetch/accessionQuery'
+import type { AccessionRequest } from '../fetch/accessionQuery'
 import { fetchUniProt, looksLikeUniProt, uniProtSummary } from '../fetch/uniprot'
 import { parseGenbankFile } from '../workers/genbank-parser'
 import { notify } from '../toast'
@@ -63,11 +68,11 @@ function saveRecent(fetched: Recent[]): Recent[] {
   return next
 }
 
-/** What a lookup of the typed accession found. */
+/** What a lookup of the typed entry found, or why it can't be fetched. */
 type Preview =
   | { accession: string; status: 'loading' }
-  | { accession: string; status: 'found'; title: string; length: number; unit: 'bp' | 'aa' }
-  | { accession: string; status: 'missing'; where: string }
+  | { accession: string; status: 'found'; title: string; length: number; unit: 'bp' | 'aa'; detail?: string }
+  | { accession: string; status: 'missing'; message: string }
 
 /** Records longer than this are confirmed before downloading. */
 const LARGE_RECORD_BP = 10_000_000
@@ -77,9 +82,19 @@ type Source = 'nucleotide' | 'protein' | 'uniprot'
 interface LargeRecord { accession: string; length: number; title: string }
 
 const SOURCES: { id: Source; label: string; hint: string; placeholder: string }[] = [
-  { id: 'nucleotide', label: 'NCBI Nucleotide', hint: 'Nucleotide accession', placeholder: 'e.g. L09137.2, NM_001301717, M13mp18' },
+  { id: 'nucleotide', label: 'NCBI Nucleotide', hint: 'Accession, Gene ID or region', placeholder: 'e.g. L09137.2, NM_006178, or Gene ID 672' },
   { id: 'protein', label: 'NCBI Protein', hint: 'Protein accession', placeholder: 'e.g. NP_000509.1, AAA59172.1' },
   { id: 'uniprot', label: 'UniProt', hint: 'UniProt accession or entry name', placeholder: 'e.g. P69905, HBA_HUMAN' },
+]
+
+/** The forms the box takes besides a plain accession, as SnapGene writes them. Clicking one fills the box. */
+const FORMATS: { example: string; meaning: string }[] = [
+  { example: 'NM_006178, NM_008740.4', meaning: 'several records' },
+  { example: '672', meaning: 'a Gene ID (or LOC104244181): the gene\'s region of its chromosome' },
+  { example: 'AF027958 - AF027961', meaning: 'every record from the first to the last' },
+  { example: 'NC_000072: 122552252..122565735', meaning: 'part of a record' },
+  { example: 'AL589148.1 (COMPLEMENT)', meaning: 'the reverse complement' },
+  { example: 'CP002686: COMPLEMENT(2459491..2463965)', meaning: 'the reverse complement of part' },
 ]
 
 /** Which source an accession's shape points to. */
@@ -87,6 +102,89 @@ function guessSource(text: string): Source {
   if (looksLikeUniProt(text)) return 'uniprot'
   if (looksLikeNcbiProtein(text)) return 'protein'
   return 'nucleotide'
+}
+
+/** Where an entry is fetched from: a Gene ID always from NCBI Nucleotide. */
+function sourceOf(r: AccessionRequest, chosen: Source | null): Source {
+  return r.gene ? 'nucleotide' : chosen ?? guessSource(r.id)
+}
+
+/** An entry made concrete: what to download, how long it is, and what to call it. */
+interface Plan {
+  request: AccessionRequest
+  source: Source
+  accession: string
+  part: NcbiPart
+  /** Bases or residues in the download, when known before it starts. */
+  length?: number
+  title?: string
+  /** For a Gene ID: the gene, which names the document. */
+  gene?: NcbiGene
+}
+
+/** A region as GenBank writes it: "NC_000072:122552252..122565735", "X:complement(1..9)", "X (complement)". */
+function partLabel(name: string, part: NcbiPart): string {
+  if (part.start === undefined) return `${name} (complement)`
+  const span = `${part.start}..${part.end}`
+  return `${name}:${part.complement ? `complement(${span})` : span}`
+}
+
+/**
+ * Work out what an entry downloads, without downloading it: a Gene ID is
+ * looked up for its place on the genome, an NCBI record's summary gives its
+ * length and checks that it exists and that the region lies inside it.
+ */
+async function planFor(r: AccessionRequest, chosen: Source | null): Promise<Plan> {
+  if (r.gene) {
+    const gene = await ncbiGene(r.id)
+    const part = { start: gene.start, end: gene.end, complement: gene.complement }
+    const title = [`${gene.symbol}${gene.description ? `: ${gene.description}` : ''}`, gene.organism && `(${gene.organism})`].filter(Boolean).join(' ')
+    return { request: r, source: 'nucleotide', accession: gene.accession, part, length: gene.end - gene.start + 1, title, gene }
+  }
+  const source = sourceOf(r, chosen)
+  if (source === 'uniprot') {
+    if (r.region || r.complement) throw new Error('A UniProt entry is fetched whole. Choose NCBI Protein for part of a protein record.')
+    return { request: r, source, accession: r.id, part: {} }
+  }
+  if (source === 'protein' && r.complement) throw new Error('A protein has no reverse complement.')
+  const unit = source === 'protein' ? 'aa' : 'bp'
+  let summary: Awaited<ReturnType<typeof ncbiRecordSummary>>
+  try {
+    summary = await ncbiRecordSummary(r.id, source)
+  } catch {
+    // It throws only when NCBI says the accession does not exist.
+    throw new Error(`No record ${r.id} in ${SOURCES.find(s => s.id === source)!.label}.`)
+  }
+  if (!r.region) return { request: r, source, accession: r.id, part: { complement: r.complement }, length: summary?.length, title: summary?.title }
+  const { start } = r.region
+  let { end } = r.region
+  if (summary) {
+    const total = summary.length
+    if (start > total) throw new Error(`${r.id} is ${total.toLocaleString('en-US')} ${unit} long, so it has no position ${start.toLocaleString('en-US')}.`)
+    // NCBI cuts a region that runs past the end short; the name says so too.
+    end = Math.min(end, total)
+  }
+  return { request: r, source, accession: r.id, part: { start, end, complement: r.complement }, length: end - start + 1, title: summary?.title }
+}
+
+/** What the preview says about a region or a gene, under the title. */
+function planDetail(plan: Plan): string | undefined {
+  const { part } = plan
+  if (plan.gene) return `From ${partLabel(plan.accession, part)}`
+  if (part.start === undefined) return part.complement ? 'Reverse complement of the whole record' : undefined
+  const span = `${part.start.toLocaleString('en-US')}..${part.end!.toLocaleString('en-US')}`
+  return part.complement ? `Reverse complement of ${span}` : `Positions ${span}`
+}
+
+/** A fetched part or gene named for what was asked; a whole record keeps its own name. */
+function namedFor(doc: DocumentState, plan: Plan): DocumentState {
+  const { gene, part } = plan
+  if (gene) {
+    const about = [gene.description, gene.organism].filter(Boolean).join(', ')
+    return { ...doc, name: gene.symbol, description: `${about ? `${about}; ` : ''}${partLabel(gene.accession, part)}` }
+  }
+  if (part.start !== undefined || part.complement) return { ...doc, name: partLabel(doc.name, part) }
+  return doc
 }
 
 /**
@@ -120,8 +218,9 @@ export default function FetchDialog({ open, onClose, onFetched, initialQuery }: 
   const backdropRef = useRef<HTMLDivElement>(null)
   useFocusTrap(backdropRef, open)
 
-  const accessions = useMemo(() => [...new Set(query.split(/[\s,;]+/).filter(Boolean))], [query])
-  const source: Source = chosen ?? guessSource(accessions[0] ?? '')
+  const parsed = useMemo(() => parseAccessionQuery(query), [query])
+  const requests = parsed.requests
+  const source: Source = requests[0] ? sourceOf(requests[0], chosen) : chosen ?? 'nucleotide'
   const sourceInfo = useMemo(() => SOURCES.find(s => s.id === source)!, [source])
 
   // Focus input on open
@@ -139,33 +238,41 @@ export default function FetchDialog({ open, onClose, onFetched, initialQuery }: 
     }
   }, [open, initialQuery])
 
-  // Look the one accession up, once typing pauses. Several accessions, or
-  // a fetch under way, show no preview.
-  const single = accessions.length === 1 ? accessions[0] : null
+  // Look the one entry up, once typing pauses, or say why it can't be read.
+  // Several entries, or a fetch under way, show no preview. Keyed by the
+  // entry's standard text, so a stray space does not look it up again.
+  const firstError = parsed.errors[0] ?? null
+  const singleText = !firstError && requests.length === 1 ? requests[0].text : null
+  const single = useMemo(() => singleText === null ? null : parseAccessionQuery(singleText).requests[0] ?? null, [singleText])
   useEffect(() => {
-    if (!open || !single || loading || single.length < 4) { setPreview(null); return }
-    const src = chosen ?? guessSource(single)
+    const tooShort = single && !single.gene && single.id.length < 4
+    if (!open || loading || (!firstError && (!single || tooShort))) { setPreview(null); return }
     let live = true
     const timer = setTimeout(() => {
-      setPreview({ accession: single, status: 'loading' })
-      const lookup = src === 'uniprot' ? uniProtSummary(single) : ncbiRecordSummary(single, src)
-      lookup.then(summary => {
+      if (firstError) { setPreview({ accession: '', status: 'missing', message: firstError }); return }
+      if (!single) return
+      const src = sourceOf(single, chosen)
+      setPreview({ accession: single.text, status: 'loading' })
+      if (src === 'uniprot' && !single.region && !single.complement) {
+        uniProtSummary(single.id).then(summary => {
+          if (!live) return
+          setPreview(summary
+            ? { accession: single.text, status: 'found', title: summary.title, length: summary.length, unit: 'aa' }
+            : { accession: single.text, status: 'missing', message: `No record ${single.id} in UniProtKB` })
+        }).catch(() => { if (live) setPreview(null) })
+        return
+      }
+      planFor(single, chosen).then(plan => {
         if (!live) return
-        if (summary) {
-          setPreview({ accession: single, status: 'found', title: summary.title, length: summary.length, unit: src === 'nucleotide' ? 'bp' : 'aa' })
-        } else if (src === 'uniprot') {
-          setPreview({ accession: single, status: 'missing', where: 'UniProtKB' })
-        } else {
-          // NCBI gave no summary without saying the accession is unknown: say nothing.
-          setPreview(null)
-        }
-      }).catch(() => {
-        // ncbiRecordSummary throws only when NCBI says there is no such accession.
-        if (live) setPreview(src === 'uniprot' ? null : { accession: single, status: 'missing', where: SOURCES.find(x => x.id === src)!.label })
+        // NCBI gave no summary without saying the accession is unknown: say nothing.
+        if (plan.length === undefined && !plan.title) { setPreview(null); return }
+        setPreview({ accession: single.text, status: 'found', title: plan.title ?? '', length: plan.length ?? 0, unit: plan.source === 'nucleotide' ? 'bp' : 'aa', detail: planDetail(plan) })
+      }).catch(err => {
+        if (live) setPreview({ accession: single.text, status: 'missing', message: friendlyError(err).replace(/\.$/, '') })
       })
     }, PREVIEW_DELAY_MS)
     return () => { live = false; clearTimeout(timer) }
-  }, [open, single, chosen, loading])
+  }, [open, single, firstError, chosen, loading])
 
   const handleQueryChange = useCallback((value: string) => {
     setQuery(value)
@@ -174,77 +281,89 @@ export default function FetchDialog({ open, onClose, onFetched, initialQuery }: 
   }, [])
 
   const handleFetch = useCallback(async (confirmedLarge = false) => {
-    if (accessions.length === 0 || loading) return
+    if (requests.length === 0 && parsed.errors.length === 0) return
+    if (loading) return
+    if (parsed.errors.length > 0) {
+      setError(parsed.errors.join('\n'))
+      return
+    }
     const gen = generation.current
     const current = () => generation.current === gen
 
     setLoading(true)
     setError(null)
 
-    /** Each accession's source: the one chosen, or the one its shape points to. */
-    const sourceOf = (acc: string): Source => chosen ?? guessSource(acc)
+    const failed: { request: AccessionRequest; message: string }[] = []
+    /** What went wrong, in the order the entries were typed. */
+    const report = (docCount: number) => {
+      const order = (r: AccessionRequest) => requests.indexOf(r)
+      failed.sort((a, b) => order(a.request) - order(b.request))
+      // What failed stays in the box, ready to correct and fetch again.
+      setQuery(failed.map(f => f.request.text).join(', '))
+      setError(failed.length === 1 && docCount === 0
+        ? failed[0].message
+        : failed.map(f => `${f.request.text}: ${f.message}`).join('\n'))
+    }
     try {
-      if (!confirmedLarge) {
-        const big: LargeRecord[] = []
-        for (const acc of accessions) {
-          const src = sourceOf(acc)
-          if (src === 'uniprot') continue
-          const summary = await ncbiRecordSummary(acc, src)
-          if (summary && summary.length > LARGE_RECORD_BP) big.push({ accession: acc, ...summary })
+      // Gene IDs and regions are resolved, and every NCBI record's size
+      // checked, before anything is downloaded.
+      const plans: Plan[] = []
+      for (const r of requests) {
+        try {
+          plans.push(await planFor(r, chosen))
+        } catch (err) {
+          failed.push({ request: r, message: friendlyError(err) })
         }
         if (!current()) return
+      }
+      if (!confirmedLarge) {
+        const big = plans.filter(p => p.source !== 'uniprot' && (p.length ?? 0) > LARGE_RECORD_BP)
         if (big.length > 0) {
-          setLarge(big)
+          setLarge(big.map(p => ({ accession: p.request.text, length: p.length!, title: p.title ?? '' })))
+          if (failed.length > 0) setError(failed.map(f => `${f.request.text}: ${f.message}`).join('\n'))
           return
         }
       }
       setLarge(null)
 
-      const docs: DocumentState[] = []
-      const failed: { accession: string; message: string }[] = []
-      for (const acc of accessions) {
-        const src = sourceOf(acc)
+      const fetched: { request: AccessionRequest; doc: DocumentState }[] = []
+      for (const plan of plans) {
         try {
-          if (src === 'uniprot') {
-            docs.push(await fetchUniProt(acc))
+          if (plan.source === 'uniprot') {
+            fetched.push({ request: plan.request, doc: await fetchUniProt(plan.accession) })
           } else {
-            const gbText = await fetchNCBI(acc, src)
+            const gbText = await fetchNCBI(plan.accession, plan.source, plan.part)
             // Large records are parsed in the worker, off the main thread.
-            const { docs: parsed, warnings } = await parseGenbankFile(new File([gbText], `${acc}.${src === 'protein' ? 'gp' : 'gb'}`))
-            const doc = parsed[0]
+            const { docs: parsedDocs, warnings } = await parseGenbankFile(new File([gbText], `${plan.accession}.${plan.source === 'protein' ? 'gp' : 'gb'}`))
+            const doc = namedFor(parsedDocs[0], plan)
             if (warnings.length > 0) {
               notify.warning(`${warnings.length} ${warnings.length === 1 ? 'feature' : 'features'} in "${doc.name}" could not be read exactly as written`, {
                 detail: warnings.slice(0, 5).join('\n') + (warnings.length > 5 ? `\n…and ${warnings.length - 5} more` : ''),
               })
             }
-            docs.push(doc)
+            fetched.push({ request: plan.request, doc })
           }
         } catch (err) {
-          failed.push({ accession: acc, message: friendlyError(err) })
+          failed.push({ request: plan.request, message: friendlyError(err) })
         }
         if (!current()) return
       }
 
-      if (docs.length > 0) {
-        onFetched(docs)
-        const ok = accessions.filter(acc => !failed.some(f => f.accession === acc))
-        setRecent(saveRecent(ok.map((acc, i) => ({ accession: acc, title: docs[i]?.description || docs[i]?.name || '' }))))
+      if (fetched.length > 0) {
+        onFetched(fetched.map(f => f.doc))
+        setRecent(saveRecent(fetched.map(({ request, doc }) => ({ accession: request.text, title: doc.description || doc.name || '' }))))
       }
       if (failed.length === 0) {
         onClose()
         return
       }
-      // What failed stays in the box, ready to correct and fetch again.
-      setQuery(failed.map(f => f.accession).join(', '))
-      setError(failed.length === 1 && docs.length === 0
-        ? failed[0].message
-        : failed.map(f => `${f.accession}: ${f.message}`).join('\n'))
+      report(fetched.length)
     } catch (err) {
       if (current()) setError(friendlyError(err))
     } finally {
       if (current()) setLoading(false)
     }
-  }, [accessions, loading, chosen, onFetched, onClose])
+  }, [requests, parsed.errors, loading, chosen, onFetched, onClose])
 
   const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
     // A focused button answers Enter itself: Enter on Cancel must not fetch.
@@ -310,9 +429,10 @@ export default function FetchDialog({ open, onClose, onFetched, initialQuery }: 
                     {preview.length > 0 && <span className="fetch-preview-len">{preview.unit === 'bp' ? formatBp(preview.length) : `${preview.length.toLocaleString('en-US')} aa`}</span>}
                   </>
                 )}
-                {preview.status === 'missing' && <>No record {preview.accession} in {preview.where}</>}
+                {preview.status === 'missing' && preview.message}
               </div>
             )}
+            {preview?.status === 'found' && preview.detail && <div className="fetch-preview-detail">{preview.detail}</div>}
             {!query.trim() && recent.length > 0 && (
               <div className="fetch-recent">
                 <span className="fetch-recent-label">Recent</span>
@@ -331,6 +451,22 @@ export default function FetchDialog({ open, onClose, onFetched, initialQuery }: 
                   ? 'The GenPept record opens as a protein with its regions and sites.'
                   : 'For Addgene or SnapGene plasmids, download the GenBank or .dna file from their site, then drag it into SeqNexus.'}
             </div>
+            {source !== 'uniprot' && (
+              <details className="fetch-formats">
+                <summary>Gene IDs, ranges, regions and complements</summary>
+                <ul>
+                  {FORMATS.map(f => (
+                    <li key={f.example}>
+                      <button type="button" className="fetch-format-example" title="Put this in the box"
+                        onClick={() => { handleQueryChange(f.example); inputRef.current?.focus() }} disabled={loading}>
+                        {f.example}
+                      </button>
+                      <span>{f.meaning}</span>
+                    </li>
+                  ))}
+                </ul>
+              </details>
+            )}
           </div>
 
           {/* Large records: confirm first */}
@@ -354,7 +490,7 @@ export default function FetchDialog({ open, onClose, onFetched, initialQuery }: 
           {loading && (
             <div className="fetch-loading">
               <div className="spinner fetch-spinner" />
-              Fetching {accessions.length > 1 ? `${accessions.length} records` : `from ${sourceInfo.label}`}…
+              Fetching {requests.length > 1 ? `${requests.length} records` : `from ${sourceInfo.label}`}…
             </div>
           )}
         </div>
@@ -371,9 +507,9 @@ export default function FetchDialog({ open, onClose, onFetched, initialQuery }: 
             <button
               className="btn btn-primary"
               onClick={() => handleFetch()}
-              disabled={accessions.length === 0 || loading}
+              disabled={(requests.length === 0 && parsed.errors.length === 0) || loading}
             >
-              {accessions.length > 1 ? `Fetch ${accessions.length}` : 'Fetch'}
+              {requests.length > 1 ? `Fetch ${requests.length}` : 'Fetch'}
             </button>
           )}
         </div>

@@ -231,3 +231,36 @@ describe('the genetic code a feature declares', () => {
     expect(annotationProtein(ann({ start: 0, end: 12, qualifiers: { transl_table: ['99'] } }), seq)).toBe('M*K*')
   })
 })
+
+describe('the initiator codon', () => {
+  // A GTG start two bases in, so the CDS does not begin at the sequence's edge.
+  const seq = new Sequence('CC' + 'GTGGCTTAA' + 'CC')
+
+  it('reads an alternative start codon as methionine, as NCBI translates a complete CDS', () => {
+    expect(annotationProtein(ann({ start: 2, end: 11 }), seq)).toBe('MA*')
+    // GTG is an initiator of the bacterial code too.
+    expect(annotationProtein(ann({ start: 2, end: 11, qualifiers: { transl_table: ['11'] } }), seq)).toBe('MA*')
+  })
+
+  it('reads it as itself where it is not an initiator, or the CDS may be partial', () => {
+    // Not an initiator in the standard code's list when the code is declared.
+    expect(annotationProtein(ann({ start: 2, end: 11, qualifiers: { transl_table: ['1'] } }), seq)).toBe('VA*')
+    // Read from /codon_start 2: the first codon is not the feature's first.
+    expect(annotationProtein(ann({ start: 1, end: 11, qualifiers: { codon_start: ['2'] } }), seq)).toBe('VA*')
+    // At the 5' edge of a linear sequence the CDS may be the end of a longer gene.
+    expect(annotationProtein(ann({ start: 0, end: 9 }), new Sequence('GTGGCTTAA'))).toBe('VA*')
+    expect(annotationProtein(ann({ start: 0, end: 9 }), new Sequence('GTGGCTTAA', 'circular'))).toBe('MA*')
+    // Not a CDS.
+    expect(annotationProtein(ann({ start: 2, end: 11, type: 'gene' }), seq)).toBe('VA*')
+  })
+
+  it('reads an ORF overlay\'s first codon as methionine whichever start the finder was given', () => {
+    const ctg = new Sequence('CC' + 'CTGGCTTAA' + 'CC')
+    expect(annotationProtein(ann({ id: '_orf_1:0:2:11', start: 2, end: 11 }), ctg)).toBe('MA*')
+    expect(annotationProtein(ann({ start: 2, end: 11 }), ctg)).toBe('LA*')
+  })
+
+  it('does not count an alternative start as a bad start', () => {
+    expect(translationIssues(ann({ start: 2, end: 11 }), seq)).toBeNull()
+  })
+})

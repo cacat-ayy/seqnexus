@@ -7,8 +7,6 @@ import './components/StatusBar.css'
 import SequenceView from './components/SequenceView'
 import PlasmidMap from './components/PlasmidMap'
 import EnzymePanel from './components/EnzymePanel'
-import ORFPanel from './components/ORFPanel'
-import MotifPanel from './components/MotifPanel'
 import type { GelKind } from './gel/model'
 import DigestDialog from './components/DigestDialog'
 import DomainMap from './components/DomainMap'
@@ -58,6 +56,7 @@ import { ToolbarTooltip } from './components/ToolbarTooltip'
 import { tip } from './components/toolbarTip'
 import { useAutoAnnotateScan } from './hooks/useAutoAnnotateScan'
 import { useMotifScan } from './hooks/useMotifScan'
+import { useOrfScan } from './hooks/useOrfScan'
 import { useGuideScan } from './hooks/useGuideScan'
 import { motifKey, convertibleMotifs } from './utils/motif-features'
 import { proposalsFrom, matchKey } from './utils/auto-annotations'
@@ -475,8 +474,6 @@ export default function App() {
   const [newSeqInto, setNewSeqInto] = useState<string | null>(null)
   /** Pasting or importing oligos into the primer library, from the New menu. */
   const [oligoImportOpen, setOligoImportOpen] = useState(false)
-  const [orfModalOpen, setOrfModalOpen] = useState(false)
-  const [motifPanelOpen, setMotifPanelOpen] = useState(false)
   const [digestOpen, setDigestOpen] = useState(false)
   const [enzymeModalOpen, setEnzymeModalOpen] = useState(false)
   const [annotateModalOpen, setAnnotateModalOpen] = useState(false)
@@ -507,7 +504,6 @@ export default function App() {
    * the scan belongs here rather than inside either of them.
    */
   useAutoAnnotateScan(annotateModalOpen)
-  useMotifScan(motifPanelOpen)
   /** Matches worth offering: the ones the document does not already cover. */
   const autoProposals = useMemo(
     () => (showAutoAnnotations || annotateModalOpen)
@@ -713,6 +709,11 @@ export default function App() {
   const panelTabOn = (tab: SidebarTab) => featuresPanelOpen && sidebarTab === tab && !blastTabShown
   // The guide scan runs for the overlay and for the Guides tab alike.
   useGuideScan(panelTabOn('guides'))
+  // The finder slot (ORFs on DNA, motifs on a protein) scans for its tab
+  // and for the overlay alike.
+  const finderTabOn = featuresPanelOpen && (sidebarTab === 'orfs' || sidebarTab === 'motifs') && !blastTabShown
+  useOrfScan(finderTabOn)
+  useMotifScan(finderTabOn)
   const editAnnotationId = useEditorStore(s => s.editAnnotationId)
 
   // Whether the panel was open before BLAST opened it, so the toolbar's
@@ -1431,7 +1432,7 @@ export default function App() {
   const handleClosePalette = useCallback(() => setPaletteOpen(false), [])
 
   // Stable handlers for the empty-state actions.
-  const handleOpenOrfPanel = useCallback(() => setOrfModalOpen(true), [])
+  const handleOpenOrfPanel = useCallback(() => openSidebar('orfs'), [openSidebar])
   const handleOpenEnzymePanel = useCallback(() => setEnzymeModalOpen(true), [])
   const handleOpenAnnotatePanel = useCallback(() => setAnnotateModalOpen(true), [])
 
@@ -1589,8 +1590,8 @@ export default function App() {
 
     // --- Analyse ---
     { id: 'annotate', label: 'Annotate Features', group: 'Analyse', icon: Tag, disabled: noDoc, run: () => setAnnotateModalOpen(true) },
-    { id: 'orfs', label: 'Find ORFs', group: 'Analyse', icon: Dna, keywords: 'open reading frame', disabled: noDna, run: () => setOrfModalOpen(true) },
-    { id: 'motifs', label: 'Find Motifs and Sites', group: 'Analyse', icon: Atom, keywords: 'prosite glycosylation phosphorylation liability transmembrane protein', disabled: noDoc || !isProtein, run: () => setMotifPanelOpen(true) },
+    { id: 'orfs', label: 'Find ORFs', group: 'Analyse', icon: Dna, keywords: 'open reading frame', disabled: noDna, run: () => openSidebar('orfs') },
+    { id: 'motifs', label: 'Find Motifs and Sites', group: 'Analyse', icon: Atom, keywords: 'prosite glycosylation phosphorylation liability transmembrane protein', disabled: noDoc || !isProtein, run: () => openSidebar('motifs') },
     { id: 'enzymes', label: 'Restriction Enzymes', group: 'Analyse', icon: Scissors, keywords: 'digest cut sites', disabled: noDna, run: () => setEnzymeModalOpen(true) },
     { id: 'structure', label: 'Show 3D Structure', group: 'View', icon: Atom, keywords: 'pdb alphafold 3d structure fold model mmcif', disabled: noDoc || !isProtein, run: () => setViewMode('structure') },
     { id: 'digest', label: 'Proteolytic Digest', group: 'Analyse', icon: Scissors, keywords: 'trypsin protease peptide mass spectrometry coverage', disabled: noDoc || !isProtein, run: () => setDigestOpen(true) },
@@ -1790,11 +1791,11 @@ export default function App() {
               motif scan, which answers the same kind of question (where are
               the things worth a feature) for residues. */}
           {isProtein ? (
-            <button className="tb" onClick={() => setMotifPanelOpen(true)} {...tip({ label: 'Find motifs', desc: 'PROSITE sites, sequence liabilities and membrane spans' })}>
+            <button className="tb" onClick={() => openSidebar('motifs')} {...tip({ label: 'Find motifs', desc: 'PROSITE sites, sequence liabilities and membrane spans' })}>
               <span className="tb-icon"><Atom size={14} /></span><span className="tb-text">Motifs</span>
             </button>
           ) : (
-            <button className="tb" onClick={() => setOrfModalOpen(true)} disabled={noDna} {...tip({ label: 'Find ORFs', desc: 'Scan all six frames for open reading frames', why: needsSequence })}>
+            <button className="tb" onClick={() => openSidebar('orfs')} disabled={noDna} {...tip({ label: 'Find ORFs', desc: 'Scan all six frames for open reading frames', why: needsSequence })}>
               <span className="tb-icon"><Dna size={14} /></span><span className="tb-text">ORFs</span>
             </button>
           )}
@@ -2818,28 +2819,6 @@ export default function App() {
         initialAlphabet={newSeqAlphabet}
         onClose={() => setNewSeqModalOpen(false)}
         onSubmit={handleNewSequenceSubmit}
-      />
-
-      <ORFPanel
-        open={orfModalOpen}
-        onClose={() => {
-          setOrfModalOpen(false)
-          if (!useEditorStore.getState().showOrfs) {
-            useEditorStore.getState().toggleOrfs()
-          }
-        }}
-      />
-
-      {/* Closing the finder turns the overlay on, as the ORF finder does:
-          the hits were just looked at, and should stay in view. */}
-      <MotifPanel
-        open={motifPanelOpen}
-        onClose={() => {
-          setMotifPanelOpen(false)
-          if (!useEditorStore.getState().showMotifs) {
-            useEditorStore.getState().toggleMotifs()
-          }
-        }}
       />
 
       <DigestDialog open={digestOpen} onClose={() => setDigestOpen(false)} />

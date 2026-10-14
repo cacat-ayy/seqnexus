@@ -8,7 +8,7 @@
 import { describe, it, expect } from 'vitest'
 import {
   ORF_ID_PREFIX, orfKey, orfIdFor, keyFromOrfId, isOrfId, orfName,
-  isOrfAnnotated, convertibleOrfs, orfToAnnotationData,
+  isOrfAnnotated, convertibleOrfs, orfToAnnotationData, orfOverlayData,
 } from './orf-features'
 import type { ORFResult } from '../workers/orf-finder'
 
@@ -76,7 +76,8 @@ describe('orfToAnnotationData', () => {
   it('keeps the label and colour the overlay was already showing', () => {
     const data = orfToAnnotationData(orf({ strand: -1, frame: 1, codons: 42 }))
     expect(data.name).toBe(orfName(orf({ strand: -1, frame: 1, codons: 42 })))
-    expect(data.name).toBe('ORF −2 (42 aa)')
+    // 42 codons, the stop one of them: 41 residues.
+    expect(data.name).toBe('ORF −2 (41 aa)')
     expect(data.type).toBe('CDS')
     expect(data.strand).toBe(-1)
     expect(data.color).toBeTruthy()
@@ -86,5 +87,22 @@ describe('orfToAnnotationData', () => {
     const a = orfToAnnotationData(orf())
     const b = orfToAnnotationData(orf())
     expect(a.id).not.toBe(b.id)
+  })
+})
+
+describe('the genetic code of a converted ORF', () => {
+  it('is written in /transl_table when it is not the standard code', () => {
+    expect(orfToAnnotationData(orf({ codons: 10 }), 2).qualifiers).toEqual({ transl_table: ['2'] })
+    expect(orfToAnnotationData(orf({ codons: 10 }), 1).qualifiers).toBeUndefined()
+    expect(orfToAnnotationData(orf({ codons: 10 })).qualifiers).toBeUndefined()
+  })
+
+  it('goes on the overlay too, which keeps its stable id', () => {
+    const o = orf({ codons: 10 })
+    expect(orfOverlayData(o, 2)).toMatchObject({ id: orfIdFor(o), qualifiers: { transl_table: ['2'] } })
+  })
+
+  it('names a partial ORF so', () => {
+    expect(orfName(orf({ codons: 10, partialEnd: true }))).toMatch(/\(10 aa, partial\)$/)
   })
 })

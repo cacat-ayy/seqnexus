@@ -65,6 +65,31 @@ export function annotationCode(ann: Pick<Annotation, 'qualifiers'>): GeneticCode
   return codeFromTranslTable(ann.qualifiers)
 }
 
+/**
+ * The codons a CDS may start on: its code's initiators, or the common three
+ * when it declares no code.
+ */
+export function initiatorCodons(ann: Pick<Annotation, 'qualifiers'>): ReadonlySet<string> {
+  const code = annotationCode(ann)
+  return code ? new Set(code.starts) : START_CODONS
+}
+
+/**
+ * Whether `codon`, a CDS's first, is its initiator and so read as
+ * methionine whichever start codon it is (GTG, TTG...), as NCBI translates
+ * a complete CDS: the initiator tRNA carries methionine. Only from
+ * /codon_start 1, and not for a CDS that begins at the 5' edge of a linear
+ * sequence, which may be the 3' part of a longer gene (a GenBank `<` is not
+ * kept on import, so that is the only sign of it). An ORF on the overlay
+ * begins on one of the start codons the finder was asked for, by
+ * construction, whichever code they belong to.
+ */
+export function isInitiatorCodon(ann: Annotation, sequence: Sequence, codon: string): boolean {
+  if (ann.type !== 'CDS' || codonStartOffset(ann) !== 0) return false
+  if (sequence.topology === 'linear' && (ann.strand === -1 ? ann.end === sequence.length : ann.start === 0)) return false
+  return ann.id.startsWith('_orf_') || initiatorCodons(ann).has(codon.toUpperCase())
+}
+
 /** Coding bases translated with the feature's own code, the standard one by default. */
 function translateAnnotationBases(ann: Annotation, coding: string): string {
   const code = annotationCode(ann)
@@ -88,7 +113,9 @@ export function annotationCodingBases(ann: Annotation, sequence: Sequence): stri
 
 /** Translated protein for a coding annotation. Trailing partial codons are dropped. */
 export function annotationProtein(ann: Annotation, sequence: Sequence): string {
-  return translateAnnotationBases(ann, annotationCodingBases(ann, sequence))
+  const coding = annotationCodingBases(ann, sequence)
+  const protein = translateAnnotationBases(ann, coding)
+  return protein.length > 0 && isInitiatorCodon(ann, sequence, coding.slice(0, 3)) ? 'M' + protein.slice(1) : protein
 }
 
 /**
@@ -139,8 +166,7 @@ export function translationIssues(ann: Annotation, sequence: Sequence): Translat
   const internalStops = [...protein.slice(0, -1)].filter(aa => aa === '*').length
   const leftover = coding.length % 3
   const first = coding.slice(0, 3)
-  const code = annotationCode(ann)
-  const starts = code ? new Set(code.starts) : START_CODONS
+  const starts = initiatorCodons(ann)
   const badStart = codonStartOffset(ann) === 0 && !starts.has(first) ? first : null
   const missingStop = leftover === 0 && !ann.truncated && !protein.endsWith('*')
   if (internalStops === 0 && leftover === 0 && !badStart && !missingStop) return null

@@ -1,0 +1,381 @@
+/* The ORFs and Motifs tabs: the finder slot of the panel (ORFs on DNA,
+   motifs on a protein). Laid out like the Guides tab: the setup, the
+   results table and the one result in focus run on as one column in the
+   sidebar (display: contents) and sit side by side along the bottom.
+   Classes are prefixed fd- for the tab and fdi- for its inspector. */
+
+.fd {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  flex: 1;
+}
+
+.fd-setup,
+.fd-main,
+.fd-side {
+  display: contents;
+}
+
+.feature-sidebar.is-bottom .fd {
+  display: grid;
+  grid-template-columns: 300px minmax(0, 1fr) minmax(0, 360px);
+  grid-template-rows: minmax(0, 1fr);
+}
+/* Nothing in focus: the results take its room. */
+.feature-sidebar.is-bottom .fd:has(> .fd-side:empty) {
+  grid-template-columns: 300px minmax(0, 1fr);
+}
+.feature-sidebar.is-bottom .fd > :is(.fd-setup, .fd-main, .fd-side) {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  overflow-y: auto;
+}
+.feature-sidebar.is-bottom .fd-setup { border-right: 1px solid var(--border); }
+.feature-sidebar.is-bottom .fd-side { border-left: 1px solid var(--border); }
+.feature-sidebar.is-bottom .fd-side:empty { display: none; }
+.feature-sidebar.is-bottom .fd-side > .fdi {
+  flex: 1 0 auto;
+  max-height: none;
+  border-top: none;
+}
+
+/* --- Settings --- */
+
+.fd-settings {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-2-5);
+  border-bottom: 1px solid var(--border-light);
+}
+
+.fd-field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  min-width: 0;
+}
+
+.fd-field-label {
+  font-size: var(--text-2xs);
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.fd-size {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-1-5);
+}
+
+.fd-size-input {
+  width: 64px;
+  font-size: var(--text-xs);
+  padding: var(--space-0-5) var(--space-1-5);
+}
+
+.fd-size-unit {
+  font-size: var(--text-xs);
+  color: var(--text-secondary);
+}
+
+.fd-hint {
+  font-size: var(--text-2xs);
+  color: var(--text-muted);
+  line-height: 1.45;
+}
+
+.fd-checks {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1-5) var(--space-3);
+}
+
+.fd-check {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  white-space: nowrap;
+  font-size: var(--text-xs);
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+
+.fd-check.is-disabled {
+  color: var(--text-muted);
+  cursor: default;
+}
+
+.fd-check-count {
+  font-size: var(--text-2xs);
+  color: var(--text-muted);
+}
+
+.fd-codon {
+  font-family: var(--font-mono);
+}
+
+/* --- Status --- */
+
+.fd-status {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  padding: var(--space-1-5) var(--space-2-5);
+  font-size: var(--text-xs);
+  color: var(--text-secondary);
+  flex-shrink: 0;
+}
+
+/* Each part of the count wraps whole, never mid-phrase. */
+.fd-status-count {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1-5);
+  min-width: 0;
+  flex-wrap: wrap;
+  column-gap: var(--space-2);
+  row-gap: 0;
+}
+
+.fd-picked { color: var(--accent); }
+
+/* --- The results table --- */
+
+.fd-table {
+  /* The columns answer to this column's width, not the window's. */
+  container: fd-table / inline-size;
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  border-top: 1px solid var(--border-light);
+}
+
+.fd-head,
+.fd-row {
+  display: grid;
+  grid-template-columns: var(--fd-cols);
+  gap: var(--space-1-5);
+  align-items: center;
+  padding: 0 var(--space-2-5);
+}
+
+.fd-head {
+  border-bottom: 1px solid var(--border-light);
+  flex-shrink: 0;
+}
+
+.fd-th {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  padding: var(--space-1) 0;
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  font: inherit;
+  font-size: var(--text-2xs);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  text-align: left;
+  min-width: 0;
+}
+button.fd-th { cursor: pointer; }
+button.fd-th:hover { color: var(--text); }
+.fd-th.on { color: var(--accent); }
+.fd-th.num { justify-content: flex-end; }
+
+.fd-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  overflow-y: auto;
+  flex: 1;
+  min-height: 0;
+}
+.fd-list:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
+.fd-row {
+  padding-top: var(--space-1);
+  padding-bottom: var(--space-1);
+  border-bottom: 1px solid var(--border-light);
+  font-size: var(--text-xs);
+  color: var(--text);
+  cursor: pointer;
+}
+.fd-row:hover { background: var(--bg-hover); }
+.fd-row.active { background: var(--accent-bg); }
+.fd-row.picked { box-shadow: inset 2px 0 0 var(--accent); }
+
+.fd-pick {
+  margin: 0;
+  cursor: pointer;
+}
+
+.fd-cell {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.fd-cell.num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+.fd-cell.mono { font-family: var(--font-mono); }
+.fd-cell.muted { color: var(--text-muted); }
+
+.fd-name {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1-5);
+  min-width: 0;
+}
+.fd-name > span:last-child {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Its colour is the result's own (data), set inline. */
+.fd-swatch {
+  width: 8px;
+  height: 8px;
+  border-radius: var(--radius-pill);
+  flex-shrink: 0;
+}
+
+.fd-chip {
+  margin-left: var(--space-1);
+  padding: 0 var(--space-1);
+  border-radius: var(--radius-xs);
+  background: var(--warning-bg);
+  color: var(--warning);
+  font-size: var(--text-2xs);
+}
+
+.fd-empty {
+  padding: var(--space-4) var(--space-3);
+  text-align: center;
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+}
+
+.fd-more {
+  padding: var(--space-1-5) var(--space-2-5);
+  font-size: var(--text-2xs);
+  color: var(--text-muted);
+  text-align: center;
+}
+
+/* ORFs: pick, frame, location, length, start codon. */
+.fd-orfs { --fd-cols: 14px 40px minmax(0, 1fr) 72px 36px; }
+/* Motifs: pick, motif, location, residues. */
+.fd-motifs { --fd-cols: 14px minmax(0, 1.4fr) minmax(0, 1fr) minmax(0, 1fr); }
+
+/* A narrow column keeps what tells results apart: the codon and the
+   residues give way first. */
+@container fd-table (max-width: 340px) {
+  .fd-orfs { --fd-cols: 14px 40px minmax(0, 1fr) 60px; }
+  .fd-motifs { --fd-cols: 14px minmax(0, 1.4fr) minmax(0, 1fr); }
+  .fd-col-wide { display: none; }
+}
+
+/* --- The inspector --- */
+
+.fdi {
+  border-top: 1px solid var(--border);
+  background: var(--props-bg);
+  padding: var(--space-2) var(--space-2-5);
+  max-height: 46%;
+  overflow-y: auto;
+  flex-shrink: 0;
+}
+
+.fdi-head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1-5);
+  margin-bottom: var(--space-1-5);
+}
+
+.fdi-title {
+  font-size: var(--text-md);
+  font-weight: 600;
+  color: var(--text);
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.fdi-grid {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: var(--space-0-5) var(--space-2);
+  margin: 0 0 var(--space-2);
+  font-size: var(--text-xs);
+}
+.fdi-grid dt { color: var(--text-muted); }
+.fdi-grid dd {
+  margin: 0;
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.fdi-label {
+  font-size: var(--text-2xs);
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  margin-bottom: var(--space-1);
+}
+
+.fdi-seq {
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  word-break: break-all;
+  background: var(--bg);
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-sm);
+  padding: var(--space-1-5);
+  margin-bottom: var(--space-2);
+  max-height: 120px;
+  overflow-y: auto;
+}
+
+.fdi-note {
+  font-size: var(--text-2xs);
+  color: var(--text-muted);
+  line-height: 1.45;
+  margin: 0 0 var(--space-2);
+}
+
+.fdi-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1);
+}
+
+.fd-cell.tabular { font-variant-numeric: tabular-nums; }
+.fd-th-dir { font-size: var(--text-2xs); }
+
+/* A result the document already has as a feature: still listed, not offered
+   for Add, so it reads quieter and its box is off. */
+.fd-row.is-added { color: var(--text-muted); }
+.fd-row.is-added .fd-pick { cursor: default; }
+.fd-added { color: var(--text-muted); }
+.fd-status-count > * { white-space: nowrap; }

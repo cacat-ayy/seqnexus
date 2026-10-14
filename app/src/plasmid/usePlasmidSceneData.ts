@@ -8,11 +8,10 @@
 
 import { useMemo } from 'react'
 import { useEditorStore } from '../store'
-import { Annotation, type AnnotationData } from '../models/Annotation'
+import { Annotation } from '../models/Annotation'
 import type { DocumentState } from '../models/Document'
-import { orfColor } from '../workers/orf-finder'
 import { proposalsFrom, proposalAnnotations, keyFromAutoId } from '../utils/auto-annotations'
-import { orfIdFor, orfName, keyFromOrfId } from '../utils/orf-features'
+import { orfOverlayData, keyFromOrfId } from '../utils/orf-features'
 import { groupCutSites, enzymeGroupKey, type GroupedCutSite } from '../enzymes/grouping'
 import { usePrimerSites, useDesignPreview } from '../primers/usePrimerSites'
 import { primerItems, type PrimerItem } from '../primers/display'
@@ -57,15 +56,9 @@ export function usePlasmidSceneData(doc: DocumentState) {
   const orfResults = useMemo(() => (showOrfs ? allOrfResults : []), [showOrfs, allOrfResults])
 
   // --- Derived data ---
-  const orfAnnotations = useMemo(() => orfResults.map(orf => new Annotation({
-    id: orfIdFor(orf),
-    name: orfName(orf),
-    type: 'CDS',
-    start: orf.start,
-    end: orf.end,
-    strand: orf.strand,
-    color: orfColor(orf.strand, orf.frame),
-  } as AnnotationData)), [orfResults])
+  const orfCodeId = useEditorStore(s => s.translationCodeId)
+  const orfAnnotations = useMemo(
+    () => orfResults.map(orf => new Annotation(orfOverlayData(orf, orfCodeId))), [orfResults, orfCodeId])
 
   const hiddenSet = useMemo(() => new Set(hiddenAnnotationIds), [hiddenAnnotationIds])
   const visibleAnnotations = useMemo(() =>

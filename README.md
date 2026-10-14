@@ -1024,6 +1024,18 @@ locations (`<1..300`) are not kept on import, so a partial CDS read from a
 GenBank file is noted as missing its stop. The editor of a CDS shows its
 translation with the same messages, a Copy button and Open as Protein.
 
+**The initiator.** A CDS's first codon, when it is one of the start codons
+above, is translated as methionine whichever codon it is (GTG and TTG
+included), as NCBI translates a complete CDS: the initiator tRNA carries
+methionine, so a GTG start does not make a protein begin with valine. The
+rule holds wherever a CDS is translated (the sequence view's rows, the
+hover card, the editor, Copy protein, Open as Protein). It is not applied
+from `/codon_start` 2 or 3, nor to a CDS that begins at the 5′ edge of a
+linear sequence (the end of the sequence for one on the minus strand):
+that CDS may be the 3′ part of a longer gene, and with partial locations
+not kept on import the edge is the only sign of it. A spliced CDS's rows
+on the sequence view still read its first codon as written.
+
 ---
 
 ## Feature Library and Auto-annotation
@@ -1183,36 +1195,88 @@ hit's own orientation, with mismatched bases marked.
 
 ## ORF Finder
 
-Find ORFs (in the Analyse group) scans all six frames of the sequence and
-draws every open reading frame as an overlay on the sequence view and the
-map, listed in a panel grouped by strand and frame with clickable positions.
+The ORFs tab of the panel (the toolbar's ORFs button, or Find ORFs in the
+Analyse group) scans all six frames of the sequence and lists every open
+reading frame in a table: its frame (+1 to +3, then −1 to −3, each counted
+from its own strand's 5' end; the translation rows in the Display menu and
+the frame pickers elsewhere use the same names), its location, its length
+in residues and its start codon, longest first. A column heading sorts by
+it, again the other way. The settings are the whole scan, so there is no
+Run button: a change reruns it. On a protein the same tab is Motifs (see
+[Motifs and sites](#motifs-and-sites)); either one asked for shows the
+one the sequence has.
+
+A tab rather than the dialog it was: clicking a row selects the ORF's bases
+and the sequence scrolls to it, which a dialog over the view would hide.
+Along the bottom the settings, the table and the ORF in focus sit side by
+side; on the right they run on as one column, and the table drops its
+start-codon column when it is narrow. The ORF in focus shows its location,
+strand, length in residues and bases, start and stop codons and its
+protein, with Add as CDS, Copy protein, Open as protein and BLASTp. The
+arrow keys move through the rows, Space picks one, and the table draws its
+first 500 rows (a larger minimum shows fewer). "Show on the sequence" draws
+the ORFs as an overlay on the sequence view and the map.
 
 - **What counts.** An ORF runs from a start codon to the next in-frame stop
   codon of the document's genetic code. The start codons are chosen from
-  ATG, GTG, TTG and CTG (ATG by default); the minimum size is given in
-  codons, stop included, and is 100 codons (300 bases) by default: long
-  enough to pass over most chance ORFs, short enough to find the genes a
-  plasmid carries (bla is 287 codons, GFP 240). Interior ORFs (one that starts at a downstream
-  start codon inside a longer ORF on the same strand) are shown by default
-  and can be filtered out, leaving only the longest ORF ending at each stop.
+  ATG, GTG, TTG and CTG (ATG by default). The minimum size is in residues,
+  the stop not counted, the unit every label uses, with presets of 25, 50,
+  100 and 200: NCBI ORFfinder's 75, 150, 300 and 600 nt. The default is
+  100 (300 bases before the stop): long enough to pass over most chance
+  ORFs, short enough to find the genes a plasmid carries (bla is 286
+  residues, GFP 239). A size typed is used once typing pauses, so the
+  digits on the way to it (the 1 of 150) are not scans of their own.
+- **The longest ORF to each stop.** Each frame is read from a stop to the
+  first start codon after it and on to the next stop, so a start further
+  downstream in the same frame is part of the ORF, not one of its own, and
+  one ORF is kept per stop codon. This is what makes an ORF across the
+  origin appear once: a frame's reading starts at position 1 without
+  knowing it is already inside an ORF, finds a shorter one from the first
+  start after the origin, and meets the same stop again when the longer
+  one is read across the origin; the longer one is kept.
+- **Nested ORFs.** "Hide ORFs nested in a longer one" drops an ORF that lies
+  entirely inside a longer ORF in any frame and on either strand, as NCBI
+  ORFfinder's "Ignore nested ORFs" does: an antisense or out-of-frame ORF
+  inside a gene is most often chance. Within a frame there is nothing to
+  hide, by the rule above.
+- **Partial ORFs.** "Include ORFs cut off by the ends" also lists, on a
+  linear sequence, an ORF open from the first whole codon to a stop (no
+  start codon: the gene began before the sequence) and one from a start
+  codon to the last whole codon (no stop: it goes on past the end), or a
+  frame open from end to end. A fragment, a contig or a PCR product often
+  holds only part of a gene. They are labelled partial, and a partial ORF
+  that runs to a stop takes in any start inside it, as the longest-ORF rule
+  says. A circle has no ends, so the option does not apply to one.
 - **Circular sequences.** Reading continues past the end into the start, at
-  most one turn less a base, so an ORF across the origin is found once and
-  cannot overlap itself. An ORF met from more than one frame of the scan
-  (possible when the length is not a multiple of three) is listed once, with
-  the frame counted from its own start.
-- **Where it runs.** In a Web Worker; the same code runs on the page when a
-  worker cannot be started (see the [Limits](#limits-5) of NGS read sets for
-  when that is).
+  most one turn less a base, so an ORF cannot overlap itself.
+- **Translation.** The overlay is drawn with its translation like a CDS, its
+  first codon read as methionine whatever start codon it is, as NCBI
+  translates a complete CDS (the initiator tRNA carries methionine; see
+  [Annotations](#annotations) for the same rule on CDS features).
+- **When it runs.** While the dialog is open or the ORFs are shown, and again
+  after edits, once typing pauses; a sequence whose ORFs nobody is looking
+  at is not scanned, and a protein never is. A scan that a newer one
+  overtakes is stopped. It runs in a Web Worker; the same code runs on the
+  page when a worker cannot be started or fails to load (see the
+  [Limits](#limits-5) of NGS read sets for when that is).
 
 ### ORFs as features
 
 The overlay is an analysis result, not part of the document. Ctrl+click
-picks ORFs on the canvas, and Add turns the picked ones (or all of them)
-into CDS features in one undo step. An ORF that already has a feature with
+picks ORFs on the canvas, as the box at the start of a row or Ctrl+click
+does in the ORFs tab, and Add turns the picked ones (or all of them; past
+50 it asks first)
+into CDS features in one undo step. An ORF found with a genetic code other
+than the standard one carries it as `/transl_table`, on the overlay and on
+the feature it becomes: without it, a mitochondrial ORF made a feature
+would be read with the standard code and show a stop at every TGA. An ORF that already has a feature with
 exactly its span and strand is left out of what Add would create, so
 pressing Add twice cannot make two copies; the bar is deliberately that
 tight so a merely overlapping CDS (a shorter isoform, a neighbouring gene)
-does not quietly swallow an ORF you could add. Unlike auto-annotation
+does not quietly swallow an ORF you could add. Such an ORF cannot be
+picked either, in the tab or on the canvas, since Add would ignore the
+pick: in the tab its row is dimmed with its box off, and the count says
+how many are already CDS features (motif hits the same). Unlike auto-annotation
 suggestions, ORFs are not hidden once something covers them: the overlay
 answers "where are the open reading frames", and the answer does not change
 because one of them is now annotated. Toggle ORF Display hides the overlay.
@@ -1253,7 +1317,7 @@ offered and refused: the complement strand, the translation rows, restriction
 enzymes, ORFs, primers, the plasmid map and split view, GC content, Tm and
 codon usage, methylation and cloning. The panel bar shows Features, Motifs,
 Auto and Display; the toolbar buttons for the DNA tools are disabled with a
-note saying why, and the ORF finder's slot holds the motif finder. The feature type list offers
+note saying why, and the ORFs button and tab become Motifs. The feature type list offers
 protein feature keys (Region, Domain, Site, Chain, sig_peptide, transmembrane,
 disulfide and so on, the GenPept keys and the UniProt categories spelt as one
 word so they survive export) instead of promoters and terminators.
@@ -1450,8 +1514,9 @@ hover readout.
 
 ### Motifs and sites
 
-The motif finder sits where the ORF finder sits for DNA and answers the same
-question for residues: where are the things worth a feature. It scans the
+The Motifs tab sits where the ORFs tab sits for DNA, laid out the same way,
+and answers the same question for residues: where are the things worth a
+feature. It scans the
 protein against a short library of patterns written in PROSITE notation
 (`N-{P}-[ST]-{P}`: elements separated by hyphens, `x` any residue, `[..]`
 one of, `{..}` none of, `(n)` or `(n,m)` repeats, `<` and `>` the ends),
@@ -1484,13 +1549,18 @@ window of leucines. The rule finds hydrophobic stretches, not whether the
 protein is in a membrane at all, which is why its hits are provisional
 features until converted.
 
-Hits are drawn as an overlay like ORFs, in the colour of their category:
-Ctrl-click picks one, the panel bar converts the picked ones (or all of
-them) into features of the type the pattern names (`glycosylation`,
+The tab lists every hit in a table (motif, location, the residues matched),
+by position or by motif, with a category filter above it that the overlay
+follows. The hit in focus shows its category, its pattern and source (or
+the rule that predicted it), the feature type it becomes and its residues,
+with Add as feature and Copy residues. Hits are drawn as an overlay like
+ORFs from "Show on the sequence", in the colour of their category. The box
+at the start of a row, or Ctrl-click in the table or on the canvas, picks
+one, and Add (in the tab or the panel bar) converts the picked ones (or all
+of them) into features of the type the pattern names (`glycosylation`,
 `modified_residue`, `Site`, `Motif`, `active_site`, `transmembrane`) as one
 undo step. A hit the document already has a feature for, by name and
-residues, is not added twice. Categories can be switched off in the panel
-and the overlay follows. The scan is a regular-expression pass over a short
+residues, is not added twice. The scan is a regular-expression pass over a short
 protein and runs on the residues themselves, so a substitution moves a site
 at once.
 
@@ -2265,7 +2335,7 @@ returning a sequence that codes for something else.
 |--------|-------------------|
 | Selection | The selected bases, read in frame from the first one |
 | Coding features | Every CDS-like feature, individually checkable |
-| Whole sequence | Frame 1 from position 0 |
+| Whole sequence | Frame +1, from position 0 |
 
 A feature on the minus strand is read and written back in its own orientation,
 `/codon_start` is honoured, and an origin-spanning feature on a circular
@@ -5178,6 +5248,61 @@ proteins (NP_, XP_, WP_, YP_, AP_), GenBank proteins (three letters and five
 or seven digits) and PDB chains (1ABC_A) read as proteins; everything else
 is taken for a nucleotide.
 
+The box also takes the forms SnapGene's NCBI import takes, written the same
+way, so a query copied from one works in the other:
+
+| Typed | Fetches |
+|-------|---------|
+| `NM_006178, NM_008740.4` | several records (commas, semicolons, new lines or spaces) |
+| `672` or `LOC104244181` | an NCBI Gene ID: the gene's region of its chromosome |
+| `AF027958 - AF027961` | every accession from the first to the last |
+| `NC_000072: 122552252..122565735` (or `REGION:`) | part of a record |
+| `AL589148.1 (COMPLEMENT)` | the reverse complement of a record |
+| `CP002686: COMPLEMENT(2459491..2463965)` | the reverse complement of part of one |
+
+- **Regions and complements are cut by NCBI.** EFetch takes `seq_start`,
+  `seq_stop` and `strand=2`, and returns the part asked for with its
+  features moved to match and cut at its ends, so a 13 kb region of a
+  150 Mb mouse chromosome downloads as 13 kb and is not held up by the
+  size check below. Cutting a whole record in the app instead would
+  download all of it first. Positions are 1-based and inclusive, as
+  GenBank writes them; the lower one comes first, and the other strand is
+  asked for with `COMPLEMENT`, not by reversing them. A region that starts
+  past the record's end is refused before anything is downloaded (the
+  record's length comes from its summary); one that only ends past it is
+  cut at the end, as NCBI does, and named for what arrived. Positions
+  copied with thousands separators (`122,552,252..122,565,735`) are read,
+  which is possible only next to `..`, where a comma cannot be the one
+  between entries. A part is named after its record and the GenBank
+  location (`CP002686:complement(2459491..2463965)`,
+  `SYNPUC19CV (complement)`) and numbered from 1.
+- **A Gene ID is the gene's span on its genome.** The gene's summary
+  (ESummary, `db=gene`) gives its chromosome and the 0-based start and stop
+  of the current annotation; a gene on the minus strand is given 5' end
+  first, so its start is past its stop. That span is fetched as a region,
+  on the gene's own strand, so the gene reads left to right, and named for
+  the gene symbol, with its description, organism and location in the
+  description. No flanking sequence is added. A gene merged into another
+  is followed to it once; a gene with no place on a genome says so. A bare
+  number is read as a Gene ID, as in SnapGene, because the numeric record
+  ids it could otherwise mean (GIs) were retired by NCBI in 2016; a LOC
+  symbol is "LOC" and the Gene ID, so it needs no search. A gene symbol
+  (`BRCA1`) is not taken: it names a different gene in each organism.
+- **A range is expanded in the app.** Both ends must share their letters
+  and their number of digits (`NM_000009 - NM_000011`), and one range
+  names at most 100 records, so a typo cannot start thousands of downloads.
+  Versions on the ends are dropped. Every request to NCBI waits its turn,
+  at least 350 ms after the one before: NCBI takes at most three a second
+  from an address without an API key, and answers the rest with HTTP 429
+  and no CORS headers, which a browser reports only as a failed fetch, so a
+  range or a list (a summary and a download per record) otherwise lost most
+  of its records.
+- **What can't be read says how to write it**, on Fetch and, for one entry,
+  under the box as typing pauses; nothing is downloaded until every entry
+  reads. UniProt entries are fetched whole: part of a protein is asked for
+  from NCBI Protein, which takes regions (not complements) the same way.
+  The dialog lists the forms with an example of each that fills the box.
+
 An NCBI record's length and title are fetched first from its summary,
 without downloading it, because typing a chromosome accession would
 otherwise pull hundreds of megabytes: a record over 10 Mb is confirmed
@@ -6156,7 +6281,12 @@ saved, so nothing is written without a word.
   https://www.ncbi.nlm.nih.gov/Taxonomy/Browser/wwwtax.cgi?id=32630
 
 - NCBI. "Entrez Programming Utilities Help."
-  https://www.ncbi.nlm.nih.gov/books/NBK25499/
+  https://www.ncbi.nlm.nih.gov/books/NBK25499/ (EFetch's `seq_start`,
+  `seq_stop` and `strand`, and ESummary's gene `genomicinfo`).
+
+- SnapGene. The formats for importing records from GenBank / EMBL / DDBJ
+  (snapgene.com, accessed 2026-10-14). The query forms Import by Accession
+  takes: Gene IDs, ranges, regions and complements.
 
 - EMBL-EBI. "European Nucleotide Archive: Annotated/Assembled Sequences,
   User Manual" (the EMBL flat file format).

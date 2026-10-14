@@ -4,7 +4,6 @@ import {
   loadSession, scheduleSave, onSaveComplete, consumeLoadWarnings,
   markSessionSaved, savedStateChanged, hasUnsavedChanges, flushSave,
 } from '../persistence'
-import { findORFs } from '../workers/orf-finder'
 import { demoDocument } from '../demo'
 
 /**
@@ -66,9 +65,10 @@ export function useSessionPersistence(
         const store = useEditorStore.getState()
         if (saved.orfParams) {
           store.setOrfParams({
-            orfMinCodons: saved.orfParams.minCodons,
+            ...(typeof saved.orfParams.minAminoAcids === 'number' ? { orfMinAminoAcids: saved.orfParams.minAminoAcids } : {}),
             orfStartCodons: saved.orfParams.startCodons,
             orfAllowInterior: saved.orfParams.allowInterior,
+            orfIncludePartial: saved.orfParams.includePartial ?? false,
           })
         }
         if (saved.enzymeParams) {
@@ -80,20 +80,8 @@ export function useSessionPersistence(
             enzymeMaxCuts: saved.enzymeParams.maxCuts,
           })
         }
-        // Re-run the ORF search for the active tab if ORFs are shown. Enzyme sites
-        // need nothing here: each tab keeps its enzyme names and App finds the sites.
-        const doc = store.doc
-        if (doc.sequence.length > 0) {
-          if (store.showOrfs && saved.orfParams) {
-            const p = saved.orfParams
-            findORFs(doc.sequence.bases, {
-              minCodons: p.minCodons, maxCodons: 0,
-              startCodons: p.startCodons, allowInterior: p.allowInterior,
-              topology: doc.sequence.topology,
-              geneticCode: store.translationCodeId,
-            }).then(orfs => useEditorStore.getState().setOrfResults(orfs)).catch(() => {})
-          }
-        }
+        // Nothing to re-run: the ORF finder scans the active tab whenever its
+        // ORFs are shown, and each tab keeps its enzyme names for App to find the sites.
         setTheme(saved.theme || 'light')
         // What was just restored is what storage holds: nothing to write back.
         markSessionSaved()

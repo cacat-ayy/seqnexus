@@ -27,6 +27,16 @@ vi.mock('./workers/annotate-list', async (importOriginal) => {
   return { ...actual, annotateFromList: vi.fn(async () => MATCHES) }
 })
 
+// ORFs come from the scan, which the overlay starts when it is shown.
+const ORFS: ORFResult[] = vi.hoisted(() => [
+  { start: 0, end: 30, strand: 1, frame: 0, codons: 10 },
+  { start: 40, end: 70, strand: -1, frame: 1, codons: 10 },
+])
+vi.mock('./workers/orf-finder', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('./workers/orf-finder')>()
+  return { ...actual, findORFs: vi.fn(async () => ORFS) }
+})
+
 const store = () => useEditorStore.getState()
 
 /** Let pending promises (the scan, the session restore) and their renders run. */
@@ -127,11 +137,6 @@ describe('auto-annotation in the panel bar', () => {
   })
 })
 
-const ORFS: ORFResult[] = [
-  { start: 0, end: 30, strand: 1, frame: 0, codons: 10 },
-  { start: 40, end: 70, strand: -1, frame: 1, codons: 10 },
-]
-
 describe('ORFs in the panel bar', () => {
   beforeEach(() => {
     store().clearOrfs()
@@ -163,7 +168,7 @@ describe('ORFs in the panel bar', () => {
     expect(button('Add picked (1)')).toBeTruthy()
     await act(async () => { button('Add picked (1)')!.click() })
 
-    expect(store().doc.annotations.map(a => a.name)).toEqual(['ORF +1 (10 aa)'])
+    expect(store().doc.annotations.map(a => a.name)).toEqual(['ORF +1 (9 aa)'])
     expect(store().doc.annotations[0].type).toBe('CDS')
     expect(store().showOrfs).toBe(false)
     expect(orfToggle().classList.contains('active')).toBe(false)

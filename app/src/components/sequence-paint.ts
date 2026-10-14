@@ -25,7 +25,7 @@ import {
 import type { ReadingFrame } from '../codon/translation-display'
 import { isAutoAnnotationId, keyFromAutoId } from '../utils/auto-annotations'
 import { keyFromMotifId } from '../utils/motif-features'
-import { annotationCode, codonStartOffset } from '../utils/annotation-sequence'
+import { annotationCode, codonStartOffset, isInitiatorCodon } from '../utils/annotation-sequence'
 import { keyFromOrfId } from '../utils/orf-features'
 import { isPrimerItemId, type PrimerItem } from '../primers/display'
 import { drawPrimerItem } from './primer-draw'
@@ -1681,6 +1681,9 @@ export function paintSequenceRows(
         // A feature that declares its code (/transl_table) is read with it,
         // whatever code the display is set to.
         const code = annotationCode(ann) ?? s.translationCode
+        // The first codon of a complete CDS is its initiator: methionine, whichever start codon it is.
+        const residueAt = (fOffset: number, codon: string) =>
+          fOffset === 0 && isInitiatorCodon(ann, doc.sequence, codon) ? 'M' : translateCodonWith(code, codon)
         // "By annotation" colouring means the feature's own colour, which is
         // the one thing the residue palettes cannot supply. Stops keep their
         // red so they still stand out in a feature-coloured row.
@@ -1721,7 +1724,7 @@ export function paintSequenceRows(
           if (lOffset < 0 || lOffset + 3 > seqForTranslation.length) continue
           const codonIdx = Math.floor(fOffset / 3)
           const codon = seqForTranslation.slice(lOffset, lOffset + 3)
-          const fill = fillFor(translateCodonWith(code, codon))
+          const fill = fillFor(residueAt(fOffset, codon))
           const firstBase = ann.strand === 1 ? pos : pos - 2
           const lastBase = ann.strand === 1 ? pos + 2 : pos
           const clampedFirst = Math.max(firstBase, rowStart)
@@ -1744,7 +1747,7 @@ export function paintSequenceRows(
           const lOffset = localOffset(ann, pos, data)
           if (lOffset < 0 || lOffset + 3 > seqForTranslation.length) continue
           const codon = seqForTranslation.slice(lOffset, lOffset + 3)
-          const aa = translateCodonWith(code, codon)
+          const aa = residueAt(fOffset, codon)
           let middleBase: number
           if (ann.strand === 1) {
             middleBase = pos + 1

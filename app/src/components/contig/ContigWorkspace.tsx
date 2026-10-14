@@ -617,7 +617,7 @@ export default function ContigWorkspace({ contig, onClose, onExportPrompt, findR
         </button>
         {view.translate && (
           <select className="select aw-select" value={view.frame} aria-label="Reading frame" onChange={e => onView({ frame: Number(e.target.value) as 0 | 1 | 2 })}>
-            <option value={0}>Frame 1</option><option value={1}>Frame 2</option><option value={2}>Frame 3</option>
+            <option value={0}>Frame +1</option><option value={1}>Frame +2</option><option value={2}>Frame +3</option>
           </select>
         )}
         <span className="aw-tool-sep" />

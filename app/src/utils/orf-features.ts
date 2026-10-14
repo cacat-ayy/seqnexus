@@ -15,6 +15,10 @@
 
 import type { ORFResult } from '../workers/orf-finder'
 import { orfColor } from '../workers/orf-finder'
+import { orfAminoAcids } from '../orfs/finder'
+import { DEFAULT_GENETIC_CODE_ID } from '../codon/genetic-codes'
+import type { Sequence } from '../models/Sequence'
+import { reverseComplement } from '../models/complement'
 import type { AnnotationData } from '../models/Annotation'
 import { isCoveredByAnnotation, type Interval } from './auto-annotations'
 
@@ -57,10 +61,13 @@ export function isOrfId(id: string): boolean {
   return id.startsWith(ORF_ID_PREFIX)
 }
 
-/** The label the overlay draws, reused verbatim by the feature it becomes. */
+/**
+ * The label the overlay draws, reused verbatim by the feature it becomes.
+ * It counts residues: the stop codon encodes none.
+ */
 export function orfName(orf: ORFResult): string {
-  const strandLabel = orf.strand === 1 ? '+' : '−'
-  return `ORF ${strandLabel}${orf.frame + 1} (${orf.codons} aa)`
+  const partial = orf.partialStart || orf.partialEnd ? ', partial' : ''
+  return `ORF ${orfFrameLabel(orf)} (${orfAminoAcids(orf)} aa${partial})`
 }
 
 function orfInterval(orf: ORFResult): Interval {
@@ -87,15 +94,60 @@ export function convertibleOrfs(
 const idRun = Date.now().toString(36)
 let idCounter = 0
 
-/** One ORF as a feature: the label and colour it already had on screen. */
-export function orfToAnnotationData(orf: ORFResult): AnnotationData {
+/**
+ * An ORF's feature fields, all but its id: the label and colour it has on
+ * screen, and, when it was found with a code other than the standard one,
+ * that code in /transl_table. Without it the feature would be read with the
+ * standard code: a mitochondrial ORF would show a stop at every TGA.
+ */
+function orfData(orf: ORFResult, geneticCodeId: number): Omit<AnnotationData, 'id'> {
   return {
-    id: `orf_${idRun}_${++idCounter}`,
     name: orfName(orf),
     type: ORF_FEATURE_TYPE,
     start: orf.start,
     end: orf.end,
     strand: orf.strand,
     color: orfColor(orf.strand, orf.frame),
+    ...(geneticCodeId !== DEFAULT_GENETIC_CODE_ID ? { qualifiers: { transl_table: [String(geneticCodeId)] } } : {}),
   }
+}
+
+/** One ORF as a feature of the document. */
+export function orfToAnnotationData(orf: ORFResult, geneticCodeId: number = DEFAULT_GENETIC_CODE_ID): AnnotationData {
+  return { id: `orf_${idRun}_${++idCounter}`, ...orfData(orf, geneticCodeId) }
+}
+
+/**
+ * An ORF as the overlay draws it, with an id that carries its identity so a
+ * pick survives a re-scan, and its code, so its translation (the hover
+ * card, Copy protein) is read the way the finder read it.
+ */
+export function orfOverlayData(orf: ORFResult, geneticCodeId: number = DEFAULT_GENETIC_CODE_ID): AnnotationData {
+  return { id: orfIdFor(orf), ...orfData(orf, geneticCodeId) }
+}
+
+/** `n` bases from `from`, reading on across the origin of a circle. */
+function basesFrom(sequence: Sequence, from: number, n: number): string {
+  const L = sequence.length
+  const s = ((from % L) + L) % L
+  return s + n <= L ? sequence.basesIn(s, s + n) : sequence.basesIn(s, L) + sequence.basesIn(0, s + n - L)
+}
+
+/**
+ * An ORF's start and stop codons, each read on its own strand: null where it
+ * has none (a partial ORF runs off the end of the sequence there).
+ */
+export function orfCodons(orf: ORFResult, sequence: Sequence): { start: string | null; stop: string | null } {
+  if (sequence.length < 3) return { start: null, stop: null }
+  const head = (pos: number) => basesFrom(sequence, pos, 3).toUpperCase()
+  const forward = orf.strand === 1
+  // The 5' codon of a plus-strand ORF is at its start; of a minus-strand one, at its end.
+  const fivePrime = forward ? head(orf.start) : reverseComplement(head(orf.end - 3))
+  const threePrime = forward ? head(orf.end - 3) : reverseComplement(head(orf.start))
+  return { start: orf.partialStart ? null : fivePrime, stop: orf.partialEnd ? null : threePrime }
+}
+
+/** A frame as the finder and the translation rows write it: +1 to +3, −1 to −3. */
+export function orfFrameLabel(orf: Pick<ORFResult, 'strand' | 'frame'>): string {
+  return `${orf.strand === 1 ? '+' : '−'}${orf.frame + 1}`
 }

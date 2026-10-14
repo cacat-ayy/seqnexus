@@ -287,7 +287,7 @@ interface SerializedSessionV2 {
   activeAlignmentId?: string | null
   activeContigId?: string | null
   // ORF/enzyme panel params (re-run searches on restore)
-  orfParams?: { minCodons: number; startCodons: string[]; allowInterior: boolean }
+  orfParams?: { minAminoAcids: number; startCodons: string[]; allowInterior: boolean; includePartial?: boolean }
   enzymeParams?: { subset: string; searchQuery: string; filterByCount: boolean; minCuts: number; maxCuts: number }
 }
 
@@ -470,9 +470,10 @@ function buildSessionData(theme: string): {
       activeGelId: state.activeGelId,
       activeCloneId: state.activeCloneId,
       orfParams: {
-        minCodons: state.orfMinCodons,
+        minAminoAcids: state.orfMinAminoAcids,
         startCodons: state.orfStartCodons,
         allowInterior: state.orfAllowInterior,
+        includePartial: state.orfIncludePartial,
       },
       enzymeParams: {
         subset: state.enzymeSubset,
@@ -668,7 +669,7 @@ export function savedStateChanged(state: EditorState, prev: EditorState): boolea
     'activeTabId', 'folders', 'itemMeta', 'tagColors', 'sequencingReads', 'activeSequencingReadIds',
     'alignments', 'contigs', 'oligos', 'guideLibrary', 'enzymeSets', 'gels', 'activeGelId', 'activeAlignmentId', 'activeContigId',
     'clones', 'activeCloneId', 'assemblies', 'activeAssemblyId', 'readSets', 'activeReadSetId',
-    'orfMinCodons', 'orfStartCodons', 'orfAllowInterior',
+    'orfMinAminoAcids', 'orfStartCodons', 'orfAllowInterior', 'orfIncludePartial',
     'enzymeSubset', 'enzymeSearchQuery', 'enzymeFilterByCount', 'enzymeMinCuts', 'enzymeMaxCuts',
   ]
   return keys.some(k => state[k] !== prev[k])
@@ -865,7 +866,7 @@ export interface RestoredSession {
   activeContigId?: string | null
   /** Structure files of the user's own, from a session file (see SessionStructure). */
   structures?: SessionStructure[]
-  orfParams?: { minCodons: number; startCodons: string[]; allowInterior: boolean }
+  orfParams?: { minAminoAcids: number; startCodons: string[]; allowInterior: boolean; includePartial?: boolean }
   enzymeParams?: { subset: string; searchQuery: string; filterByCount: boolean; minCuts: number; maxCuts: number }
   /** Session import only: what the file named but did not contain. */
   warnings?: string[]

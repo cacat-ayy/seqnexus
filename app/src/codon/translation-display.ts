@@ -44,19 +44,19 @@ export const TRANSLATION_FRAMES: FrameOption[] = [
   { id: 'forward', label: 'Forward frames', frames: [F(0), F(1), F(2)] },
   { id: 'reverse', label: 'Reverse frames', frames: [R(0), R(1), R(2)] },
 
-  { id: 'f1', label: 'Frame 1', frames: [F(0)], startsGroup: true },
-  { id: 'f2', label: 'Frame 2', frames: [F(1)] },
-  { id: 'f3', label: 'Frame 3', frames: [F(2)] },
-  { id: 'r1', label: 'Frame 1 reverse', frames: [R(0)] },
-  { id: 'r2', label: 'Frame 2 reverse', frames: [R(1)] },
-  { id: 'r3', label: 'Frame 3 reverse', frames: [R(2)] },
+  { id: 'f1', label: 'Frame +1', frames: [F(0)], startsGroup: true },
+  { id: 'f2', label: 'Frame +2', frames: [F(1)] },
+  { id: 'f3', label: 'Frame +3', frames: [F(2)] },
+  { id: 'r1', label: 'Frame −1', frames: [R(0)] },
+  { id: 'r2', label: 'Frame −2', frames: [R(1)] },
+  { id: 'r3', label: 'Frame −3', frames: [R(2)] },
 
-  { id: 'f12', label: 'Frames 1 & 2', frames: [F(0), F(1)], startsGroup: true },
-  { id: 'f13', label: 'Frames 1 & 3', frames: [F(0), F(2)] },
-  { id: 'f23', label: 'Frames 2 & 3', frames: [F(1), F(2)] },
-  { id: 'r12', label: 'Frames 1 & 2 reverse', frames: [R(0), R(1)] },
-  { id: 'r13', label: 'Frames 1 & 3 reverse', frames: [R(0), R(2)] },
-  { id: 'r23', label: 'Frames 2 & 3 reverse', frames: [R(1), R(2)] },
+  { id: 'f12', label: 'Frames +1 & +2', frames: [F(0), F(1)], startsGroup: true },
+  { id: 'f13', label: 'Frames +1 & +3', frames: [F(0), F(2)] },
+  { id: 'f23', label: 'Frames +2 & +3', frames: [F(1), F(2)] },
+  { id: 'r12', label: 'Frames −1 & −2', frames: [R(0), R(1)] },
+  { id: 'r13', label: 'Frames −1 & −3', frames: [R(0), R(2)] },
+  { id: 'r23', label: 'Frames −2 & −3', frames: [R(1), R(2)] },
 ]
 
 export const DEFAULT_TRANSLATION_FRAME: TranslationFrameId = 'selection-or-annotation'

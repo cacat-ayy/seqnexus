@@ -13,7 +13,7 @@ import type { DocumentState, TranslationSource } from '../models/Document'
 import { Sequence } from '../models/Sequence'
 import { reverseComplement } from '../models/complement'
 import { geneticCode, translateWith, type GeneticCode } from '../codon/genetic-codes'
-import { annotationCode, codonStartOffset } from '../utils/annotation-sequence'
+import { annotationCode, codonStartOffset, isInitiatorCodon } from '../utils/annotation-sequence'
 
 /** The exons of a source in forward-strand order, one piece when unspliced. */
 function pieces(link: Pick<TranslationSource, 'start' | 'end' | 'segments'>): [number, number][] {
@@ -190,9 +190,15 @@ export function codingBases(doc: DocumentState, link: TranslationSource): string
  */
 export function translationDocument(doc: DocumentState, link: TranslationSource, req: TranslationRequest): DocumentState {
   const code: GeneticCode = geneticCode(link.codeId)
-  let residues = translateWith(code, codingBases(doc, link))
+  const coding = codingBases(doc, link)
+  let residues = translateWith(code, coding)
   if (residues.endsWith('*')) residues = residues.slice(0, -1)
   const sourceAnn = 'annotation' in req ? req.annotation : null
+  // A CDS begins with methionine whichever start codon it uses, as every
+  // other view of its translation shows it (see isInitiatorCodon).
+  if (sourceAnn && residues.length > 0 && isInitiatorCodon(sourceAnn, doc.sequence, coding.slice(0, 3))) {
+    residues = 'M' + residues.slice(1)
+  }
   const name = sourceAnn ? sourceAnn.name : `${doc.name} ${link.start + 1}-${link.end}`
 
   const carried: AnnotationData[] = []
