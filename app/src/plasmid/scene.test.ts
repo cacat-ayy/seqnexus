@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { buildPlasmidScene, isFlipped, type PlasmidSceneInput, type SceneItem } from './scene'
+import { buildPlasmidScene, isFlipped, textScale, type PlasmidSceneInput, type SceneItem } from './scene'
 import { stackAnnotations } from './geometry'
 import { PLASMID_STYLES, getPlasmidStyle, resolvePlasmidColors } from './styles'
 import { Annotation } from '../models/Annotation'
@@ -813,5 +813,207 @@ describe('a crowded spot inside the ring layout', () => {
 
   it('always shows the one under the pointer', () => {
     expect(names('f1')).toContain('twelve bp feature')
+  })
+})
+
+describe('the ring layout names a cloning site round the circle', () => {
+  type Text = Extract<SceneItem, { kind: 'text' }>
+  type Line = Extract<SceneItem, { kind: 'line' }>
+  // pUC19's cloning site at half past one, NdeI a little way before it.
+  const mcs: [string, number][] = [
+    ['NdeI', 183], ['EcoRI', 396], ['SacI', 406], ['KpnI', 412], ['SmaI', 414], ['BamHI', 417],
+    ['XbaI', 423], ['SalI', 429], ['PstI', 439], ['SphI', 445], ['HindIII', 447],
+  ]
+  const build = (size: number, height?: number) => buildPlasmidScene(input({
+    size, height, layout: 'sites-outside',
+    rings: stackAnnotations([ann(146, 469, 'lacZ', 'lacZ-alpha'), ann(1626, 2486, 'amp', 'AmpR'), ann(867, 1455, 'ori', 'ori')]),
+    enzymeGroups: mcs.map(([label, cutPos]) => ({ key: label, label, cutPos, methEffect: null })),
+  }))
+  const siteNames = (s: ReturnType<typeof build>) =>
+    s.items.filter((i): i is Text => i.kind === 'text' && mcs.some(([n]) => n === i.text))
+  const leaders = (s: ReturnType<typeof build>) =>
+    s.items.filter((i): i is Line => i.kind === 'line' && i.width === 0.75)
+  const box = (t: Text) => {
+    const w = measure(t.text, t.font)
+    const fs = parseFloat(/([\d.]+)px/.exec(t.font)![1])
+    const x1 = t.align === 'right' ? t.x - w : t.align === 'center' ? t.x - w / 2 : t.x
+    return { x1, x2: x1 + w, y1: t.y - fs / 2, y2: t.y + fs / 2 }
+  }
+  const sizes: [number, number | undefined][] = [[300, undefined], [350, undefined], [450, undefined], [600, undefined], [900, undefined], [900, 500]]
+
+  it('hangs every leader end on one circle on each side', () => {
+    for (const [w, h] of sizes) {
+      const s = build(w, h)
+      const cx = w / 2
+      const cy = (h ?? w) / 2
+      const ends = leaders(s).filter(l => l.x2 > cx).map(l => Math.hypot(l.x2 - cx, l.y2 - cy))
+      expect(ends.length).toBeGreaterThan(5)
+      expect(Math.max(...ends) - Math.min(...ends)).toBeLessThan(0.01)
+    }
+  })
+
+  it('keeps the names apart, on the map, and the leaders out of them and uncrossed', () => {
+    for (const [w, h] of sizes) {
+      const s = build(w, h)
+      const texts = s.items.filter((i): i is Text => i.kind === 'text' && i.rotate === undefined && i.align !== 'center')
+      const boxes = texts.map(box)
+      for (let i = 0; i < boxes.length; i++) {
+        const a = boxes[i]
+        expect(a.x1).toBeGreaterThanOrEqual(0)
+        expect(a.x2).toBeLessThanOrEqual(w)
+        expect(a.y1).toBeGreaterThanOrEqual(0)
+        expect(a.y2).toBeLessThanOrEqual(h ?? w)
+        for (let j = i + 1; j < boxes.length; j++) {
+          const b = boxes[j]
+          const apart = a.x2 <= b.x1 + 0.5 || b.x2 <= a.x1 + 0.5 || a.y2 <= b.y1 + 0.5 || b.y2 <= a.y1 + 0.5
+          expect(apart).toBe(true)
+        }
+      }
+      for (const l of leaders(s)) {
+        for (const b of boxes) {
+          for (let k = 1; k < 40; k++) {
+            const x = l.x1 + (l.x2 - l.x1) * k / 40
+            const y = l.y1 + (l.y2 - l.y1) * k / 40
+            expect(x > b.x1 + 0.5 && x < b.x2 - 0.5 && y > b.y1 + 0.5 && y < b.y2 - 0.5).toBe(false)
+          }
+        }
+      }
+      expect(openCrossings(s.items)).toBe(0)
+    }
+  })
+
+  it('keeps the names in the order of their sites', () => {
+    for (const [w, h] of sizes) {
+      const names = siteNames(build(w, h)).filter(t => t.align === 'left').map(t => t.text)
+      const order = mcs.map(([n]) => n).filter(n => names.includes(n))
+      expect(names).toEqual(order)
+    }
+  })
+
+  it('centres the stack on its sites rather than jamming it against the top', () => {
+    const s = build(350)
+    const cy = 175
+    const ys = siteNames(s).filter(t => t.text !== 'NdeI').map(t => t.y)
+    const mid = (Math.min(...ys) + Math.max(...ys)) / 2
+    // The sites are at about half past one, 63 px above the centre.
+    const siteY = cy - s.baseRadius * Math.cos((416 / 2686) * 2 * Math.PI)
+    expect(Math.abs(mid - siteY)).toBeLessThan(40)
+    expect(Math.min(...ys)).toBeGreaterThan(20)
+  })
+
+  it('names every site of the cloning site from a mid-sized map up', () => {
+    for (const w of [450, 600, 900]) {
+      expect(siteNames(build(w)).map(t => t.text).sort()).toEqual(mcs.map(([n]) => n).sort())
+    }
+  })
+
+  it('drops a position before its name where the map runs out of room', () => {
+    for (const [w, h] of sizes) {
+      const s = build(w, h)
+      const texts = s.items.filter((i): i is Text => i.kind === 'text')
+      const positions = texts.filter(t => /^\(\d[\d,]*\)$/.test(t.text))
+      // Every position shown has its name on the same row.
+      for (const p of positions) expect(siteNames(s).some(t => t.y === p.y)).toBe(true)
+    }
+    // A small map has a name shown without its position.
+    const small = build(300)
+    const texts = small.items.filter((i): i is Text => i.kind === 'text')
+    const bare = siteNames(small).filter(t => !texts.some(p => p !== t && p.y === t.y && p.text.startsWith('(')))
+    expect(bare.length).toBeGreaterThan(0)
+  })
+})
+
+describe('text grows with a large map', () => {
+  type Text = Extract<SceneItem, { kind: 'text' }>
+  const px = (t: Text) => parseFloat(/([\d.]+)px/.exec(t.font)![1])
+
+  it('scales from 600 px up to half as large again, never down', () => {
+    expect(textScale(300)).toBe(1)
+    expect(textScale(600)).toBe(1)
+    expect(textScale(750)).toBe(1.25)
+    expect(textScale(900)).toBe(1.5)
+    expect(textScale(2000)).toBe(1.5)
+  })
+
+  it('draws the names and the middle larger on a large map, the same on a small one', () => {
+    const name = (size: number, height?: number) =>
+      buildPlasmidScene(input({ size, height })).items.find((i): i is Text => i.kind === 'text' && i.text === 'pUC19')!
+    expect(px(name(400))).toBe(px(name(600)))
+    expect(px(name(900))).toBeCloseTo(px(name(600)) * 1.5, 0)
+    // By the shorter side: a wide panel is not a bigger map.
+    expect(px(name(1200, 600))).toBe(px(name(600)))
+  })
+})
+
+describe('the default layout names a crowded spot round the circle when it fits', () => {
+  type Text = Extract<SceneItem, { kind: 'text' }>
+  type Line = Extract<SceneItem, { kind: 'line' }>
+  type Band = Extract<SceneItem, { kind: 'arcBand' }>
+  const mcs: [string, number][] = [
+    ['EcoRI', 396], ['SacI', 406], ['KpnI', 412], ['SmaI', 414], ['BamHI', 417],
+    ['XbaI', 423], ['SalI', 429], ['PstI', 439], ['SphI', 445], ['HindIII', 447],
+  ]
+  const puc = [ann(146, 469, 'lacZ', 'lacZ-alpha'), ann(397, 453, 'mcs', 'MCS'), ann(867, 1455, 'ori', 'ori'), ann(1626, 2486, 'amp', 'AmpR')]
+  // Four features stacked at 6 o'clock, far from the cloning site.
+  const stack = [ann(1250, 1450, 's1', 's1'), ann(1260, 1440, 's2', 's2'), ann(1270, 1430, 's3', 's3'), ann(1280, 1420, 's4', 's4')]
+  const build = (size: number, features = puc) => buildPlasmidScene(input({
+    size, rings: stackAnnotations(features),
+    enzymeGroups: mcs.map(([label, cutPos]) => ({ key: label, label, cutPos, methEffect: null })),
+  }))
+  const names = (s: ReturnType<typeof build>) =>
+    s.items.filter((i): i is Text => i.kind === 'text' && mcs.some(([n]) => n === i.text))
+  const leaders = (s: ReturnType<typeof build>) =>
+    s.items.filter((i): i is Line => i.kind === 'line' && i.width === 0.75)
+  /** The short flat tails into names that only the columns draw. */
+  const tails = (s: ReturnType<typeof build>) =>
+    leaders(s).filter(l => Math.abs(l.y1 - l.y2) < 0.01 && Math.abs(Math.abs(l.x2 - l.x1) - 6) < 0.5)
+
+  it('hangs the names of a cloning site on one circle, in its order', () => {
+    for (const size of [600, 750, 900]) {
+      const s = build(size)
+      expect(tails(s)).toHaveLength(0)
+      const c = size / 2
+      const ends = leaders(s).filter(l => l.x2 > c && l.y2 < c).map(l => Math.hypot(l.x2 - c, l.y2 - c))
+      expect(Math.max(...ends) - Math.min(...ends)).toBeLessThan(0.01)
+      const order = names(s).sort((a, b) => a.y - b.y).map(t => t.text)
+      expect(order).toEqual(mcs.map(([n]) => n))
+      expect(openCrossings(s.items)).toBe(0)
+    }
+  })
+
+  it('hangs them past the rings by the site, not past a deeper stack elsewhere', () => {
+    const plain = build(600)
+    const stacked = build(600, [...puc, ...stack])
+    const bracket = (s: ReturnType<typeof build>) =>
+      s.items.find((i): i is Band => i.kind === 'arcBand' && i.width === 1.5 && i.strand === 0 && i.alpha === 0.6)!
+    expect(bracket(stacked).radius).toBeCloseTo(bracket(plain).radius, 5)
+    const d = (s: ReturnType<typeof build>) => names(s).map(t => Math.hypot(t.x - 300, t.y - 300))
+    expect(Math.max(...d(stacked))).toBeCloseTo(Math.max(...d(plain)), 5)
+  })
+
+  it('brings a feature name in the spot up to the sites\' bracket before it turns to its name', () => {
+    // Too long to fit in its arrow, so it is named outside, in the spot, with
+    // a short feature stacked over it for its leader to rise past.
+    const s = build(750, [
+      ...puc.map(f => (f.id === 'mcs' ? ann(397, 453, 'mcs', 'multiple cloning site') : f)),
+      ann(400, 450, 'cap', 'c'),
+    ])
+    const mcsName = s.items.find((i): i is Text => i.kind === 'text' && i.text.startsWith('multiple'))!
+    expect(mcsName).toBeDefined()
+    expect(tails(s)).toHaveLength(0)
+    // A radial piece: its two ends at the same angle from the centre.
+    const c = 375
+    const radial = leaders(s).filter(l => {
+      const a1 = Math.atan2(l.y1 - c, l.x1 - c)
+      const a2 = Math.atan2(l.y2 - c, l.x2 - c)
+      return Math.abs(a1 - a2) < 1e-6 && Math.hypot(l.x2 - l.x1, l.y2 - l.y1) > 2
+    })
+    expect(radial.length).toBeGreaterThan(0)
+  })
+
+  it('lists the spot in columns where the circle would name fewer of its sites', () => {
+    const s = build(480)
+    expect(tails(s).length).toBeGreaterThan(0)
+    expect(names(s)).toHaveLength(mcs.length)
   })
 })

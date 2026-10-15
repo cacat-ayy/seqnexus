@@ -704,7 +704,38 @@ the canvas.
 A spot's names are split by side: those left of the vertical through the
 centre go to the left of the circle, the rest to the right, so a spot at 12
 o'clock (where a plasmid's own junctions sit) opens both ways and one at 3
-o'clock goes right. On each side they take one row each, stacked, and each
+o'clock goes right. Where they fit, they are hung round the circle, placed
+the way the other layout places its names (see "Names round the circle"
+under [Sites outside](#sites-outside)): each name horizontal, touching a
+circle from outside, spread down its side as near its own site as the names
+round it allow, with a straight leader that cannot cross another or run
+through a name. Three things differ here, all because the feature rings are
+outside the backbone and stack deeper in one place than another:
+
+- **The bracket and the leaders start just past what is drawn over the
+  run**, not past the outermost ring anywhere on the map.
+- **Each spot has its own circle**, just clear of what is drawn where its
+  names land: if a name's box would sit on an arc, the spot's circle moves
+  out past it. A stack four rings deep at another spot does not move it.
+- **A feature name in a spot rises straight out from its arc** to the height
+  the sites' leaders start at, and turns to its name from there, so every
+  leader of the spot starts at one radius and the leaders cannot cross. A
+  feature's leader that set off from its own ring instead crossed the site
+  leaders above it.
+
+The circle is used when every name is clear of what is drawn, every leader
+passes the checks, no name hangs more than four rows of text past what is
+drawn under it, and it names at least as many of the spot's sites as the
+columns described next would (the columns are laid out on the side and
+counted). Otherwise the spots are listed in columns. Two cases fall to the
+columns: a small map, where a cloning site centred at half past one runs
+down to 3 o'clock and the circle leaves too little room beside it there to
+write every name; and a plasmid's junction, where the rings stack four or
+five deep in one narrow spot, so a circle past the stack hangs the names
+down the sides a long way out from the single ring beside them, which the
+columns follow closely.
+
+In the columns, each side takes one row per name, stacked, and each
 name sits just past whatever is in the way at its own height: the feature
 arcs, the backbone and the bracket, measured on what is actually drawn there,
 and the leaders of the other names passing that row. So the names follow the
@@ -715,8 +746,8 @@ or five deep in one narrow spot, that put the names a long way out, beside a
 stack that was not there. A run of sites keeps a bracket over its stretch
 just outside the rings.
 
-Each leader runs straight from its site to a short flat tail into the name,
-at whatever slant reaches it. An earlier version made each leader run out
+In the columns, each leader runs straight from its site to a short flat
+tail into the name, at whatever slant reaches it. An earlier version made each leader run out
 along its radius first and turn flat only once level with its row; lines
 along radii cannot cross, but a site at 2 o'clock with its row near the top
 then had to travel far out to the side to climb that high, so the name ended
@@ -781,6 +812,17 @@ around it, which is where it is needed, and not to a bigger circle. In the
 cloning workspace, where the panel is much wider than it is tall, that is the
 difference between names cut short with an ellipsis and names written out.
 
+Text grows with the map past 600 px across its shorter side, in proportion,
+up to half as large again at 900 px: feature and site names, ruler numbers
+and the name in the middle, with the fixed gaps that hold them (the ruler's
+band in the ring layout, the centre block, the legend). Below 600 px it is
+drawn at the style's own sizes. The styles' cut-site names are already at
+9 px, about as small as text stays readable, so a small map meets crowding
+with placement and hover cards, not smaller letters. The cap keeps a figure
+exported at 1080 px from turning into a poster of names. Arcs and the
+backbone keep their widths, and zooming with the wheel enlarges everything
+on top of this, as before.
+
 ### Sites outside
 
 A second layout, chosen in the Display menu next to the styles and separate
@@ -805,19 +847,63 @@ cloning workspace and exported figures.
   where its leader starts, and its position beside its name: "BamHI (975)"
   right of the circle, "(975) BamHI" left of it, so the name is the end the
   leader reaches and the position the outer end. The position is the one the
-  rest of the app shows, from the display origin. Each side of the circle is
-  laid out as one, with the placement crowded stretches use in the other
-  layout (see [Styles and labels](#styles-and-labels)), except that each name
-  is placed as near its own site's height as the names above and below it
-  allow rather than in one block: a least-squares fit under "a row apart",
-  which pooling neighbours that are out of order solves exactly. So the names
-  spread round the whole circle, close to their sites.
+  rest of the app shows, from the display origin. Where the map runs out of
+  room at its edge the position is left off first, since the hover card has
+  it too; a name with no room for all of it is left to its hover card, unless
+  it is a site you chose. How the names are placed is below.
 - **The middle.** The construct's name is shortened to the room inside the
   innermost ring, since the features are inside now. A feature name with no
   room left inside, when the rings stack deep in one spot or the name in the
   middle is long, is named outside with the sites instead of being left off.
   Primers go just outside the backbone, the cut sites' leaders starting past
   them, and the GC ring goes inside the features and their names.
+
+**Names round the circle.** Every name outside the circle, the sites' and
+the feature names with no room inside, is hung on one circle just outside
+the ticks. Each is horizontal text touching that circle from outside: right
+of the vertical through the centre it starts where it touches and runs
+right, left of it it ends there and runs left, and near 12 and 6 o'clock it
+sits on the circle by its corner rather than its middle. So the only thing
+to choose for a name is how far round the circle it goes, and its leader is
+a straight line from its tick to that point. The leader is a chord inside
+the circle and the text is outside it, so no leader can run through a name,
+and with the names in the order of their sites, the leaders do not cross.
+
+Down each side, the names are spread as near their own sites as names that
+do not overlap allow. This is a least-squares fit, solved by pooling
+neighbours that push into each other into one block and centring each block
+on its sites (pool adjacent violators, the standard method for isotonic
+regression). A block is laid out tight: each name at the first place round
+the circle where it clears the one before, which on the sides is a row below
+it and near the top and the bottom is beside it, a name's width along rather
+than a row's height down. A side that cannot hold every name is thinned
+where it is most crowded, sites before feature names, and a site you chose
+or the name under the pointer last.
+
+A leader to a name moved far round the circle runs nearly along it. On the
+way it dips towards the backbone and passes over the ticks of the sites
+beside its own, so it reads as theirs, and two such leaders side by side can
+swap over. So the leaders are checked: none may come more than 3 px closer
+to the centre than where it starts, none may cross another site's tick, and
+no two may cross, except leaders starting within 4 px of each other (sites a
+pixel or two apart) that cross within 12 px of where they start, which leave
+as a bundle at an angle too shallow to read as a crossing. When
+a check fails, the circle the names hang on moves out 4 px and the side is
+laid out again. On a larger circle there is more room, so names move less
+far round it and their leaders are steeper. A side lays out in time a few
+times the square of its names (each block is centred by bisection), a few
+milliseconds for 150 sites on a large map.
+
+The first version of this layout put each side's names in rows a fixed
+height apart, as near their sites' heights as the rows allowed, and moved
+each row out past whatever was in its way at that height, the feature
+rings and the other names' leaders. Rows can only move up and down. On a
+small map, the eleven names of pUC19's cloning site, at half past one,
+needed more height than there was above the site, so the stack was pushed
+against the top edge of the map, far above the sites, and each row was
+pushed out past the leaders below it into a stair of names from 10 to 30 px
+off the circle. On the circle a name can move round as well as down, and
+near the top it needs only its width.
 
 ### Rings and tracks
 
@@ -6398,6 +6484,10 @@ saved, so nothing is written without a word.
 
 - Thermo Fisher Scientific. "Gateway Technology" manual (att site
   sequences).
+
+- Barlow RE, Bartholomew DJ, Bremner JM, Brunk HD (1972) *Statistical
+  Inference under Order Restrictions*. Wiley, London. (Pool adjacent
+  violators, used to spread the names round the plasmid map.)
 
 ## License
 
