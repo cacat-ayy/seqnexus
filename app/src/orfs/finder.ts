@@ -9,7 +9,11 @@
  * a start further downstream in the same frame is part of it, not an ORF of
  * its own. One ORF per stop codon is kept, which also holds on a circle,
  * where a frame's reading meets the same stop again after crossing the
- * origin.
+ * origin. Asked for every start, each start codon opens an ORF of its own,
+ * to the same stop as the longest one.
+ *
+ * A region scans only those bases, as a linear fragment of their own, and
+ * gives the ORFs back in the sequence's coordinates.
  */
 
 import { reverseComplement } from '../models/complement'
@@ -43,6 +47,18 @@ export interface ORFRequest {
    * codon. A fragment, a contig or a PCR product often holds only part of a gene.
    */
   includePartial?: boolean
+  /**
+   * Every start codon opens an ORF of its own, ending at the same stop as
+   * the longest one: a gene's alternative initiation sites. Off, one ORF per
+   * stop, from the first start after the stop before it.
+   */
+  allStarts?: boolean
+  /**
+   * Scan only these bases, [start, end), read as a linear fragment whose
+   * ends are the ones partial ORFs run off; start > end crosses the origin
+   * of a circle. The ORFs come back in the whole sequence's coordinates.
+   */
+  region?: { start: number; end: number }
 }
 
 /** Residues an ORF encodes: its codons less the stop. */
@@ -56,6 +72,24 @@ function orfLength(o: ORFResult, seqLength: number): number {
 }
 
 export function findOrfs(req: ORFRequest): ORFResult[] {
+  const { region, ...rest } = req
+  const L = req.bases.length
+  if (!region || L === 0) return scanOrfs(rest)
+  const start = Math.min(Math.max(0, region.start), L)
+  const end = Math.min(Math.max(0, region.end), L)
+  if (start === end) return []
+  const bases = start > end ? req.bases.slice(start) + req.bases.slice(0, end) : req.bases.slice(start, end)
+  const at = (p: number) => (start + p) % L
+  return scanOrfs({ ...rest, bases, topology: 'linear' }).map(o => {
+    const s = at(o.start)
+    // An end that reaches the end of the sequence is L, not 0.
+    const e = at(o.end - 1) + 1
+    // The frame is counted from the 5' end of the whole strand, not the region's.
+    return { ...o, start: s, end: e, frame: (o.strand === 1 ? s : L - e) % 3 }
+  }).sort((a, b) => a.start - b.start || a.strand - b.strand)
+}
+
+function scanOrfs(req: Omit<ORFRequest, 'region'>): ORFResult[] {
   const seqLength = req.bases.length
   if (seqLength === 0) return []
   const circular = req.topology === 'circular'
@@ -63,13 +97,14 @@ export function findOrfs(req: ORFRequest): ORFResult[] {
   const code = geneticCode(req.geneticCode ?? DEFAULT_GENETIC_CODE_ID)
   const starts = new Set(req.startCodons.map(c => c.toUpperCase()))
   const { minAminoAcids, maxAminoAcids } = req
+  const allStarts = !!req.allStarts
   /** Whether an ORF of `codons`, `stop` included or not, encodes an allowed number of residues. */
   const sizeOk = (codons: number, stop: boolean) => {
     const aa = stop ? codons - 1 : codons
     return aa >= minAminoAcids && (maxAminoAcids === 0 || aa <= maxAminoAcids)
   }
 
-  /** The longest ORF ending at each stop, keyed by strand and the stop's place. */
+  /** The longest ORF ending at each stop, keyed by strand and the stop's place (and the start's, for every start). */
   const byStop = new Map<string, ORFResult>()
   const orfs: ORFResult[] = []
   const upper = req.bases.toUpperCase()
@@ -89,41 +124,49 @@ export function findOrfs(req: ORFRequest): ORFResult[] {
     }
 
     for (let frame = 0; frame < 3; frame++) {
-      // A partial ORF is open from the first whole codon of a linear sequence.
-      let orfStart = partial ? frame : -1
-      // It is partial only when it does not begin on a start codon itself.
+      // The starts open in this frame since its last stop, in order: only the
+      // first unless every start is asked for. A partial ORF is open from the
+      // first whole codon of a linear sequence.
+      let opens: number[] = partial ? [frame] : []
+      // The first is partial only when it does not begin on a start codon itself.
       let openAtStart = partial && !starts.has(scan.slice(frame, frame + 3))
       let i = frame
       for (; i + 2 < scan.length; i += 3) {
         const codon = scan[i] + scan[i + 1] + scan[i + 2]
-        if (orfStart === -1) {
-          // A start past the end is the same base as one before it, already
-          // read in its own frame: starting here again would only duplicate.
-          if (starts.has(codon) && i < seqLength) orfStart = i
+        // A start past the end is the same base as one before it, already
+        // read in its own frame: starting here again would only duplicate.
+        if (starts.has(codon) && i < seqLength) {
+          if (opens.length === 0 || (allStarts && opens[opens.length - 1] !== i)) opens.push(i)
           continue
         }
+        if (opens.length === 0) continue
         // An ambiguous codon ends an ORF when every reading of it is a stop (TAR, TRA).
         if ((code.table[codon] ?? translateCodonWith(code, codon)) !== '*') continue
         const orfEnd = i + 3
-        const codons = (orfEnd - orfStart) / 3
-        // A partial ORF must hold more than the stop that ends it.
-        if (sizeOk(codons, true) && orfEnd - orfStart <= seqLength && !(openAtStart && codons < 2)) {
+        opens.forEach((orfStart, k) => {
+          const codons = (orfEnd - orfStart) / 3
+          const open = openAtStart && k === 0
+          // A partial ORF must hold more than the stop that ends it.
+          if (!sizeOk(codons, true) || orfEnd - orfStart > seqLength || (open && codons < 2)) return
           const [s, e] = place(orfStart, orfEnd)
-          const key = `${strand}:${strand === 1 ? e : s}`
-          const orf: ORFResult = { start: s, end: e, strand, frame: orfStart % 3, codons, ...(openAtStart ? { partialStart: true } : {}) }
+          const stopKey = `${strand}:${strand === 1 ? e : s}`
+          const key = allStarts ? `${stopKey}:${strand === 1 ? s : e}` : stopKey
+          const orf: ORFResult = { start: s, end: e, strand, frame: orfStart % 3, codons, ...(open ? { partialStart: true } : {}) }
           const held = byStop.get(key)
           if (!held || held.codons < codons) byStop.set(key, orf)
-        }
-        orfStart = -1
+        })
+        opens = []
         openAtStart = false
       }
       // Open to the end of a linear sequence: the rest of the frame, in whole codons.
-      if (partial && orfStart !== -1 && i > orfStart) {
-        const codons = (i - orfStart) / 3
-        if (sizeOk(codons, false)) {
+      if (partial) {
+        opens.forEach((orfStart, k) => {
+          if (i <= orfStart) return
+          const codons = (i - orfStart) / 3
+          if (!sizeOk(codons, false)) return
           const [s, e] = place(orfStart, i)
-          orfs.push({ start: s, end: e, strand, frame: orfStart % 3, codons, ...(openAtStart ? { partialStart: true } : {}), partialEnd: true })
-        }
+          orfs.push({ start: s, end: e, strand, frame: orfStart % 3, codons, ...(openAtStart && k === 0 ? { partialStart: true } : {}), partialEnd: true })
+        })
       }
     }
   }

@@ -19,7 +19,7 @@ import type { Annotation } from '../models/Annotation'
 import type { IntervalTree } from '../models/IntervalTree'
 import type { Selection, SearchState } from '../store'
 import { selectionSegments, selectionIsReverse } from '../store'
-import { getLayout, getRenderMode, letterCellWidth, RowLayoutMap, type ZoomLayout } from '../components/zoom-layout'
+import { cellWidth, getLayout, getRenderMode, RowLayoutMap, type ZoomLayout } from '../components/zoom-layout'
 import {
   paintSequenceRows, stackAnnotations, measureSiteRows, ENZYME_LABEL_SPEC, GRAPH_TRACK_H,
   type RowStack, type SequenceColors, type GraphTrack,
@@ -336,7 +336,7 @@ export function planSequencePdf(src: SequencePdfSource, opts: SequencePdfOptions
     const bpr = Math.max(10, opts.basesPerRow || src.screenBasesPerRow || 60)
     // The screen's cell width at this zoom, so letters keep their spacing.
     const probe = getLayout(z, 1000, showEnzymes, seqLen, toggles)
-    layoutWidth = probe.leftMargin + bpr * letterCellWidth(z) + 20
+    layoutWidth = probe.leftMargin + bpr * cellWidth(z) + 20
     L = getLayout(z, layoutWidth, showEnzymes, seqLen, { ...toggles, basesPerRow: bpr })
   } else {
     layoutWidth = contentW / OVERVIEW_SCALE
@@ -427,7 +427,7 @@ export function planSequencePdf(src: SequencePdfSource, opts: SequencePdfOptions
   if (opts.enzymes) placeTable('enzymes', 'Restriction sites')
   if (page.length > 0 || pages.length === 0) pages.push(page)
 
-  const letterPt = L.mode === 'letters' ? 14 * scale : 0
+  const letterPt = L.mode === 'letters' ? L.letterFont * scale : 0
   return {
     source: src, options: opts, pageWidth, pageHeight, rows, L, rl, stacks, selTranslation,
     scale, layoutWidth, letterPt, tables, pages,

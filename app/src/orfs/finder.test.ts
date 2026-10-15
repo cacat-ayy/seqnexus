@@ -149,3 +149,74 @@ describe('genetic codes (M11)', () => {
     expect(find(seq, { minAminoAcids: 1, geneticCode: 2 }).filter(o => o.strand === 1).map(o => o.end)).toEqual([12])
   })
 })
+
+describe('every start codon', () => {
+  const ALL = { allStarts: true, minAminoAcids: 1 }
+
+  it('opens an ORF from each start, all to the same stop', () => {
+    const bases = 'ATG' + 'GCC'.repeat(3) + 'ATG' + 'GCC'.repeat(3) + 'TAA'
+    expect(find(bases, ALL).filter(o => o.strand === 1)).toEqual([
+      { start: 0, end: 27, strand: 1, frame: 0, codons: 9 },
+      { start: 12, end: 27, strand: 1, frame: 0, codons: 5 },
+    ])
+  })
+
+  it('keeps the minimum size per ORF, so a late start can fall below it', () => {
+    const bases = 'ATG' + 'GCC'.repeat(3) + 'ATG' + 'GCC'.repeat(3) + 'TAA'
+    expect(find(bases, { ...ALL, minAminoAcids: 6 }).filter(o => o.strand === 1).map(o => o.start)).toEqual([0])
+  })
+
+  it('lists each start once on a circle, the one across the origin included', () => {
+    // As in the one-per-stop test: starts at 3 and 54 in one frame, a stop at 30-33.
+    const circle = 'GCC' + 'ATG' + 'GCC'.repeat(8) + 'TAA' + 'GCC'.repeat(7) + 'ATG' + 'GCC'
+    expect(find(circle, { ...ALL, topology: 'circular' }).filter(o => o.strand === 1)).toEqual([
+      { start: 3, end: 33, strand: 1, frame: 0, codons: 10 },
+      { start: 54, end: 33, strand: 1, frame: 0, codons: 13 },
+    ])
+  })
+
+  it('adds the starts inside a partial ORF as complete ORFs of their own', () => {
+    const orfs = find('GCCGCCATGGCCTAA' + 'C'.repeat(3), { ...ALL, includePartial: true })
+      .filter(o => o.strand === 1 && o.frame === 0)
+    expect(orfs).toEqual([
+      { start: 0, end: 15, strand: 1, frame: 0, codons: 5, partialStart: true },
+      { start: 6, end: 15, strand: 1, frame: 0, codons: 3 },
+    ])
+  })
+})
+
+describe('a region of the sequence', () => {
+  it('finds only the ORFs inside it, in the sequence coordinates and frames', () => {
+    const bases = 'ATGGCCGCCTAA' + 'C' + 'ATGAAAAAATAG' + 'C'
+    expect(find(bases, { region: { start: 12, end: 26 } }).filter(o => o.strand === 1)).toEqual([
+      { start: 13, end: 25, strand: 1, frame: 1, codons: 4 },
+    ])
+  })
+
+  it('gives the same frames as the whole scan, on the reverse strand too', () => {
+    const bases = 'C' + reverseComplement('ATGGCCGCCTAA') + 'CC'
+    const whole = find(bases).filter(o => o.strand === -1)
+    expect(whole).toHaveLength(1)
+    expect(find(bases, { region: { start: 1, end: 13 } }).filter(o => o.strand === -1)).toEqual(whole)
+  })
+
+  it('reads the region as a fragment: partial ORFs run off its ends', () => {
+    // The region starts inside the ORF, after its ATG.
+    const bases = 'ATG' + 'GCC'.repeat(5) + 'TAA'
+    const orfs = find(bases, { region: { start: 6, end: 21 }, includePartial: true, minAminoAcids: 1 })
+      .filter(o => o.strand === 1 && o.frame === 0)
+    expect(orfs).toEqual([{ start: 6, end: 21, strand: 1, frame: 0, codons: 5, partialStart: true }])
+  })
+
+  it('crosses the origin of a circle', () => {
+    const CIRCLE = 'GATGGGGTAAGG' + 'TAA' + 'G'.repeat(9) + 'ATG' + 'GGG'
+    expect(find(CIRCLE, { topology: 'circular', region: { start: 20, end: 16 } }).filter(o => o.strand === 1)).toEqual([
+      { start: 1, end: 10, strand: 1, frame: 1, codons: 3 },
+      { start: 24, end: 15, strand: 1, frame: 0, codons: 7 },
+    ])
+  })
+
+  it('finds nothing in an empty region', () => {
+    expect(find('ATGGCCGCCTAA', { region: { start: 5, end: 5 } })).toEqual([])
+  })
+})

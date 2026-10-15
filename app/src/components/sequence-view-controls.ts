@@ -37,6 +37,29 @@ export function formatBasesPerRow(n: number): string {
   return `${Number.isInteger(kb) ? kb : kb.toFixed(1)} kb`
 }
 
+let minZoom = 0
+const minZoomListeners = new Set<() => void>()
+
+/**
+ * Called by the view: the lowest zoom level worth zooming out to, the one at
+ * which the whole sequence fits. 0 when no view is mounted.
+ */
+export function publishMinZoom(n: number): void {
+  if (n === minZoom) return
+  minZoom = n
+  for (const l of minZoomListeners) l()
+}
+
+function subscribeMinZoom(l: () => void) {
+  minZoomListeners.add(l)
+  return () => { minZoomListeners.delete(l) }
+}
+
+/** The lowest zoom level the toolbar's zoom out should go to. */
+export function useMinZoom(): number {
+  return useSyncExternalStore(subscribeMinZoom, () => minZoom, () => minZoom)
+}
+
 let fitHandler: (() => void) | null = null
 
 /** The mounted sequence view offers its fit; returns the unregister. */

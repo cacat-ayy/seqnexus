@@ -47,6 +47,16 @@ export function isOriginSpanningSelection(sel: Selection, topology: string): boo
 }
 
 /**
+ * The selection as one range [start, end), with start > end when it crosses
+ * the origin of a circle; null when nothing is selected.
+ */
+export function selectionAsRange(sel: Selection, topology: string): { start: number; end: number } | null {
+  if (sel.anchor === sel.caret) return null
+  if (isOriginSpanningSelection(sel, topology)) return { start: sel.anchor, end: sel.caret }
+  return { start: Math.min(sel.anchor, sel.caret), end: Math.max(sel.anchor, sel.caret) }
+}
+
+/**
  * Get the selected base ranges, handling origin-spanning on circular sequences.
  * Returns one or two [start, end) ranges. For origin-spanning selections,
  * returns [[anchor, seqLen), [0, caret)].

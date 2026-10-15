@@ -67,8 +67,10 @@ export function useSessionPersistence(
           store.setOrfParams({
             ...(typeof saved.orfParams.minAminoAcids === 'number' ? { orfMinAminoAcids: saved.orfParams.minAminoAcids } : {}),
             orfStartCodons: saved.orfParams.startCodons,
+            orfStartsFromCode: saved.orfParams.startsFromCode ?? false,
             orfAllowInterior: saved.orfParams.allowInterior,
             orfIncludePartial: saved.orfParams.includePartial ?? false,
+            orfAllStarts: saved.orfParams.allStarts ?? false,
           })
         }
         if (saved.enzymeParams) {

@@ -116,9 +116,29 @@
   color: var(--text-muted);
 }
 
-.fd-codon {
+.fd-codon,
+.fd-codons {
   font-family: var(--font-mono);
 }
+
+/* The range searched, and the offer to take the selection made since. */
+.fd-range {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  column-gap: var(--space-2);
+}
+
+.fd-link {
+  border: none;
+  background: none;
+  padding: 0;
+  font: inherit;
+  color: var(--accent);
+  cursor: pointer;
+  white-space: nowrap;
+}
+.fd-link:hover { text-decoration: underline; }
 
 /* --- Status --- */
 
@@ -145,6 +165,13 @@
 }
 
 .fd-picked { color: var(--accent); }
+
+.fd-status-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1-5);
+  flex-shrink: 0;
+}
 
 /* --- The results table --- */
 

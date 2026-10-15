@@ -73,7 +73,8 @@ import { directReporter } from './import/report'
 import type { Place } from './import/folders'
 import { PinnedCardHost } from './components/HoverCard'
 import StorageIndicator from './components/StorageIndicator'
-import { useBasesPerRow, formatBasesPerRow, fitSequenceView } from './components/sequence-view-controls'
+import { useBasesPerRow, useMinZoom, formatBasesPerRow, fitSequenceView } from './components/sequence-view-controls'
+import { MAX_ZOOM } from './components/zoom-layout'
 import { selectionTm } from './utils/selection-tm'
 import { getEnzyme, type RestrictionEnzyme } from './enzymes/db'
 import { findEnzymeSitesAsync } from './workers/enzyme-finder'
@@ -265,8 +266,8 @@ function SequenceZoomLabel({ zoomLevel, stacked = false }: { zoomLevel: number; 
   const amount = bpr > 0 ? (protein ? `${bpr} aa` : formatBasesPerRow(bpr)) : null
   const [num, unit] = amount?.split(' ') ?? []
   return (
-    <span className="tb zoom-label" title={`${protein ? 'Residues' : 'Bases'} per row (zoom level ${zoomLevel} of 20)`}>
-      {!amount ? `${Math.round(zoomLevel / 20 * 100)}%`
+    <span className="tb zoom-label" title={`${protein ? 'Residues' : 'Bases'} per row (zoom level ${zoomLevel} of ${MAX_ZOOM})`}>
+      {!amount ? `${Math.round(zoomLevel / MAX_ZOOM * 100)}%`
         : stacked ? <><span className="zoom-label-num">{num}</span><span className="zoom-label-unit">{unit}</span></>
         : `${amount}/row`}
     </span>
@@ -326,6 +327,8 @@ export default function App() {
   const viewMode = useEditorStore(s => s.viewMode)
   const setViewMode = useEditorStore(s => s.setViewMode)
   const zoomLevel = useEditorStore(s => s.zoomLevel)
+  // Zoom out stops where the whole sequence fits; below it only shrinks it.
+  const minZoom = useMinZoom()
   const setZoom = useEditorStore(s => s.setZoom)
   const seqLength = useEditorStore(s => s.doc.sequence.length)
   // Edits rewrite the piece table in place, so doc.sequence stays the same
@@ -1979,9 +1982,9 @@ export default function App() {
             // The sequence zoom has nothing to act on in a gel or a cloning design.
             if (otherWorkspace) return null
             return zoomControls(
-              <button className="tb" onClick={() => setZoom(zoomLevel - 1)} disabled={!activeTabId || zoomLevel <= 0} {...tip({ label: 'Zoom out' })}>{outIcon}</button>,
+              <button className="tb" onClick={() => setZoom(zoomLevel - 1)} disabled={!activeTabId || zoomLevel <= minZoom} {...tip({ label: 'Zoom out' })}>{outIcon}</button>,
               <SequenceZoomLabel zoomLevel={zoomLevel} stacked={verticalToolbar} />,
-              <button className="tb" onClick={() => setZoom(zoomLevel + 1)} disabled={!activeTabId || zoomLevel >= 20} {...tip({ label: 'Zoom in' })}>{inIcon}</button>,
+              <button className="tb" onClick={() => setZoom(zoomLevel + 1)} disabled={!activeTabId || zoomLevel >= MAX_ZOOM} {...tip({ label: 'Zoom in' })}>{inIcon}</button>,
               <button className="tb" onClick={() => fitSequenceView()} disabled={!activeTabId || viewMode === 'circular'} {...tip({ label: 'Fit whole sequence', desc: 'Zoom so the whole sequence fits the view' })}>
                 <span className="tb-icon"><Scan size={14} /></span>
               </button>,

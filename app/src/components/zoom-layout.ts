@@ -1,10 +1,14 @@
 /**
  * Zoom-dependent layout for SequenceView.
  *
- * zoomLevel 0-20 → three render modes:
- *   0-6:   "line"    - thin sequence line, no individual bases
- *   7-12:  "dots"    - colored dots per base
- *   13-20: "letters" - full base letters + complement
+ * Each zoom level 0-20 is a width per base in pixels (CELL_W); the pane width
+ * divided by it gives the bases per row. One curve for every level means each
+ * step in shows fewer bases per row, whatever the width of the pane. The
+ * render mode follows from the width a base gets, not from the level number:
+ *   under 5 px:    "line"    - backbone, no individual bases
+ *   5 to 9.6 px:   "dots"    - a coloured dot per base
+ *   9.6 px and up: "letters" - base letters + complement, the letters
+ *                              growing with the cell
  */
 
 export type RenderMode = 'line' | 'dots' | 'letters'
@@ -20,6 +24,10 @@ export interface ZoomLayout {
   seqLineHeight: number
   strandGap: number
   showComplement: boolean
+  /** Letters zoom: height of one strand of letters; 0 in the other modes. */
+  letterH: number
+  /** Letters zoom: font size of the bases in pixels; 0 in the other modes. */
+  letterFont: number
   annotationRowH: number
   annotationGap: number
   maxAnnotationRows: number
@@ -49,16 +57,67 @@ export interface ZoomLayout {
   graphH: number
 }
 
-const ZOOM_BPR = [
-  15000, 10000, 6000, 4000, 2500, 1500, 1000,  // 0-6: line
-  600, 400, 300, 200, 150, 100,                  // 7-12: dots
-  80, 60, 50, 40, 30, 25, 20, 15,               // 13-20: letters
+/**
+ * Width of a base in pixels at each level. Steps of about 1.55x while the
+ * bases are a line, so ten steps reach from a row of a few hundred bases to
+ * one of 15 kb on a typical pane; then finer steps once each base is a mark
+ * the eye follows (about 1.25x for dots, 1.1x for letters). Level 14, the
+ * default, is 10.8 px.
+ */
+const CELL_W = [
+  0.06, 0.093, 0.145, 0.226, 0.35, 0.55, 0.85, 1.3, 2.05, 3.2, // 0-9: line
+  5, 6.4, 8,                                                    // 10-12: dots
+  9.6, 10.8, 12, 13.5, 15, 16.5, 18, 20,                        // 13-20: letters
 ]
 
+/** The highest zoom level. */
+export const MAX_ZOOM = CELL_W.length - 1
+/** A base this wide gets a dot of its own; narrower, the dots merge into a stripe. */
+export const DOT_MIN_CELL = 5
+/** A base this wide holds a 14px monospace letter with a little air either side. */
+export const LETTER_MIN_CELL = 9.6
+/**
+ * A base this wide gives a six-base recognition site a bar of 6 px or more;
+ * narrower, the site bars and the graph track are left out.
+ */
+const DETAIL_MIN_CELL = 1
+
+/** The width per base, in pixels, that a zoom level asks for. */
+export function cellWidth(z: number): number {
+  return CELL_W[Math.max(0, Math.min(MAX_ZOOM, Math.round(z)))]
+}
+
+/** The render mode at a zoom level, from the width it gives a base. */
 export function getRenderMode(z: number): RenderMode {
-  if (z <= 6) return 'line'
-  if (z <= 12) return 'dots'
-  return 'letters'
+  const cell = cellWidth(z)
+  if (cell >= LETTER_MIN_CELL) return 'letters'
+  if (cell >= DOT_MIN_CELL) return 'dots'
+  return 'line'
+}
+
+/** The first zoom level that shows letters. */
+export const LETTERS_FROM = CELL_W.findIndex(c => c >= LETTER_MIN_CELL)
+
+/**
+ * The size of the base letters for a cell: 14px up to the default level's
+ * 10.8 px cell, then growing with the cell, so a zoom in makes the letters
+ * bigger rather than only spacing them further apart.
+ */
+export function letterFontSize(cell: number): number {
+  return Math.max(14, Math.round(cell * 1.3))
+}
+
+/**
+ * Bases per row away from letters, rounded down to two significant figures
+ * (1,600 rather than 1,667), so rows start on round positions in the margin.
+ * Rounding down keeps the row inside the pane. Line and dot levels are at
+ * least 1.2x apart and the rounding loses under 10%, so no two levels round
+ * to the same length.
+ */
+function roundRowLength(n: number): number {
+  if (n < 100) return Math.max(1, Math.floor(n))
+  const unit = 10 ** (Math.floor(Math.log10(n)) - 1)
+  return Math.floor(n / unit) * unit
 }
 
 export interface LayoutToggles {
@@ -80,11 +139,6 @@ export interface LayoutToggles {
   graphHeight?: number
 }
 
-/** The width a base gets at a letters zoom level; it grows with the zoom. */
-export function letterCellWidth(zoomLevel: number): number {
-  return 9.6 + (Math.max(13, Math.min(20, zoomLevel)) - 13) * 1.2
-}
-
 export function getLayout(
   zoomLevel: number,
   containerWidth: number,
@@ -95,7 +149,8 @@ export function getLayout(
   const wantComplement = toggles.showComplement ?? true
   const wantAnnotations = toggles.showAnnotations ?? true
   const wantTranslationRows = Math.max(0, Math.min(6, toggles.translationRows ?? 2))
-  const z = Math.max(0, Math.min(20, zoomLevel))
+  const z = Math.max(0, Math.min(MAX_ZOOM, zoomLevel))
+  const cell = cellWidth(z)
   const mode = getRenderMode(z)
   // Dynamic left margin based on the widest position label
   const maxLabel = seqLen > 0 ? seqLen.toLocaleString('en-US') : '99,999'
@@ -104,24 +159,16 @@ export function getLayout(
   const leftMargin = mode === 'letters' ? Math.max(70, Math.ceil(labelW)) : Math.max(50, Math.ceil(labelW))
   const available = Math.max(200, containerWidth - leftMargin - 20)
   const basesPerGroup = 10
+  const groupGap = 0
 
-  let basesPerRow = ZOOM_BPR[z]
-  let bpWidth: number
-  let groupGap: number
-
-  if (mode === 'letters') {
-    groupGap = 0
-    basesPerRow = toggles.basesPerRow && toggles.basesPerRow > 0
+  // As many bases as fit at the level's width; the row then fills the pane
+  // exactly, so a base is never narrower than its level asks for.
+  const basesPerRow = mode === 'letters'
+    ? (toggles.basesPerRow && toggles.basesPerRow > 0
       ? Math.round(toggles.basesPerRow)
-      : Math.max(10, Math.floor(available / letterCellWidth(z)))
-    bpWidth = available / basesPerRow
-  } else if (mode === 'dots') {
-    groupGap = 0
-    bpWidth = Math.max(0.5, available / basesPerRow)
-  } else {
-    groupGap = 0
-    bpWidth = Math.max(0.1, available / basesPerRow)
-  }
+      : Math.max(10, Math.floor(available / cell)))
+    : roundRowLength(available / cell)
+  const bpWidth = available / basesPerRow
 
   const rulerHeight = 18
   const annotationRowH = mode === 'line' ? 12 : 14
@@ -133,20 +180,23 @@ export function getLayout(
   // Only letters zoom has room for residues; below that the row is a few
   // pixels tall and there is nothing to align them to.
   const maxTranslationRows = mode === 'letters' ? wantTranslationRows : 0
-  // 34 = two 16px letter rows plus the 2px gap between them. Dropping the
-  // complement has to shrink the row, not just skip the draw, or every row
-  // carries a blank strand's worth of space.
-  const LETTER_ROW_H = 16
+  // A strand is its letters plus 2px: 16px at the default 14px letters. Two
+  // strands stack with a gap between them. Dropping the complement has to
+  // shrink the row, not just skip the draw, or every row carries a blank
+  // strand's worth of space.
+  const letterFont = mode === 'letters' ? letterFontSize(cell) : 0
+  const letterH = mode === 'letters' ? letterFont + 2 : 0
   const seqLineHeight = mode === 'letters'
-    ? (showComplement ? LETTER_ROW_H * 2 + strandGap : LETTER_ROW_H)
+    ? (showComplement ? letterH * 2 + strandGap : letterH)
     : mode === 'dots' ? 8 : 4
 
   const enzymeLabelTierH = 14
   const maxEnzymeTiers = showEnzymes ? 5 : 0
-  // A bar per recognition site, in lanes where sites overlap. Not at line
-  // zoom, where a six-base site is under a pixel wide.
+  // A bar per recognition site, in lanes where sites overlap. Not zoomed so
+  // far out that a six-base site is only a few pixels wide.
+  const detail = cell >= DETAIL_MIN_CELL
   const siteLaneH = 3
-  const maxSiteLanes = showEnzymes && mode !== 'line' ? 3 : 0
+  const maxSiteLanes = showEnzymes && detail ? 3 : 0
   const siteBandPad = 2
 
   // Zero lanes means the annotation area collapses entirely: stackAnnotations
@@ -156,9 +206,10 @@ export function getLayout(
   // Letter rows get a little more air: rows without features now end right
   // under the complement, and the selection handle reaches below it.
   const rowPaddingBottom = mode === 'letters' ? 10 : 6
-  // The graph wants room for a curve; at line zoom the row is a few pixels
-  // and a curve would be most of it, so it is drawn only above that.
-  const graphH = mode !== 'line' ? Math.max(0, Math.round(toggles.graphHeight ?? 0)) : 0
+  // The graph wants room for a curve; zoomed far out a row is thousands of
+  // bases and the track would be most of its height, so it starts where
+  // the site bars do.
+  const graphH = detail ? Math.max(0, Math.round(toggles.graphHeight ?? 0)) : 0
 
   // A line with no cut sites: no names, no bars.
   const rowHeight = rulerHeight + seqLineHeight
@@ -167,7 +218,7 @@ export function getLayout(
 
   return {
     mode, basesPerRow, bpWidth, groupGap, basesPerGroup, leftMargin,
-    rulerHeight, seqLineHeight, strandGap, showComplement,
+    rulerHeight, seqLineHeight, strandGap, showComplement, letterH, letterFont,
     annotationRowH, annotationGap, maxAnnotationRows,
     maxTranslationRows, translationRowH: 12, translationGap: 1,
     rowPaddingBottom, rowHeight,

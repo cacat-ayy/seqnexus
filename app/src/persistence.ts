@@ -287,7 +287,7 @@ interface SerializedSessionV2 {
   activeAlignmentId?: string | null
   activeContigId?: string | null
   // ORF/enzyme panel params (re-run searches on restore)
-  orfParams?: { minAminoAcids: number; startCodons: string[]; allowInterior: boolean; includePartial?: boolean }
+  orfParams?: { minAminoAcids: number; startCodons: string[]; startsFromCode?: boolean; allowInterior: boolean; includePartial?: boolean; allStarts?: boolean }
   enzymeParams?: { subset: string; searchQuery: string; filterByCount: boolean; minCuts: number; maxCuts: number }
 }
 
@@ -472,8 +472,10 @@ function buildSessionData(theme: string): {
       orfParams: {
         minAminoAcids: state.orfMinAminoAcids,
         startCodons: state.orfStartCodons,
+        startsFromCode: state.orfStartsFromCode,
         allowInterior: state.orfAllowInterior,
         includePartial: state.orfIncludePartial,
+        allStarts: state.orfAllStarts,
       },
       enzymeParams: {
         subset: state.enzymeSubset,
@@ -669,7 +671,7 @@ export function savedStateChanged(state: EditorState, prev: EditorState): boolea
     'activeTabId', 'folders', 'itemMeta', 'tagColors', 'sequencingReads', 'activeSequencingReadIds',
     'alignments', 'contigs', 'oligos', 'guideLibrary', 'enzymeSets', 'gels', 'activeGelId', 'activeAlignmentId', 'activeContigId',
     'clones', 'activeCloneId', 'assemblies', 'activeAssemblyId', 'readSets', 'activeReadSetId',
-    'orfMinAminoAcids', 'orfStartCodons', 'orfAllowInterior', 'orfIncludePartial',
+    'orfMinAminoAcids', 'orfStartCodons', 'orfStartsFromCode', 'orfAllowInterior', 'orfIncludePartial', 'orfAllStarts',
     'enzymeSubset', 'enzymeSearchQuery', 'enzymeFilterByCount', 'enzymeMinCuts', 'enzymeMaxCuts',
   ]
   return keys.some(k => state[k] !== prev[k])
@@ -866,7 +868,7 @@ export interface RestoredSession {
   activeContigId?: string | null
   /** Structure files of the user's own, from a session file (see SessionStructure). */
   structures?: SessionStructure[]
-  orfParams?: { minAminoAcids: number; startCodons: string[]; allowInterior: boolean; includePartial?: boolean }
+  orfParams?: { minAminoAcids: number; startCodons: string[]; startsFromCode?: boolean; allowInterior: boolean; includePartial?: boolean; allStarts?: boolean }
   enzymeParams?: { subset: string; searchQuery: string; filterByCount: boolean; minCuts: number; maxCuts: number }
   /** Session import only: what the file named but did not contain. */
   warnings?: string[]

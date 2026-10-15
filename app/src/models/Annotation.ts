@@ -17,7 +17,10 @@ export interface AnnotationData {
   strand: Strand
   color?: string
   qualifiers?: Record<string, string[]>
-  /** Set when the annotation was truncated at a cloning junction. */
+  /**
+   * Set when the annotation was truncated at a cloning junction, and on an
+   * ORF overlay open at its 5' end (no start codon).
+   */
   truncated?: boolean
   /**
    * The parts of a feature with gaps in it (exons of a spliced CDS), as

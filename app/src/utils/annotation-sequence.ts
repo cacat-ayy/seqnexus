@@ -82,12 +82,14 @@ export function initiatorCodons(ann: Pick<Annotation, 'qualifiers'>): ReadonlySe
  * sequence, which may be the 3' part of a longer gene (a GenBank `<` is not
  * kept on import, so that is the only sign of it). An ORF on the overlay
  * begins on one of the start codons the finder was asked for, by
- * construction, whichever code they belong to.
+ * construction, whichever code they belong to, unless it is partial at its
+ * 5' end (marked truncated), which a range scan can leave anywhere.
  */
 export function isInitiatorCodon(ann: Annotation, sequence: Sequence, codon: string): boolean {
   if (ann.type !== 'CDS' || codonStartOffset(ann) !== 0) return false
   if (sequence.topology === 'linear' && (ann.strand === -1 ? ann.end === sequence.length : ann.start === 0)) return false
-  return ann.id.startsWith('_orf_') || initiatorCodons(ann).has(codon.toUpperCase())
+  if (ann.id.startsWith('_orf_')) return !ann.truncated
+  return initiatorCodons(ann).has(codon.toUpperCase())
 }
 
 /** Coding bases translated with the feature's own code, the standard one by default. */

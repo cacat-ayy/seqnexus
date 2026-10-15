@@ -2,10 +2,14 @@ import './finder.css'
 /**
  * The ORFs tab: the panel's finder slot on DNA.
  *
- * The settings are the whole scan (minimum size, start codons, nested and
- * partial ORFs), so there is no Run button: useOrfScan reruns it whenever
- * one changes. Below them a table of every ORF, longest first, and the one
- * in focus with its protein and what can be done with it.
+ * The settings are the whole scan (minimum size, start codons, the bases
+ * searched, every start, nested and partial ORFs), so there is no Run
+ * button: useOrfScan reruns it whenever one changes. Below them a table of
+ * every ORF, longest first, and the one in focus with its protein and what
+ * can be done with it. Export saves the picked ORFs, or all of them.
+ *
+ * A selection to search is taken when asked, not followed: clicking a row
+ * selects that ORF, which would otherwise narrow the search to it.
  *
  * Clicking a row selects the ORF's bases, and the view, which this tab does
  * not cover, scrolls to it. The box at the start of a row picks it for Add;
@@ -13,18 +17,23 @@ import './finder.css'
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Atom, Copy, Globe, Plus } from 'lucide-react'
+import { Atom, Copy, Download, FileSpreadsheet, FileText, Globe, Plus } from 'lucide-react'
 import { useEditorStore } from '../../store'
 import { Annotation } from '../../models/Annotation'
 import { displayPosition } from '../../models/Document'
+import { selectionAsRange } from '../../models/selection'
+import { geneticCode } from '../../codon/genetic-codes'
 import { orfAminoAcids, type ORFResult } from '../../orfs/finder'
+import { orfProtein, orfLengthBp, orfsCsv, orfsFasta } from '../../orfs/export'
 import { orfColor } from '../../workers/orf-finder'
 import { orfKey, convertibleOrfs, orfOverlayData, orfCodons, isOrfAnnotated, orfFrameLabel as frameLabel } from '../../utils/orf-features'
-import { annotationProtein } from '../../utils/annotation-sequence'
 import { selectFeature, blastFeatureProtein } from '../features/feature-actions'
 import { copyText } from '../../utils/clipboard'
+import { saveText } from '../../utils/download'
 import { formatBp } from '../../utils/format'
+import { proteinMass, formatMass } from '../../protein/properties'
 import ConfirmDialog from '../ConfirmDialog'
+import ContextMenuPopup, { MenuItem } from '../ContextMenuPopup'
 
 /** Quick sizes, in residues: NCBI ORFfinder's 75, 150, 300 and 600 nt. */
 const SIZE_PRESETS = [25, 50, 100, 200]
@@ -66,6 +75,8 @@ export default function OrfTab() {
   const startCodons = useEditorStore(s => s.orfStartCodons)
   const allowInterior = useEditorStore(s => s.orfAllowInterior)
   const includePartial = useEditorStore(s => s.orfIncludePartial)
+  const startsFromCode = useEditorStore(s => s.orfStartsFromCode)
+  const allStarts = useEditorStore(s => s.orfAllStarts)
   const codeId = useEditorStore(s => s.translationCodeId)
   const readOnly = useEditorStore(s => s.readOnly)
 
@@ -95,6 +106,30 @@ export default function OrfTab() {
     }
   }, [commitSize])
 
+  // --- Start codons: the code's own, or chosen from the usual four and the code's ---
+  const code = geneticCode(codeId)
+  const startChoices = useMemo(
+    () => [...new Set([...START_CODONS, ...code.starts, ...startCodons])],
+    [code, startCodons],
+  )
+
+  // --- The bases searched: all of them, or a selection taken when asked ---
+  const selection = useEditorStore(s => s.selection)
+  const activeTabId = useEditorStore(s => s.activeTabId)
+  const orfRange = useEditorStore(s => s.orfRange)
+  const setOrfRange = useEditorStore(s => s.setOrfRange)
+  const range = orfRange && orfRange.tabId === activeTabId && seqLen > 0
+    ? { start: Math.min(orfRange.start, seqLen), end: Math.min(orfRange.end, seqLen) }
+    : null
+  const rangeLength = range ? (range.end > range.start ? range.end - range.start : seqLen - range.start + range.end) : 0
+  const selected = useMemo(() => selectionAsRange(selection, sequence.topology), [selection, sequence.topology])
+  const sameAsRange = !!range && !!selected && range.start === selected.start && range.end === selected.end
+  const takeSelection = useCallback(() => {
+    if (selected && activeTabId) setOrfRange({ tabId: activeTabId, ...selected })
+  }, [selected, activeTabId, setOrfRange])
+  // Partial ORFs need ends: a circle has none, unless a selection of it is searched.
+  const noEnds = circular && !range
+
   const toggleStart = useCallback((codon: string, on: boolean) => {
     const prev = useEditorStore.getState().orfStartCodons
     const next = on ? [...prev, codon] : prev.filter(c => c !== codon)
@@ -119,6 +154,18 @@ export default function OrfTab() {
     [convertible, picks],
   )
   const [confirmAddAll, setConfirmAddAll] = useState(false)
+
+  // --- Export: the picked ORFs, or every one, in the table's order ---
+  const [exportAt, setExportAt] = useState<{ x: number; y: number } | null>(null)
+  const pickedAll = useMemo(() => sorted.filter(o => picks.has(orfKey(o))), [sorted, picks])
+  const exportAs = (kind: 'protein' | 'bases' | 'csv') => {
+    setExportAt(null)
+    const list = pickedAll.length > 0 ? pickedAll : sorted
+    const src = { name: doc.name || 'sequence', sequence, geneticCodeId: codeId, origin }
+    const stem = src.name.replace(/[\\/:*?"<>|]+/g, '_').replace(/\s+/g, '_')
+    if (kind === 'csv') saveText(orfsCsv(list, src), `${stem}_orfs.csv`, 'text/csv')
+    else saveText(orfsFasta(list, src, kind), `${stem}_orfs_${kind === 'protein' ? 'protein' : 'cds'}.fasta`)
+  }
 
   // --- The ORF in focus ---
   const [activeKey, setActiveKey] = useState<string | null>(null)
@@ -190,19 +237,79 @@ export default function OrfTab() {
           </div>
 
           <div className="fd-field">
-            <span className="fd-field-label">Start codons</span>
-            <div className="fd-checks">
-              {START_CODONS.map(codon => (
-                <label key={codon} className="fd-check fd-codon">
-                  <input
-                    type="checkbox"
-                    checked={startCodons.includes(codon)}
-                    onChange={e => toggleStart(codon, e.target.checked)}
-                  />
-                  {codon}
-                </label>
-              ))}
+            <span className="fd-field-label" id="fd-orf-starts">Start codons</span>
+            <div className="seg seg-sm" role="group" aria-labelledby="fd-orf-starts">
+              <button
+                type="button"
+                className={startsFromCode ? 'active' : ''}
+                aria-pressed={startsFromCode}
+                onClick={() => setOrfParams({ orfStartsFromCode: true })}
+                title={`The initiation codons of the genetic code in use (${code.name})`}
+              >
+                From the genetic code
+              </button>
+              <button
+                type="button"
+                className={!startsFromCode ? 'active' : ''}
+                aria-pressed={!startsFromCode}
+                onClick={() => setOrfParams({ orfStartsFromCode: false })}
+                title="The start codons ticked below"
+              >
+                Chosen
+              </button>
             </div>
+            {startsFromCode ? (
+              <span className="fd-hint">
+                {code.name}: <span className="fd-codons">{code.starts.join(', ')}</span>
+              </span>
+            ) : (
+              <div className="fd-checks">
+                {startChoices.map(codon => (
+                  <label key={codon} className="fd-check fd-codon">
+                    <input
+                      type="checkbox"
+                      checked={startCodons.includes(codon)}
+                      onChange={e => toggleStart(codon, e.target.checked)}
+                    />
+                    {codon}
+                  </label>
+                ))}
+              </div>
+            )}
+          </div>
+
+          <div className="fd-field">
+            <span className="fd-field-label" id="fd-orf-scope">Search in</span>
+            <div className="seg seg-sm" role="group" aria-labelledby="fd-orf-scope">
+              <button
+                type="button"
+                className={!range ? 'active' : ''}
+                aria-pressed={!range}
+                onClick={() => setOrfRange(null)}
+              >
+                Whole sequence
+              </button>
+              <button
+                type="button"
+                className={range ? 'active' : ''}
+                aria-pressed={!!range}
+                disabled={!range && !selected}
+                onClick={takeSelection}
+                title={range || selected ? 'Only the selected bases, read as a fragment of their own' : 'Select bases first'}
+              >
+                Selection
+              </button>
+            </div>
+            {range && (
+              <span className="fd-hint fd-range">
+                <span>{at(range.start)}..{at((range.end - 1 + seqLen) % seqLen)}, {formatBp(rangeLength)}</span>
+                {selected && !sameAsRange && (
+                  <button type="button" className="fd-link" onClick={takeSelection} title="Search the bases selected now instead">
+                    Use the selection now
+                  </button>
+                )}
+              </span>
+            )}
           </div>
 
           <div className="fd-checks">
@@ -214,15 +321,22 @@ export default function OrfTab() {
               Hide nested ORFs
             </label>
             <label
-              className={`fd-check ${circular ? 'is-disabled' : ''}`}
-              title={circular
-                ? 'A circular sequence has no ends to cut an ORF off.'
-                : 'Also lists ORFs cut off by the ends of the sequence: open from the first whole codon to a stop, or from a start codon to the end. For fragments, contigs and PCR products.'}
+              className="fd-check"
+              title="Lists an ORF from every start codon, each to the same stop as the longest: a gene's alternative initiation sites. Off, only the longest ORF to each stop."
+            >
+              <input type="checkbox" checked={allStarts} onChange={e => setOrfParams({ orfAllStarts: e.target.checked })} />
+              Every start codon
+            </label>
+            <label
+              className={`fd-check ${noEnds ? 'is-disabled' : ''}`}
+              title={noEnds
+                ? 'A circular sequence has no ends to cut an ORF off. Search a selection to use the ends of that.'
+                : `Also lists ORFs cut off by the ends of the ${range ? 'selection searched' : 'sequence'}: open from the first whole codon to a stop, or from a start codon to the end. For fragments, contigs and PCR products.`}
             >
               <input
                 type="checkbox"
-                checked={includePartial && !circular}
-                disabled={circular}
+                checked={includePartial && !noEnds}
+                disabled={noEnds}
                 onChange={e => setOrfParams({ orfIncludePartial: e.target.checked })}
               />
               Include partial ORFs
@@ -242,6 +356,21 @@ export default function OrfTab() {
             {addedCount > 0 && !scanning && <span className="fd-added" title={ADDED_TITLE}>{n(addedCount)} already CDS</span>}
             {pickedCount > 0 && <span className="fd-picked">{pickedCount} picked</span>}
           </span>
+          <span className="fd-status-actions">
+          {orfs.length > 0 && (
+            <button
+              className="btn btn-sm"
+              aria-haspopup="menu"
+              aria-expanded={!!exportAt}
+              onClick={e => {
+                const r = e.currentTarget.getBoundingClientRect()
+                setExportAt(exportAt ? null : { x: r.left, y: r.bottom + 4 })
+              }}
+              title={pickedAll.length > 0 ? `Save the ${pickedAll.length} picked ORFs` : 'Save every ORF in the table'}
+            >
+              <Download size={12} aria-hidden /> Export
+            </button>
+          )}
           {convertible.length > 0 && !readOnly && (
             <button
               className={`btn btn-sm ${pickedCount > 0 ? 'btn-primary' : ''}`}
@@ -257,6 +386,7 @@ export default function OrfTab() {
               {pickedCount > 0 ? `Add picked (${pickedCount})` : `Add all (${n(convertible.length)})`}
             </button>
           )}
+          </span>
         </div>
 
         <div className="fd-table fd-orfs">
@@ -326,7 +456,9 @@ export default function OrfTab() {
             )}
             {orfs.length === 0 && !scanning && (
               <li className="fd-empty">
-                {seqLen === 0 ? 'Open a sequence to find ORFs in it.' : 'No ORF this long. Lower the minimum size or allow more start codons.'}
+                {seqLen === 0
+                  ? 'Open a sequence to find ORFs in it.'
+                  : `No ORF this long${range ? ' in the selection searched' : ''}. Lower the minimum size or allow more start codons.`}
               </li>
             )}
           </ul>
@@ -345,6 +477,20 @@ export default function OrfTab() {
           />
         )}
       </div>
+
+      {exportAt && (
+        <ContextMenuPopup x={exportAt.x} y={exportAt.y} onClose={() => setExportAt(null)} label="Export the ORFs">
+          <MenuItem icon={<FileText size={13} />} onSelect={() => exportAs('protein')}>
+            Proteins (FASTA)
+          </MenuItem>
+          <MenuItem icon={<FileText size={13} />} onSelect={() => exportAs('bases')}>
+            Coding bases (FASTA)
+          </MenuItem>
+          <MenuItem icon={<FileSpreadsheet size={13} />} onSelect={() => exportAs('csv')}>
+            Table (CSV)
+          </MenuItem>
+        </ContextMenuPopup>
+      )}
 
       <ConfirmDialog
         open={confirmAddAll}
@@ -383,10 +529,11 @@ function SortHeader({ label, id, sort, onSort, num }: {
   )
 }
 
+/** Why an ORF is partial. Its ends are those of the bases searched: the sequence, or a selection of it. */
 function partialText(orf: ORFResult): string {
-  if (orf.partialStart && orf.partialEnd) return 'Open from end to end of the sequence: no start codon and no stop'
-  if (orf.partialStart) return 'Runs off the start of its strand: no start codon'
-  return 'Runs off the end of its strand: no stop codon'
+  if (orf.partialStart && orf.partialEnd) return 'Open from end to end of the bases searched: no start codon and no stop'
+  if (orf.partialStart) return "Runs off the 5' end of the bases searched: no start codon"
+  return "Runs off the 3' end of the bases searched: no stop codon"
 }
 
 interface InspectorProps {
@@ -402,11 +549,11 @@ function OrfInspector({ orf, codeId, at, readOnly, onAdd }: InspectorProps) {
   const sequence = useEditorStore(s => s.doc.sequence)
   const annotations = useEditorStore(s => s.doc.annotations)
   const ann = useMemo(() => new Annotation(orfOverlayData(orf, codeId)), [orf, codeId])
-  const protein = useMemo(() => annotationProtein(ann, sequence).replace(/\*$/, ''), [ann, sequence])
+  const protein = useMemo(() => orfProtein(orf, sequence, codeId), [orf, sequence, codeId])
   const codons = orfCodons(orf, sequence)
   const annotated = isOrfAnnotated(orf, annotations)
   const aa = orfAminoAcids(orf)
-  const bp = orf.end > orf.start ? orf.end - orf.start : sequence.length - orf.start + orf.end
+  const bp = orfLengthBp(orf, sequence.length)
 
   return (
     <div className="fdi">
@@ -426,6 +573,12 @@ function OrfInspector({ orf, codeId, at, readOnly, onAdd }: InspectorProps) {
         <dd>{codons.start ?? 'none: runs off the start'}</dd>
         <dt>Stop</dt>
         <dd>{codons.stop ?? 'none: runs off the end'}</dd>
+        {protein && (
+          <>
+            <dt>Mass</dt>
+            <dd>{formatMass(proteinMass(protein).average)}</dd>
+          </>
+        )}
       </dl>
       <div className="fdi-label">Protein</div>
       <div className="fdi-seq">{protein}</div>

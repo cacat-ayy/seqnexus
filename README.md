@@ -296,7 +296,8 @@ of each build.
   indices; translated from a coding feature and linked back to its codons;
   back-translation, tag and protease-site annotation, blastp; see
   [Proteins](#proteins)
-- **Three zoom modes** (21 levels): line → dots → letters
+- **Three zoom modes** over 21 levels (line, dots, letters), picked by the
+  width a base gets; see [The zoom scale](#the-zoom-scale)
 - **Linear and circular views** with split mode (resizable divider); see
   [Plasmid Map](#plasmid-map)
 - **GenBank import/export** with streaming parser for large files (>1MB)
@@ -394,14 +395,50 @@ on every frame to find which annotations are visible in the current viewport.
 
 ### Rendering
 
-All sequence rendering uses Canvas 2D with uniform row heights. Row Y position
-is computed as `index × rowHeight` - pure arithmetic from scroll offset. A
+All sequence rendering uses Canvas 2D. Rows differ in height with their
+features, cut sites and translations, so a row's Y position comes from a
+table of cumulative offsets, found by binary search from the scroll offset;
+when every row has the same height it is plain arithmetic. A
 `ResizeObserver` triggers redraws when the container resizes.
 
-Three render modes based on zoom level:
-- **Line** (zoom 0-6): thin backbone, annotation bars, ruler
-- **Dots** (zoom 7-12): colored dots per base on backbone
-- **Letters** (zoom 13-20): full base letters + complement strand
+#### The zoom scale
+
+Each of the 21 zoom levels is a width per base in pixels, from 0.06 px at
+level 0 to 20 px at level 20. The bases per row are the pane width divided by
+that width, so every step in shows fewer bases per row whatever the width of
+the pane. The steps are about 1.55x apart while the bases are a line, so ten
+steps reach from a few hundred bases per row to 15 kb, and finer once each
+base is a mark the eye follows: about 1.25x for dots and 1.1x for letters.
+Level 14, the default, is 10.8 px per base.
+
+The render mode follows from the width a base gets, not from the level:
+
+- **Line** (under 5 px per base, levels 0-9): a backbone, feature bars and
+  the ruler. Site bars and the graph track appear from 1 px per base, where
+  a six-base site is a bar of 6 px.
+- **Dots** (5 to 9.6 px, levels 10-12): a coloured dot per base on the
+  backbone. Narrower than 5 px the dots would merge into a speckled stripe.
+- **Letters** (9.6 px and up, levels 13-20): base letters and the complement
+  strand. The letters are 14 px up to the default level and then grow with
+  the cell (1.3 times its width), so zooming in enlarges them rather than
+  only spacing them out.
+
+Away from letters the bases per row are rounded down to two significant
+figures (1,600, not 1,667), so rows start on round positions; the levels are
+far enough apart that two never round to the same length. In letters mode
+the row holds as many bases as fit, and the row fills the pane exactly.
+
+An earlier scale fixed the bases per row for the line and dot levels but
+fitted letters to the pane, so on a wide pane the first letters level showed
+more bases than the last dots level, and at most widths the dot levels drew
+no dots. A single curve of pixels per base removes both.
+
+Zooming out stops at the level that fits the whole sequence in the view,
+since every level below it shows the same bases in less of the view. It
+never stops above the first letters level, so a sequence that fits in
+letters still has the choice of letter sizes. The fit is found by laying out
+each level for real, as row heights depend on each row's features; heights
+only grow with zoom, so the search stops at the first level that overflows.
 
 Only visible rows are drawn. The canvas is translated by the scroll offset
 and rows outside the viewport are skipped entirely. This keeps frame times
@@ -523,9 +560,10 @@ alignment can be told apart at a glance.
 
 A sequence opens in the text view, the plasmid map, or split, with the two
 stacked and a draggable divider between them; see [Plasmid Map](#plasmid-map).
-The text view has three render modes chosen by zoom level (line, dots,
-letters; see [Rendering](#rendering)), with Ctrl+wheel zooming around the
-pointer. The minimap along the edge shows the whole sequence with the
+The text view has three render modes chosen by the width a base gets at the
+zoom (line, dots, letters; see [The zoom scale](#the-zoom-scale)), with
+Ctrl+wheel zooming around the pointer. Zooming out stops once the whole
+sequence fits. The minimap along the edge shows the whole sequence with the
 viewport, features and any graph track on it.
 
 ### The command palette
@@ -1211,15 +1249,36 @@ and the sequence scrolls to it, which a dialog over the view would hide.
 Along the bottom the settings, the table and the ORF in focus sit side by
 side; on the right they run on as one column, and the table drops its
 start-codon column when it is narrow. The ORF in focus shows its location,
-strand, length in residues and bases, start and stop codons and its
-protein, with Add as CDS, Copy protein, Open as protein and BLASTp. The
+strand, length in residues and bases, start and stop codons, its protein
+and the protein's average mass, with Add as CDS, Copy protein, Open as
+protein and BLASTp. The
 arrow keys move through the rows, Space picks one, and the table draws its
 first 500 rows (a larger minimum shows fewer). "Show on the sequence" draws
-the ORFs as an overlay on the sequence view and the map.
+the ORFs as an overlay on the sequence view and the map; hovering one there
+shows the same facts in its card (frame, place, residues and bases, start
+and stop codons, mass, bases and protein), and whether it is a CDS already
+or picked for Add.
+
+Export saves the picked ORFs, or every one when none is picked, in the
+table's order: the proteins as FASTA (one letter per residue, no stop), the
+coding bases as FASTA (on the ORF's own strand, the stop included), or the
+table as CSV (frame, strand, first and last base, residues, bases, start and
+stop codons, partial ends, mass and protein). They are numbered ORF1, ORF2
+and so on after the sequence's name, the FASTA header carries the frame,
+place and size, and positions are counted as the table counts them, from
+the display origin. Frames are written +1 and -1 in ASCII, which every
+reader of these files takes.
 
 - **What counts.** An ORF runs from a start codon to the next in-frame stop
-  codon of the document's genetic code. The start codons are chosen from
-  ATG, GTG, TTG and CTG (ATG by default). The minimum size is in residues,
+  codon of the document's genetic code. The start codons come from the
+  genetic code in use or are chosen by hand. From the code, they are NCBI's
+  initiation codons for that table (ATG, TTG and CTG for the standard code;
+  ATT, ATC, ATA, ATG and GTG for vertebrate mitochondria), as NCBI
+  ORFfinder's "ATG and alternative initiation codons" takes them, and
+  changing the code changes them. Chosen, they are ticked from ATG, GTG, TTG
+  and CTG and the code's own others; ATG alone is the default, as in
+  ORFfinder, since an alternative start is most often read inside a gene
+  rather than at its start. The minimum size is in residues,
   the stop not counted, the unit every label uses, with presets of 25, 50,
   100 and 200: NCBI ORFfinder's 75, 150, 300 and 600 nt. The default is
   100 (300 bases before the stop): long enough to pass over most chance
@@ -1234,6 +1293,22 @@ the ORFs as an overlay on the sequence view and the map.
   knowing it is already inside an ORF, finds a shorter one from the first
   start after the origin, and meets the same stop again when the longer
   one is read across the origin; the longer one is kept.
+- **Every start codon.** "Every start codon" lists, besides the longest ORF
+  to each stop, an ORF from each start codon inside it, in frame, to the
+  same stop: the alternative initiation sites of a gene, or the shorter
+  protein a truncation would leave. Each is held to the minimum size on its
+  own, so a start near the stop may not be listed. A start is read once on
+  a circle, so an ORF across the origin is still not listed twice. "Hide
+  nested ORFs" hides them all again, since each lies inside the longest one.
+- **A selection.** "Search in: Selection" scans only the bases selected when
+  it is pressed, as a fragment of their own: its ends are the ends partial
+  ORFs run off, a selection across the origin of a circle is read across
+  it, and the ORFs are placed and framed as in the whole sequence. The
+  range is taken, not followed: clicking a row selects that ORF, which
+  would otherwise narrow the search to it. "Use the selection now" takes a
+  new one. It belongs to the sequence it was taken on, is not saved with
+  the session, and after edits is only cut to the sequence's length, not
+  moved with the bases.
 - **Nested ORFs.** "Hide ORFs nested in a longer one" drops an ORF that lies
   entirely inside a longer ORF in any frame and on either strand, as NCBI
   ORFfinder's "Ignore nested ORFs" does: an antisense or out-of-frame ORF
@@ -1246,14 +1321,17 @@ the ORFs as an overlay on the sequence view and the map.
   frame open from end to end. A fragment, a contig or a PCR product often
   holds only part of a gene. They are labelled partial, and a partial ORF
   that runs to a stop takes in any start inside it, as the longest-ORF rule
-  says. A circle has no ends, so the option does not apply to one.
+  says. A circle has no ends, so the option applies to one only while a
+  selection of it is searched.
 - **Circular sequences.** Reading continues past the end into the start, at
   most one turn less a base, so an ORF cannot overlap itself.
 - **Translation.** The overlay is drawn with its translation like a CDS, its
   first codon read as methionine whatever start codon it is, as NCBI
   translates a complete CDS (the initiator tRNA carries methionine; see
-  [Annotations](#annotations) for the same rule on CDS features).
-- **When it runs.** While the dialog is open or the ORFs are shown, and again
+  [Annotations](#annotations) for the same rule on CDS features). An ORF
+  open at its 5' end has no start codon, so its first codon is read as what
+  it codes for; in a selection that end can be anywhere in the sequence.
+- **When it runs.** While the tab is open or the ORFs are shown, and again
   after edits, once typing pauses; a sequence whose ORFs nobody is looking
   at is not scanned, and a protein never is. A scan that a newer one
   overtakes is stopped. It runs in a Web Worker; the same code runs on the
@@ -2913,6 +2991,15 @@ explain itself rather than look empty.
 A two-base PAM on a long sequence is effectively unbounded, so the scan stops
 at a site cap and says that it did. The panel then suggests narrowing the scan
 to the selection, which is the setting it already offers.
+
+"Selection only" keeps the sites that overlap the bases selected when it is
+ticked, a selection across the origin of a circle included. The range is
+taken, not followed: clicking a guide selects its protospacer, and a scan
+that followed the selection would then narrow itself to that one guide.
+"Use the selection now" takes a new range. It belongs to the sequence it was
+taken on, is not saved with the session, and after edits is only cut to the
+sequence's length, not moved with the bases. The ORFs tab's "Search in:
+Selection" works the same way.
 
 ### Scoring, in three separate columns
 
@@ -6055,6 +6142,10 @@ saved, so nothing is written without a word.
 
 - Elzanowski A, Ostell J. "The Genetic Codes." NCBI Taxonomy.
   https://www.ncbi.nlm.nih.gov/Taxonomy/Utils/wprintgc.cgi
+
+- NCBI ORFfinder. https://www.ncbi.nlm.nih.gov/orffinder/ (The size presets,
+  "Ignore nested ORFs", ATG-only starts by default, and the choice of the
+  genetic code's own initiation codons.)
 
 - Hoover DM, Lubkowski J. (2002) "DNAWorks: an automated method for designing
   oligonucleotides for PCR-based gene synthesis."

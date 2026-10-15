@@ -36,9 +36,6 @@ import type { GuideItem } from '../crispr/display'
 import { COMPLEMENT, reverseComplement as reverseComplementStr } from '../models/complement'
 import { translateCodon } from '../utils/codon'
 
-/** Narrowest base, in px, that still gets a dot of its own when zoomed out. */
-const DOT_MIN_BP_WIDTH = 5
-
 /** Colours the painter draws with, read from the theme or set for print. */
 export interface SequenceColors {
   bg: string
@@ -885,15 +882,15 @@ export function paintSequenceRows(
     ctx.fillText(
       displayPosition(rowStart, dispOrigin, seqLen).toLocaleString('en-US'),
       L.leftMargin - 8,
-      cy + (L.mode === 'letters' ? 8 : L.seqLineHeight / 2),
+      cy + (L.mode === 'letters' ? L.letterH / 2 : L.seqLineHeight / 2),
     )
     ctx.textAlign = 'left'
     ctx.textBaseline = 'top'
 
     // --- Sequence rendering (mode-dependent) ---
     if (L.mode === 'letters') {
-      const letterH = 16
-      ctx.font = monoFont('14px')
+      const letterH = L.letterH
+      ctx.font = monoFont(`${L.letterFont}px`)
       ctx.textBaseline = 'middle'
       ctx.textAlign = 'center'
       const bpW = L.bpWidth
@@ -977,13 +974,14 @@ export function paintSequenceRows(
       }
       cy += letterH
     } else {
-      // Zoomed out: a backbone, with a dot per base only once a base is
-      // wide enough to be a mark of its own. Narrower than that the dots
-      // merge into a speckled stripe that says nothing about the sequence;
-      // features and cut sites carry the meaning at this scale.
+      // Zoomed out: a backbone, with a dot per base in dots mode, which the
+      // layout picks only where a base is wide enough to be a mark of its
+      // own (DOT_MIN_CELL). Narrower than that the dots would merge into a
+      // speckled stripe that says nothing about the sequence; features and
+      // cut sites carry the meaning at this scale.
       const lineY = cy + L.seqLineHeight / 2
       const lineEnd = baseX(rowEnd - 1, rowStart, L) + L.bpWidth
-      const showDots = L.mode === 'dots' && L.bpWidth >= DOT_MIN_BP_WIDTH
+      const showDots = L.mode === 'dots'
       ctx.strokeStyle = COLORS.backbone
       ctx.lineWidth = showDots ? 1 : 2
       ctx.lineCap = 'round'

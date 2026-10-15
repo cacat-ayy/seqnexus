@@ -207,6 +207,26 @@ export const EMPTY_DESIGN: PrimerDesignState = {
 
 /** The panel's tabs. 'orfs' and 'motifs' are one finder slot: ORFs on DNA, motifs on a protein. */
 export type SidebarTab = 'features' | 'primers' | 'guides' | 'orfs' | 'motifs'
+
+/** The ORF tab's settings, as setOrfParams takes them. */
+export interface OrfParams {
+  orfMinAminoAcids: number
+  orfStartCodons: string[]
+  orfStartsFromCode: boolean
+  orfAllowInterior: boolean
+  orfIncludePartial: boolean
+  orfAllStarts: boolean
+}
+
+/**
+ * The bases a scan (ORFs, guides) is limited to, [start, end) (start > end
+ * across the origin), taken from a selection on one tab.
+ */
+export interface ScanRange {
+  tabId: string
+  start: number
+  end: number
+}
 export type PrimerView = 'list' | 'design'
 
 export interface ExplorerFolder {
@@ -781,15 +801,21 @@ interface EditorStore {
   crisprNucleaseId: string
   /** 0 means the nuclease's own default spacer length. */
   crisprSpacerLength: number
-  /** Limit the scan to the selection. */
-  crisprSelectionOnly: boolean
   /**
    * What the overlay draws. A relaxed PAM finds a site every few bases, and
    * all of them at once is a wall rather than a figure, so the panel can ask
    * for the picked ones or the selected one instead.
    */
   crisprDraw: GuideDrawScope
-  setCrisprParams: (params: Partial<{ crisprNucleaseId: string; crisprSpacerLength: number; crisprSelectionOnly: boolean; crisprDraw: GuideDrawScope }>) => void
+  setCrisprParams: (params: Partial<{ crisprNucleaseId: string; crisprSpacerLength: number; crisprDraw: GuideDrawScope }>) => void
+  /**
+   * The bases the guide scan is limited to ("Selection only"), taken from
+   * the selection when asked rather than followed: clicking a guide selects
+   * it, which would otherwise narrow the scan to that guide. Belongs to one
+   * tab. Transient.
+   */
+  crisprRange: ScanRange | null
+  setCrisprRange: (range: ScanRange | null) => void
   /**
    * Off-target reports, by guide key. A guide has one only after the user
    * asks for it: the search reads every sequence they named, which is not
@@ -846,11 +872,23 @@ interface EditorStore {
   /** An ORF scan is running (useOrfScan). */
   orfScanning: boolean
   setOrfScanning: (running: boolean) => void
+  /** The start codons chosen by hand, used unless they come from the genetic code. */
   orfStartCodons: string[]
+  /** Take the start codons from the genetic code in use instead of orfStartCodons. */
+  orfStartsFromCode: boolean
   orfAllowInterior: boolean
   /** Also list ORFs cut off by the ends of a linear sequence. */
   orfIncludePartial: boolean
-  setOrfParams: (params: Partial<{ orfMinAminoAcids: number; orfStartCodons: string[]; orfAllowInterior: boolean; orfIncludePartial: boolean }>) => void
+  /** An ORF from every start codon, not only the longest one to each stop. */
+  orfAllStarts: boolean
+  setOrfParams: (params: Partial<OrfParams>) => void
+  /**
+   * The bases the ORF scan is limited to, taken from a selection when asked,
+   * so selecting an ORF in the table does not narrow the scan to it. Belongs
+   * to one tab: on another it is not used. Transient.
+   */
+  orfRange: ScanRange | null
+  setOrfRange: (range: ScanRange | null) => void
 
   // Primer workbench session for the active tab (cross-view: the sequence
   // and map draw the picks as previews)
@@ -2127,9 +2165,13 @@ export const useEditorStore = create<EditorStore>((set, get) => {
     orfScanning: false,
     setOrfScanning: (orfScanning) => set({ orfScanning }),
     orfStartCodons: ['ATG'],
+    orfStartsFromCode: false,
     orfAllowInterior: true,
     orfIncludePartial: false,
+    orfAllStarts: false,
     setOrfParams: (params) => set(params),
+    orfRange: null,
+    setOrfRange: (orfRange) => set({ orfRange }),
 
     // Primer workbench
     primerDesign: EMPTY_DESIGN,
@@ -2466,9 +2508,10 @@ export const useEditorStore = create<EditorStore>((set, get) => {
     },
     crisprNucleaseId: DEFAULT_NUCLEASE_ID,
     crisprSpacerLength: 0,
-    crisprSelectionOnly: false,
     crisprDraw: 'all',
     setCrisprParams: (params) => set(params),
+    crisprRange: null,
+    setCrisprRange: (crisprRange) => set({ crisprRange }),
     offTargetReports: {},
     setOffTargetReports: (reports) => set(s2 => ({
       offTargetReports: { ...s2.offTargetReports, ...reports },

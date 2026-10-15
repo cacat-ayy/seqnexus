@@ -12,6 +12,7 @@
 import { useEffect, useMemo, useRef } from 'react'
 import { useEditorStore } from '../store'
 import { findORFs, type ORFOptions } from '../workers/orf-finder'
+import { orfStartCodonsFor } from '../utils/orf-features'
 
 /** The pause after an edit before the sequence is scanned again. */
 const EDIT_DELAY_MS = 300
@@ -24,21 +25,27 @@ export function useOrfScan(tabOpen: boolean): void {
   const topology = sequence.topology
 
   const minAminoAcids = useEditorStore(s => s.orfMinAminoAcids)
-  const startCodons = useEditorStore(s => s.orfStartCodons)
+  const chosenStarts = useEditorStore(s => s.orfStartCodons)
+  const startsFromCode = useEditorStore(s => s.orfStartsFromCode)
   const allowInterior = useEditorStore(s => s.orfAllowInterior)
   const includePartial = useEditorStore(s => s.orfIncludePartial)
-  // Stops come from the genetic code chosen for translations, so ORFs in a
-  // mitochondrial sequence end where its proteins do.
+  const allStarts = useEditorStore(s => s.orfAllStarts)
+  // Stops (and, when asked, starts) come from the genetic code chosen for
+  // translations, so ORFs in a mitochondrial sequence end where its proteins do.
   const geneticCode = useEditorStore(s => s.translationCodeId)
+  // A range set on another tab is not this sequence's.
+  const range = useEditorStore(s => (s.orfRange && s.orfRange.tabId === s.activeTabId ? s.orfRange : null))
   const options: ORFOptions = useMemo(() => ({
     minAminoAcids,
     maxAminoAcids: 0,
-    startCodons,
+    startCodons: orfStartCodonsFor(startsFromCode, chosenStarts, geneticCode),
     allowInterior,
     topology,
     geneticCode,
     includePartial,
-  }), [minAminoAcids, startCodons, allowInterior, topology, geneticCode, includePartial])
+    allStarts,
+    ...(range ? { region: { start: range.start, end: range.end } } : {}),
+  }), [minAminoAcids, chosenStarts, startsFromCode, allowInterior, topology, geneticCode, includePartial, allStarts, range])
 
   const active = (tabOpen || showOrfs) && !sequence.isProtein
 

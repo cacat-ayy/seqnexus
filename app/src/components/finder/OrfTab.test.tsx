@@ -2,12 +2,21 @@
  * The ORFs tab: its table, sizes, picking and adding, the ORF in focus, and
  * the finder slot it shares with Motifs.
  */
-import { describe, it, expect, beforeEach } from 'vitest'
+import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { render, screen, fireEvent, within, act } from '@testing-library/react'
 import OrfTab from './OrfTab'
 import FeatureSidebar from '../FeatureSidebar'
 import { useEditorStore } from '../../store'
 import type { ORFResult } from '../../workers/orf-finder'
+import { AnnotationTooltipContent } from '../AnnotationTooltip'
+import { Annotation } from '../../models/Annotation'
+import { orfOverlayData } from '../../utils/orf-features'
+import { saveText } from '../../utils/download'
+
+vi.mock('../../utils/download', async importOriginal => ({
+  ...(await importOriginal<typeof import('../../utils/download')>()),
+  saveText: vi.fn(),
+}))
 
 const store = () => useEditorStore.getState()
 
@@ -26,7 +35,13 @@ async function settle(ms = 10) {
 describe('ORFs tab', () => {
   beforeEach(() => {
     store().loadDocument('orfs', BASES, 'linear')
-    store().setOrfParams({ orfMinAminoAcids: 100, orfStartCodons: ['ATG'], orfAllowInterior: true, orfIncludePartial: false })
+    store().setOrfParams({
+      orfMinAminoAcids: 100, orfStartCodons: ['ATG'], orfStartsFromCode: false,
+      orfAllowInterior: true, orfIncludePartial: false, orfAllStarts: false,
+    })
+    store().setOrfRange(null)
+    store().setTranslationCode(1)
+    vi.mocked(saveText).mockClear()
     act(() => { store().setOrfResults([SHORT, LONG]) })
     store().clearOrfPicks()
     if (store().showOrfs) store().toggleOrfs()
@@ -128,6 +143,104 @@ describe('ORFs tab', () => {
     expect(store().doc.annotations).toHaveLength(0)
     fireEvent.click(screen.getByRole('button', { name: 'Add 60' }))
     expect(store().doc.annotations).toHaveLength(60)
+  })
+})
+
+describe('ORFs tab: starts, range and export', () => {
+  beforeEach(() => {
+    store().loadDocument('orfs', BASES, 'linear')
+    store().setOrfParams({ orfStartCodons: ['ATG'], orfStartsFromCode: false, orfAllStarts: false, orfIncludePartial: false })
+    store().setOrfRange(null)
+    store().setTranslationCode(1)
+    act(() => { store().setOrfResults([SHORT, LONG]) })
+    store().clearOrfPicks()
+    vi.mocked(saveText).mockClear()
+  })
+
+  it("takes the start codons from the genetic code, or offers the code's own to choose from", () => {
+    render(<OrfTab />)
+    fireEvent.click(screen.getByRole('button', { name: 'From the genetic code' }))
+    expect(store().orfStartsFromCode).toBe(true)
+    expect(screen.getByText('ATG, TTG, CTG')).toBeTruthy()
+    expect(screen.queryByLabelText('GTG')).toBeNull()
+    act(() => { store().setTranslationCode(2) })
+    expect(screen.getByText('ATT, ATC, ATA, ATG, GTG')).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: 'Chosen' }))
+    // The usual four, then the code's others.
+    expect(screen.getByLabelText('CTG')).toBeTruthy()
+    fireEvent.click(screen.getByLabelText('ATA'))
+    expect(store().orfStartCodons).toEqual(['ATG', 'ATA'])
+  })
+
+  it('lists an ORF from every start when asked', () => {
+    render(<OrfTab />)
+    fireEvent.click(screen.getByLabelText('Every start codon'))
+    expect(store().orfAllStarts).toBe(true)
+  })
+
+  it('searches a selection taken when asked, and keeps it while rows are clicked', () => {
+    render(<OrfTab />)
+    const selectionBtn = screen.getByRole('button', { name: 'Selection' }) as HTMLButtonElement
+    expect(selectionBtn.disabled).toBe(true)
+    act(() => { store().setSelection({ anchor: 0, caret: 30 }) })
+    fireEvent.click(selectionBtn)
+    expect(store().orfRange).toEqual({ tabId: store().activeTabId, start: 0, end: 30 })
+    expect(screen.getByText(/1\.\.30, 30 bp/)).toBeTruthy()
+    // Clicking a row selects its ORF; the range searched stays as it was.
+    fireEvent.click(rows()[0])
+    expect(store().orfRange).toMatchObject({ start: 0, end: 30 })
+    fireEvent.click(screen.getByRole('button', { name: 'Use the selection now' }))
+    expect(store().orfRange).toMatchObject({ start: 2, end: 38 })
+    fireEvent.click(screen.getByRole('button', { name: 'Whole sequence' }))
+    expect(store().orfRange).toBeNull()
+  })
+
+  it('allows partial ORFs on a circle only while a selection of it is searched', () => {
+    store().loadDocument('ring', BASES, 'circular')
+    render(<OrfTab />)
+    expect((screen.getByLabelText('Include partial ORFs') as HTMLInputElement).disabled).toBe(true)
+    act(() => {
+      store().setSelection({ anchor: 0, caret: 30 })
+      store().setOrfRange({ tabId: store().activeTabId!, start: 0, end: 30 })
+    })
+    expect((screen.getByLabelText('Include partial ORFs') as HTMLInputElement).disabled).toBe(false)
+  })
+
+  it('exports the picked ORFs, or all of them, as FASTA or CSV', () => {
+    render(<OrfTab />)
+    fireEvent.click(screen.getByRole('button', { name: /Export/ }))
+    fireEvent.click(screen.getByRole('menuitem', { name: /Proteins \(FASTA\)/ }))
+    const [fasta, name] = vi.mocked(saveText).mock.calls[0]
+    expect(name).toBe('orfs_orfs_protein.fasta')
+    expect(fasta.match(/^>/gm)).toHaveLength(2)
+    expect(fasta).toContain('>orfs_ORF1 frame +3 3..38 11 aa\nMAAAAAAAAAA\n')
+
+    fireEvent.click(rows()[1].querySelector('.fd-pick')!)
+    fireEvent.click(screen.getByRole('button', { name: /Export/ }))
+    fireEvent.click(screen.getByRole('menuitem', { name: /Table \(CSV\)/ }))
+    const [csv, csvName] = vi.mocked(saveText).mock.calls[1]
+    expect(csvName).toBe('orfs_orfs.csv')
+    expect(csv.trim().split('\n')).toHaveLength(2)
+    expect(csv).toContain('ORF1,-1,-,21,29')
+  })
+})
+
+describe('the ORF hover card', () => {
+  it('says what the ORFs tab says about it, and whether it is picked', () => {
+    store().loadDocument('orfs', BASES, 'linear')
+    act(() => { store().setOrfResults([LONG]) })
+    store().clearOrfPicks()
+    const ann = new Annotation(orfOverlayData(LONG))
+    render(<AnnotationTooltipContent ann={ann} sequence={store().doc.sequence} />)
+    expect(screen.getByText('ORF +3')).toBeTruthy()
+    expect(screen.getByText('3..38')).toBeTruthy()
+    expect(screen.getByText('Forward, frame +3')).toBeTruthy()
+    expect(screen.getByText('TAA')).toBeTruthy()
+    expect(screen.getByText('MAAAAAAAAAA')).toBeTruthy()
+    expect(screen.getByText(/kDa|Da/)).toBeTruthy()
+    expect(screen.getByText(/Ctrl\+click to pick/)).toBeTruthy()
+    act(() => { store().toggleOrfPick('1:2:2:38') })
+    expect(screen.getByText(/Picked for Add/)).toBeTruthy()
   })
 })
 

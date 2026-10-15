@@ -1,5 +1,8 @@
 import { describe, it, expect } from 'vitest'
-import { getLayout, RowLayoutMap, rowHeightForLanes } from './zoom-layout'
+import {
+  getLayout, RowLayoutMap, rowHeightForLanes, cellWidth, getRenderMode, MAX_ZOOM, LETTERS_FROM,
+  DOT_MIN_CELL, LETTER_MIN_CELL,
+} from './zoom-layout'
 
 describe('RowLayoutMap base <-> y', () => {
   const L = getLayout(10, 1000, false, 10_000)
@@ -75,5 +78,61 @@ describe('RowLayoutMap translation rows', () => {
     rl.build(L)
     expect(rl.totalHeight).toBe(4 * (rowHeightForLanes(L, 0, 0) + transH))
     expect(rl.rowAtY(rl.rowY(3) + 1)).toBe(3)
+  })
+})
+
+describe('the zoom scale', () => {
+  const levels = Array.from({ length: MAX_ZOOM + 1 }, (_, z) => z)
+  const widths = [320, 800, 1300, 2400]
+
+  it('shows fewer bases per row at every step in, whatever the pane width', () => {
+    for (const w of widths) {
+      const bpr = levels.map(z => getLayout(z, w, false, 5_000_000).basesPerRow)
+      for (let z = 1; z <= MAX_ZOOM; z++) expect(bpr[z]).toBeLessThan(bpr[z - 1])
+    }
+  })
+
+  it('never gives a base less width than its level asks for', () => {
+    for (const w of widths) {
+      for (const z of levels) {
+        expect(getLayout(z, w, false, 10_000).bpWidth).toBeGreaterThanOrEqual(cellWidth(z) - 1e-9)
+      }
+    }
+  })
+
+  it('picks the mode from the width of a base, so dots mode always has room for its dots', () => {
+    for (const z of levels) {
+      const mode = getRenderMode(z)
+      const cell = cellWidth(z)
+      if (mode === 'letters') expect(cell).toBeGreaterThanOrEqual(LETTER_MIN_CELL)
+      else if (mode === 'dots') expect(cell).toBeGreaterThanOrEqual(DOT_MIN_CELL)
+      else expect(cell).toBeLessThan(DOT_MIN_CELL)
+    }
+    expect(getRenderMode(LETTERS_FROM)).toBe('letters')
+    expect(getRenderMode(LETTERS_FROM - 1)).not.toBe('letters')
+  })
+
+  it('starts zoomed-out rows on round positions', () => {
+    for (const w of widths) {
+      for (const z of levels.filter(l => getRenderMode(l) !== 'letters')) {
+        const bpr = getLayout(z, w, false, 5_000_000).basesPerRow
+        const digits = String(bpr).replace(/0+$/, '')
+        expect(digits.length).toBeLessThanOrEqual(2)
+      }
+    }
+  })
+
+  it('keeps 14px letters at the default level and grows them with the zoom', () => {
+    const at = (z: number) => getLayout(z, 1000, false, 1000, { showComplement: false })
+    expect(at(14).letterFont).toBe(14)
+    expect(at(14).letterH).toBe(16)
+    for (let z = LETTERS_FROM + 1; z <= MAX_ZOOM; z++) {
+      expect(at(z).letterFont).toBeGreaterThanOrEqual(at(z - 1).letterFont)
+      expect(at(z).seqLineHeight).toBe(at(z).letterH)
+    }
+    expect(at(MAX_ZOOM).letterFont).toBeGreaterThan(at(14).letterFont)
+    // Both strands, with the gap between them.
+    const both = getLayout(MAX_ZOOM, 1000, false, 1000, { showComplement: true })
+    expect(both.seqLineHeight).toBe(both.letterH * 2 + both.strandGap)
   })
 })

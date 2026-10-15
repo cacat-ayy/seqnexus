@@ -35,7 +35,8 @@ describe('the task tabs', () => {
   beforeEach(() => {
     for (const tab of store().tabs) store().closeTab(tab.id)
     store().openDocument('tasks', BASES)
-    store().setCrisprParams({ crisprNucleaseId: 'spcas9', crisprSpacerLength: 0, crisprSelectionOnly: false })
+    store().setCrisprParams({ crisprNucleaseId: 'spcas9', crisprSpacerLength: 0 })
+    store().setCrisprRange(null)
     store().clearGuides()
     store().setCrisprTask('find')
   })

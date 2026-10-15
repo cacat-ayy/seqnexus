@@ -16,7 +16,7 @@
 import type { ORFResult } from '../workers/orf-finder'
 import { orfColor } from '../workers/orf-finder'
 import { orfAminoAcids } from '../orfs/finder'
-import { DEFAULT_GENETIC_CODE_ID } from '../codon/genetic-codes'
+import { DEFAULT_GENETIC_CODE_ID, geneticCode } from '../codon/genetic-codes'
 import type { Sequence } from '../models/Sequence'
 import { reverseComplement } from '../models/complement'
 import type { AnnotationData } from '../models/Annotation'
@@ -123,7 +123,9 @@ export function orfToAnnotationData(orf: ORFResult, geneticCodeId: number = DEFA
  * card, Copy protein) is read the way the finder read it.
  */
 export function orfOverlayData(orf: ORFResult, geneticCodeId: number = DEFAULT_GENETIC_CODE_ID): AnnotationData {
-  return { id: orfIdFor(orf), ...orfData(orf, geneticCodeId) }
+  // Open at its 5' end, it has no start codon to read as methionine. Scanned
+  // in a range, that end can be anywhere, not only at the sequence's edge.
+  return { id: orfIdFor(orf), ...orfData(orf, geneticCodeId), ...(orf.partialStart ? { truncated: true } : {}) }
 }
 
 /** `n` bases from `from`, reading on across the origin of a circle. */
@@ -145,6 +147,14 @@ export function orfCodons(orf: ORFResult, sequence: Sequence): { start: string |
   const fivePrime = forward ? head(orf.start) : reverseComplement(head(orf.end - 3))
   const threePrime = forward ? head(orf.end - 3) : reverseComplement(head(orf.start))
   return { start: orf.partialStart ? null : fivePrime, stop: orf.partialEnd ? null : threePrime }
+}
+
+/**
+ * The start codons a scan uses: the genetic code's own initiation codons
+ * (NCBI's list for that table), or the ones chosen by hand.
+ */
+export function orfStartCodonsFor(fromCode: boolean, chosen: readonly string[], geneticCodeId: number): string[] {
+  return fromCode ? [...geneticCode(geneticCodeId).starts] : [...chosen]
 }
 
 /** A frame as the finder and the translation rows write it: +1 to +3, −1 to −3. */

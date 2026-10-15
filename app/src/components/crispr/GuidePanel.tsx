@@ -13,14 +13,19 @@ import './crispr.css'
  * a guide fails on. Sorting picks one of them at a time instead.
  *
  * Clicking a row selects the protospacer in the sequence; Ctrl-click picks it
- * for conversion into a feature, the way ORF and motif picks work.
+ * for conversion into a feature, the way ORF and motif picks work. That is
+ * why "Selection only" takes the selection when it is ticked and keeps it,
+ * rather than following it: following it, a click on a guide would narrow
+ * the scan to that guide.
  */
 
-import { useMemo, useState } from 'react'
+import { useCallback, useMemo, useState } from 'react'
 import { useEditorStore } from '../../store'
 import { NUCLEASES, resolveNuclease, defaultSpacerLength } from '../../crispr/nucleases'
 import { guideKey, convertibleGuides } from '../../utils/guide-features'
 import { displayPosition } from '../../models/Document'
+import { selectionAsRange } from '../../models/selection'
+import { formatBp } from '../../utils/format'
 import { REPAIR_CAP } from '../../crispr/score/guide'
 import GuideLandscape from './GuideLandscape'
 import GuideInspector from './GuideInspector'
@@ -72,7 +77,11 @@ export default function GuidePanel() {
   const info = useEditorStore(s => s.guideScanInfo)
   const nucleaseId = useEditorStore(s => s.crisprNucleaseId)
   const spacerLength = useEditorStore(s => s.crisprSpacerLength)
-  const selectionOnly = useEditorStore(s => s.crisprSelectionOnly)
+  const crisprRange = useEditorStore(s => s.crisprRange)
+  const setCrisprRange = useEditorStore(s => s.setCrisprRange)
+  const activeTabId = useEditorStore(s => s.activeTabId)
+  const selection = useEditorStore(s => s.selection)
+  const topology = useEditorStore(s => s.doc.sequence.topology)
   const setParams = useEditorStore(s => s.setCrisprParams)
   const customNucleases = useEditorStore(s => s.customNucleases)
   const showGuides = useEditorStore(s => s.showGuides)
@@ -101,6 +110,18 @@ export default function GuidePanel() {
 
   const nuclease = resolveNuclease(nucleaseId, customNucleases)
   const at = (i: number) => displayPosition(i, origin, seqLen)
+
+  // "Selection only": a range taken from the selection, on this tab only.
+  const range = crisprRange && crisprRange.tabId === activeTabId && seqLen > 0
+    ? { start: Math.min(crisprRange.start, seqLen), end: Math.min(crisprRange.end, seqLen) }
+    : null
+  const selectionOnly = !!range
+  const rangeLength = range ? (range.end > range.start ? range.end - range.start : seqLen - range.start + range.end) : 0
+  const selectedRange = useMemo(() => selectionAsRange(selection, topology), [selection, topology])
+  const sameAsRange = !!range && !!selectedRange && range.start === selectedRange.start && range.end === selectedRange.end
+  const takeSelection = useCallback(() => {
+    if (selectedRange && activeTabId) setCrisprRange({ tabId: activeTabId, ...selectedRange })
+  }, [selectedRange, activeTabId, setCrisprRange])
 
   const sorted = useMemo(() => {
     const list = [...candidates]
@@ -227,8 +248,16 @@ export default function GuidePanel() {
           )}
 
           <div className="gp-checks">
-            <label className="gp-check">
-              <input type="checkbox" checked={selectionOnly} onChange={e => setParams({ crisprSelectionOnly: e.target.checked })} />
+            <label
+              className={`gp-check${!selectionOnly && !selectedRange ? ' is-disabled' : ''}`}
+              title={selectionOnly || selectedRange ? 'Only sites in the bases selected when this is ticked' : 'Select bases first'}
+            >
+              <input
+                type="checkbox"
+                checked={selectionOnly}
+                disabled={!selectionOnly && !selectedRange}
+                onChange={e => { if (e.target.checked) takeSelection(); else setCrisprRange(null) }}
+              />
               Selection only
             </label>
             <label className="gp-check">
@@ -248,6 +277,17 @@ export default function GuidePanel() {
               </select>
             )}
           </div>
+
+          {range && (
+            <p className="gp-note gp-range">
+              <span>Searching {at(range.start).toLocaleString('en-US')}..{at((range.end - 1 + seqLen) % seqLen).toLocaleString('en-US')}, {formatBp(rangeLength)}</span>
+              {selectedRange && !sameAsRange && (
+                <button type="button" className="gp-link" onClick={takeSelection} title="Search the bases selected now instead">
+                  Use the selection now
+                </button>
+              )}
+            </p>
+          )}
 
           {nuclease?.note && <p className="gp-note">{nuclease.note}</p>}
         </div>

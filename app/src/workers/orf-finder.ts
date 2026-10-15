@@ -17,6 +17,10 @@ export interface ORFOptions {
   geneticCode?: number
   /** Also report ORFs cut off by the ends of a linear sequence. */
   includePartial?: boolean
+  /** An ORF from every start codon, not only the longest to each stop. */
+  allStarts?: boolean
+  /** Scan only these bases, [start, end); start > end crosses the origin. */
+  region?: { start: number; end: number }
 }
 
 export const DEFAULT_ORF_OPTIONS: ORFOptions = {
@@ -49,16 +53,7 @@ let activeWorker: Worker | null = null
  * otherwise leave a worker running for every pause.
  */
 export function findORFs(bases: string, options: ORFOptions = DEFAULT_ORF_OPTIONS): Promise<ORFResult[]> {
-  const request: ORFRequest = {
-    bases,
-    minAminoAcids: options.minAminoAcids,
-    maxAminoAcids: options.maxAminoAcids,
-    startCodons: options.startCodons,
-    allowInterior: options.allowInterior,
-    topology: options.topology,
-    geneticCode: options.geneticCode,
-    includePartial: options.includePartial,
-  }
+  const request: ORFRequest = { bases, ...options }
 
   if (activeWorker) {
     activeWorker.terminate()

@@ -27,7 +27,7 @@ import {
 import { Annotation } from '../models/Annotation'
 import { displayPosition } from '../models/Document'
 import { IntervalTree } from '../models/IntervalTree'
-import { getLayout, baseX as zBaseX, type ZoomLayout, RowLayoutMap } from './zoom-layout'
+import { getLayout, baseX as zBaseX, type ZoomLayout, RowLayoutMap, MAX_ZOOM, LETTERS_FROM } from './zoom-layout'
 import { groupCutSites, enzymeGroupKey, type GroupedCutSite } from '../enzymes/grouping'
 import AnnotationTooltip from './AnnotationTooltip'
 import { copyText } from '../utils/clipboard'
@@ -40,10 +40,9 @@ import { proteinMass, formatMass } from '../protein/properties'
 import SequenceMinimap from './minimap/SequenceMinimap'
 import { createViewportSource } from './minimap/viewport'
 
-import { publishBasesPerRow, publishVisibleRange, registerSequenceViewCenter, registerSequenceViewFit, registerSequenceViewZoomTo } from './sequence-view-controls'
+import { publishBasesPerRow, publishMinZoom, publishVisibleRange, registerSequenceViewCenter, registerSequenceViewFit, registerSequenceViewZoomTo } from './sequence-view-controls'
 
 const MINIMAP_SEQ_THRESHOLD = 1_000 // show minimap for sequences >= 1 kb
-const MAX_ZOOM = 20
 /** Summed ctrl+wheel delta per zoom level: one mouse notch, or a short pinch. */
 const WHEEL_ZOOM_STEP = 50
 /** Space kept above and below a range zoomed to or centred, so it is not flush with the edges. */
@@ -703,6 +702,68 @@ function SequenceView({ onFindRequest, onFindClose, onAnnotateRequest, onEditFea
   const onFindCloseRef = useRef(onFindClose)
   onFindCloseRef.current = onFindClose
 
+  /**
+   * The highest zoom level at which the whole sequence fits the view; 0 when
+   * it fits at none.
+   *
+   * Row heights depend on each row's features, so each level is laid out for
+   * real rather than estimated. Heights only grow with zoom, so the search
+   * stops at the first level that overflows, and every level it lays out has
+   * at most a view's worth of rows.
+   */
+  const fitLevel = useCallback((): number => {
+    const container = containerRef.current
+    const doc = docRef.current
+    const seqLen = doc.sequence.length
+    if (!container || seqLen === 0) return 0
+    const width = container.clientWidth
+    const viewH = container.clientHeight
+    const showEnzymesNow = showEnzymesRef.current && enzymeCutSitesRef.current.length > 0
+    const perRowTranslations = translationFramesRef.current.length === 0
+    const sites = showEnzymesNow
+      ? groupCutSites(enzymeCutSitesRef.current, doc.metadata?.damMethylated || false, doc.metadata?.dcmMethylated || false)
+      : NO_SITES
+    let best = 0
+    for (let z = 0; z <= MAX_ZOOM; z++) {
+      const L = getLayout(z, width, showEnzymesNow, seqLen, {
+        showComplement: showComplementRef.current,
+        showAnnotations: showAnnotationTracksRef.current,
+        translationRows: translationRowsRef.current,
+        graphHeight: graphRef.current ? GRAPH_TRACK_H : 0,
+      })
+      const rl = buildRowLayout(L, annTreeRef.current, seqLen, sites, perRowTranslations)
+      if (rl.totalHeight + 4 > viewH) break
+      best = z
+    }
+    return best
+  }, [])
+
+  // What the lowest useful level was last worked out from, and the level.
+  const minZoomCacheRef = useRef<{ inputs: unknown[]; level: number } | null>(null)
+  const minZoomTimerRef = useRef(0)
+
+  /**
+   * The lowest level a zoom out goes to: the one that fits the whole
+   * sequence, since every level below it shows the same bases in less of the
+   * view. Never above the first letters level, so a sequence short enough to
+   * fit in letters still has the choice of letter sizes. Kept until the pane
+   * or anything that sizes a row changes.
+   */
+  const minZoomLevel = useCallback((): number => {
+    const c = containerRef.current
+    const inputs = [
+      c?.clientWidth, c?.clientHeight, docRef.current, annTreeRef.current,
+      showEnzymesRef.current, enzymeCutSitesRef.current, showComplementRef.current,
+      showAnnotationTracksRef.current, translationRowsRef.current,
+      translationFramesRef.current.length === 0, !!graphRef.current,
+    ]
+    const cached = minZoomCacheRef.current
+    if (cached && cached.inputs.every((v, i) => v === inputs[i])) return cached.level
+    const level = Math.min(fitLevel(), LETTERS_FROM)
+    minZoomCacheRef.current = { inputs, level }
+    return level
+  }, [fitLevel])
+
   const draw = useCallback(() => {
     const canvas = canvasRef.current
     const container = containerRef.current
@@ -719,6 +780,15 @@ function SequenceView({ onFindRequest, onFindClose, onAnnotateRequest, onEditFea
     })
     layoutRef.current = L
     publishBasesPerRow(L.basesPerRow)
+    // The toolbar's zoom out stops at the lowest useful level. Worked out
+    // shortly after drawing rather than in the frame, since a doc edit or a
+    // resize changes it and it lays out several levels.
+    if (!minZoomTimerRef.current) {
+      minZoomTimerRef.current = window.setTimeout(() => {
+        minZoomTimerRef.current = 0
+        publishMinZoom(minZoomLevel())
+      }, 150)
+    }
 
     // Read current state from refs (not closure) so draw stays stable
     const doc = docRef.current
@@ -1859,7 +1929,10 @@ function SequenceView({ onFindRequest, onFindClose, onAnnotateRequest, onEditFea
     const step = wheelAccumRef.current > 0 ? -1 : 1
     wheelAccumRef.current = 0
     const store = useEditorStore.getState()
-    const next = Math.max(0, Math.min(MAX_ZOOM, store.zoomLevel + step))
+    // Out no further than the level that fits the whole sequence; a view
+    // already below it (the pane has grown since) stays where it is.
+    const lowest = step < 0 ? Math.min(store.zoomLevel, minZoomLevel()) : 0
+    const next = Math.max(lowest, Math.min(MAX_ZOOM, store.zoomLevel + step))
     if (next === store.zoomLevel) return
     const container = containerRef.current
     if (container) {
@@ -1872,39 +1945,13 @@ function SequenceView({ onFindRequest, onFindClose, onAnnotateRequest, onEditFea
       }
     }
     store.setZoom(next)
-  }, [])
+  }, [minZoomLevel])
 
-  /**
-   * Zoom to the closest level at which the whole sequence fits the view.
-   *
-   * Row heights depend on each row's features, so each level is laid out for
-   * real rather than estimated. Heights only grow with zoom, so the search
-   * stops at the first level that overflows.
-   */
+  /** Zoom to the closest level at which the whole sequence fits the view (see fitLevel). */
   const fitToView = useCallback(() => {
     const container = containerRef.current
-    const seqLen = docRef.current.sequence.length
-    if (!container || seqLen === 0) return
-    const width = container.clientWidth
-    const viewH = container.clientHeight
-    const showEnzymesNow = showEnzymesRef.current && enzymeCutSitesRef.current.length > 0
-    const perRowTranslations = translationFramesRef.current.length === 0
-    let best = 0
-    for (let z = 0; z <= MAX_ZOOM; z++) {
-      const L = getLayout(z, width, showEnzymesNow, seqLen, {
-        showComplement: showComplementRef.current,
-        showAnnotations: showAnnotationTracksRef.current,
-        translationRows: translationRowsRef.current,
-        graphHeight: graphRef.current ? GRAPH_TRACK_H : 0,
-      })
-      const doc = docRef.current
-      const sites = showEnzymesNow
-        ? groupCutSites(enzymeCutSitesRef.current, doc.metadata?.damMethylated || false, doc.metadata?.dcmMethylated || false)
-        : NO_SITES
-      const rl = buildRowLayout(L, annTreeRef.current, seqLen, sites, perRowTranslations)
-      if (rl.totalHeight + 4 > viewH) break
-      best = z
-    }
+    if (!container || docRef.current.sequence.length === 0) return
+    const best = fitLevel()
     const store = useEditorStore.getState()
     if (best === store.zoomLevel) {
       container.scrollTop = 0
@@ -1912,7 +1959,7 @@ function SequenceView({ onFindRequest, onFindClose, onAnnotateRequest, onEditFea
     }
     zoomAnchorRef.current = { base: 0, offsetY: 0 }
     store.setZoom(best)
-  }, [])
+  }, [fitLevel])
 
   useEffect(() => registerSequenceViewFit(fitToView), [fitToView])
 
@@ -1994,7 +2041,11 @@ function SequenceView({ onFindRequest, onFindClose, onAnnotateRequest, onEditFea
 
   useEffect(() => registerSequenceViewZoomTo(zoomToRange), [zoomToRange])
   useEffect(() => registerSequenceViewCenter(centerRange), [centerRange])
-  useEffect(() => () => publishVisibleRange(null), [])
+  useEffect(() => () => {
+    publishVisibleRange(null)
+    window.clearTimeout(minZoomTimerRef.current)
+    publishMinZoom(0)
+  }, [])
 
   // Attach event listeners once (all callbacks are stable via refs)
   useEffect(() => {

@@ -14,7 +14,6 @@ import { useEffect, useRef } from 'react'
 import { useEditorStore } from '../store'
 import { scanGuidesAsync, cancelGuideScan } from '../workers/crispr'
 import { resolveNuclease } from '../crispr/nucleases'
-import { selectionRange } from '../models/selection'
 import type { GuideScanOptions } from '../crispr/finder'
 
 export function useGuideScan(panelOpen: boolean): void {
@@ -25,14 +24,14 @@ export function useGuideScan(panelOpen: boolean): void {
   const topology = useEditorStore(s => s.doc.sequence.topology)
   const nucleaseId = useEditorStore(s => s.crisprNucleaseId)
   const spacerLength = useEditorStore(s => s.crisprSpacerLength)
-  const selectionOnly = useEditorStore(s => s.crisprSelectionOnly)
-  const selection = useEditorStore(s => s.selection)
+  // "Selection only": the range taken from a selection on this tab.
+  const range = useEditorStore(s => (s.crisprRange && s.crisprRange.tabId === s.activeTabId ? s.crisprRange : null))
   const customNucleases = useEditorStore(s => s.customNucleases)
 
   const wanted = (showGuides || panelOpen) && isDna && bases.length > 0
-  // The selection only matters to the scan when it is what limits it.
-  const region = selectionOnly ? selectionRange(selection) : null
-  const regionKey = region ? `${region[0]}:${region[1]}` : ''
+  // Cut to the sequence as it is now: edits since it was taken may have shortened it.
+  const region = range ? { start: Math.min(range.start, bases.length), end: Math.min(range.end, bases.length) } : null
+  const regionKey = region ? `${region.start}:${region.end}` : ''
   const requestId = useRef(0)
 
   useEffect(() => {
@@ -48,7 +47,7 @@ export function useGuideScan(panelOpen: boolean): void {
     store.setGuideScanRunning(true)
     const options: GuideScanOptions = {
       ...(spacerLength > 0 ? { spacerLength } : {}),
-      ...(region ? { region: { start: region[0], end: region[1] } } : {}),
+      ...(region ? { region } : {}),
     }
     scanGuidesAsync({ bases, nuclease, topology, options, promoter: nuclease.promoter })
       .then(res => {

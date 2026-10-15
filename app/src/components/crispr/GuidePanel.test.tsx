@@ -32,7 +32,8 @@ describe('GuidePanel', () => {
   beforeEach(() => {
     for (const tab of store().tabs) store().closeTab(tab.id)
     store().openDocument('guides', BASES)
-    store().setCrisprParams({ crisprNucleaseId: 'spcas9', crisprSpacerLength: 0, crisprSelectionOnly: false })
+    store().setCrisprParams({ crisprNucleaseId: 'spcas9', crisprSpacerLength: 0 })
+    store().setCrisprRange(null)
     store().clearGuides()
   })
   afterEach(cleanup)
@@ -51,6 +52,25 @@ describe('GuidePanel', () => {
     act(() => { fireEvent.click(screen.getByText('ACGTACGTACGTACGTACGT')) })
     expect(store().selection).toEqual({ anchor: 10, caret: 30 })
     expect(store().selectedGuideKey).toBe('spcas9:+:10:30')
+  })
+
+  it('takes the selection when Selection only is ticked, and keeps it while a guide is clicked', () => {
+    act(() => { store().setGuideResults(scan()) })
+    render(<GuidePanel />)
+    const box = screen.getByLabelText('Selection only') as HTMLInputElement
+    expect(box.disabled).toBe(true)
+    act(() => { store().setSelection({ anchor: 0, caret: 50 }) })
+    fireEvent.click(box)
+    expect(store().crisprRange).toEqual({ tabId: store().activeTabId, start: 0, end: 50 })
+    expect(screen.getByText(/Searching 1\.\.50, 50 bp/)).toBeTruthy()
+    // Clicking the guide selects its protospacer; the range searched stays.
+    act(() => { fireEvent.click(screen.getByText('ACGTACGTACGTACGTACGT')) })
+    expect(store().selection).toEqual({ anchor: 10, caret: 30 })
+    expect(store().crisprRange).toMatchObject({ start: 0, end: 50 })
+    fireEvent.click(screen.getByRole('button', { name: 'Use the selection now' }))
+    expect(store().crisprRange).toMatchObject({ start: 10, end: 30 })
+    fireEvent.click(screen.getByLabelText('Selection only'))
+    expect(store().crisprRange).toBeNull()
   })
 
   it('shows the inspector for the selected guide, with its cut', () => {
@@ -123,7 +143,8 @@ describe('GuidePanel off-targets', () => {
   beforeEach(() => {
     for (const tab of store().tabs) store().closeTab(tab.id)
     store().openDocument('guides', BASES)
-    store().setCrisprParams({ crisprNucleaseId: 'spcas9', crisprSpacerLength: 0, crisprSelectionOnly: false })
+    store().setCrisprParams({ crisprNucleaseId: 'spcas9', crisprSpacerLength: 0 })
+    store().setCrisprRange(null)
     store().clearGuides()
     store().setOffTargetParams({ offTargetScope: 'document' })
   })

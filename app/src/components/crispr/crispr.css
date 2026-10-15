@@ -73,6 +73,30 @@
   cursor: pointer;
 }
 
+.gp-check.is-disabled {
+  color: var(--text-muted);
+  cursor: default;
+}
+
+/* The range "Selection only" searches, and the offer to take the selection made since. */
+.gp-range {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  column-gap: var(--space-2);
+}
+
+.gp-link {
+  border: none;
+  background: none;
+  padding: 0;
+  font: inherit;
+  color: var(--accent);
+  cursor: pointer;
+  white-space: nowrap;
+}
+.gp-link:hover { text-decoration: underline; }
+
 .gp-note {
   flex: 1 1 100%;
   font-size: var(--text-2xs);

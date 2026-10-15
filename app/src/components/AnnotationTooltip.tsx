@@ -5,6 +5,10 @@
  * features) the protein, each shortened to both ends when long, and any sign
  * that a CDS is drawn on the wrong bases or in the wrong frame.
  * Used by FeatureSidebar, SequenceView and PlasmidMap.
+ *
+ * An ORF on the overlay gets a card of its own: what the ORFs tab says
+ * about it (frame, place from the display origin, residues, start and stop
+ * codons, mass), and whether it is a CDS already or picked for Add.
  */
 
 import { TriangleAlert, Info } from 'lucide-react'
@@ -12,6 +16,12 @@ import type { Annotation } from '../models/Annotation'
 import type { Sequence } from '../models/Sequence'
 import { unitOf } from '../models/alphabet'
 import HoverCard from './HoverCard'
+import { useEditorStore } from '../store'
+import { displayPosition } from '../models/Document'
+import { orfAminoAcids } from '../orfs/finder'
+import { orfBases, orfLengthBp, orfProtein } from '../orfs/export'
+import { keyFromOrfId, orfKey, orfCodons, orfFrameLabel, isOrfAnnotated } from '../utils/orf-features'
+import { proteinMass, formatMass } from '../protein/properties'
 import {
   annotationBases,
   annotationLength,
@@ -33,6 +43,12 @@ function Abbreviated({ text }: { text: string }) {
 
 /** Card body without the positioning frame, also used in the pinned copy. */
 export function AnnotationTooltipContent({ ann, sequence }: { ann: Annotation; sequence: Sequence }) {
+  const key = keyFromOrfId(ann.id)
+  if (key !== null) return <OrfCardContent ann={ann} orfKeyOf={key} sequence={sequence} />
+  return <FeatureCardContent ann={ann} sequence={sequence} />
+}
+
+function FeatureCardContent({ ann, sequence }: { ann: Annotation; sequence: Sequence }) {
   const len = annotationLength(ann, sequence.length)
   const bases = annotationBases(ann, sequence)
   const translatable = canTranslateAnnotation(ann, sequence)
@@ -76,6 +92,63 @@ export function AnnotationTooltipContent({ ann, sequence }: { ann: Annotation; s
           ))}
         </div>
       )}
+    </>
+  )
+}
+
+const n = (x: number) => x.toLocaleString('en-US')
+
+/** An ORF on the overlay, as the ORFs tab describes it. */
+function OrfCardContent({ ann, orfKeyOf, sequence }: { ann: Annotation; orfKeyOf: string; sequence: Sequence }) {
+  const orf = useEditorStore(s => s.orfResults.find(o => orfKey(o) === orfKeyOf))
+  const picked = useEditorStore(s => s.orfPicks.has(orfKeyOf))
+  const annotations = useEditorStore(s => s.doc.annotations)
+  const origin = useEditorStore(s => s.doc.metadata?.displayOrigin ?? 0)
+  const codeId = useEditorStore(s => s.translationCodeId)
+  // Gone in a rescan while the card is pinned: what it still knows.
+  if (!orf) return <FeatureCardContent ann={ann} sequence={sequence} />
+
+  const L = sequence.length
+  const at = (i: number) => n(displayPosition(i, origin, L))
+  const codons = orfCodons(orf, sequence)
+  const protein = orfProtein(orf, sequence, codeId)
+  const partial = orf.partialStart || orf.partialEnd
+  const annotated = isOrfAnnotated(orf, annotations)
+
+  return (
+    <>
+      <div className="ft-tooltip-name">
+        <span className="ann-swatch" style={{ backgroundColor: ann.color, marginRight: 6 }} />
+        <span className="hc-name">ORF {orfFrameLabel(orf)}</span>
+        <span className="hc-chip">ORF</span>
+        {partial && <span className="hc-chip hc-chip-role">partial</span>}
+      </div>
+      <table className="ft-tooltip-table">
+        <tbody>
+          <tr><td>Location</td><td>{at(orf.start)}..{at(orf.end - 1)}{orf.start > orf.end && <span className="hc-muted"> · across the origin</span>}</td></tr>
+          <tr><td>Strand</td><td>{orf.strand === 1 ? 'Forward' : 'Reverse'}, frame {orfFrameLabel(orf)}</td></tr>
+          <tr><td>Length</td><td>{n(orfAminoAcids(orf))} aa<span className="hc-muted"> · {n(orfLengthBp(orf, L))} bp</span></td></tr>
+          <tr><td>Start</td><td>{codons.start ?? <span className="hc-muted">none: open at the 5' end</span>}</td></tr>
+          <tr><td>Stop</td><td>{codons.stop ?? <span className="hc-muted">none: open at the 3' end</span>}</td></tr>
+          {protein && <tr><td>Mass</td><td>{formatMass(proteinMass(protein).average)}</td></tr>}
+        </tbody>
+      </table>
+      <div className="ft-tooltip-bases">
+        <Abbreviated text={orfBases(orf, sequence)} />
+      </div>
+      {protein && (
+        <div className="ft-tooltip-bases ft-tooltip-protein">
+          <Abbreviated text={protein} />
+        </div>
+      )}
+      <div className="hc-issues">
+        <div className="hc-issue hc-note">
+          <Info size={11} />
+          {annotated
+            ? 'A CDS already covers this ORF.'
+            : picked ? 'Picked for Add. Ctrl+click to unpick.' : 'Ctrl+click to pick it for Add.'}
+        </div>
+      </div>
     </>
   )
 }
