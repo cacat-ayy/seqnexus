@@ -17,7 +17,7 @@ import { orfOverlayData } from '../utils/orf-features'
 import { motifIdFor, PEPTIDE_ID_PREFIX } from '../utils/motif-features'
 import { proteinScale, scaleProfile } from '../protein/scales'
 import type { GraphTrack } from './sequence-paint'
-import { proposalsFrom, proposalAnnotations } from '../utils/auto-annotations'
+import { offeredSuggestions, proposalAnnotations } from '../utils/auto-annotations'
 import { usePrimerSites, useDesignPreview } from '../primers/usePrimerSites'
 import { primerItems, type PrimerItem } from '../primers/display'
 import { guideItems, type GuideItem } from '../crispr/display'
@@ -46,6 +46,7 @@ export function useSequenceTracks(doc: DocumentState) {
   const showAutoAnnotations = useEditorStore(s => s.showAutoAnnotations)
   const allAutoAnnotations = useEditorStore(s => s.autoAnnotations)
   const autoOverlapThreshold = useEditorStore(s => s.autoAnnotateOverlapThreshold)
+  const autoAnnotationPicks = useEditorStore(s => s.autoAnnotationPicks)
 
   // Convert ORF results to Annotation objects for unified rendering.
   // The id carries the ORF's identity rather than its index in the list, so a
@@ -127,10 +128,15 @@ export function useSequenceTracks(doc: DocumentState) {
    */
   const autoAnnotations = useMemo(() => {
     if (!showAutoAnnotations || allAutoAnnotations.length === 0) return []
+    // One per locus: the best of the relatives offered on a stretch, or the
+    // one the user picked among them.
     return proposalAnnotations(
-      proposalsFrom(allAutoAnnotations, doc.annotations, autoOverlapThreshold),
+      offeredSuggestions(
+        allAutoAnnotations, doc.annotations, autoOverlapThreshold, doc.sequence.length,
+        doc.metadata?.rejectedSuggestions, autoAnnotationPicks,
+      ).map(l => l.shown),
     )
-  }, [showAutoAnnotations, allAutoAnnotations, doc.annotations, autoOverlapThreshold])
+  }, [showAutoAnnotations, allAutoAnnotations, doc.annotations, doc.sequence.length, doc.metadata?.rejectedSuggestions, autoOverlapThreshold, autoAnnotationPicks])
 
   // Filter out hidden annotations
   const hiddenSet = useMemo(() => new Set(hiddenAnnotationIds), [hiddenAnnotationIds])

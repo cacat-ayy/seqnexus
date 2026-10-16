@@ -26,6 +26,7 @@ import {
   updatePrimer,
   removePrimers,
   displayPosition,
+  type RejectedSuggestion,
 } from './models/Document'
 import { newPrimerId, primerOligoFromFeature, type PrimerData, type LibraryOligo, type OligoRole } from './primers/oligo'
 import { reverseComplement } from './models/complement'
@@ -61,7 +62,7 @@ import { toUid, parseUid, tabUid, type ItemMeta } from './explorer/types'
 import { PRESET_COLORS } from './utils/annotation-constants'
 import type { AnnotationMatch } from './workers/annotate-list'
 import { matchToAnnotationData } from './workers/annotate-list'
-import { matchKey, proposalsFrom } from './utils/auto-annotations'
+import { matchKey, offeredSuggestions, type SuggestionLocus } from './utils/auto-annotations'
 import { orfKey, convertibleOrfs, orfToAnnotationData, isOrfAnnotated } from './utils/orf-features'
 import { motifKey, convertibleMotifs, motifToAnnotationData, isMotifAnnotated } from './utils/motif-features'
 import type { MotifHit } from './protein/motifs'
@@ -928,7 +929,11 @@ interface EditorStore {
   autoAnnotations: AnnotationMatch[]
   setAutoAnnotations: (matches: AnnotationMatch[]) => void
   clearAutoAnnotations: () => void
-  /** Match keys the user has picked for conversion. Transient, not per tab. */
+  /**
+   * Match keys the user has picked for conversion. Transient, not per tab.
+   * At most one per locus: picking one of the relatives offered on a
+   * stretch drops any other pick there.
+   */
   autoAnnotationPicks: Set<string>
   toggleAutoAnnotationPick: (key: string) => void
   setAutoAnnotationPicks: (keys: Iterable<string>) => void
@@ -938,6 +943,13 @@ interface EditorStore {
    * One undo entry, and the overlay switches off: they are features now.
    */
   applyAutoAnnotations: (keys?: Iterable<string>) => number
+  /**
+   * Stop suggesting these elements in this document. Stored with the
+   * document by name and type, one undo entry, and their picks are dropped.
+   */
+  rejectSuggestions: (entries: readonly RejectedSuggestion[]) => void
+  /** Suggest these again, or every rejected element when none are given. */
+  restoreSuggestions: (entries?: readonly RejectedSuggestion[]) => void
   autoAnnotateScanning: boolean
   setAutoAnnotateScanning: (v: boolean) => void
   // Auto-annotate params (user preferences, like the ORF ones)
@@ -1506,6 +1518,14 @@ function displaySnapshot(s: EditorStore): DisplaySettings {
     proteinScaleWindow: s.proteinScaleWindow,
     trackVariants: s.trackVariants,
   }
+}
+
+/** What auto-annotation offers in the active document, the same list the views draw. */
+function offeredFor(s: Pick<EditorStore, 'autoAnnotations' | 'doc' | 'autoAnnotateOverlapThreshold' | 'autoAnnotationPicks'>): SuggestionLocus[] {
+  return offeredSuggestions(
+    s.autoAnnotations, s.doc.annotations, s.autoAnnotateOverlapThreshold,
+    s.doc.sequence.length, s.doc.metadata?.rejectedSuggestions, s.autoAnnotationPicks,
+  )
 }
 
 export const useEditorStore = create<EditorStore>((set, get) => {
@@ -2243,9 +2263,15 @@ export const useEditorStore = create<EditorStore>((set, get) => {
     },
     autoAnnotationPicks: new Set<string>(),
     toggleAutoAnnotationPick: (key) => {
-      const next = new Set(get().autoAnnotationPicks)
+      const state = get()
+      const next = new Set(state.autoAnnotationPicks)
       if (next.has(key)) next.delete(key)
-      else next.add(key)
+      else {
+        // One pick per locus: choosing ECFP over EGFP on one gene replaces it.
+        const locus = offeredFor(state).find(l => l.members.some(m => matchKey(m) === key))
+        if (locus) for (const m of locus.members) next.delete(matchKey(m))
+        next.add(key)
+      }
       set({ autoAnnotationPicks: next })
     },
     setAutoAnnotationPicks: (keys) => set({ autoAnnotationPicks: new Set(keys) }),
@@ -2254,14 +2280,16 @@ export const useEditorStore = create<EditorStore>((set, get) => {
     applyAutoAnnotations: (keys) => {
       const state = get()
       // Re-filter rather than trust the caller: a proposal the document has
-      // since acquired must not be added a second time, whatever the UI held.
-      const proposals = proposalsFrom(
-        state.autoAnnotations,
-        state.doc.annotations,
-        state.autoAnnotateOverlapThreshold,
-      )
+      // since acquired, or the user rejected, must not be added, whatever the
+      // UI held. One feature per locus: the one asked for, or else the one
+      // shown there.
+      const loci = offeredFor(state)
       const wanted = keys ? new Set(keys) : null
-      const chosen = wanted ? proposals.filter(m => wanted.has(matchKey(m))) : proposals
+      const chosen: AnnotationMatch[] = []
+      for (const locus of loci) {
+        const m = wanted ? locus.members.find(x => wanted.has(matchKey(x))) : locus.shown
+        if (m) chosen.push(m)
+      }
       if (chosen.length === 0) return 0
 
       get().addAnnotations(chosen.map(matchToAnnotationData))
@@ -2269,6 +2297,38 @@ export const useEditorStore = create<EditorStore>((set, get) => {
       set({ autoAnnotationPicks: new Set() })
       updateActiveTab({ showAutoAnnotations: false })
       return chosen.length
+    },
+    rejectSuggestions: (entries) => {
+      if (entries.length === 0) return
+      const done = transact(doc => {
+        const had = doc.metadata?.rejectedSuggestions ?? []
+        const add = entries.filter((e, i) =>
+          !had.some(r => r.name === e.name && r.type === e.type)
+          && entries.findIndex(o => o.name === e.name && o.type === e.type) === i)
+        if (add.length === 0) return doc
+        return { ...doc, metadata: { ...doc.metadata, rejectedSuggestions: [...had, ...add.map(e => ({ name: e.name, type: e.type }))] } }
+      }, { label: entries.length === 1 ? `Stop suggesting ${entries[0].name}` : `Stop suggesting ${entries.length} elements` })
+      if (!done) return
+      const picks = get().autoAnnotationPicks
+      if (picks.size > 0) {
+        const gone = new Set(get().autoAnnotations
+          .filter(m => entries.some(e => e.name === m.refName && e.type === m.refType))
+          .map(matchKey))
+        set({ autoAnnotationPicks: new Set([...picks].filter(k => !gone.has(k))) })
+      }
+    },
+    restoreSuggestions: (entries) => {
+      transact(doc => {
+        const had = doc.metadata?.rejectedSuggestions ?? []
+        const keep = entries
+          ? had.filter(r => !entries.some(e => e.name === r.name && e.type === r.type))
+          : []
+        if (keep.length === had.length) return doc
+        const metadata = { ...doc.metadata }
+        if (keep.length > 0) metadata.rejectedSuggestions = keep
+        else delete metadata.rejectedSuggestions
+        return { ...doc, metadata }
+      }, { label: 'Suggest again' })
     },
     autoAnnotateScanning: false,
     setAutoAnnotateScanning: (v) => set({ autoAnnotateScanning: v }),

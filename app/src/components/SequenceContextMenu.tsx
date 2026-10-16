@@ -13,7 +13,7 @@
 
 import type { ReactNode } from 'react'
 import {
-  Atom, ClipboardPaste, Combine, Copy, Crosshair, Dna, ExternalLink, Globe, MoveLeft, MoveRight, PanelRight, Pencil, Replace,
+  Atom, ClipboardPaste, Combine, Copy, Crosshair, Dna, ExternalLink, EyeOff, Globe, MoveLeft, MoveRight, PanelRight, Pencil, Replace,
   SquareDashedMousePointer, Tag, TextSearch, Trash2, TriangleAlert, Undo2,
 } from 'lucide-react'
 import {
@@ -28,7 +28,7 @@ import { copyText, readText } from '../utils/clipboard'
 import {
   annotationBases, annotationLength, annotationProtein, canTranslateAnnotation, translationIssues,
 } from '../utils/annotation-sequence'
-import { isAutoAnnotationId } from '../utils/auto-annotations'
+import { isAutoAnnotationId, keyFromAutoId, matchKey } from '../utils/auto-annotations'
 import { oligoStructure, summarizeOligo, type PrimerItem } from '../primers/display'
 import { structureGrade } from '../primers/secondary'
 import { DESIGN_ROLES, designOligoId } from '../primers/usePrimerSites'
@@ -192,6 +192,10 @@ export default function SequenceContextMenu({
   // Synthetic overlays (ORFs, suggestions, motif hits, peptides) all carry a
   // leading underscore; only the document's own features can be edited.
   const isUserAnn = !!ann && !ann.id.startsWith('_') && !isAutoAnnotationId(ann.id)
+  // An auto-annotation suggestion, as the match it was drawn from.
+  const suggestionKey = ann ? keyFromAutoId(ann.id) : null
+  const suggestion = useEditorStore(s =>
+    suggestionKey === null ? null : s.autoAnnotations.find(m => matchKey(m) === suggestionKey) ?? null)
   const group = target.enzymeGroup
   const circular = doc.sequence.topology === 'circular'
   // A protein has no other strand, no translation, no primers and no
@@ -360,6 +364,15 @@ export default function SequenceContextMenu({
         {isUserAnn && !readOnly && (
           <MenuItem icon={<Trash2 size={ICON} />} danger onSelect={act(() => onDeleteAnnotation(ann))}>
             Delete Annotation
+          </MenuItem>
+        )}
+        {suggestion && !readOnly && (
+          <MenuItem
+            icon={<EyeOff size={ICON} />}
+            onSelect={act(() => useEditorStore.getState().rejectSuggestions([{ name: suggestion.refName, type: suggestion.refType }]))}
+            title="Stop suggesting this element in this document; the Annotate panel can bring it back"
+          >
+            Don't Suggest {suggestion.refName} Here
           </MenuItem>
         )}
       </div>,

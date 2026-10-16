@@ -21,3 +21,7 @@ npm-debug.log*
 .idea/
 .DS_Store
 Thumbs.db
+
+# AI agent instructions and skills, kept local
+.claude/
+CLAUDE.md

@@ -67,7 +67,9 @@ short version.
 - [Feature Library and Auto-annotation](#feature-library-and-auto-annotation)
   - [The built-in library](#the-built-in-library)
   - [The scan](#the-scan)
+  - [The suggestions](#the-suggestions)
   - [Limits](#limits)
+  - [Accuracy](#accuracy)
 - [Find](#find)
   - [Nucleotide search](#nucleotide-search)
   - [Protein search](#protein-search)
@@ -1171,19 +1173,22 @@ the built-in one).
 
 ### The built-in library
 
-The library holds about 730 common plasmid parts, each with its GenBank
-source. They are stored 2-bit packed and decoded the first time a scan
-needs them. Protein-only parts (tags and fusion partners) are in the
-protein library (see Proteins, Auto-annotation).
+The library holds about 730 common plasmid parts, collected from GenBank
+records of the vectors and genes that carry them. The packed entries keep
+the sequence, not the record it came from; only the few versions named
+after one (`puroR (AAF01142)`, `colA (M37402)`) say which. They are
+stored 2-bit packed and decoded the first time a scan needs them.
+Protein-only parts (tags and fusion partners) are in the protein library
+(see Proteins, Auto-annotation).
 
 - **RNA entries** (the Spinach, Broccoli, Corn and Mango aptamers) are
-  stored in DNA letters. A plasmid encodes them with T, and the scan
-  compares letters literally, so an entry written with U would never be
-  found.
+  stored in DNA letters, as the plasmid that encodes them has them.
 - **Feature types.** A protein-coding entry is a CDS:
   every entry that is a whole open reading frame (a start, no internal
   stop, a stop at the end) is typed CDS, along with coding fragments and
-  domains (KRAB, KASH, an activation domain). The exceptions are elements
+  domains (KRAB, KASH, an activation domain). A CDS is always whole codons:
+  a fragment that ended on a partial codon (Dronpa, a lacZ alpha) is cut
+  back to the last whole one. The exceptions are elements
   that read through in one frame by chance: tandem response elements
   (3X NFAT, 5X ATF6, 8X TCF/LEF, 12X ZFHD1), packaging signals, introns and
   the SV40 enhancer. The type decides how the feature is drawn, whether the
@@ -1201,30 +1206,126 @@ protein library (see Proteins, Auto-annotation).
   a 576 bp reference. So each distinct version is kept under a qualified
   name (`tetR (pBR322)`, `lacZα (pUC19)`, `rb glob PA (short)`), with the
   shared name as its group. A version is dropped only when the main entry
-  already finds it (EGFP and EYFP that differ by a few bases, a URA3
-  promoter nine bases shorter). One more was dropped for a different
-  reason: a degenerate thyroid response element, written with N and R
-  codes that the literal comparison cannot match.
+  already finds it, as it does a copy a few bases different or a few bases
+  shorter (a URA3 promoter nine bases shorter). Related elements with
+  names of their own are not versions of one: EGFP, EYFP and ECFP differ
+  by a few codons, lac and lacUV5 by two bases, and each is its own entry
+  with its own group, so a plasmid carrying one matches the others too.
+  The panel offers them as one suggestion (see The suggestions). Three
+  more were dropped as consensus
+  motifs rather than elements: a thyroid response element written with N
+  and R codes, a STAT5 response element (TTCNNNGGA, six defined bases) and
+  a trypanosome Kozak consensus (NNNANNATGNC, five). The last two turn up
+  in random sequence every kilobase or so, so a hit would say nothing.
 
 ### The scan
 
 The document is indexed by k-mers (k = 6, 8 or 10 by document length,
 longer for longer documents, trading sensitivity for speed). For each
 reference, on both strands, every shared k-mer votes for the document
-position where the reference would start. A start with at least half the
-votes a match at the threshold would give is compared base by base over the
-reference's whole length. The comparison is ungapped percent identity. It
-stops as soon as the mismatches exceed what the threshold allows. The
-default threshold is 85%.
+position where the reference would start, and a start with enough votes
+is compared base by base over the reference's whole length. The
+comparison is ungapped percent identity, and it stops as soon as the
+mismatches exceed what the threshold allows. The default threshold is 85%.
+
+How many votes are enough follows from the threshold. A copy at identity p
+shares a k-mer with the reference only where k bases in a row all match,
+which happens with probability about p^k: 0.38 of the k-mers at 85% for
+k = 6, 0.27 for k = 8 and 0.20 for k = 10. A start is compared when it has
+a quarter of that expectation, so mismatches that fall unevenly still
+leave it enough. The bar used to be half of p (0.43), which a copy at 85%
+can never reach, so copies near the threshold were missed, and more of
+them the longer the document: the Cas9 of lentiCRISPR v2, 87.5%
+identical to the library's dCas9, was found in a 4.8 kb stretch of the
+plasmid and missed in the whole 14.9 kb of it.
+
+**Circular documents.** A circular document is searched with its first
+bases repeated after its last, as many as the longest reference needs, so
+an element across the origin is in one piece. Only hits that start in the
+document proper are kept, and one that runs past its end is reported as
+an origin-spanning span (end before start), the way such a feature is
+stored. pLannotate does the same.
+
+**Short references.** A reference under 20 bp is matched exactly, as a
+peptide under ten residues is: one mismatch in a 9 bp element leaves a
+9-mer that any few kilobases of DNA contain. And a reference is not
+searched at all where random sequence of the document's size would be
+expected to hold 0.05 copies of it or more, on two strands, at the
+threshold it is matched at. That expectation is the number of positions
+times the probability that each base matches (a quarter for A, C, G or T,
+more for a code), summed over the mismatches allowed. No reference over
+25 bp comes near it, so the rule only touches the short ones: a 9 bp
+translational enhancer is searched in a small plasmid and skipped in a
+genome.
+Before it, that one element gave most of the 1,400 suggestions on the
+E. coli K-12 genome; the genome now gets under a hundred.
+
+**Ambiguity codes.** A code in a reference accepts any base it stands for
+(R accepts A or G, N anything), so a response element written with N is
+found. A code in the document is an unknown base and matches only the
+same letter. k-mers that contain a code do not vote.
+
+**Copies with an end missing.** A copy that lacks the last tenth of the
+element still passes an 85% threshold over the whole reference, and
+reporting the whole reference would carry the feature on into whatever
+follows. So each end of a hit is trimmed back past the stretch where
+mismatches outnumber matches (scored +1 and -1), when that stretch is at
+least 10 bases. A trimmed hit says how much of the reference it covers,
+is named `AmpR (partial, 92%)`, and becomes a feature marked truncated.
+A whole copy with a mismatch near an end is not trimmed: ten bases of
+mostly mismatches is far past what an 85% copy shows by chance.
 
 Overlapping hits of one reference (overlap of at least 75% of the shorter)
 become one proposal: the most similar, and of equally similar ones the
-longest. Versions of one element are treated as one reference for this,
+longest. Each hit is checked against every hit already kept, best first,
+so a chain of overlapping hits cannot swallow two that do not overlap each
+other. Versions of one element are treated as one reference for this,
 by group and type. So a pUC19 plasmid gets one lacZ alpha, the version
 that fits it best, rather than one per vector the library knows. A short
 version inside a longer one gives way to the longer one when both match
 equally well. Distinct elements that overlap (a promoter inside a gene,
 a tag inside a fusion) are all proposed.
+
+A hit is not proposed when the document already has a feature on the same
+stretch, both covering at least the overlap threshold (75% by default) of
+each other, whatever that feature's type or strand. A GenBank file's
+"protein_bind" lac operator is the library's "lacO", and an unoriented
+polyA signal is its "SV40 polyA". Requiring the same type and strand made
+nearly half the suggestions on SnapGene's annotated vectors a feature the
+file already had. The ORF overlay keeps the stricter rule, since a promoter
+does not make an ORF a CDS.
+
+The scan runs again whenever the bases change, including edits that keep
+the length (a replace, a new origin), and not when only the features do.
+
+### The suggestions
+
+**One per locus.** Grouping in the scan merges versions of one element;
+relatives with names of their own are separate hits on the same bases, so
+a plasmid with EGFP matched two dozen fluorescent proteins on the one gene.
+What is offered is one suggestion per locus: hits of one feature type
+whose spans each cover at least 75% of the other are gathered, and the
+best of them (most similar, then longest) is the one drawn on the map and
+the sequence and listed in the panel. The others sit behind "N similar"
+in its row, and picking one of them puts it in the best one's place, on
+the canvas too. A locus becomes one feature: picking a second relative
+there replaces the first, and Add all adds the one each locus shows.
+Elements that merely overlap (a promoter inside a gene, a tag inside a
+fusion) do not cover each other both ways and stay separate loci, as do
+elements of different types on the same bases (the SV40 promoter and
+origin). On the vectors of the benchmark (see Accuracy) this removes about
+one suggestion in seven and loses none of the features found; on pEGFP-N1
+the panel goes from 34 suggestions to 12.
+
+**Picking and rejecting.** A box at the top of the list picks every
+suggestion shown, after the filter, and a group's box picks every copy of
+one element. Any element can be rejected, from its row, from Reject on what
+is picked, or from the canvas's right-click menu: it is not suggested in
+this document again. A rejection is stored with the document, by element
+name and type rather than position, so edits that move the bases and the
+re-scans they cause do not bring it back, and it is undone like any edit.
+The rejected elements are listed below the suggestions, each with a button
+that suggests it again.
 
 ### Limits
 
@@ -1233,10 +1334,75 @@ a tag inside a fusion) are all proposed.
   threshold. Keeping the versions of an element is the remedy for the
   common cases. Gapped alignment of every reference would cost a dynamic
   program per candidate.
-- **Whole references.** A truncated copy is found only if its missing part
-  is small enough for the remaining mismatches to stay within the threshold.
-- **Literal letters.** An ambiguity code in a reference matches only the same
-  code in the document.
+- **Truncation.** A copy is found only if its missing part is small enough
+  for the whole-reference identity to stay within the threshold. The
+  missing bases still match a quarter of the time by chance, so at 85% a
+  copy can lack 15 to 20% of the element. Beyond that it is not found at
+  all.
+- **Evenly spaced mismatches.** A copy whose mismatches are never more than
+  k bases apart has no k-mer in common with the reference, so nothing
+  votes for it. Mismatches at random places are found down to the
+  threshold at every document size, but evenly spaced ones are missed
+  below about 90% identity in documents of 10 to 100 kb (k = 8) and below
+  about 92% above that (k = 10). This is the q-gram lemma's bound
+  (Ukkonen 1992): no shared k-mer is guaranteed once there is more than
+  one mismatch per k bases. Real divergence is not that regular.
+- **Short elements in long documents.** A 9 to 12 bp element is not looked
+  for in a document long enough to hold it by chance, which for a 9-mer
+  is anything over about 6.5 kb.
+- **The best relative is not always the one carried.** A locus offers the
+  most similar element first, and identity cannot always tell close
+  relatives apart: ECFP scores 98.9% on pEGFP-N1's EGFP and EGFP itself
+  98.8%, since the plasmid's copy differs from the library's in a few
+  bases. The relatives stay one click away for that reason.
+
+### Accuracy
+
+Measured against curated annotation: 13 of SnapGene's free vector files
+and 12 vectors from GenBank (pBR322, pACYC184, pEGFP-N1, pGEX, pRS and
+pCAMBIA vectors, a BAC vector), with lambda, phiX174, an E. coli O157
+plasmid, the HIV-1 NL4-3 proviral clone, an Arabidopsis BAC and yeast
+chromosome I as DNA that is not a vector. The features were stripped, the scan run at the defaults,
+and a suggestion counted as finding a curated feature when each covers
+at least half of the other.
+
+- **Recall.** About two thirds of the curated features on the vectors are
+  found (primer sites are not counted, since the library holds none).
+  Nearly all the rest are things the library does not hold as elements:
+  protein binding sites, multiple cloning sites, fillers and stuffers,
+  Shine-Dalgarno sequences, and a few tags kept only in the protein library
+  (GST, FLAG, a 2A peptide). Of the features where an independent gapped
+  search places a library entry at 85% over the whole entry, 99% are
+  found. The two missed are the bom site of pBR322 and of pCAMBIA1300,
+  one base out of register (see Ungapped).
+- **Coordinates.** Two thirds of the features found have exactly the
+  curated ends, and the median offset is zero. The others differ where the
+  library's element is longer or shorter than the curator's version of
+  it, not by drift.
+- **Precision.** Measured strictly against the curated features, a little
+  over half of the suggestions are on one. Nearly all the others are real
+  elements the curator did not annotate: the CAP site, which curators
+  rarely mark, the lac promoter, ColE1 origin or amp promoter on files that
+  do not, and everything on the GenBank records that carry no features at
+  all. Counting those, about nine suggestions in ten are a correct element,
+  judged from length and identity rather than checked one by one. Most of
+  the last tenth lie inside a curated feature, under another name or as a
+  part of it. Offering one suggestion per locus took away the relatives
+  stacked on one stretch, about one suggestion in seven: counted as one
+  suggestion per curated feature, precision rose from under half to over
+  half. Strict precision barely moved, since a relative stacked on a
+  curated feature had counted as a hit.
+- **DNA that is not a vector.** About one suggestion per 20 kb, and nearly
+  all of them real: lambda's own elements, the replication genes of the
+  O157 plasmid, the HIV elements and the plasmid backbone of the NL4-3
+  proviral clone. Yeast chromosome I gets none. The only chance hits left
+  come from a 20 bp terminator matched with three mismatches, the
+  shortest reference that is allowed any. Before the rule under Short
+  references, chance hits from 9 to 12 bp elements were nearly all a
+  genome was offered.
+- **Speed.** A 200 kb sequence scans in about half a second and a 4.6 Mb
+  genome in about two and a half, in a worker, so the page stays usable
+  while it runs.
 
 ---
 
@@ -1635,10 +1801,19 @@ others), the TVMV site, near-infrared and blue reporters, and activation
 domains; and the coding entries of the DNA library translated with the
 standard code, so the same GFP or kanR is found on a plasmid and on its
 protein. Versions of one entry (the three TAP tags, the two E2 tags) form
-a group, as in the DNA library. Parts shorter than six residues are left
-out of that list (the four-residue C-tag, polyArg, polyAsp, the PKA
-site): a natural protein contains them by chance, so a hit would mean
-nothing. The scan is
+a group, as in the DNA library. A translated DNA entry that shares its
+name with a listed part is that part in another version (the bare Gal4
+activation domain beside the parts list's one with its NLS, a shorter
+protein A): it takes a qualified name, `Gal4 AD (113 aa)`, and joins the
+part's group. Parts shorter than six residues are left out of the parts
+list (the four-residue C-tag, polyArg, polyAsp, the PKA site): a natural
+protein contains them by chance, so a hit would mean nothing. The curated
+list keeps a few signals and protease sites that are that short because
+they are defined by their few residues (SKL, KDEL, HDEL, the Factor Xa and
+enterokinase sites); on random 500-residue proteins they give a chance hit
+about once in fifteen, mostly SKL. shBFP is held as UniProt A0A4V8H022
+has it, from its crystal structure, with X for the chromophore: no record
+gives the three residues it formed from. The scan is
 the DNA matcher on residues, with a 3-mer seed and one strand. Peptides
 shorter than ten residues are matched exactly, since a six-residue tag with
 one mismatch is not that tag; longer entries take the similarity threshold.
@@ -6488,6 +6663,15 @@ saved, so nothing is written without a word.
 - Barlow RE, Bartholomew DJ, Bremner JM, Brunk HD (1972) *Statistical
   Inference under Order Restrictions*. Wiley, London. (Pool adjacent
   violators, used to spread the names round the plasmid map.)
+
+- Ukkonen E (1992) "Approximate string-matching with q-grams and maximal
+  matches." *Theor Comput Sci* 92:191-211. (The q-gram lemma: how many
+  k-mers a copy with mismatches is guaranteed to share, and why the
+  auto-annotation seed bar follows p^k.)
+
+- McGuffie MJ, Barrick JE (2021) "pLannotate: engineered plasmid
+  annotation." *Nucleic Acids Res* 49:W516-W522. (Searching a circular
+  plasmid with its start repeated, and reporting partial hits.)
 
 ## License
 

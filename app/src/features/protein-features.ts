@@ -121,6 +121,7 @@ export function getProteinFeatures(): ProteinReference[] {
     })
   }
   const seen = new Set(out.map(r => r.sequence))
+  const byName = new Map(out.map(r => [r.name, r]))
   const code = geneticCode(1)
   for (const f of getCommonFeatures()) {
     if (f.type !== 'CDS') continue
@@ -130,7 +131,18 @@ export function getProteinFeatures(): ProteinReference[] {
     if (aa.length < EXACT_BELOW || aa.includes('*') || aa.includes('?')) continue
     if (seen.has(aa)) continue
     seen.add(aa)
-    out.push({ name: f.name, type: 'Region', sequence: aa, color: f.color, category: f.category })
+    const entry: ProteinReference = { name: f.name, type: 'Region', sequence: aa, color: f.color, category: f.category }
+    // The parts list may already hold this element in another version (Gal4
+    // AD with its NLS, a longer protein A): the two are versions of one, kept
+    // under a qualified name and proposed once, as in the DNA library.
+    const same = byName.get(f.name)
+    if (same) {
+      same.group ??= same.name
+      entry.group = same.group
+      entry.name = `${f.name} (${aa.length} aa)`
+    }
+    byName.set(entry.name, entry)
+    out.push(entry)
   }
   _cache = out
   return out

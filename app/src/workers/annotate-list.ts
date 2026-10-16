@@ -13,6 +13,7 @@ import {
   type AnnotateListRequest,
   type AnnotationMatch,
 } from '../features/annotate-scan'
+import { proposalName } from '../utils/auto-annotations'
 
 export type { ReferenceAnnotation, AnnotateListRequest, AnnotationMatch }
 
@@ -22,12 +23,14 @@ export function matchToAnnotationData(match: AnnotationMatch) {
   const id = `ref_${++_nextId}`
   return {
     id,
-    name: `${match.refName} (${match.similarity}%)`,
+    // The name the suggestion was drawn with, so a conversion does not rename it.
+    name: proposalName(match),
     type: match.refType,
     start: match.start,
     end: match.end,
     strand: match.strand as 1 | -1,
     color: match.color ?? '#20c997',
+    ...(match.coverage !== undefined ? { truncated: true } : {}),
   }
 }
 
@@ -37,6 +40,7 @@ export function annotateFromList(
   minSimilarity: number,
   bestMatchOnly: boolean,
   protein = false,
+  circular = false,
 ): Promise<AnnotationMatch[]> {
   const request: AnnotateListRequest = {
     documentBases,
@@ -44,6 +48,7 @@ export function annotateFromList(
     minSimilarity,
     bestMatchOnly,
     protein,
+    circular,
   }
 
   return new Promise((resolve, reject) => {

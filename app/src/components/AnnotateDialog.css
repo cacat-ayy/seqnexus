@@ -1,6 +1,6 @@
 /* --- Annotate Modal --- */
 .ann-modal {
-  width: 580px;
+  width: 660px;
   max-width: 90vw;
 }
 
@@ -224,13 +224,21 @@
   background: var(--bg-hover);
 }
 
-/* The header's checkbox picks the whole group; the rest of it collapses. */
+/* The header's checkbox picks the whole group; the rest of it collapses.
+   A button, so the keyboard reaches it. */
 .ann-result-head {
   display: flex;
   align-items: center;
   gap: var(--space-1-5);
   flex: 1;
   min-width: 0;
+  padding: 0;
+  border: none;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
 }
 
 .ann-result-chevron {
@@ -246,29 +254,176 @@
   height: 10px;
 }
 
-.ann-result-match {
+/* The count, with the box that picks every suggestion shown. */
+.ann-select-all {
   display: flex;
   align-items: center;
-  gap: var(--space-2);
-  padding: var(--space-1) var(--space-2-5) var(--space-1) 26px;
-  font-size: var(--text-sm);
-  cursor: pointer;
+  gap: var(--space-1-5);
 }
 
-.ann-result-match:hover {
+.ann-results-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1-5);
+}
+
+/* One locus: the element offered there, then its alternatives. A row in a
+   group leaves the name and type to the group's header, with its cells
+   empty so its columns line up with the rest. */
+.ann-locus-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1-5);
+  padding: var(--space-1) var(--space-2) var(--space-1) var(--space-2-5);
+  font-size: var(--text-sm);
+}
+
+.ann-locus-row:hover,
+.ann-alt:hover {
   background: var(--bg-hover);
 }
 
 /* Same signal the canvas gives a picked suggestion, so the two views of the
    same pick set agree. */
-.ann-result-match.picked {
+.ann-locus-row.picked,
+.ann-alt.picked {
   background: var(--accent-bg);
+}
+
+/* Fixed columns, so positions and similarities line up down the list
+   whatever the names. An alternative has no type, since a locus holds one. */
+.ann-locus-main {
+  display: grid;
+  grid-template-columns: auto 10px 96px 80px 100px 14px 44px minmax(0, 1fr);
+  align-items: center;
+  gap: var(--space-2);
+  flex: 1;
+  min-width: 0;
+  cursor: pointer;
+}
+
+.ann-alt .ann-locus-main {
+  grid-template-columns: auto 10px 96px 100px 44px minmax(0, 1fr);
+}
+
+.ann-locus-main > .ft-type-badge {
+  justify-self: start;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ann-locus-extra {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  min-width: 0;
+}
+
+.ann-locus-extra > * {
+  white-space: nowrap;
+}
+
+.ann-locus-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+
+.ann-locus-row.named .ann-locus-name {
+  font-weight: 600;
+}
+
+/* "N similar": the relatives offered on the same stretch. */
+.ann-alt-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-0-5);
+  flex-shrink: 0;
+  padding: 0 var(--space-1);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-pill);
+  background: none;
+  color: var(--text-secondary);
+  font-size: var(--text-2xs);
+  cursor: pointer;
+}
+
+.ann-alt-toggle:hover,
+.ann-alt-toggle[aria-expanded="true"] {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.ann-reject-btn,
+.ann-restore-btn {
+  display: inline-flex;
+  align-items: center;
+  flex-shrink: 0;
+  padding: var(--space-0-5);
+  border: none;
+  border-radius: var(--radius-sm);
+  background: none;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+
+.ann-reject-btn:hover {
+  color: var(--danger);
+  background: var(--danger-bg);
+}
+
+.ann-restore-btn:hover {
+  color: var(--accent);
+  background: var(--accent-bg);
+}
+
+.ann-alts {
+  list-style: none;
+  margin: 0;
+  padding: 0 0 var(--space-1);
+}
+
+.ann-alt {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1-5);
+  padding: var(--space-0-5) var(--space-2) var(--space-0-5) 44px;
+  font-size: var(--text-xs);
+}
+
+/* The elements rejected in this document, below the list. */
+.ann-rejected {
+  margin-top: var(--space-2);
+  font-size: var(--text-xs);
+  color: var(--text-secondary);
+}
+
+.ann-rejected summary {
+  cursor: pointer;
+}
+
+.ann-rejected ul {
+  list-style: none;
+  margin: var(--space-1) 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1) var(--space-2);
+}
+
+.ann-rejected li {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
 }
 
 .ann-match-pos {
   font-family: var(--font-mono);
   color: var(--text);
-  min-width: 100px;
+  white-space: nowrap;
 }
 
 .ann-match-strand {
@@ -278,8 +433,16 @@
 
 .ann-match-sim {
   color: var(--text-secondary);
-  min-width: 40px;
   text-align: right;
+}
+
+/* A copy with an end missing: how much of the reference is there. */
+.ann-match-partial {
+  font-size: var(--text-2xs);
+  padding: 0 var(--space-1);
+  border-radius: var(--radius-xs);
+  background: var(--warning-bg);
+  color: var(--warning);
 }
 
 .ann-add-btn {

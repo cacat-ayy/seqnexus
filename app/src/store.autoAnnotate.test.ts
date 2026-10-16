@@ -132,6 +132,77 @@ describe('auto-annotation store', () => {
   })
 })
 
+describe('auto-annotation loci and rejection', () => {
+  // Three fluorescent proteins on one gene, and a marker elsewhere.
+  const EGFP = match({ refName: 'EGFP', start: 0, end: 60, similarity: 98.8 })
+  const ECFP = match({ refName: 'ECFP', start: 0, end: 60, similarity: 98.9 })
+  const EYFP = match({ refName: 'EYFP', start: 0, end: 60, similarity: 98.6 })
+  const KAN = match({ refName: 'kanR', start: 70, end: 110 })
+
+  beforeEach(() => {
+    for (const tab of store().tabs) store().closeTab(tab.id)
+    store().openDocument('pLoci', 'ATGC'.repeat(30))
+    store().setAutoAnnotations([EGFP, ECFP, EYFP, KAN])
+  })
+
+  it('converts one feature per locus: the best, when nothing is picked', () => {
+    expect(store().applyAutoAnnotations()).toBe(2)
+    expect(store().doc.annotations.map(a => a.name).sort()).toEqual(['ECFP (98.9%)', 'kanR (98%)'])
+  })
+
+  it('keeps one pick per locus, so choosing another relative replaces the first', () => {
+    store().toggleAutoAnnotationPick(matchKey(ECFP))
+    store().toggleAutoAnnotationPick(matchKey(EGFP))
+    expect([...store().autoAnnotationPicks]).toEqual([matchKey(EGFP)])
+    // A pick elsewhere is left alone.
+    store().toggleAutoAnnotationPick(matchKey(KAN))
+    expect(new Set(store().autoAnnotationPicks)).toEqual(new Set([matchKey(EGFP), matchKey(KAN)]))
+  })
+
+  it('converts the relative the user picked, not the best', () => {
+    store().toggleAutoAnnotationPick(matchKey(EGFP))
+    expect(store().applyAutoAnnotations()).toBe(2)
+    expect(store().doc.annotations.map(a => a.name).sort()).toEqual(['EGFP (98.8%)', 'kanR (98%)'])
+  })
+
+  it('stores a rejection with the document, and offers the next relative', () => {
+    store().rejectSuggestions([{ name: 'ECFP', type: 'CDS' }])
+    expect(store().doc.metadata?.rejectedSuggestions).toEqual([{ name: 'ECFP', type: 'CDS' }])
+    expect(store().applyAutoAnnotations()).toBe(2)
+    expect(store().doc.annotations.map(a => a.name).sort()).toEqual(['EGFP (98.8%)', 'kanR (98%)'])
+  })
+
+  it('never converts a rejected element, even when asked by key', () => {
+    store().rejectSuggestions([{ name: 'kanR', type: 'CDS' }])
+    expect(store().applyAutoAnnotations([matchKey(KAN)])).toBe(0)
+  })
+
+  it('drops the picks of what it rejects', () => {
+    store().toggleAutoAnnotationPick(matchKey(KAN))
+    store().rejectSuggestions([{ name: 'kanR', type: 'CDS' }])
+    expect(store().autoAnnotationPicks.size).toBe(0)
+  })
+
+  it('undoes a rejection, and restores one or all', () => {
+    store().rejectSuggestions([{ name: 'kanR', type: 'CDS' }, { name: 'ECFP', type: 'CDS' }])
+    store().undo()
+    expect(store().doc.metadata?.rejectedSuggestions).toBeUndefined()
+    store().redo()
+    store().restoreSuggestions([{ name: 'kanR', type: 'CDS' }])
+    expect(store().doc.metadata?.rejectedSuggestions).toEqual([{ name: 'ECFP', type: 'CDS' }])
+    store().restoreSuggestions()
+    expect(store().doc.metadata?.rejectedSuggestions).toBeUndefined()
+  })
+
+  it('does not record a rejection twice', () => {
+    store().rejectSuggestions([{ name: 'kanR', type: 'CDS' }])
+    const undoDepth = store().tabs.find(t => t.id === store().activeTabId)!.undoStack.length
+    store().rejectSuggestions([{ name: 'kanR', type: 'CDS' }])
+    expect(store().doc.metadata?.rejectedSuggestions).toHaveLength(1)
+    expect(store().tabs.find(t => t.id === store().activeTabId)!.undoStack.length).toBe(undoDepth)
+  })
+})
+
 describe('feature sources', () => {
   beforeEach(() => {
     for (const tab of store().tabs) store().closeTab(tab.id)

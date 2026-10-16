@@ -10,7 +10,7 @@ import { useMemo } from 'react'
 import { useEditorStore } from '../store'
 import { Annotation } from '../models/Annotation'
 import type { DocumentState } from '../models/Document'
-import { proposalsFrom, proposalAnnotations, keyFromAutoId } from '../utils/auto-annotations'
+import { offeredSuggestions, proposalAnnotations, keyFromAutoId } from '../utils/auto-annotations'
 import { orfOverlayData, keyFromOrfId } from '../utils/orf-features'
 import { groupCutSites, enzymeGroupKey, type GroupedCutSite } from '../enzymes/grouping'
 import { usePrimerSites, useDesignPreview } from '../primers/usePrimerSites'
@@ -68,10 +68,15 @@ export function usePlasmidSceneData(doc: DocumentState) {
 
   const autoAnnotations = useMemo(() => {
     if (!showAutoAnnotations || allAutoAnnotations.length === 0) return []
+    // One per locus: the best of the relatives offered on a stretch, or the
+    // one the user picked among them.
     return proposalAnnotations(
-      proposalsFrom(allAutoAnnotations, doc.annotations, autoOverlapThreshold),
+      offeredSuggestions(
+        allAutoAnnotations, doc.annotations, autoOverlapThreshold, doc.sequence.length,
+        doc.metadata?.rejectedSuggestions, autoAnnotationPicks,
+      ).map(l => l.shown),
     )
-  }, [showAutoAnnotations, allAutoAnnotations, doc.annotations, autoOverlapThreshold])
+  }, [showAutoAnnotations, allAutoAnnotations, doc.annotations, doc.sequence.length, doc.metadata?.rejectedSuggestions, autoOverlapThreshold, autoAnnotationPicks])
 
   const allAnnotations = useMemo(() => {
     const extra = [...orfAnnotations, ...autoAnnotations]

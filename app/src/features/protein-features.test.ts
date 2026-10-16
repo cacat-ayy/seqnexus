@@ -52,4 +52,23 @@ describe('protein feature library', () => {
     expect(names).toContain('GST')
     expect(names.filter(n => n.startsWith('TAP'))).toEqual(['TAP'])
   })
+
+  it('keeps one name per entry, grouping a translated version of a listed part', () => {
+    const refs = getProteinFeatures()
+    const names = refs.map(r => `${r.name}\u0000${r.type}`)
+    expect(names.length).toBe(new Set(names).size)
+    // The parts list has Gal4 AD with its NLS; the DNA library's is the bare
+    // domain. Both are found in a fusion, and proposed once, as the longer.
+    const gal4 = refs.filter(r => r.name.startsWith('Gal4 AD'))
+    expect(gal4.length).toBe(2)
+    expect(new Set(gal4.map(r => r.group))).toEqual(new Set(['Gal4 AD']))
+    const full = gal4.find(r => r.name === 'Gal4 AD')!.sequence
+    const hits = scanForReferences({ documentBases: 'MSG' + full + 'GSG', references: gal4, minSimilarity: 85, bestMatchOnly: true, protein: true })
+    expect(hits.map(h => h.refName)).toEqual(['Gal4 AD'])
+  })
+
+  it('holds shBFP as UniProt does, without the tag of the crystallised construct', () => {
+    const sh = getProteinFeatures().find(r => r.name === 'shBFP')!
+    expect(sh.sequence.startsWith('MRIKMDMEGTVNGHYFKC')).toBe(true)
+  })
 })

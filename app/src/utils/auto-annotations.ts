@@ -10,6 +10,7 @@
  */
 
 import { Annotation } from '../models/Annotation'
+import type { RejectedSuggestion } from '../models/Document'
 import type { AnnotationMatch } from '../workers/annotate-list'
 
 /**
@@ -41,17 +42,47 @@ export function isAutoAnnotationId(id: string): boolean {
   return id.startsWith(AUTO_ID_PREFIX)
 }
 
-/** Length of an annotation, counting an origin-spanning one as wrapping. */
-function annLength(start: number, end: number): number {
-  return Math.max(0, end - start)
-}
-
 /** The shape both auto-annotation matches and ORFs reduce to for coverage. */
 export interface Interval {
   type: string
   strand: number
   start: number
   end: number
+}
+
+export interface CoverageOptions {
+  /**
+   * Length of the sequence, so a span across the origin (end before start)
+   * is measured as the two pieces it is. Without it such a span covers
+   * nothing and is covered by nothing.
+   */
+  seqLength?: number
+  /**
+   * Count only a feature of the same type on the same strand. The ORF
+   * overlay wants this: a promoter does not make an ORF a CDS. Suggestions do
+   * not: a curator's "protein_bind" lac operator, or an unoriented
+   * "polyA_signal", is already the element the library calls "lacO" or "SV40
+   * polyA", and proposing it again only duplicates it.
+   */
+  sameTypeAndStrand?: boolean
+}
+
+/** A span as the pieces it occupies: one, or two when it runs across the origin. */
+function pieces(start: number, end: number, seqLength?: number): [number, number][] {
+  if (end >= start) return [[start, end]]
+  return seqLength ? [[start, seqLength], [0, end]] : []
+}
+
+function spanLength(p: [number, number][]): number {
+  let n = 0
+  for (const [s, e] of p) n += e - s
+  return n
+}
+
+function sharedLength(a: [number, number][], b: [number, number][]): number {
+  let n = 0
+  for (const [s1, e1] of a) for (const [s2, e2] of b) n += Math.max(0, Math.min(e1, e2) - Math.max(s1, s2))
+  return n
 }
 
 /**
@@ -71,31 +102,39 @@ export function isCoveredByAnnotation(
   candidate: Interval,
   annotations: readonly Interval[],
   overlapThreshold: number,
+  { seqLength, sameTypeAndStrand = true }: CoverageOptions = {},
 ): boolean {
-  const cLen = annLength(candidate.start, candidate.end)
+  const cPieces = pieces(candidate.start, candidate.end, seqLength)
+  const cLen = spanLength(cPieces)
+  if (cLen === 0) return false
   for (const ann of annotations) {
-    if (ann.type !== candidate.type) continue
-    if (ann.strand !== candidate.strand) continue
-    const overlapLen = Math.max(0, Math.min(candidate.end, ann.end) - Math.max(candidate.start, ann.start))
+    if (sameTypeAndStrand && (ann.type !== candidate.type || ann.strand !== candidate.strand)) continue
+    const aPieces = pieces(ann.start, ann.end, seqLength)
+    const overlapLen = sharedLength(cPieces, aPieces)
     if (overlapLen === 0) continue
-    const annLen = annLength(ann.start, ann.end)
-    const candidateOverlap = cLen > 0 ? (overlapLen / cLen) * 100 : 0
+    const annLen = spanLength(aPieces)
+    const candidateOverlap = (overlapLen / cLen) * 100
     const annOverlap = annLen > 0 ? (overlapLen / annLen) * 100 : 0
     if (candidateOverlap >= overlapThreshold && annOverlap >= overlapThreshold) return true
   }
   return false
 }
 
-/** Is this match already covered by a feature the document has? */
+/**
+ * Is this match already covered by a feature the document has? Any feature
+ * on the same stretch counts, whatever its type or strand.
+ */
 export function isAlreadyAnnotated(
   m: AnnotationMatch,
   annotations: readonly Interval[],
   overlapThreshold: number,
+  seqLength?: number,
 ): boolean {
   return isCoveredByAnnotation(
     { type: m.refType, strand: m.strand, start: m.start, end: m.end },
     annotations,
     overlapThreshold,
+    { seqLength, sameTypeAndStrand: false },
   )
 }
 
@@ -104,15 +143,105 @@ export function proposalsFrom(
   matches: readonly AnnotationMatch[],
   annotations: readonly { type: string; strand: number; start: number; end: number }[],
   overlapThreshold: number,
+  seqLength?: number,
 ): AnnotationMatch[] {
   if (matches.length === 0) return []
   if (annotations.length === 0) return [...matches]
-  return matches.filter(m => !isAlreadyAnnotated(m, annotations, overlapThreshold))
+  return matches.filter(m => !isAlreadyAnnotated(m, annotations, overlapThreshold, seqLength))
 }
 
-/** Display name for a proposal, e.g. `AmpR (98%)`. */
+/** Is this match of an element the user has said not to suggest here? */
+export function isRejected(m: AnnotationMatch, rejected: readonly RejectedSuggestion[] | undefined): boolean {
+  return !!rejected && rejected.some(r => r.name === m.refName && r.type === m.refType)
+}
+
+/**
+ * How much of each other two suggestions must cover to be one locus: the
+ * same stretch, proposed as several related elements (EGFP, ECFP, EYFP on
+ * one gene; lac and lacUV5 on one promoter).
+ */
+export const LOCUS_OVERLAP = 75
+
+/**
+ * One place in the document and every element suggested for it.
+ *
+ * The scan groups versions of one element (the lacZ alphas of a dozen
+ * vectors) and keeps the best; relatives with names of their own (EGFP and
+ * ECFP, lac and lacUV5) are separate elements to it, so a plasmid with EGFP
+ * got two dozen fluorescent proteins stacked on one gene. A locus offers
+ * one, the best, with the rest behind it to choose from instead.
+ */
+export interface SuggestionLocus {
+  /** What is offered here: the member the user picked, or else the best. */
+  shown: AnnotationMatch
+  /** Every suggestion at this locus, best first. */
+  members: AnnotationMatch[]
+}
+
+function spanOf(m: AnnotationMatch, seqLength?: number): [number, number][] {
+  return pieces(m.start, m.end, seqLength)
+}
+
+/**
+ * Suggestions gathered into loci: the same feature type on stretches that
+ * each cover LOCUS_OVERLAP percent of the other. Distinct elements that
+ * overlap (a promoter inside a gene, a tag inside a fusion) do not cover
+ * each other both ways and stay apart. Best first means most similar, then
+ * longest, then by name, so the same scan always gives the same loci.
+ */
+export function suggestionLoci(
+  proposals: readonly AnnotationMatch[],
+  seqLength?: number,
+  picks?: ReadonlySet<string>,
+): SuggestionLocus[] {
+  const len = (m: AnnotationMatch) => spanLength(spanOf(m, seqLength))
+  const order = [...proposals].sort((a, b) =>
+    b.similarity - a.similarity || len(b) - len(a) || a.refName.localeCompare(b.refName) || a.start - b.start)
+  const loci: AnnotationMatch[][] = []
+  for (const m of order) {
+    const mp = spanOf(m, seqLength)
+    const mLen = spanLength(mp)
+    const home = loci.find(([lead]) => {
+      if (lead.refType !== m.refType) return false
+      const lp = spanOf(lead, seqLength)
+      const shared = sharedLength(mp, lp)
+      return mLen > 0 && shared / mLen * 100 >= LOCUS_OVERLAP && shared / spanLength(lp) * 100 >= LOCUS_OVERLAP
+    })
+    if (home) home.push(m)
+    else loci.push([m])
+  }
+  return loci
+    .map(members => ({ members, shown: members.find(x => picks?.has(matchKey(x))) ?? members[0] }))
+    .sort((a, b) => a.shown.start - b.shown.start || a.shown.refName.localeCompare(b.shown.refName))
+}
+
+/**
+ * What auto-annotation offers: the matches the document does not already
+ * cover, less the elements the user rejected, one locus per stretch. The
+ * dialog, the canvas, the map and the conversion all start from this, so
+ * they agree on what "all" is.
+ */
+export function offeredSuggestions(
+  matches: readonly AnnotationMatch[],
+  annotations: readonly Interval[],
+  overlapThreshold: number,
+  seqLength: number | undefined,
+  rejected: readonly RejectedSuggestion[] | undefined,
+  picks?: ReadonlySet<string>,
+): SuggestionLocus[] {
+  const open = proposalsFrom(matches, annotations, overlapThreshold, seqLength)
+    .filter(m => !isRejected(m, rejected))
+  return suggestionLoci(open, seqLength, picks)
+}
+
+/**
+ * Display name for a proposal, e.g. `AmpR (98%)`, or `AmpR (partial, 91%)`
+ * for a copy with an end missing. It becomes the feature's name.
+ */
 export function proposalName(m: AnnotationMatch): string {
-  return `${m.refName} (${m.similarity}%)`
+  return m.coverage !== undefined
+    ? `${m.refName} (partial, ${m.similarity}%)`
+    : `${m.refName} (${m.similarity}%)`
 }
 
 /**
@@ -133,5 +262,8 @@ export function proposalAnnotations(proposals: readonly AnnotationMatch[]): Anno
     // Undefined lets Annotation fall back to its per-type colour, which is how
     // an imported database with no colour column still looks native.
     color: m.color,
+    // A copy with an end missing is drawn the way a feature cut short at a
+    // cloning junction is.
+    truncated: m.coverage !== undefined,
   }))
 }

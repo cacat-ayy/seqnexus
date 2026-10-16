@@ -59,7 +59,7 @@ import { useMotifScan } from './hooks/useMotifScan'
 import { useOrfScan } from './hooks/useOrfScan'
 import { useGuideScan } from './hooks/useGuideScan'
 import { motifKey, convertibleMotifs } from './utils/motif-features'
-import { proposalsFrom, matchKey } from './utils/auto-annotations'
+import { offeredSuggestions, matchKey } from './utils/auto-annotations'
 import { convertibleOrfs, orfKey } from './utils/orf-features'
 import ConvertActions from './components/ConvertActions'
 import Toaster from './components/Toaster'
@@ -507,17 +507,24 @@ export default function App() {
    * the scan belongs here rather than inside either of them.
    */
   useAutoAnnotateScan(annotateModalOpen)
-  /** Matches worth offering: the ones the document does not already cover. */
+  /**
+   * What is on offer, one per locus: the matches the document does not
+   * already cover and the user has not rejected, relatives on one stretch
+   * counted once.
+   */
   const autoProposals = useMemo(
     () => (showAutoAnnotations || annotateModalOpen)
-      ? proposalsFrom(autoAnnotations, doc.annotations, autoOverlapThreshold)
+      ? offeredSuggestions(
+        autoAnnotations, doc.annotations, autoOverlapThreshold, doc.sequence.length,
+        doc.metadata?.rejectedSuggestions, autoAnnotationPicks,
+      )
       : [],
-    [showAutoAnnotations, annotateModalOpen, autoAnnotations, doc.annotations, autoOverlapThreshold],
+    [showAutoAnnotations, annotateModalOpen, autoAnnotations, doc.annotations, doc.sequence.length, doc.metadata?.rejectedSuggestions, autoOverlapThreshold, autoAnnotationPicks],
   )
   /** Picks still on offer: a pick whose proposal is gone must not be counted. */
   const pickedProposalCount = useMemo(() => {
     if (autoAnnotationPicks.size === 0) return 0
-    return autoProposals.reduce((n, m) => n + (autoAnnotationPicks.has(matchKey(m)) ? 1 : 0), 0)
+    return autoProposals.reduce((n, l) => n + (autoAnnotationPicks.has(matchKey(l.shown)) ? 1 : 0), 0)
   }, [autoProposals, autoAnnotationPicks])
 
   /**

@@ -91,6 +91,18 @@ export interface SequenceMetadata {
    * `source 1..<length>` on GenBank export. See io/source-feature.ts.
    */
   source?: Record<string, string[]>[]
+  /**
+   * Library elements the user has said not to suggest in this document, by
+   * reference name and type. Kept by name rather than position so a rejection
+   * survives edits that move the bases, and a re-scan does not bring it back.
+   */
+  rejectedSuggestions?: RejectedSuggestion[]
+}
+
+/** A library element auto-annotation is not to suggest in a document. */
+export interface RejectedSuggestion {
+  name: string
+  type: string
 }
 
 export interface DocumentState {

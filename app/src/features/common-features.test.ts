@@ -3,6 +3,7 @@ import { getCommonFeatures } from './common-features'
 import { getScanReferences, builtinSource } from './feature-sources'
 import { scanForReferences } from './annotate-scan'
 import { translateWith, geneticCode } from '../codon/genetic-codes'
+import { IUPAC } from '../models/iupac'
 
 describe('built-in feature library', () => {
   const lib = getCommonFeatures()
@@ -54,5 +55,22 @@ describe('built-in feature library', () => {
     expect(withLong.map(m => m.refName)).toEqual(['rb glob PA'])
     const withShort = scanForReferences({ documentBases: flank + short.sequence + flank, references: refs, minSimilarity: 85, bestMatchOnly: true })
     expect(withShort.map(m => m.refName)).toEqual(['rb glob PA (short)'])
+  })
+
+  it('types as CDS only whole codons: a partial codon at the end is not coding', () => {
+    const ragged = lib.filter(f => f.type === 'CDS' && f.sequence.length % 3 !== 0).map(f => f.name)
+    expect(ragged).toEqual([])
+  })
+
+  it('has no entry that cannot match its own sequence at the default threshold', () => {
+    // An ambiguity code in a reference accepts any base it stands for, so
+    // even the degenerate response elements are found.
+    const flank = 'G'.repeat(50)
+    const missed = lib.filter(f => {
+      const ref = [{ name: f.name, type: f.type, sequence: f.sequence }]
+      const doc = flank + f.sequence.replace(/[^ACGT]/g, c => IUPAC[c][0]) + flank
+      return scanForReferences({ documentBases: doc, references: ref, minSimilarity: 85, bestMatchOnly: true }).length === 0
+    }).map(f => f.name)
+    expect(missed).toEqual([])
   })
 })

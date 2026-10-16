@@ -11,23 +11,28 @@ import './AnnotateDialog.css'
  * the canvas feed the same set, and one "Add" converts them in a single
  * undoable step. A row that adds a feature on the spot would be a second,
  * quieter way to edit the document, and the two would drift apart.
+ *
+ * The list has one row per locus (see suggestionLoci): relatives found on
+ * one stretch are offered once, with the rest behind "N similar". A box in
+ * the header picks everything shown, and any element can be rejected, which
+ * the document remembers.
  */
 
 import { useState, useMemo, useCallback, useRef } from 'react'
-import { X, Search, Loader2, Upload, Trash2, Database } from 'lucide-react'
+import { X, Search, Loader2, Upload, Trash2, Database, EyeOff } from 'lucide-react'
 import { useEditorStore } from '../store'
 import { FEATURE_CATEGORIES } from '../features/common-features'
 import { getScanReferences, sourceIdForMatch, customCategories } from '../features/feature-sources'
 import { PROTEIN_FEATURE_CATEGORIES, getProteinFeatures } from '../features/protein-features'
 import { parseFeatureSource, describeImport, FeatureSourceError } from '../features/feature-source-import'
-import { matchKey, proposalsFrom } from '../utils/auto-annotations'
+import { matchKey, offeredSuggestions, type SuggestionLocus } from '../utils/auto-annotations'
 import type { AnnotationMatch } from '../workers/annotate-list'
 
 import { useExitAnimation } from '../hooks/useExitAnimation'
 import { useFocusTrap } from '../hooks/useFocusTrap'
 import { useBackdropDismiss } from '../hooks/useBackdropDismiss'
-import Chevron from './Chevron'
 import SkeletonRows from './SkeletonRows'
+import { SuggestionList, RejectedList, type SuggestionGroup } from './AnnotateSuggestions'
 
 interface Props {
   open: boolean
@@ -36,8 +41,15 @@ interface Props {
 
 const IMPORT_ACCEPT = '.fasta,.fa,.fas,.fna,.txt,.csv,.tsv,.gb,.gbk,.genbank'
 
+function toggleIn(set: ReadonlySet<string>, key: string): Set<string> {
+  const next = new Set(set)
+  if (next.has(key)) next.delete(key); else next.add(key)
+  return next
+}
+
 export default function AnnotateDialog({ open, onClose }: Props) {
   const annotations = useEditorStore(s => s.doc.annotations)
+  const seqLength = useEditorStore(s => s.doc.sequence.length)
   const matches = useEditorStore(s => s.autoAnnotations)
   const scanning = useEditorStore(s => s.autoAnnotateScanning)
   const minSimilarity = useEditorStore(s => s.autoAnnotateMinSimilarity)
@@ -47,6 +59,10 @@ export default function AnnotateDialog({ open, onClose }: Props) {
   const togglePick = useEditorStore(s => s.toggleAutoAnnotationPick)
   const setPicks = useEditorStore(s => s.setAutoAnnotationPicks)
   const applyAutoAnnotations = useEditorStore(s => s.applyAutoAnnotations)
+  const rejected = useEditorStore(s => s.doc.metadata?.rejectedSuggestions)
+  const rejectSuggestions = useEditorStore(s => s.rejectSuggestions)
+  const restoreSuggestions = useEditorStore(s => s.restoreSuggestions)
+  const readOnly = useEditorStore(s => s.readOnly)
 
   const featureSources = useEditorStore(s => s.featureSources)
   const addFeatureSource = useEditorStore(s => s.addFeatureSource)
@@ -56,13 +72,17 @@ export default function AnnotateDialog({ open, onClose }: Props) {
   const [search, setSearch] = useState('')
   const [categoryFilter, setCategoryFilter] = useState('All')
   const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set())
+  const [expandedLoci, setExpandedLoci] = useState<Set<string>>(new Set())
   const [sourceMessage, setSourceMessage] = useState<{ text: string; error: boolean } | null>(null)
   const importInputRef = useRef<HTMLInputElement>(null)
 
-  /** Suggestions: matches the document does not already cover. */
-  const proposals = useMemo(
-    () => proposalsFrom(matches, annotations, overlapThreshold),
-    [matches, annotations, overlapThreshold],
+  /**
+   * Suggestions, one per locus: matches the document does not already cover
+   * and the user has not rejected, relatives on one stretch together.
+   */
+  const loci = useMemo(
+    () => offeredSuggestions(matches, annotations, overlapThreshold, seqLength, rejected, picks),
+    [matches, annotations, overlapThreshold, seqLength, rejected, picks],
   )
 
   /** Which database each hit came from, for the source badge. */
@@ -88,10 +108,15 @@ export default function AnnotateDialog({ open, onClose }: Props) {
     [featureSources, protein],
   )
 
+  const query = search.trim().toLowerCase()
+  /**
+   * The loci the filters leave. A locus stays when any element suggested
+   * there fits, so searching "EGFP" finds the gene where ECFP happens to
+   * score a tenth of a percent higher.
+   */
   const filtered = useMemo(() => {
-    let list = proposals
+    const catByName = new Map<string, string>()
     if (categoryFilter !== 'All') {
-      const catByName = new Map<string, string>()
       if (protein) {
         for (const f of getProteinFeatures()) catByName.set(`${f.name}\u0000${f.type}`, f.category)
       } else {
@@ -99,50 +124,61 @@ export default function AnnotateDialog({ open, onClose }: Props) {
           for (const f of s.features) catByName.set(`${f.name}\u0000${f.type}`, f.category)
         }
       }
-      list = list.filter(m => catByName.get(`${m.refName}\u0000${m.refType}`) === categoryFilter)
     }
-    if (search.trim()) {
-      const q = search.trim().toLowerCase()
-      list = list.filter(m =>
-        m.refName.toLowerCase().includes(q) ||
-        m.refType.toLowerCase().includes(q)
-      )
-    }
-    return list
-  }, [proposals, search, categoryFilter, featureSources, protein])
+    const fits = (m: AnnotationMatch) =>
+      (categoryFilter === 'All' || catByName.get(`${m.refName}\u0000${m.refType}`) === categoryFilter)
+      && (!query || m.refName.toLowerCase().includes(query) || m.refType.toLowerCase().includes(query))
+    return loci.filter(l => l.members.some(fits))
+  }, [loci, query, categoryFilter, featureSources, protein])
 
-  const grouped = useMemo(() => {
-    const map = new Map<string, AnnotationMatch[]>()
-    for (const m of filtered) {
-      const list = map.get(m.refName) || []
-      list.push(m)
-      map.set(m.refName, list)
+  /**
+   * Loci by the element they offer, in position order: copies of one element
+   * together. An element is a name and a type, as in the library: the SV40
+   * promoter and the SV40 origin are two.
+   */
+  const groups = useMemo((): SuggestionGroup[] => {
+    const map = new Map<string, SuggestionGroup>()
+    for (const l of filtered) {
+      const id = `${l.shown.refName}\u0000${l.shown.refType}`
+      const group = map.get(id)
+      if (group) group.loci.push(l)
+      else map.set(id, { id, name: l.shown.refName, loci: [l] })
     }
-    return map
+    return [...map.values()]
   }, [filtered])
 
-  const pickedInView = useMemo(
-    () => filtered.filter(m => picks.has(matchKey(m))).length,
-    [filtered, picks],
-  )
+  /**
+   * Loci whose alternatives are open: the ones the user opened, and any the
+   * search found only among the alternatives, so the match is in sight.
+   */
+  const openLoci = useMemo(() => {
+    if (!query) return expandedLoci
+    const open = new Set(expandedLoci)
+    for (const l of filtered) {
+      if (!l.shown.refName.toLowerCase().includes(query)) open.add(matchKey(l.members[0]))
+    }
+    return open
+  }, [expandedLoci, filtered, query])
 
-  const handleToggleGroup = useCallback((name: string) => {
-    setCollapsedGroups(prev => {
-      const next = new Set(prev)
-      if (next.has(name)) next.delete(name); else next.add(name)
-      return next
-    })
-  }, [])
+  const shownKeys = useMemo(() => filtered.map(l => matchKey(l.shown)), [filtered])
+  const pickedInView = useMemo(() => shownKeys.filter(k => picks.has(k)).length, [shownKeys, picks])
+  const allPicked = shownKeys.length > 0 && pickedInView === shownKeys.length
 
-  /** Pick or unpick every hit of one feature, the "all four copies" case. */
-  const handleToggleGroupPicks = useCallback((list: AnnotationMatch[]) => {
-    const keys = list.map(matchKey)
+  const handleToggleGroup = useCallback((name: string) => setCollapsedGroups(prev => toggleIn(prev, name)), [])
+  const handleToggleExpand = useCallback((id: string) => setExpandedLoci(prev => toggleIn(prev, id)), [])
+
+  /**
+   * Pick or unpick what these loci offer, all at once: the select-all box,
+   * and a group's box for every copy of one element. Picking a locus drops
+   * any other pick there, since a locus becomes one feature.
+   */
+  const pickLoci = useCallback((list: readonly SuggestionLocus[]) => {
     const current = useEditorStore.getState().autoAnnotationPicks
-    const allPicked = keys.every(k => current.has(k))
+    const every = list.every(l => current.has(matchKey(l.shown)))
     const next = new Set(current)
-    for (const k of keys) {
-      if (allPicked) next.delete(k)
-      else next.add(k)
+    for (const l of list) {
+      for (const m of l.members) next.delete(matchKey(m))
+      if (!every) next.add(matchKey(l.shown))
     }
     setPicks(next)
   }, [setPicks])
@@ -151,9 +187,22 @@ export default function AnnotateDialog({ open, onClose }: Props) {
     if (pickedInView > 0) {
       applyAutoAnnotations(useEditorStore.getState().autoAnnotationPicks)
     } else {
-      applyAutoAnnotations(filtered.map(matchKey))
+      applyAutoAnnotations(shownKeys)
     }
-  }, [pickedInView, filtered, applyAutoAnnotations])
+  }, [pickedInView, shownKeys, applyAutoAnnotations])
+
+  /** Reject what is picked in view: the triage step for a list that is mostly wrong. */
+  const handleRejectPicked = useCallback(() => {
+    const entries = filtered
+      .filter(l => picks.has(matchKey(l.shown)))
+      .map(l => ({ name: l.shown.refName, type: l.shown.refType }))
+    rejectSuggestions(entries)
+  }, [filtered, picks, rejectSuggestions])
+
+  const sourceOf = useCallback((m: AnnotationMatch) => {
+    const id = sourceIdForMatch(m, originBySource)
+    return id && customSourceIds.has(id) ? sourceNameById.get(id) ?? null : null
+  }, [originBySource, customSourceIds, sourceNameById])
 
   const handleImportFile = useCallback((file: File | undefined) => {
     if (!file) return
@@ -322,18 +371,40 @@ export default function AnnotateDialog({ open, onClose }: Props) {
                 {scanning ? (
                   <span className="ann-scanning"><Loader2 size={14} className="spinner" /> Scanning…</span>
                 ) : (
-                  <span>
-                    {filtered.length} suggestion{filtered.length !== 1 ? 's' : ''}
-                    {pickedInView > 0 && ` · ${pickedInView} picked`}
-                  </span>
+                  <label className="ann-select-all">
+                    {filtered.length > 0 && (
+                      <input
+                        type="checkbox"
+                        checked={allPicked}
+                        ref={el => { if (el) el.indeterminate = pickedInView > 0 && !allPicked }}
+                        onChange={() => pickLoci(filtered)}
+                        aria-label={allPicked ? 'Unpick every suggestion shown' : 'Pick every suggestion shown'}
+                      />
+                    )}
+                    <span>
+                      {filtered.length} suggestion{filtered.length !== 1 ? 's' : ''}
+                      {pickedInView > 0 && ` · ${pickedInView} picked`}
+                    </span>
+                  </label>
                 )}
                 {filtered.length > 0 && !scanning && (
-                  <button
-                    className="btn btn-primary btn-sm ann-add-all-btn"
-                    onClick={handleAdd}
-                  >
-                    {pickedInView > 0 ? `Add picked (${pickedInView})` : `Add all (${filtered.length})`}
-                  </button>
+                  <span className="ann-results-actions">
+                    {pickedInView > 0 && !readOnly && (
+                      <button
+                        className="btn btn-sm"
+                        onClick={handleRejectPicked}
+                        title="Stop suggesting the picked elements in this document"
+                      >
+                        <EyeOff size={12} /> Reject ({pickedInView})
+                      </button>
+                    )}
+                    <button
+                      className="btn btn-primary btn-sm ann-add-all-btn"
+                      onClick={handleAdd}
+                    >
+                      {pickedInView > 0 ? `Add picked (${pickedInView})` : `Add all (${filtered.length})`}
+                    </button>
+                  </span>
                 )}
               </div>
 
@@ -341,70 +412,24 @@ export default function AnnotateDialog({ open, onClose }: Props) {
                 {scanning && filtered.length === 0 && <SkeletonRows label="Scanning for features" />}
                 {!scanning && filtered.length === 0 && (
                   <div className="re-no-results">
-                    {matches.length > 0
-                      ? 'Every match is already annotated'
-                      : `No features found at ${minSimilarity}% similarity`}
+                    {loci.length > 0
+                      ? 'No suggestion fits the filter'
+                      : matches.length > 0
+                        ? (rejected?.length ? 'Every match is annotated or rejected' : 'Every match is already annotated')
+                        : `No features found at ${minSimilarity}% similarity`}
                   </div>
                 )}
-                {Array.from(grouped.entries()).map(([name, matchList]) => {
-                  const isCollapsed = collapsedGroups.has(name)
-                  const groupKeys = matchList.map(matchKey)
-                  const allPicked = groupKeys.every(k => picks.has(k))
-                  const somePicked = !allPicked && groupKeys.some(k => picks.has(k))
-                  const sourceId = sourceIdForMatch(matchList[0], originBySource)
-                  const customSource = sourceId && customSourceIds.has(sourceId)
-                    ? sourceNameById.get(sourceId)
-                    : null
-                  return (
-                  <div key={name} className="ann-result-group">
-                    <div className="ann-result-name">
-                      <input
-                        type="checkbox"
-                        checked={allPicked}
-                        ref={el => { if (el) el.indeterminate = somePicked }}
-                        onChange={() => handleToggleGroupPicks(matchList)}
-                        aria-label={`Pick all ${matchList.length} hits of ${name}`}
-                        onClick={e => e.stopPropagation()}
-                      />
-                      <span
-                        className="ann-result-head"
-                        style={{ cursor: 'pointer' }}
-                        onClick={() => handleToggleGroup(name)}
-                      >
-                        <span className="ann-result-chevron">
-                          <Chevron open={!isCollapsed} size={14} />
-                        </span>
-                        <span className="ann-swatch ann-match-swatch" style={{ backgroundColor: matchList[0].color }} />
-                        <span>{name}</span>
-                        <span className="ft-type-badge">{matchList[0].refType}</span>
-                        {customSource && <span className="ann-source-badge">{customSource}</span>}
-                        <span className="re-enzyme-count">{matchList.length}×</span>
-                      </span>
-                    </div>
-                    {!isCollapsed && matchList.map(m => {
-                      const key = matchKey(m)
-                      const picked = picks.has(key)
-                      return (
-                        <label key={key} className={`ann-result-match ${picked ? 'picked' : ''}`}>
-                          <input
-                            type="checkbox"
-                            checked={picked}
-                            onChange={() => togglePick(key)}
-                          />
-                          <span className="ann-match-pos">
-                            {m.start + 1}..{m.end}
-                          </span>
-                          <span className="ann-match-strand">
-                            {m.strand === 1 ? '→' : '←'}
-                          </span>
-                          <span className="ann-match-sim">{m.similarity}%</span>
-                        </label>
-                      )
-                    })}
-                  </div>
-                  )
-                })}
+                <SuggestionList
+                  groups={groups}
+                  collapsed={collapsedGroups}
+                  onToggleCollapse={handleToggleGroup}
+                  onToggleGroupPicks={pickLoci}
+                  expanded={openLoci}
+                  onToggleExpand={handleToggleExpand}
+                  actions={{ picks, readOnly, onTogglePick: togglePick, onReject: rejectSuggestions, sourceOf }}
+                />
               </div>
+              <RejectedList rejected={rejected ?? []} readOnly={readOnly} onRestore={restoreSuggestions} />
             </div>
         </div>
       </div>
