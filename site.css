@@ -989,6 +989,9 @@ h1 em { font-style: normal; color: var(--accent); }
 }
 
 .feat .shot { margin: 0; }
+.feat .shot + .shot { margin-top: 16px; }
+.shot-pair { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 16px; }
+.shot-pair .shot + .shot { margin-top: 0; }
 
 .detail {
   margin: 36px 0 0;
@@ -1029,6 +1032,7 @@ h1 em { font-style: normal; color: var(--accent); }
   .local-grid { gap: 40px; }
   .free-cols { grid-template-columns: 1fr; gap: 24px; }
   .detail { grid-template-columns: 1fr; }
+  .shot-pair { grid-template-columns: 1fr; }
   .feat-head { gap: 16px; }
   .fmt-table th { width: auto; display: block; padding-bottom: 8px; border-bottom: 0; }
   .fmt-table td { display: block; padding-top: 0; }
