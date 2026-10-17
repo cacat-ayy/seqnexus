@@ -10,7 +10,7 @@
  */
 
 import type { RestrictionEnzyme } from '../enzymes/db'
-import { findCutSites, cuttingSites, type CutSite } from '../enzymes/finder'
+import { findCutSites, cuttingSites, splitCuts, type CutSite } from '../enzymes/finder'
 
 /**
  * A methylation motif and which of its bases carry the methyl group, counted
@@ -54,7 +54,10 @@ function motifOverlapsSite(
   return false
 }
 
-/** How dam/dcm methylation affects one site: blocked, impaired, or not at all. */
+/**
+ * How dam/dcm methylation affects one site: blocked, impaired, or not at all.
+ * `unmethylated` marks a block for want of a methylation the enzyme needs.
+ */
 function siteMethylationEffect(
   site: CutSite,
   bases: string,
@@ -62,12 +65,15 @@ function siteMethylationEffect(
   enzyme: RestrictionEnzyme,
   dam: boolean,
   dcm: boolean,
-): { effect: 'blocked' | 'impaired'; by: 'dam' | 'dcm' } | null {
+): { effect: 'blocked' | 'impaired'; by: 'dam' | 'dcm'; unmethylated?: true } | null {
   const len = enzyme.recognition.length
-  const damHit = dam && enzyme.dam !== undefined && enzyme.dam !== 'insensitive' && enzyme.dam !== 'unknown'
-    && motifOverlapsSite(bases, topology, site.position, len, DAM)
-  const dcmHit = dcm && enzyme.dcm !== undefined && enzyme.dcm !== 'insensitive' && enzyme.dcm !== 'unknown'
-    && motifOverlapsSite(bases, topology, site.position, len, DCM)
+  const reaches = (motif: MethylMotif) => motifOverlapsSite(bases, topology, site.position, len, motif)
+  // DpnI and the like cut only where the methylation is there.
+  if (enzyme.dam === 'required' && !(dam && reaches(DAM))) return { effect: 'blocked', by: 'dam', unmethylated: true }
+  if (enzyme.dcm === 'required' && !(dcm && reaches(DCM))) return { effect: 'blocked', by: 'dcm', unmethylated: true }
+  const sensitive = (flag: RestrictionEnzyme['dam']) => flag === 'blocked' || flag === 'impaired'
+  const damHit = dam && sensitive(enzyme.dam) && reaches(DAM)
+  const dcmHit = dcm && sensitive(enzyme.dcm) && reaches(DCM)
   if (damHit && enzyme.dam === 'blocked') return { effect: 'blocked', by: 'dam' }
   if (dcmHit && enzyme.dcm === 'blocked') return { effect: 'blocked', by: 'dcm' }
   if (damHit) return { effect: 'impaired', by: 'dam' }
@@ -76,7 +82,10 @@ function siteMethylationEffect(
 }
 
 export interface MethylationFilterResult {
-  /** Sites the enzymes can still cut. */
+  /**
+   * Sites the enzymes can still cut, one entry per break: a Type IIB site,
+   * which cuts on both sides of itself, is two entries.
+   */
   sites: CutSite[]
   /** Sites dropped because dam/dcm methylation blocks them. */
   blocked: CutSite[]
@@ -98,21 +107,28 @@ export function findUnblockedSites(
   const warnings: string[] = []
   const sites: CutSite[] = []
   const blocked: CutSite[] = []
+  let blockedByMethylation = 0
   for (const enzyme of enzymes) {
+    let needs: 'dam' | 'dcm' | null = null
     for (const site of cuttingSites(findCutSites(bases, enzyme, topology))) {
       const meth = siteMethylationEffect(site, bases, topology, enzyme, dam, dcm)
       if (meth?.effect === 'blocked') {
         blocked.push(site)
+        if (meth.unmethylated) needs = meth.by
+        else blockedByMethylation++
         continue
       }
       if (meth) {
         warnings.push(`${enzyme.name} site at position ${site.position + 1} may be impaired by ${meth.by} methylation`)
       }
-      sites.push(site)
+      for (const cut of splitCuts([site])) sites.push(cut)
+    }
+    if (needs) {
+      warnings.push(`${enzyme.name} only cuts ${needs === 'dam' ? 'Dam' : 'Dcm'}-methylated DNA, and this sequence is not marked ${needs === 'dam' ? 'Dam' : 'Dcm'}-methylated`)
     }
   }
-  if (blocked.length > 0) {
-    warnings.push(`${blocked.length} cut site${blocked.length > 1 ? 's' : ''} blocked by methylation`)
+  if (blockedByMethylation > 0) {
+    warnings.push(`${blockedByMethylation} cut site${blockedByMethylation > 1 ? 's' : ''} blocked by methylation`)
   }
   return { sites, blocked, warnings }
 }

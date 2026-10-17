@@ -245,7 +245,7 @@ function CloneMap({
           lines: [
             site.label,
             `at ${(site.position + 1).toLocaleString('en-US')}${site.cuts > 1 ? `, one of ${site.cuts} sites` : ', its only site'}`,
-            ...(site.methEffect ? [`blocked by methylation${site.methEffect === 'impaired' ? ' (in part)' : ''}`] : []),
+            ...(site.methEffect ? [site.methNote ?? `blocked by methylation${site.methEffect === 'impaired' ? ' (in part)' : ''}`] : []),
             ...(hint ? [hint] : []),
           ],
         })

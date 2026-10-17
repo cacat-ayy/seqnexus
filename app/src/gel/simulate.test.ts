@@ -78,6 +78,16 @@ describe('simulateSequence', () => {
     expect(methylated.species[0].form).toBe('supercoiled')
     expect(methylated.warnings.some(w => w.includes('blocked by methylation'))).toBe(true)
   })
+
+  it('leaves a PCR product uncut by DpnI and cuts the Dam-methylated plasmid', () => {
+    const DpnI = getEnzyme('DpnI')!
+    const bases = fill(1000) + 'GATC' + fill(996)
+    const pcr = simulateSequence(source(bases, 'linear'), [DpnI], { ng: 100 })
+    expect(pcr.species).toHaveLength(1)
+    expect(pcr.warnings).toContain('DpnI only cuts Dam-methylated DNA, and this sequence is not marked Dam-methylated')
+    const plasmid = simulateSequence(source(bases, 'linear', { damMethylated: true }), [DpnI], { ng: 100 })
+    expect(plasmid.species).toHaveLength(2)
+  })
 })
 
 describe('simulateLane', () => {

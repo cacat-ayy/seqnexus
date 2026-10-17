@@ -7,7 +7,10 @@ const group = (label: string, recognitionStart: number): GroupedCutSite => ({
   recognitionEnd: recognitionStart + 6,
   label,
   fwdCut: recognitionStart + 1,
+  cuts: true,
+  labelPos: recognitionStart + 1,
   methEffect: null,
+  methNote: null,
 })
 
 describe('enzymeGroupKey', () => {

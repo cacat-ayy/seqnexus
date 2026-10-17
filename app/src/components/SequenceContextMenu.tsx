@@ -141,10 +141,16 @@ function EnzymeHead({ group }: { group: GroupedCutSite }) {
       <div className="ctx-menu-head-meta">
         {enzyme.recognition} · {group.recognitionStart + 1}..{group.recognitionEnd} · {OVERHANG[enzyme.overhang] ?? enzyme.overhang}
       </div>
+      {!group.cuts && (
+        <div className="ctx-menu-head-warn">
+          <TriangleAlert size={11} />
+          Cuts past the end of the sequence, so it does not cut
+        </div>
+      )}
       {group.methEffect && (
         <div className="ctx-menu-head-warn">
           <TriangleAlert size={11} />
-          {group.methEffect === 'blocked' ? 'Blocked by methylation' : 'Impaired by methylation'}
+          {group.methNote ?? (group.methEffect === 'blocked' ? 'Blocked by methylation' : 'Impaired by methylation')}
         </div>
       )}
     </div>

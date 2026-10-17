@@ -8,10 +8,10 @@ import './EnzymePanel.css'
 import { useState, useMemo, useEffect, useCallback, useRef } from 'react'
 import { X, GalleryVertical } from 'lucide-react'
 import { useEditorStore } from '../store'
-import { methylationEffect } from '../enzymes/db'
+import { methylationEffect, methylationNote, type RestrictionEnzyme } from '../enzymes/db'
 import { BUILT_IN_SUBSETS, setKey, subsetEnzymes } from '../enzymes/sets'
 import EnzymeSetControls from './EnzymeSetControls'
-import type { CutSite } from '../enzymes/finder'
+import { cuttingSites, type CutSite } from '../enzymes/finder'
 import { findEnzymeSitesAsync } from '../workers/enzyme-finder'
 import { useExitAnimation } from '../hooks/useExitAnimation'
 import { useFocusTrap } from '../hooks/useFocusTrap'
@@ -23,16 +23,25 @@ interface Props {
   onClose: () => void
 }
 
-/** Render a recognition sequence with a cut-site marker inserted at the fwd_cut position. */
-function RecogWithCut({ recognition, cutPos }: { recognition: string; cutPos: number }) {
-  // cutPos is between bases cutPos-1 and cutPos (0-based)
-  // If cut is outside the recognition site (Type IIS), just show the sequence
-  if (cutPos <= 0 || cutPos >= recognition.length) {
-    return <>{recognition}</>
+/** Positions listed per enzyme before the rest are summed up as "+N more". */
+const MAX_BADGES = 24
+
+/**
+ * A recognition sequence with its cut. A cut inside the site is a mark in
+ * the sequence; one outside it is written as REBASE writes it: GGTCTC(1/5)
+ * counts top/bottom from the site's 3' end, and a Type IIB enzyme gets a
+ * pair before the site too, (10/15)ACNNNNGTAYC(12/7).
+ */
+function RecogWithCut({ enzyme }: { enzyme: RestrictionEnzyme }) {
+  const { recognition, fwd_cut: fwd, rev_cut: rev, fwd_cut2: fwd2, rev_cut2: rev2 } = enzyme
+  const n = recognition.length
+  const inside = (c: number) => c >= 0 && c <= n
+  if (fwd2 === undefined && inside(fwd) && inside(rev)) {
+    if (fwd <= 0 || fwd >= n) return <>{recognition}</>
+    return <>{recognition.slice(0, fwd)}<span className="re-cut-mark" />{recognition.slice(fwd)}</>
   }
-  const left = recognition.slice(0, cutPos)
-  const right = recognition.slice(cutPos)
-  return <>{left}<span className="re-cut-mark" />{right}</>
+  const before = fwd2 !== undefined && rev2 !== undefined ? `(${-fwd2}/${-rev2})` : ''
+  return <>{before}{recognition}({fwd - n}/{rev - n})</>
 }
 
 export default function EnzymePanel({ open, onClose }: Props) {
@@ -68,6 +77,8 @@ export default function EnzymePanel({ open, onClose }: Props) {
 
   const [scanning, setScanning] = useState(false)
   const [perEnzymeSites, setPerEnzymeSites] = useState<Map<string, CutSite[]>>(new Map())
+  // Enzymes with too many sites to list (MAX_LISTED_SITES), and how many.
+  const [tooMany, setTooMany] = useState<Map<string, number>>(new Map())
   const scanGeneration = useRef(0)
   // Edits rewrite the piece table in place, so `sequence` is the same object
   // before and after one: its version is what changes. Keyed on the object
@@ -92,6 +103,7 @@ export default function EnzymePanel({ open, onClose }: Props) {
   useEffect(() => {
     if (seqLen === 0) {
       setPerEnzymeSites(new Map())
+      setTooMany(new Map())
       return
     }
     // The dialog is modal, so edits happen while it is closed. Rescanning
@@ -105,7 +117,7 @@ export default function EnzymePanel({ open, onClose }: Props) {
     const gen = ++scanGeneration.current
     setScanning(true)
     const bases = sequence.bases // materialize once
-    findEnzymeSitesAsync(bases, candidateEnzymes, topology).then(allSites => {
+    findEnzymeSitesAsync(bases, candidateEnzymes, topology, { channel: 'panel' }).then(({ sites: allSites, tooMany: over }) => {
       if (gen !== scanGeneration.current) return // stale result
       // Group by enzyme name
       const map = new Map<string, CutSite[]>()
@@ -115,6 +127,7 @@ export default function EnzymePanel({ open, onClose }: Props) {
         map.set(site.enzyme.name, list)
       }
       setPerEnzymeSites(map)
+      setTooMany(over)
       setScanning(false)
     }).catch(() => {
       if (gen === scanGeneration.current) setScanning(false)
@@ -124,16 +137,19 @@ export default function EnzymePanel({ open, onClose }: Props) {
   // Apply filters to get the final set of enzymes and sites
   const filteredResult = useMemo(() => {
     let enzymes = candidateEnzymes
+    // Cuts, not sites: a Type IIS site whose cut would fall past an end of a
+    // linear sequence is there, but cuts nothing.
+    const count = (e: RestrictionEnzyme) => {
+      const sites = perEnzymeSites.get(e.name)
+      return sites ? cuttingSites(sites).length : tooMany.get(e.name) ?? 0
+    }
 
     // Filter by cut count
     if (filterByCount) {
-      enzymes = enzymes.filter(e => {
-        const count = perEnzymeSites.get(e.name)?.length ?? 0
-        return count >= minCuts && count <= maxCuts
-      })
+      enzymes = enzymes.filter(e => count(e) >= minCuts && count(e) <= maxCuts)
     } else {
       // Still exclude enzymes with 0 cuts
-      enzymes = enzymes.filter(e => (perEnzymeSites.get(e.name)?.length ?? 0) > 0)
+      enzymes = enzymes.filter(e => count(e) > 0)
     }
 
     // Collect all sites from matching enzymes
@@ -149,14 +165,17 @@ export default function EnzymePanel({ open, onClose }: Props) {
     sites = sites.filter(s => s.position >= pStart && s.position < pEnd)
 
     sites.sort((a, b) => a.position - b.position)
-    return { enzymes, sites }
-  }, [candidateEnzymes, perEnzymeSites, filterByCount, minCuts, maxCuts, posStart, posEnd])
+    // Listed by count only: their sites are neither listed nor drawn.
+    const unlisted = enzymes.filter(e => tooMany.has(e.name)).map(e => ({ enzyme: e, count: tooMany.get(e.name)! }))
+    return { enzymes, sites, unlisted }
+  }, [candidateEnzymes, perEnzymeSites, tooMany, filterByCount, minCuts, maxCuts, posStart, posEnd])
 
   /** The enzymes the panel lists, which "Save list as set" keeps. */
   const listedNames = useMemo(() => filteredResult.enzymes.map(e => e.name), [filteredResult.enzymes])
 
-  // Total matching enzyme count
-  const matchCount = filteredResult.sites.length
+  // Total matching site count, including the ones too many to list
+  const unlistedSites = filteredResult.unlisted.reduce((a, u) => a + u.count, 0)
+  const matchCount = cuttingSites(filteredResult.sites).length + unlistedSites
 
   // Always push results to store; auto-enable display when sites are found
   useEffect(() => {
@@ -331,7 +350,10 @@ export default function EnzymePanel({ open, onClose }: Props) {
 
           {/* Status */}
           <div className="re-results-header re-results-status">
-            {scanning ? 'Scanning…' : `${sitesByEnzyme.size} enzyme${sitesByEnzyme.size !== 1 ? 's' : ''}, ${matchCount} site${matchCount !== 1 ? 's' : ''}`}
+            {scanning ? 'Scanning…' : (() => {
+              const enzymeCount = sitesByEnzyme.size + filteredResult.unlisted.length
+              return `${enzymeCount.toLocaleString('en-US')} enzyme${enzymeCount !== 1 ? 's' : ''}, ${matchCount.toLocaleString('en-US')} site${matchCount !== 1 ? 's' : ''}`
+            })()}
           </div>
 
           {/* Results list */}
@@ -345,29 +367,34 @@ export default function EnzymePanel({ open, onClose }: Props) {
                     : "3'"
                   const methEffect = methylationEffect(enz, doc.metadata?.damMethylated, doc.metadata?.dcmMethylated)
                   const methClass = methEffect === 'blocked' ? ' re-methyl-blocked' : methEffect === 'impaired' ? ' re-methyl-impaired' : ''
-                  const methLabel = methEffect === 'blocked' ? 'Blocked by methylation' : methEffect === 'impaired' ? 'Impaired by methylation' : undefined
+                  const methLabel = methylationNote(enz, doc.metadata?.damMethylated, doc.metadata?.dcmMethylated) ?? undefined
                   return (
                   <li key={name} className={`re-enzyme-group${methClass}`} title={methLabel}>
                     <div className="re-enzyme-row">
                       <span className="re-enzyme-name">{name}</span>
-                      <span className="re-enzyme-count">{sites.length}×</span>
+                      <span className="re-enzyme-count">{cuttingSites(sites).length}×</span>
                       <span className="re-enzyme-recog">
-                        <RecogWithCut recognition={enz.recognition} cutPos={enz.fwd_cut} />
+                        <RecogWithCut enzyme={enz} />
                       </span>
                       <span className="re-enzyme-overhang">{ovLabel}</span>
                       {methEffect && <span className={`re-methyl-tag re-methyl-tag-${methEffect}`}>{methEffect === 'blocked' ? 'blocked' : 'impaired'}</span>}
                       {/* The positions sit in the enzyme's row, not a line of their own. */}
                       <div className="re-site-badges">
-                        {sites.map((site, i) => (
+                        {sites.slice(0, MAX_BADGES).map((site, i) => (
                           <span
                             key={i}
-                            className="re-site-badge"
+                            className={site.offEnd ? 're-site-badge re-site-off-end' : 're-site-badge'}
                             onClick={() => handleSiteClick(site)}
-                            title={`${site.enzyme.name} at ${site.position + 1}`}
+                            title={site.offEnd
+                              ? `${site.enzyme.name} at ${site.position + 1} cuts past the end of the sequence, so it does not cut`
+                              : `${site.enzyme.name} at ${site.position + 1}`}
                           >
                             {site.position + 1}
                           </span>
                         ))}
+                        {sites.length > MAX_BADGES && (
+                          <span className="re-site-more">+{(sites.length - MAX_BADGES).toLocaleString('en-US')} more</span>
+                        )}
                       </div>
                       <button
                         className="re-gel-btn"
@@ -381,6 +408,18 @@ export default function EnzymePanel({ open, onClose }: Props) {
                   </li>
                   )
                 })}
+                {filteredResult.unlisted.map(({ enzyme: enz, count }) => (
+                  <li key={enz.name} className="re-enzyme-group">
+                    <div className="re-enzyme-row">
+                      <span className="re-enzyme-name">{enz.name}</span>
+                      <span className="re-enzyme-count">{count.toLocaleString('en-US')}×</span>
+                      <span className="re-enzyme-recog"><RecogWithCut enzyme={enz} /></span>
+                      <div className="re-site-badges">
+                        <span className="re-site-more">too many sites to list or draw</span>
+                      </div>
+                    </div>
+                  </li>
+                ))}
               </ul>
             </div>
           )}

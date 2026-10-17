@@ -106,6 +106,10 @@ short version.
   - [Nearest-neighbor method](#nearest-neighbor-method)
   - [Hairpin and self-dimer Tm](#hairpin-and-self-dimer-tm)
 - [Restriction Enzyme Database](#restriction-enzyme-database)
+  - [From REBASE notation to cut positions](#from-rebase-notation-to-cut-positions)
+  - [Methylation sensitivity data](#methylation-sensitivity-data)
+  - [Large sequences](#large-sequences)
+  - [Checks against Biopython](#checks-against-biopython)
   - [How sites are drawn in the sequence view](#how-sites-are-drawn-in-the-sequence-view)
   - [Saved enzyme sets](#saved-enzyme-sets)
 - [Virtual Gel](#virtual-gel)
@@ -2308,21 +2312,135 @@ For probes, the card also checks the TaqMan rules:
 
 ## Restriction Enzyme Database
 
-The enzyme database is auto-generated from **REBASE** (Roberts et al.) using
-`scripts/build-enzyme-db.ts`. The current build contains 546 enzymes with:
+The enzyme database is generated from **REBASE** (Roberts et al.) by
+`scripts/build-enzyme-db.ts`: every commercially available restriction enzyme
+with a known cut, close to 600 of them. Each has:
 
-- Recognition sequences (IUPAC ambiguity codes)
-- Cut positions on both strands
+- Recognition sequence (IUPAC ambiguity codes)
+- Cut positions on both strands, and a second pair for a Type IIB enzyme
 - Overhang type (blunt, 5' overhang, 3' overhang)
-- Commercial supplier availability (NEB, Thermo, etc.)
-- Isoschizomer grouping
-- Methylation sensitivity (dam, dcm, CpG)
-- Optimal temperature and heat inactivation data
+- Commercial suppliers (NEB, Thermo and so on)
+- Isoschizomers
+- Dam and Dcm sensitivity where REBASE has data on it (see
+  [Methylation sensitivity data](#methylation-sensitivity-data))
+- For a hand-curated set of about fifty common enzymes, CpG sensitivity and
+  incubation and heat-inactivation temperatures
 
-The enzyme finder runs in a Web Worker. It expands IUPAC ambiguity codes into
-all possible concrete sequences and scans both strands of the target sequence.
-Results are grouped by isoschizomer family on the plasmid map to reduce visual
-clutter.
+The finder turns a recognition sequence into a regular expression, each
+ambiguity code a character class (`N` is `[ACGT]`), and scans the top strand
+for it and, unless the site is a palindrome, for its reverse complement. On a
+circular sequence it reads on past the origin, so a site across the origin is
+found once. A site that is not a palindrome but reads the same on both
+strands is two sites: MspJI's CNNR and its reverse complement YNNG both match
+CAAG, and MspJI binds it both ways round, cutting on either side. It runs in
+a Web Worker, or on the main thread where a worker cannot start (app.html
+opened from disk). Results are grouped by position on the maps, so
+isoschizomers share a label.
+
+A Type IIS site within reach of an end of a linear sequence would cut past
+it, so it is there but cuts nothing. The Restriction Enzymes dialog counts
+cuts, not sites: such a site does not count towards "Cutting 1 to 1 times",
+and its position is listed faded and dashed. The maps draw it faded, named
+at the site rather than at a cut, and the digest and gel skip it.
+
+### From REBASE notation to cut positions
+
+Cuts are stored relative to the first base of the site, a cut at `c` falling
+between bases `c - 1` and `c`, the bottom strand's in top-strand coordinates.
+REBASE's `withrefm` file writes them three ways:
+
+| REBASE | Meaning | Stored |
+|--------|---------|--------|
+| `G^AATTC` | caret on the top strand | top 1; bottom 6 - 1 = 5, by symmetry |
+| `GGTCTC(1/5)` | cuts 1 and 5 bases past the site's 3' end | top 7, bottom 11 |
+| `GAATGC(1/-1)` | a negative offset counts back into the site (BsmI) | top 7, bottom 5 |
+| `(10/15)ACNNNNGTAYC(12/7)` | Type IIB, cuts on both sides (BaeI) | top 23, bottom 18; and top -10, bottom -15 |
+
+The caret form gives only the top strand. Its bottom-strand cut follows from
+symmetry, which holds only for a palindromic site, so a caret site that is
+not a palindrome needs the other cut from elsewhere. Three commercial enzymes
+are written that way. TspRI and its isoschizomer TscAI read CASTG and cut
+`NNCASTGNN^` on the top strand and `^NNCASTGNN` on the bottom, which REBASE
+writes as `CASTGNN^`: the database stores CASTG with cuts at 7 and -2, a
+9-base 3' overhang, as REBASE's two-strand data and NEB give it. SgeI is
+left out: it cuts only 5-methylcytosine-containing DNA, and the file does not
+give its bottom-strand cut.
+
+A Type IIB enzyme (BaeI, BcgI, CspCI, BsaXI and others) is one site with two
+breaks. The finder reports it once, as one site, with both cut pairs; the
+digest, the gel and the fragment sizes count both breaks, so a digest excises
+the short fragment between them (33 bp for BaeI). A break that would fall
+past the end of a linear sequence means the site cuts nothing there, as for a
+Type IIS site.
+
+The build prints every commercial enzyme it leaves out and why, so a REBASE
+release cannot lose enzymes quietly. Methyltransferases, homing endonucleases
+and nicking enzymes are not restriction enzymes in this sense and are not
+kept.
+
+### Methylation sensitivity data
+
+A site counts as affected by Dam or Dcm methylation only when a methylated
+base of the motif falls inside it (see [Methylation](#methylation) under
+cloning): XbaI's TCTAGA is blocked in TCTAGATC and cut in TCTAGAACGGATC. The
+digest, the gel and the cloning workspace drop blocked sites when the
+sequence is marked Dam- or Dcm-methylated (Sequence Properties), and the maps
+draw them faded. Whether an enzyme is blocked at all is data, per enzyme.
+
+Each enzyme's Dam and Dcm sensitivity comes from REBASE's methylation records,
+fetched by `scripts/fetch-rebase-methylation.ts` into
+`scripts/data/rebase-methylation.json`: the "effects of overlapping
+methylation" summary for the enzyme where there is one, otherwise its records
+tested on Dam- or Dcm-methylated DNA. REBASE's "blocked" is blocked; its
+"impaired", "some blocked", "some impaired" and "variable" become impaired,
+which keeps the cut and warns, because blocking depends on the exact overlap
+and the app only checks that a methylated base lies in the site. Close to two
+thirds of the enzymes a Dam or Dcm motif can reach have REBASE data; the rest
+show no flag, which means unknown, not insensitive. Isoschizomers do not
+inherit each other's flags, since they differ (MboI is blocked by Dam,
+Sau3AI is not, DpnI needs it). The hand-curated enzymes keep their own
+entries, and a test checks them against the fetched verdicts.
+
+DpnI cuts only methylated GATC. Its Dam flag is "required": it is blocked on
+DNA that is not marked Dam-methylated, so a PCR product is left uncut and the
+warning says why, and it cuts a Dam-methylated plasmid. MspJI is the same
+the other way: it cuts next to 5-methylcytosine (mCNNR), which in E. coli
+DNA is Dcm's, so its Dcm flag is "required". The app checks that a
+Dcm-methylated base lies in the site, not that it is the first base, so on
+Dcm-methylated DNA it may name a few sites MspJI would not cut. CpG sensitivity is
+shown on the hover card of the curated enzymes but not applied, since no
+sequence carries a CpG-methylated flag.
+
+### Large sequences
+
+Every enzyme on a 4.6 Mb bacterial genome is about four million sites, which
+the finder produces in a few seconds but no list or map can show. Above
+5,000 sites an enzyme is counted, not listed: the Restriction Enzymes dialog
+gives its count with "too many sites to list or draw", and its sites are not
+drawn. A listed enzyme shows its first 24 positions and how many more there
+are.
+
+### Checks against Biopython
+
+The finder was compared with Biopython's `Bio.Restriction` (REBASE data) on
+pUC19, pBR322, phage lambda, random 50 kb sequences and constructs built to
+break it (sites across the origin, Type IIS cuts past a linear end, N-rich
+sites, overlapping sites), enzyme by enzyme: site, top- and bottom-strand
+cuts and fragments agree. The tests in `src/enzymes/finder.test.ts` keep the
+Type IIB cut positions from that comparison and check, over every enzyme,
+that reverse-complementing the sequence mirrors the cuts, rotating a circle
+rotates them, and the fragments add up.
+
+Known differences, by convention:
+
+- An ambiguity code in the target never matches: an N in a scaffold is not
+  any base, so no site is found across it. Biopython matches N to N.
+- Where a non-palindromic site reads the same on both strands (MspJI on
+  CAAG), the finder reports a site on each strand; Biopython reports one.
+- Phage lambda as NC_001416 has six HindIII sites, not seven: the record
+  reads AAGCTC at 37,584. The familiar marker (23,130 down to 125 bp) is cut
+  from NEB's lambda, cI857ind1 Sam7, which has AAGCTT there; the lambda
+  HindIII ladder in the gel uses those eight sizes.
 
 ### How sites are drawn in the sequence view
 
@@ -2341,7 +2459,8 @@ clutter.
   its cut, across between the strands, down through the bottom strand at its
   cut. The step's width is the overhang, so a sticky end, a blunt end and
   which strand protrudes read at a glance. With only one strand shown, it is
-  the top-strand cut alone.
+  the top-strand cut alone. A Type IIB site gets a step on each side, and
+  neoschizomers sharing a site (SmaI's CCC^GGG, XmaI's C^CCGGG) a step each.
 - **Hovering** a name, a bar or a chip ties a site together: its name, its
   line to the ruler, its bar, a tint over its bases and its cut light up, and
   every other site fades. Names are the reliable target in a crowded stretch,
@@ -6377,6 +6496,17 @@ saved, so nothing is written without a word.
 
 - Roberts RJ et al. (2015) "REBASE - a database for DNA restriction and
   modification." *Nucleic Acids Res* 43:D298-D299.
+
+- Roberts RJ, Vincze T, Posfai J, Macelis D (2023) "REBASE: a database for
+  DNA restriction and modification: enzymes, genes and genomes." *Nucleic
+  Acids Res* 51:D629-D630. The source of the enzyme database and of its Dam
+  and Dcm sensitivities.
+
+- Cock PJA, Antao T, Chang JT, Chapman BA, Cox CJ, Dalke A, Friedberg I,
+  Hamelryck T, Kauff F, Wilczynski B, de Hoon MJL (2009) "Biopython: freely
+  available Python tools for computational molecular biology and
+  bioinformatics." *Bioinformatics* 25:1422-1423. `Bio.Restriction` is the
+  reference the restriction site finder was checked against.
 
 - SnapGene Support. "Insert a Restriction Fragment into a Plasmid."
   support.snapgene.com (accessed 2026-10-09). The model for the cloning

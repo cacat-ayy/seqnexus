@@ -77,7 +77,7 @@ import { useBasesPerRow, useMinZoom, formatBasesPerRow, fitSequenceView } from '
 import { MAX_ZOOM } from './components/zoom-layout'
 import { selectionTm } from './utils/selection-tm'
 import { getEnzyme, type RestrictionEnzyme } from './enzymes/db'
-import { findEnzymeSitesAsync } from './workers/enzyme-finder'
+import { findEnzymeSitesAsync, ScanCancelled } from './workers/enzyme-finder'
 import {
   File, Dna, FolderPlus, FileUp, FolderUp, ClipboardPaste, Save, FileText,
   Undo2, Redo2, Search, TextSearch, Scissors, FlaskConical,
@@ -809,11 +809,13 @@ export default function App() {
       if (enzymes.length === 0) { setEnzymeScanPending(false); return }
       const bases = doc.sequence.bases
       const topology = doc.sequence.topology
-      findEnzymeSitesAsync(bases, enzymes, topology).then(sites => {
+      findEnzymeSitesAsync(bases, enzymes, topology, { channel: 'shown' }).then(({ sites }) => {
         if (gen !== enzymeScanGen.current) return // stale
         setEnzymeCutSites(sites)
         setEnzymeScanPending(false)
       }).catch(e => {
+        // A newer scan took over; its result is the one that counts.
+        if (e instanceof ScanCancelled) return
         setEnzymeScanPending(false)
         // Silently returning no sites is indistinguishable from a sequence
         // that genuinely has none, which is a misleading thing to show.

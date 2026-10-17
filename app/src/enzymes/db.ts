@@ -8,18 +8,29 @@
  * Cut positions: fwd_cut is the position on the sense strand where the cut
  * occurs (between bases fwd_cut-1 and fwd_cut). rev_cut is the position on
  * the antisense strand (same coordinate system, measured from the 5' end of
- * the sense strand).
+ * the sense strand). Either can fall outside the site: past its end for a
+ * Type IIS enzyme (BsaI cuts 7 and 11), before its start for TspRI (the
+ * bottom strand is cut at -2). A Type IIB enzyme cuts on both sides of its
+ * site and has a second pair, fwd_cut2 and rev_cut2, upstream of it.
  */
 
 export type OverhangType = 'blunt' | '5prime' | '3prime'
 
-export type MethylationSensitivity = 'blocked' | 'impaired' | 'insensitive' | 'unknown'
+/**
+ * How a methylation reaching into the site affects the enzyme. 'required'
+ * is the other way round: the enzyme only cuts methylated DNA (DpnI needs
+ * Dam methylation and leaves a PCR product alone).
+ */
+export type MethylationSensitivity = 'blocked' | 'impaired' | 'insensitive' | 'required' | 'unknown'
 
 export interface RestrictionEnzyme {
   name: string
   recognition: string       // IUPAC, always written 5'→3' on sense strand
   fwd_cut: number           // cut position on sense strand
   rev_cut: number           // cut position on antisense strand
+  /** Type IIB only: the second cut pair, on the 5' side of the site (negative). */
+  fwd_cut2?: number
+  rev_cut2?: number
   overhang: OverhangType
   suppliers: string[]       // e.g. ['NEB', 'Thermo']
   isoschizomers?: string[]
@@ -41,8 +52,12 @@ export interface RestrictionEnzyme {
 export { IUPAC, recognitionToRegex } from '../models/iupac'
 
 /**
- * Common restriction enzymes - curated set covering the most-used enzymes
- * in molecular cloning, ordered alphabetically.
+ * Common restriction enzymes: a curated set covering the most-used enzymes
+ * in molecular cloning. Their Dam and Dcm flags agree with REBASE's
+ * methylation records (scripts/data/rebase-methylation.json, checked by
+ * db.test.ts), except DpnI, which REBASE lists as cutting Dam-methylated
+ * DNA and which needs that methylation to cut at all. CpG flags are from
+ * the same records.
  */
 export const ENZYME_DB: RestrictionEnzyme[] = [
   // --- 6-cutters (common cloning enzymes) ---
@@ -59,17 +74,17 @@ export const ENZYME_DB: RestrictionEnzyme[] = [
   { name: 'NotI',     recognition: 'GCGGCCGC', fwd_cut: 2, rev_cut: 6, overhang: '5prime', suppliers: ['NEB', 'Thermo'], dam: 'insensitive', dcm: 'insensitive', cpg: 'blocked', temperature: 37, heatInactivation: 65 },
   { name: 'PstI',     recognition: 'CTGCAG', fwd_cut: 5, rev_cut: 1, overhang: '3prime', suppliers: ['NEB', 'Thermo'], dam: 'insensitive', dcm: 'insensitive', cpg: 'insensitive', temperature: 37, heatInactivation: 80 },
   { name: 'SacI',     recognition: 'GAGCTC', fwd_cut: 5, rev_cut: 1, overhang: '3prime', suppliers: ['NEB', 'Thermo'], dam: 'insensitive', dcm: 'insensitive', cpg: 'insensitive', temperature: 37, heatInactivation: 65 },
-  { name: 'SalI',     recognition: 'GTCGAC', fwd_cut: 1, rev_cut: 5, overhang: '5prime', suppliers: ['NEB', 'Thermo'], dam: 'insensitive', dcm: 'insensitive', cpg: 'insensitive', temperature: 37, heatInactivation: 65 },
+  { name: 'SalI',     recognition: 'GTCGAC', fwd_cut: 1, rev_cut: 5, overhang: '5prime', suppliers: ['NEB', 'Thermo'], dam: 'insensitive', dcm: 'insensitive', cpg: 'blocked', temperature: 37, heatInactivation: 65 },
   { name: 'SmaI',     recognition: 'CCCGGG', fwd_cut: 3, rev_cut: 3, overhang: 'blunt',  suppliers: ['NEB', 'Thermo'], dam: 'insensitive', dcm: 'insensitive', cpg: 'blocked', temperature: 25, heatInactivation: 65 },
   { name: 'SpeI',     recognition: 'ACTAGT', fwd_cut: 1, rev_cut: 5, overhang: '5prime', suppliers: ['NEB', 'Thermo'], dam: 'insensitive', dcm: 'insensitive', cpg: 'insensitive', temperature: 37, heatInactivation: 80 },
   { name: 'SphI',     recognition: 'GCATGC', fwd_cut: 5, rev_cut: 1, overhang: '3prime', suppliers: ['NEB', 'Thermo'], dam: 'insensitive', dcm: 'insensitive', cpg: 'insensitive', temperature: 37, heatInactivation: 65 },
   { name: 'XbaI',     recognition: 'TCTAGA', fwd_cut: 1, rev_cut: 5, overhang: '5prime', suppliers: ['NEB', 'Thermo'], dam: 'blocked', dcm: 'insensitive', cpg: 'insensitive', temperature: 37, heatInactivation: 65 },
-  { name: 'XhoI',     recognition: 'CTCGAG', fwd_cut: 1, rev_cut: 5, overhang: '5prime', suppliers: ['NEB', 'Thermo'], dam: 'insensitive', dcm: 'insensitive', cpg: 'insensitive', temperature: 37, heatInactivation: 65 },
-  { name: 'XmaI',     recognition: 'CCCGGG', fwd_cut: 1, rev_cut: 5, overhang: '5prime', suppliers: ['NEB'], isoschizomers: ['SmaI'], dam: 'insensitive', dcm: 'insensitive', cpg: 'blocked', temperature: 37, heatInactivation: 65 },
+  { name: 'XhoI',     recognition: 'CTCGAG', fwd_cut: 1, rev_cut: 5, overhang: '5prime', suppliers: ['NEB', 'Thermo'], dam: 'insensitive', dcm: 'insensitive', cpg: 'impaired', temperature: 37, heatInactivation: 65 },
+  { name: 'XmaI',     recognition: 'CCCGGG', fwd_cut: 1, rev_cut: 5, overhang: '5prime', suppliers: ['NEB'], isoschizomers: ['SmaI'], dam: 'insensitive', dcm: 'insensitive', cpg: 'insensitive', temperature: 37, heatInactivation: 65 },
 
   // --- 8-cutters (rare cutters) ---
   { name: 'AscI',     recognition: 'GGCGCGCC', fwd_cut: 2, rev_cut: 6, overhang: '5prime', suppliers: ['NEB'], dam: 'insensitive', dcm: 'insensitive', cpg: 'blocked', temperature: 37, heatInactivation: 65 },
-  { name: 'FseI',     recognition: 'GGCCGGCC', fwd_cut: 6, rev_cut: 2, overhang: '3prime', suppliers: ['NEB'], dam: 'insensitive', dcm: 'insensitive', cpg: 'insensitive', temperature: 37, heatInactivation: 65 },
+  { name: 'FseI',     recognition: 'GGCCGGCC', fwd_cut: 6, rev_cut: 2, overhang: '3prime', suppliers: ['NEB'], dam: 'insensitive', dcm: 'impaired', cpg: 'blocked', temperature: 37, heatInactivation: 65 },
   { name: 'PacI',     recognition: 'TTAATTAA', fwd_cut: 5, rev_cut: 3, overhang: '3prime', suppliers: ['NEB'], dam: 'insensitive', dcm: 'insensitive', cpg: 'insensitive', temperature: 37, heatInactivation: 65 },
   { name: 'PmeI',     recognition: 'GTTTAAAC', fwd_cut: 4, rev_cut: 4, overhang: 'blunt',  suppliers: ['NEB'], dam: 'insensitive', dcm: 'insensitive', cpg: 'insensitive', temperature: 37, heatInactivation: 65 },
   { name: 'SbfI',     recognition: 'CCTGCAGG', fwd_cut: 6, rev_cut: 2, overhang: '3prime', suppliers: ['NEB'], dam: 'insensitive', dcm: 'insensitive', cpg: 'insensitive', temperature: 37, heatInactivation: 65 },
@@ -77,18 +92,18 @@ export const ENZYME_DB: RestrictionEnzyme[] = [
 
   // --- 4-cutters (frequent cutters) ---
   { name: 'AluI',     recognition: 'AGCT',   fwd_cut: 2, rev_cut: 2, overhang: 'blunt',  suppliers: ['NEB', 'Thermo'], dam: 'insensitive', dcm: 'insensitive', cpg: 'insensitive', temperature: 37, heatInactivation: 65 },
-  { name: 'DpnI',     recognition: 'GATC',   fwd_cut: 2, rev_cut: 2, overhang: 'blunt',  suppliers: ['NEB', 'Thermo'], dam: 'insensitive', dcm: 'insensitive', cpg: 'insensitive', temperature: 37, heatInactivation: 80 },
-  { name: 'HaeIII',   recognition: 'GGCC',   fwd_cut: 2, rev_cut: 2, overhang: 'blunt',  suppliers: ['NEB', 'Thermo'], dam: 'insensitive', dcm: 'insensitive', cpg: 'insensitive', temperature: 37, heatInactivation: 80 },
+  { name: 'DpnI',     recognition: 'GATC',   fwd_cut: 2, rev_cut: 2, overhang: 'blunt',  suppliers: ['NEB', 'Thermo'], dam: 'required', dcm: 'insensitive', cpg: 'insensitive', temperature: 37, heatInactivation: 80 },
+  { name: 'HaeIII',   recognition: 'GGCC',   fwd_cut: 2, rev_cut: 2, overhang: 'blunt',  suppliers: ['NEB', 'Thermo'], dam: 'insensitive', dcm: 'impaired', cpg: 'insensitive', temperature: 37, heatInactivation: 80 },
   { name: 'HhaI',     recognition: 'GCGC',   fwd_cut: 3, rev_cut: 1, overhang: '3prime', suppliers: ['NEB'], dam: 'insensitive', dcm: 'insensitive', cpg: 'blocked', temperature: 37, heatInactivation: 65 },
   { name: 'MboI',     recognition: 'GATC',   fwd_cut: 0, rev_cut: 4, overhang: '5prime', suppliers: ['NEB', 'Thermo'], dam: 'blocked', dcm: 'insensitive', cpg: 'insensitive', temperature: 37, heatInactivation: 65 },
   { name: 'MspI',     recognition: 'CCGG',   fwd_cut: 1, rev_cut: 3, overhang: '5prime', suppliers: ['NEB', 'Thermo'], dam: 'insensitive', dcm: 'insensitive', cpg: 'insensitive', temperature: 37, heatInactivation: 65 },
   { name: 'RsaI',     recognition: 'GTAC',   fwd_cut: 2, rev_cut: 2, overhang: 'blunt',  suppliers: ['NEB', 'Thermo'], dam: 'insensitive', dcm: 'insensitive', cpg: 'insensitive', temperature: 37, heatInactivation: 65 },
   { name: 'Sau3AI',   recognition: 'GATC',   fwd_cut: 0, rev_cut: 4, overhang: '5prime', suppliers: ['NEB', 'Thermo'], isoschizomers: ['MboI'], dam: 'insensitive', dcm: 'insensitive', cpg: 'insensitive', temperature: 37, heatInactivation: 65 },
-  { name: 'TaqI',     recognition: 'TCGA',   fwd_cut: 1, rev_cut: 3, overhang: '5prime', suppliers: ['NEB', 'Thermo'], dam: 'insensitive', dcm: 'insensitive', cpg: 'insensitive', temperature: 65, heatInactivation: 80 },
+  { name: 'TaqI',     recognition: 'TCGA',   fwd_cut: 1, rev_cut: 3, overhang: '5prime', suppliers: ['NEB', 'Thermo'], dam: 'blocked', dcm: 'insensitive', cpg: 'insensitive', temperature: 65, heatInactivation: 80 },
 
   // --- Ambiguous recognition (IUPAC) ---
   { name: 'ApoI',     recognition: 'RAATTY', fwd_cut: 1, rev_cut: 5, overhang: '5prime', suppliers: ['NEB'], temperature: 50, heatInactivation: 65 },
-  { name: 'BsaBI',    recognition: 'GATNNNNATC', fwd_cut: 5, rev_cut: 5, overhang: 'blunt', suppliers: ['NEB'], temperature: 60, heatInactivation: 80 },
+  { name: 'BsaBI',    recognition: 'GATNNNNATC', fwd_cut: 5, rev_cut: 5, overhang: 'blunt', suppliers: ['NEB'], dam: 'blocked', cpg: 'blocked', temperature: 60, heatInactivation: 80 },
   { name: 'BstNI',    recognition: 'CCWGG',  fwd_cut: 2, rev_cut: 3, overhang: '5prime', suppliers: ['NEB'], dcm: 'insensitive', temperature: 60, heatInactivation: 80 },
   { name: 'DdeI',     recognition: 'CTNAG',  fwd_cut: 1, rev_cut: 4, overhang: '5prime', suppliers: ['NEB', 'Thermo'], temperature: 37, heatInactivation: 65 },
   { name: 'HincII',   recognition: 'GTYRAC', fwd_cut: 3, rev_cut: 3, overhang: 'blunt',  suppliers: ['NEB', 'Thermo'], temperature: 37, heatInactivation: 65 },
@@ -96,7 +111,7 @@ export const ENZYME_DB: RestrictionEnzyme[] = [
 
   // --- Golden Gate / Type IIS ---
   { name: 'BbsI',     recognition: 'GAAGAC', fwd_cut: 8, rev_cut: 12, overhang: '5prime', suppliers: ['NEB'], temperature: 37, heatInactivation: 65 },
-  { name: 'BsaI',     recognition: 'GGTCTC', fwd_cut: 7, rev_cut: 11, overhang: '5prime', suppliers: ['NEB'], dam: 'insensitive', dcm: 'insensitive', temperature: 37, heatInactivation: 65 },
+  { name: 'BsaI',     recognition: 'GGTCTC', fwd_cut: 7, rev_cut: 11, overhang: '5prime', suppliers: ['NEB'], dam: 'insensitive', dcm: 'impaired', temperature: 37, heatInactivation: 65 },
   { name: 'BsmBI',    recognition: 'CGTCTC', fwd_cut: 7, rev_cut: 11, overhang: '5prime', suppliers: ['NEB'], temperature: 55, heatInactivation: 80 },
   { name: 'BpiI',     recognition: 'GAAGAC', fwd_cut: 8, rev_cut: 12, overhang: '5prime', suppliers: ['Thermo'], isoschizomers: ['BbsI'], temperature: 37, heatInactivation: 65 },
   { name: 'Esp3I',    recognition: 'CGTCTC', fwd_cut: 7, rev_cut: 11, overhang: '5prime', suppliers: ['Thermo'], isoschizomers: ['BsmBI'], temperature: 37, heatInactivation: 65 },
@@ -135,7 +150,7 @@ export const ENZYME_GROUPS: Record<string, string[]> = {
   'Blunt cutters': ENZYME_DB.filter(e => e.overhang === 'blunt').map(e => e.name),
   "5' overhang": ENZYME_DB.filter(e => e.overhang === '5prime').map(e => e.name),
   "3' overhang": ENZYME_DB.filter(e => e.overhang === '3prime').map(e => e.name),
-  'Type IIS': ENZYME_DB.filter(e => e.fwd_cut > e.recognition.length || e.rev_cut > e.recognition.length).map(e => e.name),
+  'Type IIS': ENZYME_DB.filter(e => e.fwd_cut2 === undefined && (e.fwd_cut > e.recognition.length || e.rev_cut > e.recognition.length)).map(e => e.name),
 }
 
 /** Look up an enzyme by name (case-insensitive). */
@@ -146,7 +161,8 @@ export function getEnzyme(name: string): RestrictionEnzyme | undefined {
 /**
  * Check if an enzyme's activity is affected by the document's methylation state.
  * Returns 'blocked' if the enzyme cannot cut, 'impaired' if activity is reduced,
- * or null if unaffected.
+ * or null if unaffected. An enzyme that requires a methylation is blocked
+ * where it is absent.
  */
 export function methylationEffect(
   enzyme: RestrictionEnzyme,
@@ -154,9 +170,26 @@ export function methylationEffect(
   dcmMethylated?: boolean,
 ): 'blocked' | 'impaired' | null {
   let dominated: 'blocked' | 'impaired' | null = null
+  if (!damMethylated && enzyme.dam === 'required') return 'blocked'
+  if (!dcmMethylated && enzyme.dcm === 'required') return 'blocked'
   if (damMethylated && enzyme.dam === 'blocked') return 'blocked'
   if (dcmMethylated && enzyme.dcm === 'blocked') return 'blocked'
   if (damMethylated && enzyme.dam === 'impaired') dominated = 'impaired'
   if (dcmMethylated && enzyme.dcm === 'impaired') dominated = 'impaired'
   return dominated
+}
+
+/**
+ * What to tell someone about an enzyme's methylation effect, or null. A
+ * blocked DpnI is blocked for want of Dam methylation, not by it, and says so.
+ */
+export function methylationNote(
+  enzyme: RestrictionEnzyme,
+  damMethylated?: boolean,
+  dcmMethylated?: boolean,
+): string | null {
+  if (!damMethylated && enzyme.dam === 'required') return 'Cuts only Dam-methylated DNA'
+  if (!dcmMethylated && enzyme.dcm === 'required') return 'Cuts only Dcm-methylated DNA'
+  const effect = methylationEffect(enzyme, damMethylated, dcmMethylated)
+  return effect === 'blocked' ? 'Blocked by methylation' : effect === 'impaired' ? 'Impaired by methylation' : null
 }

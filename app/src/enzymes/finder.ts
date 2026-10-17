@@ -8,6 +8,12 @@
 import { type RestrictionEnzyme, recognitionToRegex } from './db'
 import { reverseComplement } from '../models/complement'
 
+/** Where one double-strand break falls, in top-strand coordinates. */
+export interface CutPair {
+  fwdCut: number
+  revCut: number
+}
+
 export interface CutSite {
   enzyme: RestrictionEnzyme
   /** Start of the recognition site (0-based) on the sense strand. */
@@ -21,6 +27,11 @@ export interface CutSite {
   fwdCut: number
   /** Cut position on the antisense strand, in sense-strand coordinates; wrapped like fwdCut. */
   revCut: number
+  /**
+   * A Type IIB enzyme's second break, on the other side of its site, placed
+   * like the first. The site is one site; it cuts the molecule twice.
+   */
+  cut2?: CutPair
   /** Which strand the recognition site was found on: 1 = sense, -1 = antisense. */
   strand: 1 | -1
   /**
@@ -36,16 +47,55 @@ export function cuttingSites<T extends Pick<CutSite, 'offEnd'>>(sites: readonly 
   return sites.filter(s => !s.offEnd)
 }
 
+/** The breaks a site makes: one, or two for a Type IIB enzyme. */
+export function cutPairs(site: Pick<CutSite, 'fwdCut' | 'revCut' | 'cut2'>): CutPair[] {
+  const first = { fwdCut: site.fwdCut, revCut: site.revCut }
+  return site.cut2 ? [first, site.cut2] : [first]
+}
+
+/**
+ * One entry per break: a Type IIB site becomes two entries, the second
+ * carrying its second cut pair. For anything that turns sites into
+ * fragments, where each break is a boundary.
+ */
+export function splitCuts(sites: readonly CutSite[]): CutSite[] {
+  const out: CutSite[] = []
+  for (const site of sites) {
+    if (!site.cut2) { out.push(site); continue }
+    const { cut2, ...first } = site
+    out.push(first, { ...first, fwdCut: cut2.fwdCut, revCut: cut2.revCut })
+  }
+  return out
+}
+
+const outside = (p: number, seqLen: number) => p < 0 || p > seqLen
+const wrap = (p: number, seqLen: number) => ((p % seqLen) + seqLen) % seqLen
+
 /**
  * Cut positions as stored: wrapped into the sequence when circular; when
- * linear, as they fall, with `offEnd` set if either is outside it.
+ * linear, as they fall, with `offEnd` set if any of them is outside it.
  */
-function placeCuts(fwd: number, rev: number, seqLen: number, circular: boolean): Pick<CutSite, 'fwdCut' | 'revCut' | 'offEnd'> {
-  if (circular) {
-    return { fwdCut: ((fwd % seqLen) + seqLen) % seqLen, revCut: ((rev % seqLen) + seqLen) % seqLen }
-  }
-  const outside = fwd < 0 || fwd > seqLen || rev < 0 || rev > seqLen
-  return outside ? { fwdCut: fwd, revCut: rev, offEnd: true } : { fwdCut: fwd, revCut: rev }
+function placeCuts(
+  pairs: [number, number][],
+  seqLen: number,
+  circular: boolean,
+): Pick<CutSite, 'fwdCut' | 'revCut' | 'cut2' | 'offEnd'> {
+  const placed = pairs.map(([f, r]) => circular ? [wrap(f, seqLen), wrap(r, seqLen)] : [f, r])
+  const [[fwdCut, revCut], second] = placed
+  const out: Pick<CutSite, 'fwdCut' | 'revCut' | 'cut2' | 'offEnd'> = { fwdCut, revCut }
+  if (second) out.cut2 = { fwdCut: second[0], revCut: second[1] }
+  if (!circular && pairs.some(([f, r]) => outside(f, seqLen) || outside(r, seqLen))) out.offEnd = true
+  return out
+}
+
+/** The enzyme's cut pairs relative to the site's first base, on the strand it was found on. */
+function sitePairs(enzyme: RestrictionEnzyme, strand: 1 | -1): [number, number][] {
+  const recLen = enzyme.recognition.length
+  const pairs: [number, number][] = [[enzyme.fwd_cut, enzyme.rev_cut]]
+  if (enzyme.fwd_cut2 !== undefined && enzyme.rev_cut2 !== undefined) pairs.push([enzyme.fwd_cut2, enzyme.rev_cut2])
+  // On the antisense strand the site reads backwards: its top-strand cut
+  // lands where the sense strand's bottom-strand cut would, mirrored.
+  return strand === 1 ? pairs : pairs.map(([f, r]) => [recLen - r, recLen - f])
 }
 
 /**
@@ -63,7 +113,6 @@ export function findCutSites(
   const seqLen = upper.length
   if (seqLen === 0) return sites
 
-  const pattern = new RegExp(recognitionToRegex(enzyme.recognition), 'gi')
   const recLen = enzyme.recognition.length
 
   // Check if palindromic (recognition == reverse complement of itself)
@@ -76,53 +125,42 @@ export function findCutSites(
     ? upper + upper.slice(0, recLen - 1)
     : upper
 
-  // Forward strand
-  let m: RegExpExecArray | null
-  pattern.lastIndex = 0
-  while ((m = pattern.exec(searchSeq)) !== null) {
-    const pos = m.index
-    if (pos >= seqLen) break // past the real sequence (circular overlap region)
-    sites.push({
-      enzyme,
-      position: pos,
-      end: (pos + recLen) % (topology === 'circular' ? seqLen : seqLen + recLen),
-      ...placeCuts(pos + enzyme.fwd_cut, pos + enzyme.rev_cut, seqLen, circular),
-      strand: 1,
-    })
-    // Prevent overlapping matches from consuming characters
-    pattern.lastIndex = m.index + 1
-  }
-
-  // Reverse strand (only if not palindromic)
-  if (!isPalindrome) {
-    const revPattern = new RegExp(recognitionToRegex(rc), 'gi')
-    revPattern.lastIndex = 0
-    while ((m = revPattern.exec(searchSeq)) !== null) {
+  const scan = (recognition: string, strand: 1 | -1) => {
+    const pattern = new RegExp(recognitionToRegex(recognition), 'gi')
+    const pairs = sitePairs(enzyme, strand)
+    let m: RegExpExecArray | null
+    while ((m = pattern.exec(searchSeq)) !== null) {
       const pos = m.index
-      if (pos >= seqLen) break
-      // For antisense matches, cut positions are relative to the sense strand
-      // The recognition site on the antisense strand at position pos means
-      // the enzyme binds the reverse complement there
+      if (pos >= seqLen) break // past the real sequence (circular overlap region)
       sites.push({
         enzyme,
         position: pos,
-        end: (pos + recLen) % (topology === 'circular' ? seqLen : seqLen + recLen),
-        ...placeCuts(pos + (recLen - enzyme.rev_cut), pos + (recLen - enzyme.fwd_cut), seqLen, circular),
-        strand: -1,
+        end: (pos + recLen) % (circular ? seqLen : seqLen + recLen),
+        ...placeCuts(pairs.map(([f, r]) => [pos + f, pos + r]), seqLen, circular),
+        strand,
       })
-      revPattern.lastIndex = m.index + 1
+      // Prevent overlapping matches from consuming characters
+      pattern.lastIndex = m.index + 1
     }
   }
+
+  scan(enzyme.recognition, 1)
+  if (!isPalindrome) scan(rc, -1)
 
   // Sort by position
   sites.sort((a, b) => a.position - b.position)
 
-  // Deduplicate sites at the same position (can happen with palindromes + overlap)
+  // One site per position and strand. A palindrome is only searched for once,
+  // so this only ever keeps the two strands of a site apart: MspJI's CNNR and
+  // its reverse complement YNNG both read CAAG, and the enzyme cuts on both
+  // sides of it, 13 bases away on each.
   const deduped: CutSite[] = []
+  const seen = new Set<string>()
   for (const site of sites) {
-    if (deduped.length === 0 || deduped[deduped.length - 1].position !== site.position) {
-      deduped.push(site)
-    }
+    const key = `${site.position}/${site.strand}`
+    if (seen.has(key)) continue
+    seen.add(key)
+    deduped.push(site)
   }
 
   return deduped
@@ -138,7 +176,9 @@ export function computeFragments(
 ): number[] {
   if (sites.length === 0) return [seqLen]
 
-  const cutPositions = [...new Set(cuttingSites(sites).map(s => s.fwdCut))].sort((a, b) => a - b)
+  const cuts = new Set<number>()
+  for (const site of cuttingSites(sites)) for (const pair of cutPairs(site)) cuts.add(pair.fwdCut)
+  const cutPositions = [...cuts].sort((a, b) => a - b)
   if (cutPositions.length === 0) return [seqLen]
 
   const fragments: number[] = []
@@ -171,7 +211,43 @@ export function findAllSites(
 ): CutSite[] {
   const allSites: CutSite[] = []
   for (const enzyme of enzymes) {
-    allSites.push(...findCutSites(bases, enzyme, topology))
+    // A loop, not push(...sites): a frequent cutter on a genome has hundreds
+    // of thousands of sites, more arguments than a call can take.
+    for (const site of findCutSites(bases, enzyme, topology)) allSites.push(site)
   }
   return allSites.sort((a, b) => a.position - b.position)
+}
+
+/**
+ * Most sites one enzyme may have for its sites to be listed and drawn. An
+ * enzyme past it (a 4-cutter on a bacterial genome has tens of thousands)
+ * is counted, not listed: four million sites from every enzyme on a genome
+ * is more than a list or a map can show or anyone can read, and building it
+ * stalled the app for minutes.
+ */
+export const MAX_LISTED_SITES = 5000
+
+export interface EnzymeScan {
+  /** Sites of the enzymes within the limit, sorted by position. */
+  sites: CutSite[]
+  /** Enzymes past the limit, by name, with how many times they cut. */
+  tooMany: Map<string, number>
+}
+
+/** Sites of several enzymes for display: what the panel lists and the views draw. */
+export function scanEnzymes(
+  bases: string,
+  enzymes: readonly RestrictionEnzyme[],
+  topology: 'linear' | 'circular',
+  maxSites: number = MAX_LISTED_SITES,
+): EnzymeScan {
+  const sites: CutSite[] = []
+  const tooMany = new Map<string, number>()
+  for (const enzyme of enzymes) {
+    const found = findCutSites(bases, enzyme, topology)
+    if (found.length > maxSites) { tooMany.set(enzyme.name, cuttingSites(found).length); continue }
+    for (const site of found) sites.push(site)
+  }
+  sites.sort((a, b) => a.position - b.position)
+  return { sites, tooMany }
 }

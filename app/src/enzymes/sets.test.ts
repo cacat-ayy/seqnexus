@@ -24,7 +24,7 @@ describe('subsetEnzymes', () => {
 
 describe('resolveEnzymeNames', () => {
   it('spells names as the database does, each once, and lists the ones it does not know', () => {
-    expect(resolveEnzymeNames(['ecori', 'EcoRI', ' BsaI ', 'AjuI', ''])).toEqual({ known: ['EcoRI', 'BsaI'], missing: ['AjuI'] })
+    expect(resolveEnzymeNames(['ecori', 'EcoRI', ' BsaI ', 'Xyz9I', ''])).toEqual({ known: ['EcoRI', 'BsaI'], missing: ['Xyz9I'] })
   })
 })
 

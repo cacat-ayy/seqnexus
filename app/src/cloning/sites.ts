@@ -30,6 +30,8 @@ export interface MapSite {
   /** How many times the first enzyme here cuts the whole part. */
   cuts: number
   methEffect: 'blocked' | 'impaired' | null
+  /** The methylation effect in words, when there is one. */
+  methNote: string | null
 }
 
 let browseSet: RestrictionEnzyme[] | null = null
@@ -132,6 +134,7 @@ export function mapSites(q: SiteQuery): { sites: MapSite[]; picked: Set<string> 
       enzymes,
       cuts: counts.get(enzymes[0]) ?? 1,
       methEffect: g.methEffect,
+      methNote: g.methNote,
     }
   })
   return { sites, picked }

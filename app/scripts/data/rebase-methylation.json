@@ -1,0 +1,602 @@
+{
+ "source": "REBASE methylation sensitivity, rebase.neb.com/cgi-bin/damlist and cgi-bin/msget",
+ "fetched": "2026-10-17",
+ "enzymes": {
+  "Acc65I": {
+   "dcm": "impaired",
+   "from": "summary"
+  },
+  "AccB7I": {
+   "dcm": "impaired",
+   "from": "summary"
+  },
+  "AccIII": {
+   "dam": "blocked",
+   "from": "summary"
+  },
+  "AjnI": {
+   "dcm": "insensitive",
+   "from": "summary"
+  },
+  "AloI": {
+   "dcm": "insensitive",
+   "from": "summary"
+  },
+  "AlwI": {
+   "dam": "blocked",
+   "dcm": "insensitive",
+   "from": "summary"
+  },
+  "AlwNI": {
+   "dcm": "blocked",
+   "from": "summary"
+  },
+  "ApaI": {
+   "dcm": "impaired",
+   "from": "summary"
+  },
+  "AscI": {
+   "dcm": "insensitive",
+   "from": "summary"
+  },
+  "AsiSI": {
+   "dam": "insensitive",
+   "from": "summary"
+  },
+  "Asp718I": {
+   "dcm": "blocked",
+   "from": "summary"
+  },
+  "AspS9I": {
+   "dcm": "blocked",
+   "from": "summary"
+  },
+  "AvaII": {
+   "dcm": "blocked",
+   "from": "summary"
+  },
+  "BaeGI": {
+   "dcm": "insensitive",
+   "from": "summary"
+  },
+  "BaeI": {
+   "dcm": "insensitive",
+   "from": "summary"
+  },
+  "BalI": {
+   "dcm": "impaired",
+   "from": "summary"
+  },
+  "BamHI": {
+   "dam": "insensitive",
+   "dcm": "insensitive",
+   "from": "summary"
+  },
+  "BanI": {
+   "dcm": "impaired",
+   "from": "summary"
+  },
+  "BanII": {
+   "dcm": "insensitive",
+   "from": "summary"
+  },
+  "BciVI": {
+   "dcm": "insensitive",
+   "from": "summary"
+  },
+  "BclI": {
+   "dam": "blocked",
+   "from": "records"
+  },
+  "BfuI": {
+   "dcm": "insensitive",
+   "from": "summary"
+  },
+  "BglI": {
+   "dcm": "insensitive",
+   "from": "summary"
+  },
+  "BglII": {
+   "dam": "insensitive",
+   "from": "summary"
+  },
+  "Bme1390I": {
+   "dcm": "blocked",
+   "from": "summary"
+  },
+  "BpmI": {
+   "dcm": "insensitive",
+   "from": "summary"
+  },
+  "Bsa29I": {
+   "dam": "blocked",
+   "from": "summary"
+  },
+  "BsaBI": {
+   "dam": "blocked",
+   "from": "summary"
+  },
+  "BsaHI": {
+   "dcm": "impaired",
+   "from": "summary"
+  },
+  "BsaI": {
+   "dcm": "impaired",
+   "from": "summary"
+  },
+  "BsaJI": {
+   "dcm": "insensitive",
+   "from": "summary"
+  },
+  "BsaWI": {
+   "dam": "insensitive",
+   "from": "summary"
+  },
+  "BsaXI": {
+   "dcm": "insensitive",
+   "from": "summary"
+  },
+  "Bsc4I": {
+   "dcm": "blocked",
+   "from": "summary"
+  },
+  "Bse8I": {
+   "dam": "blocked",
+   "from": "summary"
+  },
+  "BseAI": {
+   "dam": "blocked",
+   "from": "summary"
+  },
+  "BseCI": {
+   "dam": "blocked",
+   "from": "summary"
+  },
+  "BseGI": {
+   "dcm": "insensitive",
+   "from": "summary"
+  },
+  "BseJI": {
+   "dam": "blocked",
+   "from": "summary"
+  },
+  "BseLI": {
+   "dcm": "impaired",
+   "from": "summary"
+  },
+  "BseSI": {
+   "dcm": "insensitive",
+   "from": "summary"
+  },
+  "Bsh1285I": {
+   "dam": "blocked",
+   "from": "summary"
+  },
+  "BshFI": {
+   "dcm": "insensitive",
+   "from": "summary"
+  },
+  "BshNI": {
+   "dcm": "impaired",
+   "from": "summary"
+  },
+  "BsiEI": {
+   "dam": "insensitive",
+   "from": "summary"
+  },
+  "BslI": {
+   "dcm": "impaired",
+   "from": "summary"
+  },
+  "BsmFI": {
+   "dcm": "blocked",
+   "from": "summary"
+  },
+  "Bso31I": {
+   "dcm": "impaired",
+   "from": "summary"
+  },
+  "Bsp120I": {
+   "dcm": "blocked",
+   "from": "summary"
+  },
+  "Bsp1286I": {
+   "dcm": "insensitive",
+   "from": "summary"
+  },
+  "Bsp143I": {
+   "dam": "insensitive",
+   "from": "summary"
+  },
+  "Bsp68I": {
+   "dam": "insensitive",
+   "from": "summary"
+  },
+  "BspDI": {
+   "dam": "blocked",
+   "from": "summary"
+  },
+  "BspEI": {
+   "dam": "blocked",
+   "from": "summary"
+  },
+  "BspHI": {
+   "dam": "impaired",
+   "from": "summary"
+  },
+  "BspLI": {
+   "dcm": "impaired",
+   "from": "summary"
+  },
+  "BspPI": {
+   "dam": "blocked",
+   "dcm": "insensitive",
+   "from": "summary"
+  },
+  "Bst2UI": {
+   "dcm": "insensitive",
+   "from": "summary"
+  },
+  "BstEII": {
+   "dcm": "insensitive",
+   "from": "summary"
+  },
+  "BstF5I": {
+   "dcm": "insensitive",
+   "from": "summary"
+  },
+  "BstKTI": {
+   "dam": "blocked",
+   "from": "summary"
+  },
+  "BstNI": {
+   "dcm": "insensitive",
+   "from": "summary"
+  },
+  "BstSCI": {
+   "dcm": "blocked",
+   "from": "summary"
+  },
+  "BstSLI": {
+   "dcm": "insensitive",
+   "from": "summary"
+  },
+  "BstXI": {
+   "dcm": "impaired",
+   "from": "summary"
+  },
+  "BstYI": {
+   "dam": "insensitive",
+   "dcm": "insensitive",
+   "from": "summary"
+  },
+  "Bsu15I": {
+   "dam": "blocked",
+   "from": "summary"
+  },
+  "BsuRI": {
+   "dcm": "insensitive",
+   "from": "summary"
+  },
+  "BtsCI": {
+   "dcm": "insensitive",
+   "from": "summary"
+  },
+  "CaiI": {
+   "dcm": "blocked",
+   "from": "summary"
+  },
+  "Cfr13I": {
+   "dcm": "blocked",
+   "from": "summary"
+  },
+  "ClaI": {
+   "dam": "blocked",
+   "from": "summary"
+  },
+  "CviKI-1": {
+   "dcm": "insensitive",
+   "from": "summary"
+  },
+  "DpnI": {
+   "dam": "insensitive",
+   "from": "summary"
+  },
+  "DpnII": {
+   "dam": "blocked",
+   "from": "records"
+  },
+  "EaeI": {
+   "dcm": "blocked",
+   "from": "summary"
+  },
+  "EciI": {
+   "dam": "blocked",
+   "dcm": "insensitive",
+   "from": "summary"
+  },
+  "Eco147I": {
+   "dcm": "blocked",
+   "from": "summary"
+  },
+  "Eco24I": {
+   "dcm": "insensitive",
+   "from": "summary"
+  },
+  "Eco31I": {
+   "dcm": "impaired",
+   "from": "summary"
+  },
+  "Eco47I": {
+   "dcm": "blocked",
+   "from": "summary"
+  },
+  "Eco91I": {
+   "dcm": "insensitive",
+   "from": "summary"
+  },
+  "EcoNI": {
+   "dcm": "insensitive",
+   "from": "summary"
+  },
+  "EcoO109I": {
+   "dcm": "impaired",
+   "from": "summary"
+  },
+  "EcoRII": {
+   "dcm": "blocked",
+   "from": "summary"
+  },
+  "EheI": {
+   "dcm": "insensitive",
+   "from": "summary"
+  },
+  "FaqI": {
+   "dcm": "insensitive",
+   "from": "summary"
+  },
+  "FokI": {
+   "dcm": "impaired",
+   "from": "summary"
+  },
+  "FriOI": {
+   "dcm": "insensitive",
+   "from": "summary"
+  },
+  "FseI": {
+   "dcm": "impaired",
+   "from": "summary"
+  },
+  "GsuI": {
+   "dcm": "blocked",
+   "from": "summary"
+  },
+  "HaeII": {
+   "dcm": "insensitive",
+   "from": "summary"
+  },
+  "HaeIII": {
+   "dcm": "impaired",
+   "from": "summary"
+  },
+  "Hin1I": {
+   "dcm": "impaired",
+   "from": "summary"
+  },
+  "HphI": {
+   "dam": "blocked",
+   "dcm": "insensitive",
+   "from": "summary"
+  },
+  "Hpy188I": {
+   "dam": "blocked",
+   "from": "summary"
+  },
+  "Hpy188III": {
+   "dam": "blocked",
+   "from": "summary"
+  },
+  "KasI": {
+   "dcm": "insensitive",
+   "from": "summary"
+  },
+  "Kpn2I": {
+   "dam": "insensitive",
+   "from": "summary"
+  },
+  "KpnI": {
+   "dcm": "insensitive",
+   "from": "summary"
+  },
+  "Ksp22I": {
+   "dam": "blocked",
+   "from": "summary"
+  },
+  "Kzo9I": {
+   "dam": "insensitive",
+   "from": "summary"
+  },
+  "MabI": {
+   "dcm": "insensitive",
+   "from": "summary"
+  },
+  "MamI": {
+   "dam": "blocked",
+   "from": "summary"
+  },
+  "MboI": {
+   "dam": "blocked",
+   "from": "summary"
+  },
+  "MboII": {
+   "dam": "blocked",
+   "from": "summary"
+  },
+  "MhlI": {
+   "dcm": "insensitive",
+   "from": "summary"
+  },
+  "MlsI": {
+   "dcm": "blocked",
+   "from": "summary"
+  },
+  "MmeI": {
+   "dam": "insensitive",
+   "from": "summary"
+  },
+  "MroI": {
+   "dam": "insensitive",
+   "from": "summary"
+  },
+  "MscI": {
+   "dcm": "blocked",
+   "from": "summary"
+  },
+  "MspR9I": {
+   "dcm": "blocked",
+   "from": "summary"
+  },
+  "MvaI": {
+   "dcm": "insensitive",
+   "from": "summary"
+  },
+  "NarI": {
+   "dcm": "insensitive",
+   "from": "summary"
+  },
+  "NdeII": {
+   "dam": "blocked",
+   "from": "summary"
+  },
+  "NlaIV": {
+   "dcm": "blocked",
+   "from": "summary"
+  },
+  "NruI": {
+   "dam": "blocked",
+   "from": "summary"
+  },
+  "PagI": {
+   "dam": "impaired",
+   "from": "summary"
+  },
+  "PasI": {
+   "dcm": "insensitive",
+   "from": "summary"
+  },
+  "PflMI": {
+   "dcm": "blocked",
+   "from": "summary"
+  },
+  "PfoI": {
+   "dam": "impaired",
+   "dcm": "blocked",
+   "from": "summary"
+  },
+  "Ple19I": {
+   "dam": "insensitive",
+   "from": "summary"
+  },
+  "PluTI": {
+   "dcm": "insensitive",
+   "from": "summary"
+  },
+  "PpuMI": {
+   "dcm": "impaired",
+   "from": "summary"
+  },
+  "Psp5II": {
+   "dcm": "blocked",
+   "from": "summary"
+  },
+  "PspGI": {
+   "dcm": "blocked",
+   "from": "summary"
+  },
+  "PspN4I": {
+   "dcm": "impaired",
+   "from": "summary"
+  },
+  "PspOMI": {
+   "dcm": "blocked",
+   "from": "summary"
+  },
+  "PspPI": {
+   "dcm": "blocked",
+   "from": "summary"
+  },
+  "PsuI": {
+   "dam": "insensitive",
+   "dcm": "insensitive",
+   "from": "summary"
+  },
+  "PvuI": {
+   "dam": "insensitive",
+   "from": "summary"
+  },
+  "Sau3AI": {
+   "dam": "insensitive",
+   "from": "summary"
+  },
+  "Sau96I": {
+   "dcm": "blocked",
+   "from": "summary"
+  },
+  "ScrFI": {
+   "dcm": "blocked",
+   "from": "summary"
+  },
+  "SduI": {
+   "dcm": "insensitive",
+   "from": "summary"
+  },
+  "SexAI": {
+   "dcm": "blocked",
+   "from": "summary"
+  },
+  "SfiI": {
+   "dcm": "impaired",
+   "from": "summary"
+  },
+  "SfoI": {
+   "dcm": "impaired",
+   "from": "summary"
+  },
+  "SgfI": {
+   "dam": "insensitive",
+   "from": "summary"
+  },
+  "SgsI": {
+   "dcm": "insensitive",
+   "from": "summary"
+  },
+  "StuI": {
+   "dcm": "blocked",
+   "from": "summary"
+  },
+  "StyD4I": {
+   "dcm": "blocked",
+   "from": "summary"
+  },
+  "TaqI": {
+   "dam": "blocked",
+   "from": "summary"
+  },
+  "Van91I": {
+   "dcm": "blocked",
+   "from": "summary"
+  },
+  "XbaI": {
+   "dam": "blocked",
+   "from": "summary"
+  },
+  "XcmI": {
+   "dcm": "insensitive",
+   "from": "summary"
+  },
+  "XhoII": {
+   "dam": "insensitive",
+   "from": "summary"
+  }
+ }
+}

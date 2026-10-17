@@ -203,6 +203,12 @@
   cursor: pointer;
   color: var(--accent);
 }
+/* "+N more" after the listed positions, and the note on an enzyme with too many sites to list. */
+.re-site-more {
+  align-self: center;
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+}
 .re-site-badge:hover {
   background: var(--accent);
   color: var(--on-accent);
@@ -215,6 +221,11 @@
   color: var(--on-accent);
   border-color: var(--accent);
   font-weight: 700;
+}
+/* A site whose cut would fall past an end of a linear sequence: there, but it does not cut. */
+.re-site-off-end {
+  opacity: 0.5;
+  border-style: dashed;
 }
 /* Methylation-blocked / impaired dimming */
 .re-methyl-blocked {

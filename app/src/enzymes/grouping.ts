@@ -5,7 +5,7 @@
  */
 
 import type { CutSite } from './finder'
-import { methylationEffect } from './db'
+import { methylationEffect, methylationNote } from './db'
 
 export interface GroupedCutSite {
   /** All individual cut sites in this group */
@@ -18,8 +18,17 @@ export interface GroupedCutSite {
   label: string
   /** Primary cut position (fwdCut of first site) */
   fwdCut: number
+  /**
+   * Whether any site here cuts. A Type IIS site near an end of a linear
+   * sequence would cut past it, so it is there but cuts nothing.
+   */
+  cuts: boolean
+  /** Where the name and its leader go: the cut, or the site's start when it does not cut. */
+  labelPos: number
   /** Methylation effect on this group: 'blocked', 'impaired', or null */
   methEffect: 'blocked' | 'impaired' | null
+  /** The effect in words, for hover cards and lists; null when there is none. */
+  methNote: string | null
 }
 
 /**
@@ -59,31 +68,41 @@ function _groupCutSitesImpl(sites: CutSite[], damMethylated: boolean, dcmMethyla
       if (end > recEnd) recEnd = end
       j++
     }
-    // Build label
+    // Build label: each enzyme once, though a non-palindromic site can be
+    // there on both strands (MspJI on CAAG).
+    const names = [...new Set(bucket.map(s => s.enzyme.name))]
     let label: string
-    if (bucket.length === 1) {
-      label = bucket[0].enzyme.name
-    } else if (bucket.length === 2) {
-      label = bucket[0].enzyme.name + ' / ' + bucket[1].enzyme.name
+    if (names.length === 1) {
+      label = names[0]
+    } else if (names.length === 2) {
+      label = names[0] + ' / ' + names[1]
     } else {
-      label = bucket[0].enzyme.name + ' +' + (bucket.length - 1)
+      label = names[0] + ' +' + (names.length - 1)
     }
+    const cutting = bucket.find(s => !s.offEnd)
     // Worst methylation effect across all enzymes in the group
+    // (An enzyme that needs a methylation is blocked without it, so this
+    // runs on unmethylated DNA too.)
     let methEffect: 'blocked' | 'impaired' | null = null
-    if (damMethylated || dcmMethylated) {
-      for (const site of bucket) {
-        const eff = methylationEffect(site.enzyme, damMethylated, dcmMethylated)
-        if (eff === 'blocked') { methEffect = 'blocked'; break }
-        if (eff === 'impaired') methEffect = 'impaired'
+    let methNote: string | null = null
+    for (const site of bucket) {
+      const eff = methylationEffect(site.enzyme, damMethylated, dcmMethylated)
+      if (eff === 'blocked' || (eff === 'impaired' && methEffect === null)) {
+        methEffect = eff
+        methNote = methylationNote(site.enzyme, damMethylated, dcmMethylated)
       }
+      if (eff === 'blocked') break
     }
     groups.push({
       sites: bucket,
       recognitionStart: recStart,
       recognitionEnd: recEnd,
       label,
-      fwdCut: current.fwdCut,
+      fwdCut: cutting?.fwdCut ?? current.fwdCut,
+      cuts: cutting !== undefined,
+      labelPos: cutting?.fwdCut ?? recStart,
       methEffect,
+      methNote,
     })
     i = j
   }

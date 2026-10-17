@@ -1,4 +1,6 @@
 import { describe, it, expect } from 'vitest'
+import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
 import { ENZYME_DB, ENZYME_GROUPS, getEnzyme, recognitionToRegex } from './db'
 
 describe('Enzyme database', () => {
@@ -18,10 +20,24 @@ describe('Enzyme database', () => {
     }
   })
 
-  it('all enzymes have non-negative cut positions', () => {
+  it('every cut falls near its site', () => {
+    // Cuts can lie outside the site (Type IIS past its end, TspRI's bottom
+    // strand 2 before its start, Type IIB on both sides), but never far.
     for (const e of ENZYME_DB) {
-      expect(e.fwd_cut).toBeGreaterThanOrEqual(0)
-      expect(e.rev_cut).toBeGreaterThanOrEqual(0)
+      const n = e.recognition.length
+      for (const c of [e.fwd_cut, e.rev_cut, e.fwd_cut2, e.rev_cut2]) {
+        if (c === undefined) continue
+        expect(c, e.name).toBeGreaterThanOrEqual(-20)
+        expect(c, e.name).toBeLessThanOrEqual(n + 35)
+      }
+      expect(e.fwd_cut2 === undefined, `${e.name} has both or neither second cut`).toBe(e.rev_cut2 === undefined)
+    }
+  })
+
+  it('every overhang matches its cut pair', () => {
+    for (const e of ENZYME_DB) {
+      const expected = e.fwd_cut === e.rev_cut ? 'blunt' : e.fwd_cut < e.rev_cut ? '5prime' : '3prime'
+      expect(e.overhang, e.name).toBe(expected)
     }
   })
 
@@ -100,5 +116,33 @@ describe('methylation data', () => {
   it('does not mark BamHI or BglII as dam-sensitive', () => {
     expect(getEnzyme('BamHI')!.dam).toBe('insensitive')
     expect(getEnzyme('BglII')!.dam).toBe('insensitive')
+  })
+})
+
+describe('methylation data from REBASE', () => {
+  const rebase: Record<string, { dam?: string; dcm?: string }> = JSON.parse(
+    readFileSync(join(__dirname, '../../scripts/data/rebase-methylation.json'), 'utf8'),
+  ).enzymes
+
+  it('every enzyme with a REBASE verdict carries it', () => {
+    for (const [name, verdict] of Object.entries(rebase)) {
+      const e = getEnzyme(name)
+      if (!e) continue
+      for (const kind of ['dam', 'dcm'] as const) {
+        if (!verdict[kind]) continue
+        // DpnI cuts Dam-methylated DNA, which REBASE files under "cut";
+        // the database says it needs the methylation.
+        if (name === 'DpnI' && kind === 'dam') { expect(e.dam).toBe('required'); continue }
+        expect(e[kind], `${name} ${kind}`).toBe(verdict[kind])
+      }
+    }
+  })
+
+  it('marks the enzymes a cloner trips over', () => {
+    expect(getEnzyme('BclI')!.dam).toBe('blocked')
+    expect(getEnzyme('TaqI')!.dam).toBe('blocked')
+    expect(getEnzyme('NruI')!.dam).toBe('blocked')
+    expect(getEnzyme('StuI')!.dcm).toBe('blocked')
+    expect(getEnzyme('BsaI')!.dcm).toBe('impaired')
   })
 })

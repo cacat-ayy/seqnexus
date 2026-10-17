@@ -478,6 +478,22 @@ describe('methylation', () => {
     expect(result.warnings).toContain('1 cut site blocked by methylation')
   })
 
+  it('cuts with DpnI only where the DNA is Dam-methylated, and says why it does not', () => {
+    const DpnI = getEnzyme('DpnI')!
+    const bases = pad(40) + 'GATC' + pad(40)
+    expect(digestFragments(methylated(bases), [DpnI]).fragments).toHaveLength(2)
+    const pcr = digestFragments(makeDoc('pcr', bases), [DpnI])
+    expect(pcr.fragments).toHaveLength(1)
+    expect(pcr.warnings).toContain('DpnI only cuts Dam-methylated DNA, and this sequence is not marked Dam-methylated')
+    expect(pcr.warnings.some(w => w.includes('blocked by methylation'))).toBe(false)
+  })
+
+  it('blocks TaqI where Dam methylates the A of TCGATC', () => {
+    const TaqI = getEnzyme('TaqI')!
+    expect(digestFragments(methylated(pad(40) + 'TCGATC' + pad(40)), [TaqI]).fragments).toHaveLength(1)
+    expect(digestFragments(methylated(pad(40) + 'TCGAAA' + pad(40)), [TaqI]).fragments).toHaveLength(2)
+  })
+
   it('does not wrap motifs around the ends of linear DNA', () => {
     // "TC" at the end + "TAGA..." at the start would only form an overlap if wrapped.
     const doc = methylated('TCTAGA' + pad(40) + 'GA')
@@ -526,5 +542,38 @@ describe('which product a digest and ligation was meant to give', () => {
     const stub = fragments.findIndex(f => f.sequence.length < 12)
     const products = ligateFragments(fragments, { required: new Set([backbone, stub]) })
     expect(products.filter(p => p.isExpected).every(p => !p.sequence.includes(core))).toBe(true)
+  })
+})
+
+describe('a Type IIB enzyme', () => {
+  // BaeI is (10/15)ACNNNNGTAYC(12/7); cut positions checked with Biopython.
+  const BaeI = getEnzyme('BaeI')!
+  const bases = 'GGATCACAGTCTACACTGCTCACTCCAACCCCGGCCCCTGACGATCGTACCAGTCCGAGGAGAGGGTGCTTCAGAGTATGTATACCACTGG'
+
+  it('excises its site between two breaks, each leaving a 5-base 3\' overhang', () => {
+    const { fragments } = digestFragments(makeDoc('iib', bases), [BaeI])
+    expect(fragments.map(f => f.sequence.length)).toEqual([30, 33, 28])
+    const excised = fragments[1]
+    expect(excised.sequence).toBe(bases.slice(30, 63))
+    expect(excised.overhang5Type).toBe('three_prime')
+    expect(excised.overhang3Type).toBe('three_prime')
+    expect(excised.overhang3).toHaveLength(5)
+  })
+})
+
+describe('MspJI, which cuts only next to a methylated cytosine', () => {
+  const MspJI = getEnzyme('MspJI')!
+  // CCAGG is a Dcm site; its second C is methylated and starts MspJI's CAGG.
+  const bases = 'AT'.repeat(25) + 'CCAGG' + 'AT'.repeat(25)
+
+  it('leaves unmethylated DNA uncut, and says why', () => {
+    const result = digestFragments(makeDoc('pcr', bases), [MspJI])
+    expect(result.fragments).toHaveLength(1)
+    expect(result.warnings).toContain('MspJI only cuts Dcm-methylated DNA, and this sequence is not marked Dcm-methylated')
+  })
+
+  it('cuts Dcm-methylated DNA beside the methylated site', () => {
+    const doc = { ...makeDoc('dcm', bases), metadata: { dcmMethylated: true } }
+    expect(digestFragments(doc, [MspJI]).fragments.length).toBeGreaterThan(1)
   })
 })

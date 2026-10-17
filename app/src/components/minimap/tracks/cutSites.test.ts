@@ -28,6 +28,14 @@ describe('toCutMarks', () => {
     ])
   })
 
+  it('leaves out a site that cuts nothing: not counted, marked where it is, not wrapped', () => {
+    const bsaI = enzyme('BsaI', 'GGTCTC')
+    const offEnd: CutSite = { ...site(bsaI, 990), fwdCut: 997, revCut: 1001, offEnd: true }
+    const out = toCutMarks(groupCutSites([site(bsaI, 100), offEnd]), 1000)
+    expect(out.map(m => [m.pos, m.sites, m.cuts])).toEqual([[101, 1, true], [990, 1, false]])
+    expect(cutSiteTrack(out, fmt).hit!(990, 15, 1, theme)?.detail).toBe('cuts past the end of the sequence, so it does not cut')
+  })
+
   it('wraps a cut past the end of a circular sequence', () => {
     const late = toCutMarks(groupCutSites([site(ecoRI, 999)]), 1000)
     expect(late[0].pos).toBe(0)

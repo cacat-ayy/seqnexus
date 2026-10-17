@@ -266,16 +266,22 @@ const CHIP_PAD = 4
  */
 const CUT_REACH = 40
 
+/** How faint a site is drawn: blocked by methylation or cutting nothing, faint; impaired, half. */
+function siteDim(group: GroupedCutSite): number {
+  if (!group.cuts || group.methEffect === 'blocked') return 0.25
+  return group.methEffect === 'impaired' ? 0.5 : 1
+}
+
 /** The sites whose names belong on a line: those that cut in it, in cut order. */
 function sitesCuttingIn(groups: GroupedCutSite[], rowStart: number, rowEnd: number): GroupedCutSite[] {
   const out: GroupedCutSite[] = []
   for (let i = lowerBoundGroups(groups, rowStart - CUT_REACH); i < groups.length; i++) {
     const group = groups[i]
     if (group.recognitionStart >= rowEnd + CUT_REACH) break
-    if (group.fwdCut >= rowStart && group.fwdCut < rowEnd) out.push(group)
+    if (group.labelPos >= rowStart && group.labelPos < rowEnd) out.push(group)
   }
   // A Type IIS site can cut before a site that starts earlier.
-  return out.sort((a, b) => a.fwdCut - b.fwdCut)
+  return out.sort((a, b) => a.labelPos - b.labelPos)
 }
 
 /**
@@ -305,7 +311,7 @@ export function layoutSiteRow(
   let used = 0
 
   for (const group of sitesCuttingIn(groups, rowStart, rowEnd)) {
-    const labelX = baseX(group.fwdCut, rowStart, L)
+    const labelX = baseX(group.labelPos, rowStart, L)
     const labelW = measureLabelWidth(group.label)
     const tier = tierRightEdge.findIndex(edge => labelX >= edge)
     if (tier < 0) {
@@ -537,7 +543,7 @@ export function paintSequenceRows(
 
       for (const lbl of siteRow.labels) {
         const isHovered = sameGroup(hoveredEnzymeGroup, lbl.group)
-        const methDim = lbl.group.methEffect === 'blocked' ? 0.25 : lbl.group.methEffect === 'impaired' ? 0.5 : 1
+        const methDim = siteDim(lbl.group)
         ctx.globalAlpha = methDim * (isHovered ? 1 : fadeOthers)
         // Tier 0 is closest to ruler (bottom of label area)
         const tierY = labelAreaBottom - (lbl.tier + 1) * L.enzymeLabelTierH
@@ -549,7 +555,7 @@ export function paintSequenceRows(
         ctx.fillText(lbl.group.label, lbl.x, tierY + 1)
 
         // Leader line from label down to ruler line
-        const cutX = baseX(lbl.group.fwdCut, rowStart, L)
+        const cutX = baseX(lbl.group.labelPos, rowStart, L)
         ctx.strokeStyle = isHovered ? COLORS.enzyme : COLORS.enzymeBg
         ctx.lineWidth = isHovered ? 1.5 : 1
         ctx.beginPath()
@@ -682,7 +688,7 @@ export function paintSequenceRows(
       const barH = L.siteLaneH - 1
       for (const [group, lane] of lanes) {
         const isHovered = sameGroup(hoveredEnzymeGroup, group)
-        const methDim = group.methEffect === 'blocked' ? 0.25 : group.methEffect === 'impaired' ? 0.5 : 1
+        const methDim = siteDim(group)
         const x1 = baseX(Math.max(group.recognitionStart, rowStart), rowStart, L)
         const x2 = baseX(Math.min(group.recognitionEnd, rowEnd) - 1, rowStart, L) + L.bpWidth
         // Lane 0 sits right on the bases; more lanes stack up towards the ruler.
@@ -1783,25 +1789,38 @@ export function paintSequenceRows(
       for (let gi = lowerBoundGroups(groupedSites, rowStart - CUT_REACH); gi < groupedSites.length; gi++) {
         const group = groupedSites[gi]
         if (group.recognitionStart >= rowEnd + CUT_REACH) break
-        const fwd = group.fwdCut
-        let rev = group.sites[0]?.revCut ?? fwd
-        // A cut pair straddling the origin of a circle: read it the short way.
-        if (topology === 'circular' && Math.abs(rev - fwd) > seqLen / 2) rev += rev < fwd ? seqLen : -seqLen
-        if (!inRow(fwd) && !inRow(rev) && !(Math.min(fwd, rev) < rowStart && Math.max(fwd, rev) > rowEnd)) continue
+        // One step per distinct break: a Type IIB site cuts on both sides of
+        // itself, and neoschizomers at one site (SmaI's CCC^GGG, XmaI's
+        // C^CCGGG) cut it in different places. A site that cuts nothing
+        // (past an end of a linear sequence) gets no step.
+        const pairs = new Map<string, { fwdCut: number; revCut: number }>()
+        for (const site of group.sites) {
+          if (site.offEnd) continue
+          for (const pair of [site, ...(site.cut2 ? [site.cut2] : [])]) pairs.set(`${pair.fwdCut},${pair.revCut}`, { fwdCut: pair.fwdCut, revCut: pair.revCut })
+        }
+        const steps = [...pairs.values()].map(({ fwdCut: fwd, revCut }) => {
+          let rev = revCut
+          // A cut pair straddling the origin of a circle: read it the short way.
+          if (topology === 'circular' && Math.abs(rev - fwd) > seqLen / 2) rev += rev < fwd ? seqLen : -seqLen
+          return [fwd, rev] as const
+        }).filter(([fwd, rev]) => inRow(fwd) || inRow(rev) || (Math.min(fwd, rev) < rowStart && Math.max(fwd, rev) > rowEnd))
+        if (steps.length === 0) continue
 
         const isHovered = sameGroup(hoveredEnzymeGroup, group)
-        const methDim = group.methEffect === 'blocked' ? 0.25 : group.methEffect === 'impaired' ? 0.5 : 1
+        const methDim = siteDim(group)
         ctx.globalAlpha = methDim * (isHovered ? 1 : 0.8 * fadeOthers)
         ctx.strokeStyle = COLORS.enzyme
         ctx.lineWidth = isHovered ? 2 : 1.25
         ctx.beginPath()
-        if (strandH > 0) {
-          if (inRow(fwd)) { ctx.moveTo(xAt(fwd), topY); ctx.lineTo(xAt(fwd), midY) }
-          if (fwd !== rev) { ctx.moveTo(xAt(clamp(fwd)), midY); ctx.lineTo(xAt(clamp(rev)), midY) }
-          if (inRow(rev)) { ctx.moveTo(xAt(rev), midY); ctx.lineTo(xAt(rev), botY) }
-        } else if (inRow(fwd)) {
-          ctx.moveTo(xAt(fwd), topY)
-          ctx.lineTo(xAt(fwd), botY)
+        for (const [fwd, rev] of steps) {
+          if (strandH > 0) {
+            if (inRow(fwd)) { ctx.moveTo(xAt(fwd), topY); ctx.lineTo(xAt(fwd), midY) }
+            if (fwd !== rev) { ctx.moveTo(xAt(clamp(fwd)), midY); ctx.lineTo(xAt(clamp(rev)), midY) }
+            if (inRow(rev)) { ctx.moveTo(xAt(rev), midY); ctx.lineTo(xAt(rev), botY) }
+          } else if (inRow(fwd)) {
+            ctx.moveTo(xAt(fwd), topY)
+            ctx.lineTo(xAt(fwd), botY)
+          }
         }
         ctx.stroke()
       }

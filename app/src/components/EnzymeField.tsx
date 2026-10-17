@@ -118,13 +118,18 @@ export default function EnzymeField({ value, onChange, targets, placeholder, sug
     return [...recent, ...suggested].slice(0, MAX_OPTIONS)
   }, [open, query, value, cutCounts, hasTargets])
 
-  /** Enzymes whose every site on every target is blocked by methylation. */
+  /**
+   * Enzymes whose every site on every target is blocked: by methylation, or
+   * for want of it (DpnI on DNA that is not Dam-methylated).
+   */
   const blocked = useMemo(() => {
     const set = new Set<string>()
     const methylated = targets.filter(t => t.source.damMethylated || t.source.dcmMethylated)
-    if (methylated.length === 0) return set
     for (const e of options) {
-      const results = methylated.map(({ source }) =>
+      const needsMethylation = e.dam === 'required' || e.dcm === 'required'
+      const checked = needsMethylation ? targets : methylated
+      if (checked.length === 0) continue
+      const results = checked.map(({ source }) =>
         findUnblockedSites(source.bases, source.topology, [e], !!source.damMethylated, !!source.dcmMethylated))
       if (results.every(r => r.sites.length === 0) && results.some(r => r.blocked.length > 0)) set.add(e.name)
     }
@@ -255,7 +260,7 @@ export default function EnzymeField({ value, onChange, targets, placeholder, sug
               >
                 <span className="ef-name">{e.name}</span>
                 <span className="ef-site">{e.recognition}</span>
-                {blocked.has(e.name) && <span className="ef-blocked" title="Every site is blocked by dam/dcm methylation">blocked</span>}
+                {blocked.has(e.name) && <span className="ef-blocked" title={e.dam === 'required' || e.dcm === 'required' ? 'Cuts only methylated DNA, and no site here is' : 'Every site is blocked by dam/dcm methylation'}>blocked</span>}
                 {counts && (
                   <span className="ef-counts" title={countsTitle(counts)}>
                     {counts.map((n, t) => (

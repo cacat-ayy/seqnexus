@@ -9,6 +9,9 @@ import type { GroupedCutSite } from '../enzymes/grouping'
 import { complementBase } from '../models/complement'
 import HoverCard from './HoverCard'
 
+/** Said of a site whose cut would fall past an end of a linear sequence. */
+const NO_CUT = 'Cuts past the end of the sequence, so it does not cut'
+
 const formatOverhang = (o: string) =>
   o === '5prime' ? "5' overhang" : o === '3prime' ? "3' overhang" : 'Blunt end'
 
@@ -16,6 +19,7 @@ const formatMethyl = (v?: string) => {
   if (!v || v === 'unknown') return '-'
   if (v === 'blocked') return 'Blocked'
   if (v === 'impaired') return 'Impaired'
+  if (v === 'required') return 'Required'
   return 'Insensitive'
 }
 
@@ -40,6 +44,14 @@ interface DiagramCell {
   revCut: boolean // ▲ caret between this cell and the previous one
 }
 
+/** The enzyme's cut pairs relative to its site: one, or two for a Type IIB enzyme. */
+function enzymePairs(site: CutSite): [number, number][] {
+  const e = site.enzyme
+  return e.fwd_cut2 !== undefined && e.rev_cut2 !== undefined
+    ? [[e.fwd_cut2, e.rev_cut2], [e.fwd_cut, e.rev_cut]]
+    : [[e.fwd_cut, e.rev_cut]]
+}
+
 interface CutDiagram {
   cells: DiagramCell[]
   fwdCutEnd: boolean // ▼ after the last cell
@@ -48,11 +60,11 @@ interface CutDiagram {
 
 function buildCutDiagram(site: CutSite): CutDiagram {
   const rec = site.enzyme.recognition.toUpperCase()
-  const fwdCut = site.enzyme.fwd_cut
-  const revCut = site.enzyme.rev_cut
+  const pairs = enzymePairs(site)
+  const cuts = pairs.flat()
 
-  const displayEnd = Math.max(rec.length, fwdCut + 1, revCut + 1)
-  const displayStart = Math.min(0, fwdCut, revCut)
+  const displayEnd = Math.max(rec.length, ...cuts.map(c => c + 1))
+  const displayStart = Math.min(0, ...cuts)
 
   const fwdBases: string[] = []
   const revBases: string[] = []
@@ -62,8 +74,9 @@ function buildCutDiagram(site: CutSite): CutDiagram {
     revBases.push(complementBase(base))
   }
 
-  const fwdCutIdx = fwdCut - displayStart
-  const revCutIdx = revCut - displayStart
+  // Carets as cell indices: a cut at c sits before cell c - displayStart.
+  const fwdIdx = new Set(pairs.map(([f]) => f - displayStart))
+  const revIdx = new Set(pairs.map(([, r]) => r - displayStart))
 
   // Build cells, collapsing runs of identical bases on BOTH strands,
   // but splitting at cut positions so carets land between cells.
@@ -77,7 +90,7 @@ function buildCutDiagram(site: CutSite): CutDiagram {
     while (
       j < fwdBases.length &&
       fwdBases[j] === fCh && revBases[j] === rCh &&
-      j !== fwdCutIdx && j !== revCutIdx
+      !fwdIdx.has(j) && !revIdx.has(j)
     ) {
       j++
     }
@@ -88,8 +101,8 @@ function buildCutDiagram(site: CutSite): CutDiagram {
         fwd: fCh,
         rev: rCh,
         count: runLen,
-        fwdCut: i === fwdCutIdx,
-        revCut: i === revCutIdx,
+        fwdCut: fwdIdx.has(i),
+        revCut: revIdx.has(i),
       })
     } else {
       // Short run - emit individual cells for uniform spacing
@@ -98,8 +111,8 @@ function buildCutDiagram(site: CutSite): CutDiagram {
           fwd: fCh,
           rev: rCh,
           count: 1,
-          fwdCut: k === fwdCutIdx,
-          revCut: k === revCutIdx,
+          fwdCut: fwdIdx.has(k),
+          revCut: revIdx.has(k),
         })
       }
     }
@@ -108,8 +121,8 @@ function buildCutDiagram(site: CutSite): CutDiagram {
 
   return {
     cells,
-    fwdCutEnd: fwdCutIdx === fwdBases.length,
-    revCutEnd: revCutIdx === fwdBases.length,
+    fwdCutEnd: fwdIdx.has(fwdBases.length),
+    revCutEnd: revIdx.has(fwdBases.length),
   }
 }
 
@@ -155,14 +168,19 @@ function CutDiagramView({ diagram }: { diagram: CutDiagram }) {
 }
 
 /** Tooltip content for a single enzyme site. */
-export function EnzymeTooltipContent({ site, methEffect }: { site: CutSite; methEffect?: 'blocked' | 'impaired' | null }) {
+export function EnzymeTooltipContent({ site, methEffect, methNote }: {
+  site: CutSite
+  methEffect?: 'blocked' | 'impaired' | null
+  methNote?: string | null
+}) {
   const diagram = buildCutDiagram(site)
   return (
     <>
       <div className="enzyme-tooltip-title">{site.enzyme.name}</div>
+      {site.offEnd && <div className="enzyme-methyl-warning enzyme-methyl-blocked">{NO_CUT}</div>}
       {methEffect && (
         <div className={`enzyme-methyl-warning enzyme-methyl-${methEffect}`}>
-          {methEffect === 'blocked' ? 'Blocked by methylation' : 'Impaired by methylation'}
+          {methNote ?? (methEffect === 'blocked' ? 'Blocked by methylation' : 'Impaired by methylation')}
         </div>
       )}
       <CutDiagramView diagram={diagram} />
@@ -176,7 +194,7 @@ export function EnzymeTooltipContent({ site, methEffect }: { site: CutSite; meth
           {site.enzyme.heatInactivation != null && (
             <tr><td>Heat inact.</td><td>{site.enzyme.heatInactivation}°C</td></tr>
           )}
-          {[site.enzyme.dam, site.enzyme.dcm, site.enzyme.cpg].some(v => v === 'blocked' || v === 'impaired') && (
+          {[site.enzyme.dam, site.enzyme.dcm, site.enzyme.cpg].some(v => v === 'blocked' || v === 'impaired' || v === 'required') && (
             <tr><td>Methylation</td><td><span className="enzyme-methyl-inline">
               {[
                 site.enzyme.dam && ['Dam', site.enzyme.dam],
@@ -205,10 +223,11 @@ export function EnzymeTooltipContent({ site, methEffect }: { site: CutSite; meth
 function groupByPattern(sites: CutSite[]): { representative: CutSite; names: string[] }[] {
   const map = new Map<string, { representative: CutSite; names: string[] }>()
   for (const site of sites) {
-    const key = `${site.enzyme.recognition}|${site.enzyme.fwd_cut}|${site.enzyme.rev_cut}`
+    const key = `${site.enzyme.recognition}|${enzymePairs(site).join('|')}`
     const existing = map.get(key)
     if (existing) {
-      existing.names.push(site.enzyme.name)
+      // The same enzyme on both strands of one site (MspJI on CAAG) is named once.
+      if (!existing.names.includes(site.enzyme.name)) existing.names.push(site.enzyme.name)
     } else {
       map.set(key, { representative: site, names: [site.enzyme.name] })
     }
@@ -219,7 +238,7 @@ function groupByPattern(sites: CutSite[]): { representative: CutSite; names: str
 /** Tooltip content for a grouped enzyme site (isoschizomers). */
 export function EnzymeGroupTooltipContent({ group }: { group: GroupedCutSite }) {
   if (group.sites.length === 1) {
-    return <EnzymeTooltipContent site={group.sites[0]} methEffect={group.methEffect} />
+    return <EnzymeTooltipContent site={group.sites[0]} methEffect={group.methEffect} methNote={group.methNote} />
   }
 
   // Group by identical cut pattern so isoschizomers share one diagram
@@ -231,9 +250,10 @@ export function EnzymeGroupTooltipContent({ group }: { group: GroupedCutSite }) 
       <div className="enzyme-tooltip-position">
         Position {group.recognitionStart + 1}..{group.recognitionEnd}
       </div>
+      {!group.cuts && <div className="enzyme-methyl-warning enzyme-methyl-blocked">{NO_CUT}</div>}
       {group.methEffect && (
         <div className={`enzyme-methyl-warning enzyme-methyl-${group.methEffect}`}>
-          {group.methEffect === 'blocked' ? 'Blocked by methylation' : 'Impaired by methylation'}
+          {group.methNote ?? (group.methEffect === 'blocked' ? 'Blocked by methylation' : 'Impaired by methylation')}
         </div>
       )}
       {patterns.map((pat, i) => {

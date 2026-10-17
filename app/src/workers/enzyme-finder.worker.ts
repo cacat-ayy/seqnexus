@@ -7,39 +7,38 @@
  */
 
 import type { RestrictionEnzyme } from '../enzymes/db'
-import { findCutSites, type CutSite } from '../enzymes/finder'
+import { scanEnzymes, type CutSite } from '../enzymes/finder'
 
 export interface EnzymeFinderRequest {
   bases: string
   enzymes: RestrictionEnzyme[]
   topology: 'linear' | 'circular'
+  maxSites: number
 }
 
 export type SerializedCutSite = Omit<CutSite, 'enzyme'> & {
-  enzymeName: string
   enzymeIdx: number
 }
 
 export interface EnzymeFinderResponse {
   sites: SerializedCutSite[]
+  /** Enzymes past the site limit, as [name, number of sites]. */
+  tooMany: [string, number][]
 }
 
 self.onmessage = (e: MessageEvent<EnzymeFinderRequest>) => {
-  const { bases, enzymes, topology } = e.data
-  const allSites: SerializedCutSite[] = []
-
-  enzymes.forEach((enzyme, enzymeIdx) => {
-    for (const { position, end, fwdCut, revCut, strand, offEnd } of findCutSites(bases, enzyme, topology)) {
-      allSites.push({
-        position, end, fwdCut, revCut, strand,
-        ...(offEnd ? { offEnd } : {}),
-        enzymeName: enzyme.name,
-        enzymeIdx,
-      })
-    }
-  })
-
-  allSites.sort((a, b) => a.position - b.position)
-  const response: EnzymeFinderResponse = { sites: allSites }
+  const { bases, enzymes, topology, maxSites } = e.data
+  const index = new Map(enzymes.map((enzyme, i) => [enzyme, i]))
+  const scan = scanEnzymes(bases, enzymes, topology, maxSites)
+  const sites: SerializedCutSite[] = []
+  for (const { enzyme, position, end, fwdCut, revCut, cut2, strand, offEnd } of scan.sites) {
+    sites.push({
+      position, end, fwdCut, revCut, strand,
+      ...(cut2 ? { cut2 } : {}),
+      ...(offEnd ? { offEnd } : {}),
+      enzymeIdx: index.get(enzyme)!,
+    })
+  }
+  const response: EnzymeFinderResponse = { sites, tooMany: [...scan.tooMany] }
   self.postMessage(response)
 }

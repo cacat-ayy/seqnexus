@@ -17,6 +17,10 @@ export interface CutMark {
   /** Fewest sites any enzyme in this group has; 1 means a unique cutter. */
   sites: number
   methylation: 'blocked' | 'impaired' | null
+  /** The methylation effect in words, when there is one. */
+  methylationNote?: string | null
+  /** False for a site that cuts nothing (past an end of a linear sequence): drawn faint, unnamed. */
+  cuts?: boolean
 }
 
 const LABEL_H = 12
@@ -39,7 +43,7 @@ export function cutSiteTrack(marks: readonly CutMark[], formatPosition: (pos: nu
     const h = m.sites === 1 ? TICK_H : SHORT_TICK_H
     const bottom = a.y + a.h
     ctx.strokeStyle = theme.enzyme
-    ctx.globalAlpha = m.methylation === 'blocked' ? 0.35 : m.sites === 1 ? 1 : 0.45
+    ctx.globalAlpha = m.methylation === 'blocked' || m.cuts === false ? 0.35 : m.sites === 1 ? 1 : 0.45
     ctx.lineWidth = m.sites === 1 ? 1.5 : 1
     ctx.beginPath()
     ctx.moveTo(x, bottom - h)
@@ -65,7 +69,7 @@ export function cutSiteTrack(marks: readonly CutMark[], formatPosition: (pos: nu
       let lastRight = -Infinity
       const unitsPerPx = a.w > 0 ? a.length / a.w : 1
       for (const m of unique) {
-        if (m.methylation === 'blocked') continue
+        if (m.methylation === 'blocked' || m.cuts === false) continue
         const w = ctx.measureText(m.label).width
         const left = Math.max(a.x, Math.min(a.x + a.w - w, a.toX(m.pos) - w / 2))
         if (left < lastRight + LABEL_GAP) continue
@@ -92,8 +96,12 @@ export function cutSiteTrack(marks: readonly CutMark[], formatPosition: (pos: nu
         }
       }
       if (!mark) return null
+      if (mark.cuts === false) {
+        return { label: mark.label, detail: 'cuts past the end of the sequence, so it does not cut', color: theme.enzyme }
+      }
       const count = mark.sites === 1 ? 'unique cutter' : `${mark.sites} sites`
-      const meth = mark.methylation ? ` · ${mark.methylation} by methylation` : ''
+      const note = mark.methylationNote ?? (mark.methylation ? `${mark.methylation} by methylation` : null)
+      const meth = note ? ` · ${note.charAt(0).toLowerCase()}${note.slice(1)}` : ''
       return {
         label: mark.label,
         detail: `cuts at ${formatPosition(mark.pos)} · ${count}${meth}`,
@@ -116,16 +124,21 @@ export function cutSiteTrack(marks: readonly CutMark[], formatPosition: (pos: nu
 
 /**
  * One mark per group, at its cut. A group counts as a unique cutter when any
- * of its enzymes cuts the sequence exactly once.
+ * of its enzymes cuts the sequence exactly once; a site that cuts nothing
+ * (past an end of a linear sequence) is not counted, and is marked where it is.
  */
 export function toCutMarks(groups: readonly GroupedCutSite[], seqLen: number): CutMark[] {
   const perEnzyme = new Map<string, number>()
-  for (const g of groups) for (const s of g.sites) perEnzyme.set(s.enzyme.name, (perEnzyme.get(s.enzyme.name) ?? 0) + 1)
+  for (const g of groups) {
+    for (const s of g.sites) if (!s.offEnd) perEnzyme.set(s.enzyme.name, (perEnzyme.get(s.enzyme.name) ?? 0) + 1)
+  }
   return groups.map(g => ({
     key: enzymeGroupKey(g),
     label: g.label,
-    pos: seqLen > 0 ? ((g.fwdCut % seqLen) + seqLen) % seqLen : 0,
+    pos: !g.cuts ? g.labelPos : seqLen > 0 ? ((g.fwdCut % seqLen) + seqLen) % seqLen : 0,
+    cuts: g.cuts,
     sites: Math.min(...g.sites.map(s => perEnzyme.get(s.enzyme.name) ?? 1)),
     methylation: g.methEffect,
+    methylationNote: g.methNote,
   }))
 }
