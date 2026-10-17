@@ -25,3 +25,6 @@ Thumbs.db
 # AI agent instructions and skills, kept local
 .claude/
 CLAUDE.md
+
+# Third-party downloads the CRISPR oracle caches (see app/scripts/crispr-oracle)
+app/scripts/crispr-oracle/cache/

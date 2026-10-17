@@ -74,8 +74,16 @@ export function vectorPreset(id: string): VectorPreset | undefined {
   return VECTOR_PRESETS.find(v => v.id === id)
 }
 
-/** T7 transcribes from its own promoter; this is the DNA that carries it. */
-export const T7_PROMOTER = 'TAATACGACTCACTATAG'
+/**
+ * T7 transcribes from its own promoter; this is the DNA that carries it.
+ *
+ * The 17 bases of the promoter itself, and not the G that follows them:
+ * that G is the first base of the transcript, so it is added by
+ * `promoterPrefix` along with any second one the guide needs. Carrying it in
+ * both places is how a template comes to start the transcript with three G
+ * when the guide shows two.
+ */
+export const T7_PROMOTER = 'TAATACGACTCACTATA'
 
 export interface OrderOligo {
   name: string
@@ -119,6 +127,23 @@ export function promoterPrefix(spacer: string, promoter: PromoterId): string {
   return ''
 }
 
+/**
+ * Whether the promoter's first transcribed base is the spacer's own.
+ *
+ * The start-base rule is about the 5' end of the transcript. For an sgRNA
+ * that is the spacer, so a missing G is added in front of it. For a Cas12a
+ * crRNA the repeat comes first and the spacer sits inside the transcript, so
+ * a base added to the spacer would land between the repeat and the spacer and
+ * the result would not be a guide RNA.
+ */
+function spacerStartsTranscript(req: OrderRequest): boolean {
+  if (req.scaffold) return req.scaffold.side === 'after'
+  return req.nuclease.pamSide !== 'fivePrime'
+}
+
+const REPEAT_FIRST_NOTE =
+  'The repeat comes before the spacer, so the transcript starts on the repeat and no base is added to the spacer.'
+
 function oligo(name: string, prefix: string, core: string, suffix: string): OrderOligo {
   const sequence = (prefix + core + suffix).toUpperCase()
   return { name, sequence, addedPrefix: prefix.toUpperCase(), addedSuffix: suffix.toUpperCase(), length: sequence.length }
@@ -128,12 +153,14 @@ function oligo(name: string, prefix: string, core: string, suffix: string): Orde
 export function annealedOligos(req: OrderRequest): OrderedConstruct {
   const spacer = req.spacer.toUpperCase()
   const vector = req.vector ?? VECTOR_PRESETS[0]
-  const g = promoterPrefix(spacer, req.promoter)
+  const starts = spacerStartsTranscript(req)
+  const g = starts ? promoterPrefix(spacer, req.promoter) : ''
   const top = g + spacer
   const notes = [`Anneal the pair and ligate into ${vector.enzyme}-cut vector.`, vector.note]
   if (g) {
     notes.push(`A ${g} was added at the 5′ end: the promoter starts best on it, and it becomes part of the guide.`)
   }
+  if (!starts) notes.push(REPEAT_FIRST_NOTE)
   return {
     format: 'annealed',
     title: `${vector.name}`,
@@ -149,8 +176,12 @@ export function annealedOligos(req: OrderRequest): OrderedConstruct {
 export function transcriptionTemplate(req: OrderRequest): OrderedConstruct {
   const spacer = req.spacer.toUpperCase()
   const scaffold = req.scaffold
-  const g = promoterPrefix(spacer, 't7')
-  const guide = scaffold ? fullGuide(g + spacer, scaffold) : g + spacer
+  // The start-base rule belongs to the transcript, so it is applied to the
+  // whole guide and not to the spacer: for a Cas12a crRNA the repeat is what
+  // transcription starts on.
+  const body = scaffold ? fullGuide(spacer, scaffold) : spacer
+  const g = promoterPrefix(body, 't7')
+  const guide = g + body
   const notes = ['Transcribe from the T7 promoter with the whole of this as template.']
   if (g) notes.push(`${g} added so transcription starts cleanly; it becomes part of the guide.`)
   if (!scaffold) notes.push('No scaffold chosen, so this is the spacer alone.')

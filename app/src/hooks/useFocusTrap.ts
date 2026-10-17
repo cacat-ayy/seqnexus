@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useState } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 
 /**
  * Confines keyboard focus to an open dialog and restores it on close.
@@ -66,13 +66,24 @@ export function useFocusTrap(
     if (containerRef.current !== container) setContainer(containerRef.current)
   })
 
+  // Remember where focus came from so it can be handed back on close. Losing
+  // this is what makes keyboard users restart navigation from the top of the
+  // page every time they dismiss a dialog.
+  //
+  // It is taken the moment the dialog is asked to open, not when its backdrop
+  // turns up a render later: by then the dialog's own first field may have
+  // taken focus (autoFocus runs while React attaches the node), and the trap
+  // would hand focus back to a field it is about to unmount, which leaves the
+  // keyboard on the page body.
+  const origin = useRef<HTMLElement | null>(null)
+  useEffect(() => {
+    if (active) origin.current = document.activeElement as HTMLElement | null
+  }, [active])
+
   useEffect(() => {
     if (!active || !container) return
 
-    // Remember where focus came from so it can be handed back on close. Losing
-    // this is what makes keyboard users restart navigation from the top of the
-    // page every time they dismiss a dialog.
-    const previouslyFocused = document.activeElement as HTMLElement | null
+    const previouslyFocused = origin.current
 
     trapStack.push(container)
 

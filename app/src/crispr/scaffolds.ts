@@ -35,7 +35,7 @@ export const SCAFFOLDS: readonly Scaffold[] = [
     name: 'SpCas9 sgRNA scaffold',
     sequence: 'GTTTTAGAGCTAGAAATAGCAAGTTAAAATAAGGCTAGTCCGTTATCAACTTGAAAAAGTGGCACCGAGTCGGTGC',
     side: 'after',
-    nucleaseIds: ['spcas9', 'spcas9-ng', 'spcas9-vqr', 'spcas9-vrer', 'spcas9-d10a', 'dspcas9'],
+    nucleaseIds: ['spcas9', 'spcas9-ng', 'spcas9-vqr', 'spcas9-vrer', 'spcas9-d10a', 'spcas9-h840a', 'dspcas9'],
     note: 'The single-guide scaffold used in most SpCas9 vectors. Check it against your plasmid.',
   },
   {
@@ -43,18 +43,36 @@ export const SCAFFOLDS: readonly Scaffold[] = [
     name: 'SpCas9 sgRNA scaffold, extended stem',
     sequence: 'GTTTAAGAGCTATGCTGGAAACAGCATAGCAAGTTTAAATAAGGCTAGTCCGTTATCAACTTGAAAAAGTGGCACCGAGTCGGTGC',
     side: 'after',
-    nucleaseIds: ['spcas9', 'spcas9-ng', 'spcas9-vqr', 'spcas9-vrer', 'spcas9-d10a', 'dspcas9'],
+    nucleaseIds: ['spcas9', 'spcas9-ng', 'spcas9-vqr', 'spcas9-vrer', 'spcas9-d10a', 'spcas9-h840a', 'dspcas9'],
     note: 'The variant with the flipped base pair and the lengthened stem loop, common in newer vectors.',
   },
   {
-    id: 'cas12a-crrna',
-    name: 'Cas12a direct repeat',
+    id: 'ascas12a-crrna',
+    name: 'AsCas12a direct repeat',
     sequence: 'TAATTTCTACTCTTGTAGAT',
     side: 'before',
-    nucleaseIds: ['ascas12a', 'lbcas12a', 'encas12a'],
-    note: 'The repeat that precedes the spacer in a Cas12a crRNA.',
+    nucleaseIds: ['ascas12a', 'encas12a'],
+    note: 'The repeat that precedes the spacer in an AsCas12a crRNA. enAsCas12a is an AsCas12a variant and uses the same one.',
+  },
+  {
+    id: 'lbcas12a-crrna',
+    name: 'LbCas12a direct repeat',
+    sequence: 'AATTTCTACTAAGTGTAGAT',
+    side: 'before',
+    nucleaseIds: ['lbcas12a'],
+    note: 'The LbCas12a repeat, which is not the AsCas12a one: the loop differs and the orthologues do not read each other’s crRNA well.',
   },
 ]
+
+/**
+ * Whether a nuclease's guide RNA starts with the spacer or with its constant
+ * part. A promoter's start-base rule applies to whichever comes first.
+ */
+export function spacerStartsGuide(nuclease: Nuclease, custom: readonly Scaffold[] = []): boolean {
+  const scaffold = defaultScaffold(nuclease, custom)
+  if (scaffold) return scaffold.side === 'after'
+  return nuclease.pamSide !== 'fivePrime'
+}
 
 export function scaffoldById(id: string, custom: readonly Scaffold[] = []): Scaffold | undefined {
   return SCAFFOLDS.find(s => s.id === id) ?? custom.find(s => s.id === id)

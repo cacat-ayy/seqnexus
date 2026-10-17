@@ -63,6 +63,25 @@ function sliceWrap(bases: string, start: number, count: number, circular: boolea
   return bases.slice(from) + bases.slice(0, from + count - len)
 }
 
+/**
+ * Move one strand's PAM search on to its next match, or past the end.
+ *
+ * Matches are allowed to overlap, so the next search starts one base along
+ * rather than after the match. A circular search looks past the origin far
+ * enough for a PAM to straddle it, and a match starting at or after the
+ * origin again is the same site a second time, so it ends the walk.
+ */
+function advance(
+  cursor: { pattern: RegExp; at: number },
+  searchSeq: string,
+  len: number,
+): void {
+  const from = cursor.at < 0 ? 0 : cursor.at + 1
+  cursor.pattern.lastIndex = from
+  const m = cursor.pattern.exec(searchSeq)
+  cursor.at = m && m.index < len ? m.index : -1
+}
+
 /** Does [start, start+count) fall inside a linear sequence? */
 function inRange(start: number, count: number, len: number): boolean {
   return start >= 0 && start + count <= len
@@ -131,72 +150,80 @@ export function findGuideSites(
   const threePrime = nuclease.pamSide === 'threePrime'
   let truncated = false
 
-  for (const strand of [1, -1] as const) {
-    // The PAM as it reads on the sense strand for this orientation.
+  // Both strands are walked together, in position order, so that a scan the
+  // site cap stops short is the first part of the sequence on both strands.
+  // Finishing one strand before starting the other would make a truncated
+  // list read as though the antisense strand held nothing at all.
+  const cursors = ([1, -1] as const).map(strand => {
     const sensePam = strand === 1 ? nuclease.pam : reverseComplement(nuclease.pam.toUpperCase())
     const pattern = new RegExp(recognitionToRegex(sensePam), 'gi')
-    pattern.lastIndex = 0
-    let m: RegExpExecArray | null
-    while ((m = pattern.exec(searchSeq)) !== null) {
-      const pamStartRaw = m.index
-      pattern.lastIndex = pamStartRaw + 1
-      if (pamStartRaw >= len) break
-      const pamEndRaw = pamStartRaw + pamLen
+    const cursor = { strand, pattern, at: -1 }
+    advance(cursor, searchSeq, len)
+    return cursor
+  })
 
-      // Walking from the PAM into the protospacer: down the sense strand for
-      // a 3' PAM read on the sense strand, and for a 5' PAM read on the
-      // antisense strand; up it otherwise.
-      const dir = (strand === 1) === threePrime ? -1 : 1
-      const boundary = dir === -1 ? pamStartRaw : pamEndRaw
-      const spacerStartRaw = dir === -1 ? boundary - spacerLen : boundary
+  for (;;) {
+    // The next PAM along the sequence, whichever strand it is on.
+    let cursor: typeof cursors[number] | null = null
+    for (const c of cursors) if (c.at >= 0 && (!cursor || c.at < cursor.at)) cursor = c
+    if (!cursor) break
+    const strand = cursor.strand
+    const pamStartRaw = cursor.at
+    advance(cursor, searchSeq, len)
+    const pamEndRaw = pamStartRaw + pamLen
 
-      if (!circular && (!inRange(spacerStartRaw, spacerLen, len) || !inRange(pamStartRaw, pamLen, len))) {
-        continue
-      }
+    // Walking from the PAM into the protospacer: down the sense strand for
+    // a 3' PAM read on the sense strand, and for a 5' PAM read on the
+    // antisense strand; up it otherwise.
+    const dir = (strand === 1) === threePrime ? -1 : 1
+    const boundary = dir === -1 ? pamStartRaw : pamEndRaw
+    const spacerStartRaw = dir === -1 ? boundary - spacerLen : boundary
 
-      const senseSpacer = sliceWrap(upper, spacerStartRaw, spacerLen, circular)
-      if (senseSpacer.length !== spacerLen) continue
-      if (!PLAIN_BASES.test(senseSpacer)) {
-        skippedAmbiguous++
-        continue
-      }
-      const sensePamSeq = sliceWrap(upper, pamStartRaw, pamLen, circular)
-      if (sensePamSeq.length !== pamLen) continue
-
-      if (options.region && !overlapsRegion(spacerStartRaw, spacerLen, options.region, len, circular)) {
-        continue
-      }
-
-      // Both cuts, measured from the PAM edge into the protospacer, then
-      // labelled by which sense-strand they land on.
-      const cutProtospacerStrand = boundary + dir * nuclease.cut.site
-      const cutOther = boundary + dir * nuclease.cut.opposite
-      const cutTopRaw = strand === 1 ? cutProtospacerStrand : cutOther
-      const cutBottomRaw = strand === 1 ? cutOther : cutProtospacerStrand
-      const offEnd = !circular && (
-        cutTopRaw < 0 || cutTopRaw > len || cutBottomRaw < 0 || cutBottomRaw > len
-      )
-
-      sites.push({
-        nucleaseId: nuclease.id,
-        start: circular ? wrapIndex(spacerStartRaw, len) : spacerStartRaw,
-        end: circular ? wrapIndex(spacerStartRaw + spacerLen, len) : spacerStartRaw + spacerLen,
-        pamStart: circular ? wrapIndex(pamStartRaw, len) : pamStartRaw,
-        pamEnd: circular ? wrapIndex(pamEndRaw, len) : pamEndRaw,
-        strand,
-        spacer: strand === 1 ? senseSpacer : reverseComplement(senseSpacer),
-        pam: strand === 1 ? sensePamSeq : reverseComplement(sensePamSeq),
-        cutTop: circular ? wrapIndex(cutTopRaw, len) : cutTopRaw,
-        cutBottom: circular ? wrapIndex(cutBottomRaw, len) : cutBottomRaw,
-        ...(offEnd ? { offEnd: true as const } : {}),
-      })
-
-      if (sites.length >= maxSites) {
-        truncated = true
-        break
-      }
+    if (!circular && (!inRange(spacerStartRaw, spacerLen, len) || !inRange(pamStartRaw, pamLen, len))) {
+      continue
     }
-    if (truncated) break
+
+    const senseSpacer = sliceWrap(upper, spacerStartRaw, spacerLen, circular)
+    if (senseSpacer.length !== spacerLen) continue
+    if (!PLAIN_BASES.test(senseSpacer)) {
+      skippedAmbiguous++
+      continue
+    }
+    const sensePamSeq = sliceWrap(upper, pamStartRaw, pamLen, circular)
+    if (sensePamSeq.length !== pamLen) continue
+
+    if (options.region && !overlapsRegion(spacerStartRaw, spacerLen, options.region, len, circular)) {
+      continue
+    }
+
+    // Both cuts, measured from the PAM edge into the protospacer, then
+    // labelled by which sense-strand they land on.
+    const cutProtospacerStrand = boundary + dir * nuclease.cut.site
+    const cutOther = boundary + dir * nuclease.cut.opposite
+    const cutTopRaw = strand === 1 ? cutProtospacerStrand : cutOther
+    const cutBottomRaw = strand === 1 ? cutOther : cutProtospacerStrand
+    const offEnd = !circular && (
+      cutTopRaw < 0 || cutTopRaw > len || cutBottomRaw < 0 || cutBottomRaw > len
+    )
+
+    sites.push({
+      nucleaseId: nuclease.id,
+      start: circular ? wrapIndex(spacerStartRaw, len) : spacerStartRaw,
+      end: circular ? wrapIndex(spacerStartRaw + spacerLen, len) : spacerStartRaw + spacerLen,
+      pamStart: circular ? wrapIndex(pamStartRaw, len) : pamStartRaw,
+      pamEnd: circular ? wrapIndex(pamEndRaw, len) : pamEndRaw,
+      strand,
+      spacer: strand === 1 ? senseSpacer : reverseComplement(senseSpacer),
+      pam: strand === 1 ? sensePamSeq : reverseComplement(sensePamSeq),
+      cutTop: circular ? wrapIndex(cutTopRaw, len) : cutTopRaw,
+      cutBottom: circular ? wrapIndex(cutBottomRaw, len) : cutBottomRaw,
+      ...(offEnd ? { offEnd: true as const } : {}),
+    })
+
+    if (sites.length >= maxSites) {
+      truncated = true
+      break
+    }
   }
 
   sites.sort((a, b) => a.start - b.start || a.strand - b.strand)

@@ -13,14 +13,30 @@
  */
 
 import { IUPAC } from '../models/iupac'
-import type { Nuclease, PamSide, PromoterId } from './types'
+import { CFD_PAM } from './score/cfd'
+import type { AltPam, Nuclease, PamSide, PromoterId } from './types'
+
+/**
+ * The PAMs SpCas9 binds besides NGG, each with the activity measured for it.
+ *
+ * The numbers are the PAM activities of Doench et al. 2016, read from the
+ * table in score/cfd.ts so one source serves both the search and the score.
+ *
+ * All six belong here, not NAG alone: of the off-targets GUIDE-seq confirmed
+ * for three well studied guides, twice as many sit at NGA, NCG, NGC and NGT
+ * together as at NAG.
+ */
+const SPCAS9_ALT_PAMS: readonly AltPam[] = (['AG', 'CG', 'GA', 'TG', 'GC', 'GT'] as const)
+  .map(last2 => ({ pam: `N${last2}`, activity: CFD_PAM[last2] }))
+  .sort((a, b) => b.activity - a.activity)
 
 export const NUCLEASES: readonly Nuclease[] = [
   {
     id: 'spcas9',
     name: 'SpCas9',
     pam: 'NGG',
-    altPams: ['NAG'],
+    altPams: SPCAS9_ALT_PAMS,
+    offTargetModel: 'cfd',
     pamSide: 'threePrime',
     spacerLengths: [20, 19, 18, 21],
     cut: { site: 3, opposite: 3 },
@@ -77,7 +93,8 @@ export const NUCLEASES: readonly Nuclease[] = [
     id: 'spcas9-d10a',
     name: 'SpCas9 D10A nickase',
     pam: 'NGG',
-    altPams: ['NAG'],
+    altPams: SPCAS9_ALT_PAMS,
+    offTargetModel: 'cfd',
     pamSide: 'threePrime',
     spacerLengths: [20],
     cut: { site: 3, opposite: 3 },
@@ -86,13 +103,30 @@ export const NUCLEASES: readonly Nuclease[] = [
     onTargetModel: 'heuristic-cas9',
     scaffoldId: 'spcas9-sgrna',
     promoter: 'u6',
-    note: 'Nicks one strand. Used in pairs, and in prime editing.',
+    note: 'The RuvC domain is dead, so it nicks the strand the guide pairs with. Used in pairs for a staggered break.',
+  },
+  {
+    id: 'spcas9-h840a',
+    name: 'SpCas9 H840A nickase',
+    pam: 'NGG',
+    altPams: SPCAS9_ALT_PAMS,
+    offTargetModel: 'cfd',
+    pamSide: 'threePrime',
+    spacerLengths: [20],
+    cut: { site: 3, opposite: 3 },
+    overhang: 'blunt',
+    cleaves: 'site',
+    onTargetModel: 'heuristic-cas9',
+    scaffoldId: 'spcas9-sgrna',
+    promoter: 'u6',
+    note: 'The HNH domain is dead, so it nicks the PAM-bearing strand and leaves a 3′ end there. This is the nickase prime editing uses.',
   },
   {
     id: 'dspcas9',
     name: 'dSpCas9 (binding only)',
     pam: 'NGG',
-    altPams: ['NAG'],
+    altPams: SPCAS9_ALT_PAMS,
+    offTargetModel: 'cfd',
     pamSide: 'threePrime',
     spacerLengths: [20],
     cut: { site: 3, opposite: 3 },
@@ -180,7 +214,7 @@ export const NUCLEASES: readonly Nuclease[] = [
     overhang: '5prime',
     cleaves: 'both',
     onTargetModel: 'none',
-    scaffoldId: 'cas12a-crrna',
+    scaffoldId: 'ascas12a-crrna',
     promoter: 'u6',
     note: 'The PAM is upstream of the spacer. Staggered cut leaving an overhang, well away from the PAM.',
   },
@@ -194,7 +228,7 @@ export const NUCLEASES: readonly Nuclease[] = [
     overhang: '5prime',
     cleaves: 'both',
     onTargetModel: 'none',
-    scaffoldId: 'cas12a-crrna',
+    scaffoldId: 'lbcas12a-crrna',
     promoter: 'u6',
   },
   {
@@ -207,7 +241,7 @@ export const NUCLEASES: readonly Nuclease[] = [
     overhang: '5prime',
     cleaves: 'both',
     onTargetModel: 'none',
-    scaffoldId: 'cas12a-crrna',
+    scaffoldId: 'ascas12a-crrna',
     promoter: 'u6',
     note: 'Engineered for a wider PAM than AsCas12a.',
   },

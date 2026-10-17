@@ -137,7 +137,7 @@ export default function GuideInspector({ candidate, nuclease }: Props) {
           <div className="gi-section-title">Flags</div>
           {detail.scores.flags.map(flag => (
             <p className="gi-flag" key={flag.id}>
-              <span className={`gp-chip${flag.severity === 'bad' ? ' bad' : ''}`}>{flag.label}</span>{' '}
+              <span className={`gp-chip ${flag.severity}`}>{flag.label}</span>{' '}
               {flag.detail}
             </p>
           ))}

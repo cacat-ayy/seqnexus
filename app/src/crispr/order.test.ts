@@ -6,12 +6,15 @@ import {
   annealedOligos, transcriptionTemplate, syntheticGuide, pegOrder, buildOrder, orderCsv,
   promoterPrefix, vectorPreset, VECTOR_PRESETS, T7_PROMOTER,
 } from './order'
-import { designPegRna, nickingGuides, describeEdit, editedSequence, DEFAULT_PEG } from './pegrna'
+import {
+  designPegRna, nickingGuides, pe3bGuides, describeEdit, editedSequence,
+  DEFAULT_PEG, NICK_BAND,
+} from './pegrna'
 import { screeningPrimers, rflpOptions, rflpBands, deletionBands, DEFAULT_SCREEN } from './screen'
 import { libraryMatches, recordFromCandidate, freeName, libraryCsv } from './library'
 import { findGuideSites } from './finder'
 import { scoreSites } from './score/guide'
-import { builtInNuclease } from './nucleases'
+import { builtInNuclease, NUCLEASES } from './nucleases'
 import { reverseComplement } from '../models/complement'
 import { getEnzyme } from '../enzymes/db'
 import type { GuideCandidate, Nuclease } from './types'
@@ -45,7 +48,7 @@ describe('scaffolds', () => {
     const offered = scaffoldsFor(spCas9, [mine])
     expect(offered.map(s => s.id)).toContain('spcas9-sgrna')
     expect(offered.map(s => s.id)).toContain('c1')
-    expect(scaffoldsFor(cas12a).map(s => s.id)).toEqual(['cas12a-crrna'])
+    expect(scaffoldsFor(cas12a).map(s => s.id)).toEqual(['ascas12a-crrna'])
   })
 
   it('has no scaffold for a nuclease none ships for', () => {
@@ -56,7 +59,7 @@ describe('scaffolds', () => {
 
   it('puts the scaffold on the side the nuclease wants', () => {
     expect(fullGuide(SPACER, sgRna)).toBe(SPACER + sgRna.sequence)
-    const repeat = scaffoldById('cas12a-crrna')!
+    const repeat = scaffoldById('ascas12a-crrna')!
     expect(fullGuide(SPACER, repeat)).toBe(repeat.sequence + SPACER)
   })
 
@@ -352,5 +355,204 @@ describe('screening across an origin', () => {
   it('ignores a cut that falls outside a wrapped amplicon', () => {
     const amplicon = { start: 700, end: 1000 }
     expect(rflpOptions(circular, cut, amplicon).find(o => o.enzyme.name === 'EcoRI')).toBeUndefined()
+  })
+})
+
+describe('what actually gets ordered', () => {
+  // These are the cases where a wrong base is a wasted order rather than a
+  // wrong number on a screen.
+  const cas12aRepeat = scaffoldById('ascas12a-crrna')!
+  const CAS12A_SPACER = 'ACGTACGTACGTACGTACGTACG'
+
+  it('transcribes exactly the guide it shows, with no extra G', () => {
+    // The promoter constant ends before the transcript starts, so the bases
+    // the template adds and the bases the product shows are the same bases.
+    const order = transcriptionTemplate({
+      name: 'g', spacer: SPACER, nuclease: spCas9, scaffold: sgRna, promoter: 't7',
+    })
+    const template = order.oligos[0].sequence
+    expect(template.startsWith(T7_PROMOTER)).toBe(true)
+    const transcribed = template.slice(T7_PROMOTER.length)
+    expect(asRna(transcribed)).toBe(order.product!.sequence)
+    expect(transcribed.startsWith('GG' + SPACER)).toBe(true)
+    expect(transcribed.startsWith('GGG')).toBe(false)
+  })
+
+  it('adds only the missing G when the spacer already starts on one', () => {
+    const order = transcriptionTemplate({
+      name: 'g', spacer: 'G' + SPACER.slice(1), nuclease: spCas9, scaffold: sgRna, promoter: 't7',
+    })
+    const transcribed = order.oligos[0].sequence.slice(T7_PROMOTER.length)
+    expect(asRna(transcribed)).toBe(order.product!.sequence)
+    expect(transcribed.slice(1)).toBe('G' + SPACER.slice(1) + sgRna.sequence)
+    expect(transcribed.startsWith('GG')).toBe(true)
+  })
+
+  it('leaves a Cas12a crRNA alone: the repeat is what transcription starts on', () => {
+    const template = transcriptionTemplate({
+      name: 'c', spacer: CAS12A_SPACER, nuclease: cas12a, scaffold: cas12aRepeat, promoter: 't7',
+    })
+    const transcribed = template.oligos[0].sequence.slice(T7_PROMOTER.length)
+    // The spacer follows the repeat immediately: nothing is inserted between.
+    expect(transcribed.endsWith(cas12aRepeat.sequence + CAS12A_SPACER)).toBe(true)
+    expect(asRna(transcribed)).toBe(template.product!.sequence)
+
+    const annealed = annealedOligos({
+      name: 'c', spacer: CAS12A_SPACER, nuclease: cas12a, scaffold: cas12aRepeat,
+      promoter: 'u6', vector: vectorPreset('cas12a-agat'),
+    })
+    expect(annealed.oligos[0].sequence).toBe('AGAT' + CAS12A_SPACER)
+    expect(annealed.oligos[1].sequence).toBe('TGTA' + reverseComplement(CAS12A_SPACER))
+  })
+
+  it('gives each Cas12a orthologue its own repeat', () => {
+    // AsCas12a and LbCas12a do not share a direct repeat.
+    const as = defaultScaffold(builtInNuclease('ascas12a')!)!
+    const lb = defaultScaffold(builtInNuclease('lbcas12a')!)!
+    const en = defaultScaffold(builtInNuclease('encas12a')!)!
+    expect(as.sequence).toBe('TAATTTCTACTCTTGTAGAT')
+    expect(lb.sequence).toBe('AATTTCTACTAAGTGTAGAT')
+    expect(en.sequence).toBe(as.sequence)
+    expect(lb.sequence).not.toBe(as.sequence)
+  })
+
+  it('still builds the standard BbsI duplex for an sgRNA', () => {
+    // CACCG over AAAC with the matching C: the pair the usual vectors want.
+    const order = annealedOligos({
+      name: 'g', spacer: SPACER, nuclease: spCas9, promoter: 'u6', vector: vectorPreset('bbsi-cacc'),
+    })
+    expect(order.oligos[0].sequence).toBe('CACCG' + SPACER)
+    expect(order.oligos[1].sequence).toBe('AAAC' + reverseComplement(SPACER) + 'C')
+  })
+})
+
+describe('a second nick for prime editing', () => {
+  it('measures the distance the short way round a circle', () => {
+    const body = pseudoRandom(500)
+    const spacer = body.slice(5, 25)
+    const bases = body.slice(0, 5) + spacer + 'AGG' + body.slice(28)
+    const scan = findGuideSites(bases, spCas9, 'circular')
+    const cands = scoreSites(scan.sites, spCas9, bases, 'circular')
+    const candidate = cands.find(c => c.site.spacer === spacer && c.site.strand === 1)!
+    const peg = designPegRna(candidate, bases, { start: 40, end: 41, replacement: 'A' },
+      { ...DEFAULT_PEG, scaffold: sgRna.sequence })!
+    // The pegRNA nicks just after the origin, so every second nick in the
+    // band sits before it.
+    expect(peg.nick).toBeLessThan(40)
+    const linear = nickingGuides(cands, peg)
+    const circular = nickingGuides(cands, peg, undefined, { length: bases.length, topology: 'circular' })
+    expect(circular.length).toBeGreaterThan(linear.length)
+    for (const nick of circular) {
+      const at = nick.candidate.site.strand === 1 ? nick.candidate.site.cutTop : nick.candidate.site.cutBottom
+      const plain = Math.abs(at - peg.nick)
+      expect(Math.min(plain, bases.length - plain)).toBe(nick.distance)
+    }
+  })
+})
+
+describe('a nickase is not a break', () => {
+  it('reports no out-of-frame share for a nick', () => {
+    const bases = PAD.repeat(3) + SPACER + 'AGG' + PAD.repeat(3)
+    const cutter = scoreSites(findGuideSites(bases, spCas9, 'linear').sites, spCas9, bases)
+    const nicker = scoreSites(findGuideSites(bases, nickase, 'linear').sites, nickase, bases)
+    const cut = cutter.find(c => c.site.spacer === SPACER)!
+    const nick = nicker.find(c => c.site.spacer === SPACER)!
+    expect(cut.scores.outOfFrame).not.toBeNull()
+    expect(nick.scores.outOfFrame).toBeNull()
+  })
+})
+
+/** A repeatable sequence with PAMs scattered through it. */
+function pseudoRandom(n: number, seed = 7): string {
+  let s = seed
+  const out: string[] = []
+  for (let i = 0; i < n; i++) {
+    s = (s * 1103515245 + 12345) & 0x7fffffff
+    out.push('ACGT'[(s >>> 16) & 3])
+  }
+  return out.join('')
+}
+
+describe('PE3b: a second nick that waits for the edit', () => {
+  const SC = sgRna.sequence
+
+  /** A sequence with a pegRNA site at 80 and no NGG near the edit. */
+  function build() {
+    const body = pseudoRandom(400, 11).split('')
+    // The pegRNA guide: spacer at 80..100 with an AGG PAM, so its nick is 97.
+    const spacer = 'ACGTTGCATGCAACGTTGCA'
+    for (let i = 0; i < 20; i++) body[80 + i] = spacer[i]
+    for (const [i, b] of [...'AGG'].entries()) body[100 + i] = b
+    // Clear the region the second nick would come from, so only the planted
+    // one is there: no CC on the sense strand means no antisense PAM.
+    for (let i = 130; i < 200; i++) body[i] = i % 2 === 0 ? 'A' : 'T'
+    return { bases: body.join(''), spacer }
+  }
+
+  it('offers a guide whose PAM the edit creates, and marks it', () => {
+    const { bases, spacer } = build()
+    const scan = findGuideSites(bases, spCas9, 'linear')
+    const cands = scoreSites(scan.sites, spCas9, bases, 'linear')
+    const candidate = cands.find(c => c.site.spacer === spacer && c.site.strand === 1)!
+    // Replace two bases at 151 with CC, which makes an antisense PAM there
+    // and so a guide nicking at 157, sixty bases from the pegRNA's own nick.
+    const edit = { start: 151, end: 153, replacement: 'CC' }
+    const peg = designPegRna(candidate, bases, edit, { ...DEFAULT_PEG, scaffold: SC })!
+    expect(peg.nick).toBe(97)
+
+    const plain = nickingGuides(cands, peg)
+    expect(plain.some(n => n.pe3b)).toBe(false)
+
+    const edited = editedSequence(bases, edit)
+    const editedScan = findGuideSites(edited, spCas9, 'linear')
+    const pe3b = pe3bGuides(scoreSites(editedScan.sites, spCas9, edited, 'linear'), peg, edit)
+    expect(pe3b.length).toBeGreaterThan(0)
+    for (const n of pe3b) {
+      expect(n.pe3b).toBe(true)
+      expect(n.opposite).toBe(true)
+      expect(n.distance).toBeGreaterThanOrEqual(NICK_BAND.low)
+      expect(n.distance).toBeLessThanOrEqual(NICK_BAND.high)
+      // The site has to touch the edit, or it would bind without it.
+      const { start, end, pamStart, pamEnd } = n.candidate.site
+      const touches = (a: number, b: number) => a < 153 && b > 151
+      expect(touches(start, end) || touches(pamStart, pamEnd)).toBe(true)
+      // And the sequence as it stands offers no such guide: the spacer may
+      // be there, but without the PAM the edit brings, nothing binds it.
+      expect(cands.some(c => c.site.spacer === n.candidate.site.spacer
+        && c.site.strand === n.candidate.site.strand)).toBe(false)
+    }
+  })
+
+  it('sorts a PE3b guide ahead of an ordinary second nick', () => {
+    const { bases, spacer } = build()
+    const scan = findGuideSites(bases, spCas9, 'linear')
+    const cands = scoreSites(scan.sites, spCas9, bases, 'linear')
+    const candidate = cands.find(c => c.site.spacer === spacer && c.site.strand === 1)!
+    const edit = { start: 151, end: 153, replacement: 'CC' }
+    const peg = designPegRna(candidate, bases, edit, { ...DEFAULT_PEG, scaffold: SC })!
+    const edited = editedSequence(bases, edit)
+    const editedScan = findGuideSites(edited, spCas9, 'linear')
+    const all = [
+      ...pe3bGuides(scoreSites(editedScan.sites, spCas9, edited, 'linear'), peg, edit),
+      ...nickingGuides(cands, peg),
+    ]
+    const sorted = nickingGuides(all.map(n => n.candidate), peg)
+    expect(sorted.length).toBeGreaterThan(0)
+    expect(all[0].pe3b).toBe(true)
+  })
+})
+
+describe('every shipped nuclease can be ordered', () => {
+  it('offers a scaffold for each nuclease that has one on file', () => {
+    // A nuclease whose row names a scaffold has to see it in the picker too,
+    // or the panel says none ships while the builder quietly uses one.
+    for (const n of NUCLEASES) {
+      // A row may name a family whose sequence does not ship, and then the
+      // panel asks for it. What must not happen is a scaffold that ships and
+      // is used, while the picker says none does.
+      if (!n.scaffoldId || !scaffoldById(n.scaffoldId)) continue
+      expect(scaffoldsFor(n).map(s => s.id), n.id).toContain(n.scaffoldId)
+      expect(defaultScaffold(n)?.id, n.id).toBe(n.scaffoldId)
+    }
   })
 })

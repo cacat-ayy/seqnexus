@@ -67,7 +67,7 @@ export default function GuideRow({ candidate, nuclease, at, selected, picked, sp
       {scores.flags.length > 0 && (
         <div className="gp-chips">
           {scores.flags.map(flag => (
-            <span key={flag.id} className={`gp-chip${flag.severity === 'bad' ? ' bad' : ''}`} title={flag.detail}>
+            <span key={flag.id} className={`gp-chip ${flag.severity}`} title={flag.detail}>
               {flag.label}
             </span>
           ))}

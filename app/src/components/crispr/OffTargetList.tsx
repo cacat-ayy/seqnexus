@@ -8,7 +8,12 @@
  * than left for the reader to notice.
  */
 
-import { mismatchDiagram, type OffTargetHit, type OffTargetReport } from '../../crispr/offtarget'
+import {
+  mismatchDiagram,
+  OFF_TARGET_MODELS,
+  type OffTargetHit,
+  type OffTargetReport,
+} from '../../crispr/offtarget'
 import { searchedLine } from '../../crispr/targets'
 
 interface Props {
@@ -32,10 +37,14 @@ export default function OffTargetList({ report, limit = 12 }: Props) {
     <div className="gi-section">
       <div className="gi-section-title">
         Off-targets
-        <span className="gi-spec">{report.specificity} specificity</span>
+        <span className="gi-spec" title={OFF_TARGET_MODELS[report.model].caveat}>
+          {report.specificity} specificity, {OFF_TARGET_MODELS[report.model].name}
+        </span>
       </div>
 
       <p className="gi-caveat">
+        {OFF_TARGET_MODELS[report.model].caveat}
+        {' '}
         {searchedLine(report.searched)}
         {' '}
         {report.hits.length === 0

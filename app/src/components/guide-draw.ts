@@ -37,6 +37,25 @@ export interface GuideDrawStyle {
   stroke: string
 }
 
+/** Where this nuclease cuts here, and on which strand when it cuts one. */
+export function cutsOf(
+  item: Pick<GuideItem, 'nuclease'>,
+  site: GuideItem['candidate']['site'],
+): { at: number; half: 'top' | 'bottom' | null }[] {
+  const { cleaves } = item.nuclease
+  if (cleaves === 'none' || site.offEnd) return []
+  if (cleaves === 'both') {
+    return site.cutTop === site.cutBottom
+      ? [{ at: site.cutTop, half: null }]
+      : [{ at: site.cutTop, half: null }, { at: site.cutBottom, half: null }]
+  }
+  // 'site' is the strand the protospacer is written on, which is the sense
+  // strand when the site reads along it; 'opposite' is the other one.
+  const onProtospacer = cleaves === 'site'
+  const top = (site.strand === 1) === onProtospacer
+  return [{ at: top ? site.cutTop : site.cutBottom, half: top ? 'top' : 'bottom' }]
+}
+
 export function drawGuideItem(
   ctx: CanvasRenderingContext2D,
   item: GuideItem,
@@ -51,11 +70,10 @@ export function drawGuideItem(
   const h = L.annotationRowH
   const midY = ay + h / 2
   const xOf = (pos: number) => baseX(pos, rowStart, L)
-  const cuts = item.nuclease.cleaves === 'none' || site.offEnd
-    ? []
-    : site.cutTop === site.cutBottom
-      ? [site.cutTop]
-      : [site.cutTop, site.cutBottom]
+  // What the nuclease does to the backbone here. A nickase cuts one strand,
+  // so it gets half a tick on that strand's side of the bar: drawing it the
+  // same as a double-strand break would show a break where there is none.
+  const cuts = cutsOf(item, site)
 
   // --- The PAM: a solid block, inset a little so the bar reads as the guide ---
   for (const seg of unwrapSpan(site.pamStart, site.pamEnd, seqLen)) {
@@ -116,16 +134,16 @@ export function drawGuideItem(
     }
   }
 
-  // --- The cut, or the pair of them ---
+  // --- The cut, or the pair of them, or the single nick ---
   if (cuts.length > 0) {
-    const visible = cuts.filter(c => c >= rowStart && c <= rowEnd)
+    const visible = cuts.filter(c => c.at >= rowStart && c.at <= rowEnd)
     ctx.strokeStyle = style.cut
     ctx.lineWidth = style.hovered ? 2 : 1.5
     for (const c of visible) {
-      const x = xOf(c)
+      const x = xOf(c.at)
       ctx.beginPath()
-      ctx.moveTo(x, ay - 1)
-      ctx.lineTo(x, ay + h + 1)
+      ctx.moveTo(x, c.half === 'bottom' ? midY : ay - 1)
+      ctx.lineTo(x, c.half === 'top' ? midY : ay + h + 1)
       ctx.stroke()
     }
     // The stagger: a line across the middle between the two cuts, which only
@@ -133,8 +151,8 @@ export function drawGuideItem(
     if (visible.length === 2) {
       const [a, b] = visible
       ctx.beginPath()
-      ctx.moveTo(xOf(a), midY)
-      ctx.lineTo(xOf(b), midY)
+      ctx.moveTo(xOf(a.at), midY)
+      ctx.lineTo(xOf(b.at), midY)
       ctx.stroke()
     }
   }

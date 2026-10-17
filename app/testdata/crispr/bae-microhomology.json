@@ -1,0 +1,194 @@
+[
+ {
+  "name": "trial 0 window 30",
+  "sequence": "GTTGTGAGTTAATCATCGTCATTGTATAACATCTAAGGAAGATCTCCTGCTACTAATATG",
+  "cut": 30,
+  "window": 30,
+  "microhomologyScore": 962.2130046597604,
+  "outOfFrame": 100.0
+ },
+ {
+  "name": "trial 0 window 40",
+  "sequence": "TGTTGTATCTGTTGTGAGTTAATCATCGTCATTGTATAACATCTAAGGAAGATCTCCTGCTACTAATATGTTTATCTCTT",
+  "cut": 40,
+  "window": 40,
+  "microhomologyScore": 1074.6053791466347,
+  "outOfFrame": 100.0
+ },
+ {
+  "name": "trial 1 window 30",
+  "sequence": "GAAGAGGGCTACGCAGATCTAGGTTGCATCACTTATTGCATCCATGGATTAACTTAATTG",
+  "cut": 30,
+  "window": 30,
+  "microhomologyScore": 1084.2524497418613,
+  "outOfFrame": 37.62179033310892
+ },
+ {
+  "name": "trial 1 window 40",
+  "sequence": "ACCCCGTAGGGAAGAGGGCTACGCAGATCTAGGTTGCATCACTTATTGCATCCATGGATTAACTTAATTGGTAAGTATAC",
+  "cut": 40,
+  "window": 40,
+  "microhomologyScore": 1124.853034712845,
+  "outOfFrame": 39.87327717073387
+ },
+ {
+  "name": "trial 2 window 30",
+  "sequence": "ACTGCTCGGCCACGGGAAGACCCCATAGGCGGCTGTGCCTCGACGCCCCGGGTGCGACAC",
+  "cut": 30,
+  "window": 30,
+  "microhomologyScore": 1063.4891518075328,
+  "outOfFrame": 51.44052151568203
+ },
+ {
+  "name": "trial 2 window 40",
+  "sequence": "GGCCCCCCGCACTGCTCGGCCACGGGAAGACCCCATAGGCGGCTGTGCCTCGACGCCCCGGGTGCGACACACCAGGAGCC",
+  "cut": 40,
+  "window": 40,
+  "microhomologyScore": 1293.4232008110835,
+  "outOfFrame": 54.036200101916904
+ },
+ {
+  "name": "trial 3 window 30",
+  "sequence": "TTTATTTTGAACCGCGTTTCCTATAATTTAAAATTAGTCAATGAGTACTGCCATTGATTA",
+  "cut": 30,
+  "window": 30,
+  "microhomologyScore": 722.2718960505754,
+  "outOfFrame": 39.02619462681513
+ },
+ {
+  "name": "trial 3 window 40",
+  "sequence": "ATTTATAAGTTTTATTTTGAACCGCGTTTCCTATAATTTAAAATTAGTCAATGAGTACTGCCATTGATTAAAGTGTCATT",
+  "cut": 40,
+  "window": 40,
+  "microhomologyScore": 758.8086008611224,
+  "outOfFrame": 41.96208903492757
+ },
+ {
+  "name": "trial 4 window 30",
+  "sequence": "AATGACCAGGATGATACCAGTACCCAAGATTTGTATGAAGAAGGATTTAAATTAGCCTCC",
+  "cut": 30,
+  "window": 30,
+  "microhomologyScore": 1366.3548044176162,
+  "outOfFrame": 51.02359063061475
+ },
+ {
+  "name": "trial 4 window 40",
+  "sequence": "CTTCGTTACGAATGACCAGGATGATACCAGTACCCAAGATTTGTATGAAGAAGGATTTAAATTAGCCTCCGTGGCATCAT",
+  "cut": 40,
+  "window": 40,
+  "microhomologyScore": 1429.564407425008,
+  "outOfFrame": 51.19867750318659
+ },
+ {
+  "name": "trial 5 window 30",
+  "sequence": "ACGACACGTTGGAAGGGCGCACCGCCGCATCGAAGCCCGCATGATACCATGACCCCGTGC",
+  "cut": 30,
+  "window": 30,
+  "microhomologyScore": 2410.0666765984433,
+  "outOfFrame": 72.22942720391706
+ },
+ {
+  "name": "trial 5 window 40",
+  "sequence": "CGTGGGGCTCACGACACGTTGGAAGGGCGCACCGCCGCATCGAAGCCCGCATGATACCATGACCCCGTGCGGTGTCGGGC",
+  "cut": 40,
+  "window": 40,
+  "microhomologyScore": 2410.0666765984433,
+  "outOfFrame": 72.22942720391706
+ },
+ {
+  "name": "trial 6 window 30",
+  "sequence": "GTGCTTATTTAAATATAAAGTTTGAATAGGAGGATAATCTTTTGCTATATTTTTGAGAGG",
+  "cut": 30,
+  "window": 30,
+  "microhomologyScore": 957.5671166025874,
+  "outOfFrame": 48.663420681869766
+ },
+ {
+  "name": "trial 6 window 40",
+  "sequence": "TGGATAACAAGTGCTTATTTAAATATAAAGTTTGAATAGGAGGATAATCTTTTGCTATATTTTTGAGAGGTATACAAATC",
+  "cut": 40,
+  "window": 40,
+  "microhomologyScore": 1065.8353431918777,
+  "outOfFrame": 53.87822279688444
+ },
+ {
+  "name": "trial 7 window 30",
+  "sequence": "TATATCCTACAATATTGTAGAGTTTCCCAGATAGCTATGGTCGCCCTCTAAGAAATCATA",
+  "cut": 30,
+  "window": 30,
+  "microhomologyScore": 1124.7150139667608,
+  "outOfFrame": 63.67210523566084
+ },
+ {
+  "name": "trial 7 window 40",
+  "sequence": "AAGGCCTGCCTATATCCTACAATATTGTAGAGTTTCCCAGATAGCTATGGTCGCCCTCTAAGAAATCATAACAACCCACT",
+  "cut": 40,
+  "window": 40,
+  "microhomologyScore": 1348.3306249097097,
+  "outOfFrame": 62.31064344346871
+ },
+ {
+  "name": "trial 8 window 30",
+  "sequence": "CGGGATTGCAGTACAGACAGGAAGGCGCGCGTACGCCGCTAACTTTGGCTGAACCCCGGC",
+  "cut": 30,
+  "window": 30,
+  "microhomologyScore": 1202.2093139684462,
+  "outOfFrame": 63.02715947676505
+ },
+ {
+  "name": "trial 8 window 40",
+  "sequence": "TCCCGAGCTGCGGGATTGCAGTACAGACAGGAAGGCGCGCGTACGCCGCTAACTTTGGCTGAACCCCGGCCGACGAGGGG",
+  "cut": 40,
+  "window": 40,
+  "microhomologyScore": 1202.2093139684462,
+  "outOfFrame": 63.02715947676505
+ },
+ {
+  "name": "trial 9 window 30",
+  "sequence": "GTGTAAATTCATTATGTCATGTTGCCAAATACATAGCCAAATACTATTAGAGATGGGTCT",
+  "cut": 30,
+  "window": 30,
+  "microhomologyScore": 1266.585807909934,
+  "outOfFrame": 39.12318474727681
+ },
+ {
+  "name": "trial 9 window 40",
+  "sequence": "ACAGCGATATGTGTAAATTCATTATGTCATGTTGCCAAATACATAGCCAAATACTATTAGAGATGGGTCTTGTACGCAAT",
+  "cut": 40,
+  "window": 40,
+  "microhomologyScore": 1320.719921204579,
+  "outOfFrame": 41.61842417010794
+ },
+ {
+  "name": "trial 10 window 30",
+  "sequence": "CTTCTTGGCAAGCTGAGTCCGACGTAAAGGAGGTCCAAATGATGGGCTATGAGCAGCATG",
+  "cut": 30,
+  "window": 30,
+  "microhomologyScore": 744.884263094584,
+  "outOfFrame": 42.22538862283853
+ },
+ {
+  "name": "trial 10 window 40",
+  "sequence": "TCGTAGCGAGCTTCTTGGCAAGCTGAGTCCGACGTAAAGGAGGTCCAAATGATGGGCTATGAGCAGCATGCATTGGGCAA",
+  "cut": 40,
+  "window": 40,
+  "microhomologyScore": 786.7560278533299,
+  "outOfFrame": 45.300198158410915
+ },
+ {
+  "name": "trial 11 window 30",
+  "sequence": "CAACGCGACGCAAGCCACAGCAGCCTCAGCTTGCGCCACTTGCGCGACTCGTGGTACCAC",
+  "cut": 30,
+  "window": 30,
+  "microhomologyScore": 2339.1858687262993,
+  "outOfFrame": 65.76875547569787
+ },
+ {
+  "name": "trial 11 window 40",
+  "sequence": "TCGGTTGCACCAACGCGACGCAAGCCACAGCAGCCTCAGCTTGCGCCACTTGCGCGACTCGTGGTACCACCCGCGCTATC",
+  "cut": 40,
+  "window": 40,
+  "microhomologyScore": 2438.3652016592514,
+  "outOfFrame": 63.09364294888218
+ }
+]

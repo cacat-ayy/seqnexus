@@ -154,6 +154,7 @@ short version.
   - [Finding sites](#finding-sites)
   - [Scoring, in three separate columns](#scoring-in-three-separate-columns)
   - [Off-target search](#off-target-search)
+  - [What this was checked against](#what-this-was-checked-against)
   - [What the views draw](#what-the-views-draw)
   - [Designing for a goal](#designing-for-a-goal)
   - [Prime editing](#prime-editing)
@@ -3375,9 +3376,17 @@ sits on, the spacer lengths it accepts, where it cuts and whether it cuts at
 all. Adding one is a row in `crispr/nucleases.ts`, and the same record can be
 built from what a user types, so a PAM that was published this month can be
 scanned today. The shipped set covers the SpCas9 family and its PAM variants,
-the D10A nickase and a catalytically dead version for interference and
-activation, SaCas9 and its KKH variant, St1, Nme and Cj Cas9, and the Cas12a
-proteins with their 5' PAM and staggered cut.
+both single-strand nickases and a catalytically dead version for interference
+and activation, SaCas9 and its KKH variant, St1, Nme and Cj Cas9, and the
+Cas12a proteins with their 5' PAM and staggered cut.
+
+The two nickases are not interchangeable, and which one a row names decides
+which strand carries the free 3' end. D10A kills the RuvC domain, leaving HNH
+to cut the strand the guide pairs with; H840A kills HNH, leaving RuvC to cut
+the PAM-bearing strand, which is the protospacer's own. Prime editing needs
+the second: the pegRNA's primer binding site anneals to the 3' end left at
+the nick on the PAM strand, so the pegRNA designer is written for H840A and
+the row says so.
 
 Both cut offsets are stored as distances in bases from the PAM edge of the
 protospacer, counted into the protospacer and onward, so they do not change
@@ -3417,7 +3426,12 @@ explain itself rather than look empty.
 
 A two-base PAM on a long sequence is effectively unbounded, so the scan stops
 at a site cap and says that it did. The panel then suggests narrowing the scan
-to the selection, which is the setting it already offers.
+to the selection, which is the setting it already offers. Both strands are
+walked together, in position order, rather than one finished before the other
+is begun: a scan the cap stops short is then the first stretch of the
+sequence on both strands, and not every site on the sense strand and none at
+all on the other, which is what a one-strand-at-a-time sweep returns and
+which reads as a real answer rather than a truncated one.
 
 "Selection only" keeps the sites that overlap the bases selected when it is
 ticked, a selection across the origin of a circle included. The range is
@@ -3465,19 +3479,34 @@ so short deletions and GC-rich microhomologies dominate, and the out-of-frame
 score is the share of the total carried by deletions whose length is not a
 multiple of three. Pairs are enumerated once per deletion length by walking the
 diagonals of the comparison, which counts each maximal microhomology a single
-time rather than once per nested copy of it. The formula is implemented as
-published; the tests check its invariants, not numeric agreement with the
-authors' own tool. A cut too close to the end of a linear molecule returns
-nothing rather than a number from a short window, and above a cap of 2000 sites
-the prediction is left out of the batch and made for the selected site alone.
+time rather than once per nested copy of it.
+
+The formula, the window and the enumeration are all the published ones, and
+`crispr/oracle.test.ts` checks the microhomology score and the out-of-frame
+share against the authors' reference implementation, which they match
+exactly. Three details are the reference's rather than this module's
+invention, and are kept so the number can be read beside one from the
+published tool: microhomologies count from two bases, the window is 30 either
+side of the cut, and a pattern that a longer one already accounts for is
+dropped even when the two imply deletions of different lengths.
+
+A cut too close to the end of a linear molecule returns nothing rather than a
+number from a short window, and above a cap of 2000 sites the prediction is
+left out of the batch and made for the selected site alone. A nickase reports
+no out-of-frame score at all: microhomology-mediated repair follows a
+double-strand break, and a nick is repaired without deleting anything.
 
 **The flags.** Properties of the sequence that hold whatever the nuclease, each
 reported as a named chip with a sentence of detail: GC outside 35% to 75% (and
 badly outside 25% to 85%), four or more T in a row, which reads as a terminator
 and cuts a transcribed guide short, a homopolymer of five or more, a
 self-folding stem of seven bases or more, and the promoter's start base, where
-U6 transcribes best from a G and T7 from two. The last is a note rather than a
-fault: the usual answer is to order the guide with the extra base added.
+U6 transcribes best from a G and T7 from two.
+
+The last is a note and is drawn as one, in quiet type rather than in the
+warning colour. Three spacers in four do not start on a G, so as a warning it
+would sit on most of the list and crowd out the chips that mean a guide is a
+poor one, and the order step adds the base by itself and says that it did.
 
 ### Off-target search
 
@@ -3501,26 +3530,55 @@ Bulges, meaning one unpaired base in the target or in the guide, are off by
 default because they multiply the work, not because they do not happen; with
 them on, each PAM position also gets a comparison at one base longer and one
 base shorter, with the gap position enumerated so the result stays exact
-rather than heuristic. Weaker PAMs are a separate switch: the SpCas9 rows
-carry NAG as an alternative, which is searched only when asked and scored
-down when found.
+rather than heuristic. Only a gap inside the pairing counts: a gap at the
+edge of a window is the plain comparison one base along, so counting it would
+report every ordinary site twice more under a bulge penalty and drag the
+guide's own specificity down. One PAM is one place the nuclease can sit, so
+the three windows compete and only the account needing the fewest changes is
+reported, counting an unpaired base as one change.
 
-**Scoring is a heuristic, for the same reason the activity model is.** A
-mismatch leaves most of the site's activity when it falls at the far end of
-the spacer and almost none when it falls against the PAM, so each mismatch
-multiplies the site's score by a factor interpolated between the two:
+The budget defaults to four rather than three, because at three the search
+misses more than a third of the sites GUIDE-seq confirms for real guides on
+mismatch count alone.
+
+Weaker PAMs are a separate switch. The SpCas9 rows carry every PAM the
+fitted table scores above zero: NAG, NCG, NGA, NTG, NGC and NGT, each with
+its own activity. A list of NAG alone would leave out twice as many measured
+off-target sites as it caught.
+
+**Two scoring models, and the panel says which one it used.**
+
+The first is CFD, the Cutting Frequency Determination score of Doench and
+colleagues: two fitted tables, one giving what a site keeps when one base of
+the guide meets the wrong base of the target, by which of the twelve pairings
+it is and where along the spacer it falls, and one giving how often each PAM
+is bound at all. A site's score is the product of a factor per mismatch and
+its PAM's activity. The tables are in `crispr/score/cfd.ts`, read from the
+authors' own distribution rather than retyped, and the tests check both the
+tables and the arithmetic against that source. CFD was fitted for SpCas9
+reading a 20 base spacer, so that is where it is offered, and it is the
+default there.
+
+The second is a transparent heuristic, used for every other nuclease and
+available as a choice everywhere. A mismatch leaves most of the site's
+activity when it falls at the far end of the spacer and almost none when it
+falls against the PAM, so each mismatch multiplies the score by a factor
+interpolated between the two:
 
 | Where the mismatch falls | Factor |
 |--------------------------|--------|
 | against the PAM | 0.08 |
 | at the far end of the spacer | 0.85 |
-| an alternative PAM, whatever the mismatches | 0.2 |
 | an unpaired base | 0.25 |
+| a weaker PAM | its own measured activity |
 
 The line between the two ends is deliberately straight. The real profile is
 bumpy and sequence-dependent, and smoothing it is more honest than inventing
-the bumps. A fitted table belongs in a data file beside the model, exactly as
-for the activity model.
+the bumps.
+
+One factor cannot stand for every weaker PAM, so each PAM a nuclease row
+lists carries the activity measured for it, which for SpCas9 is the PAM
+table above: NAG at 0.26 is bound sixteen times as often as NGT at 0.016.
 
 The aggregate takes the shape the field uses: a guide with nothing else to
 bind scores 100, and the score falls as credible hits accumulate.
@@ -3528,6 +3586,21 @@ bind scores 100, and the score falls as credible hits accumulate.
 ```
 specificity = 100 / (1 + sum of hit scores)
 ```
+
+This is the aggregation Hsu and colleagues defined, written for hit scores on
+a 0 to 1 scale: with scores in percent it is the same expression as
+`100 x 100 / (100 + sum)`, and `crispr/oracle.test.ts` checks the two against
+each other. With CFD underneath it, the pair is the specificity score the
+field quotes.
+
+The sum is taken over every hit the search found, including any left out of
+the list. The list is capped so a relaxed search cannot fill the panel, but
+the cap no longer stops the search: keeping the first hits met and stopping
+there kept an arbitrary stretch of the first sequence, which could leave out
+the one site that mattered and report a better specificity than the truth.
+Every target is searched, the weakest hits are the ones dropped from the
+list, and the report says it was truncated. A target is named as searched
+only once it has been.
 
 **The guide's own site is not one of its off-targets**, so it is excluded and
 counted separately. A second perfect match elsewhere is reported, and marked:
@@ -3542,6 +3615,71 @@ the mismatches are the only letters there are to read.
 The search runs in the worker, reports progress target by target, and can
 cover several guides in one pass, since the targets are read once either way.
 
+A report belongs to the spacer it was run for. Sites are keyed by position,
+so an edit inside a protospacer leaves the key standing while the bases under
+it change; a report whose spacer no longer matches the site is dropped rather
+than shown against the new one.
+
+### What this was checked against
+
+The models above are heuristics, so the useful question is not whether they
+are the published ones (they are not, and say so) but how far from them they
+land and where they break. `crispr/oracle.test.ts` answers that against
+oracles built by `scripts/crispr-oracle/oracle.py`, which implements each
+model from its paper or from the reference tool and never imports this app.
+The fixtures it writes are in `testdata/crispr`.
+
+**The search is exact.** An exhaustive sweep over every position and strand,
+with no early exit and no regular expression, is run over 131 generated cases
+covering every nuclease geometry, both topologies, protospacers and PAMs
+straddling the origin of a circle, spacer lengths either side of the default,
+ambiguous bases, overlapping PAMs, low-complexity targets with hundreds of
+hits, and every mismatch budget from zero to the ceiling. The app finds the
+same sites with the same mismatch positions, reading the same protospacer and
+PAM off the same strand, and the same account of each site when one unpaired
+base is allowed.
+
+**CFD is this app's CFD.** Every one of the 207 off-target sites Tsai and
+colleagues measured is scored by the module and by the authors' own
+calculator, and the two agree to within a millionth. The shipped tables are
+checked entry by entry against the same source.
+
+**Ranking.** Over those validated sites, both models track the measured read
+share, and the heuristic does so about as well as the fitted one:
+
+| Guide | Validated sites | Spearman, heuristic | CFD | MIT |
+|-------|-----------------|---------------------|-----|-----|
+| EMX1 | 15 | 0.22 | 0.16 | 0.57 |
+| VEGFA site 3 | 59 | 0.60 | 0.39 | 0.35 |
+| HEK293 site 4 | 133 | 0.41 | 0.38 | 0.29 |
+
+That is ordering among sites already known to be cut, which is the easier
+half of the problem. The harder half is reaching them at all:
+
+| Settings | Of the 207 validated sites |
+|----------|----------------------------|
+| three mismatches, canonical PAM | 95 |
+| the defaults: four mismatches, canonical PAM | 153 |
+| the defaults with weaker PAMs | 191 |
+| six mismatches with weaker PAMs | 205 |
+
+The two that remain sit at NAA, which the fitted table scores zero: never
+seen cut. A clean report still means nothing was found in what was searched,
+which is why the scope line and the model's name sit next to the number
+rather than in a tooltip.
+
+**The arithmetic of the published models is checked where it is used.** The
+aggregation matches `calcMitGuideScore`, and the microhomology score matches
+the reference implementation exactly, both the total and the out-of-frame
+share, over every window in the fixture.
+
+**What is not checked.** There is no genome here, so nothing measures what
+the search would find across one; the GUIDE-seq comparison places the
+published sites in synthetic targets and asks the app to score them. The
+activity heuristic is not validated against measured cutting at all: no
+public dataset is shipped and none is downloaded, so its correlation with
+activity is unknown and the panel never implies otherwise.
+
 ### What the views draw
 
 In the sequence view a guide is a stand-in annotation in the feature lanes,
@@ -3554,9 +3692,15 @@ cut as a tick through the bar. A staggered cutter gets two ticks joined across
 the middle, which is what makes an overhang visible without reading a number.
 Picked guides are outlined in the accent colour, as picked ORFs and motifs are.
 
+A nickase cuts one strand, so it gets half a tick, on the side of the bar
+belonging to the strand it nicks: drawn as a full tick it read as a break
+where there is none. Which half follows from the row, since D10A nicks the
+strand the guide pairs with and H840A the strand carrying the PAM.
+
 On the plasmid map only the cut is drawn, as a tick outside the backbone with a
 dot at its end and a shorter companion tick for the second cut of a staggered
-pair. A 20-base arc on a plasmid-wide circle is a smudge; the cut is what a map
+pair. A nick's tick stands off the backbone instead of touching it, for the
+same reason. A 20-base arc on a plasmid-wide circle is a smudge; the cut is what a map
 is read for, and the protospacer is there in the rings once it is a feature.
 Clicking a tick selects its protospacer.
 
@@ -3659,9 +3803,27 @@ the nick is refused rather than fudged: the template is copied forwards, so a
 change behind it cannot be written, and the panel says which way round the
 guide needs to be.
 
+The primer site defaults to 13 bases and the template carries 12 past the
+edit, the lengths Anzalone and colleagues settled on, and the panel says when
+a primer site is outside 8 to 17 bases or outside 40% to 60% GC, where the
+published advice is to lengthen an AT-rich one and shorten a GC-rich one. A
+template whose 5'-most base is a C is flagged for the same reason they avoid
+it.
+
 The second nick of the paired strategy is offered from the same scan,
-filtered to guides that nick the other strand within a band of distances,
-which is a rule of thumb and therefore a setting.
+filtered to guides that nick the other strand within a band of distances, 40
+to 90 bases, which is the range they report and therefore a setting. On a
+circular molecule the distance is measured the short way round: without that,
+a pegRNA nicking within a band's length of the origin was offered no second
+nick at all, which on a plasmid is a common place to be.
+
+**PE3b is offered too, and preferred.** Nicking the unedited strand while the
+pegRNA nick is still open is what leaves indels behind, and the way round it
+is a nicking guide that does not match until the edit is in. The panel scans
+the sequence as it will read once edited, over the stretch the band can
+reach, and keeps the guides whose protospacer or PAM the edit touches: those
+cannot bind the sequence as it stands, so the second nick waits for the new
+strand. They are marked and sorted first, and the plain PE3 guides follow.
 
 ### Ordering
 
@@ -3671,6 +3833,31 @@ longer oligo. Every base the app adds is shown as an addition rather than
 folded into the sequence, since the additions are where mistakes live: the G
 a U6 promoter wants and only when the spacer does not already start with one,
 the overhangs the vector wants, the promoter in front of a template.
+
+**A start base belongs to the transcript, not to the spacer.** U6 transcribes
+best from a G and T7 from two, and for an sgRNA the transcript starts on the
+spacer, so that is where the missing base goes. For a Cas12a crRNA the repeat
+comes first and the spacer sits inside the transcript: a base added there
+would land between the repeat and the spacer, and the result would not be a
+guide RNA at all. The added base follows the scaffold's side, and the
+start-base flag is not raised on a spacer that does not begin its transcript.
+
+The T7 promoter constant is the 17 bases of the promoter itself and not the G
+that follows them, because that G is already the first base of the transcript
+and `promoterPrefix` supplies it. Carrying it in both places is how a
+template comes to transcribe three G where the guide beside it shows two.
+
+**Each Cas12a orthologue carries its own repeat.** AsCas12a and LbCas12a
+differ in the loop of their direct repeat, so one repeat for both would be
+half right and unnoticeably so. enAsCas12a is an AsCas12a variant and uses
+the As repeat.
+
+The annealed pair is checked end to end rather than trusted: in
+`crispr/roundtrip.test.ts` the oligos the order tab emits go back through the
+app's own digest and ligation into a vector built the way the shared SpCas9
+vectors are built, and the product has to come out as the promoter, the
+transcript's first G, the spacer and the scaffold in one piece with the
+filler gone and nothing added at either join.
 
 **The scaffold is a vector's property, not a target's.** It is chosen in the
 library view, where opening one shows its sequence and its length, since the
@@ -3765,9 +3952,12 @@ spacer without the PAM for the same reason.
 
 ### Limits
 
-The off-target search reads what you give it and nothing else, and both the
-activity model and the mismatch model are stated heuristics rather than fitted
-tables. The knock-in donor changes one base at most to stop re-cutting; a site
+The off-target search reads what you give it and nothing else. The activity
+model is a stated heuristic rather than a fitted table, and has never been
+measured against cutting data. CFD scores off-target sites for SpCas9 only;
+every other nuclease falls back to the position heuristic, because no fitted
+table exists for it and borrowing one would read as information while being
+noise. The knock-in donor changes one base at most to stop re-cutting; a site
 that survives every single change is reported rather than worked around.
 Scaffolds and vector overhangs are shipped only where they are near-universal,
 and are otherwise asked for. Reading a result back decomposes a trace or
@@ -6596,6 +6786,49 @@ saved, so nothing is written without a word.
 - Bae S, Kweon J, Kim HS, Kim JS (2014) "Microhomology-based choice of Cas9
   nuclease target sites." *Nature Methods* 11:705-706. (The out-of-frame score
   and the pattern weighting.)
+
+- Tsai SQ, Zheng Z, Nguyen NT, Liebers M, Topkar VV, Thapar V, Wyvekens N,
+  Khayter C, Iafrate AJ, Le LP, Aryee MJ, Joung JK (2015) "GUIDE-seq enables
+  genome-wide profiling of off-target cleavage by CRISPR-Cas nucleases."
+  *Nature Biotechnology* 33:187-197. (The measured off-target sites for EMX1,
+  VEGFA site 3 and HEK293 site 4 that the off-target model is scored against.)
+
+- Concordet JP, Haeussler M (2018) "CRISPOR: intuitive guide selection for
+  CRISPR/Cas9 experiments in experimental genomes." *Nucleic Acids Research*
+  46:W242-W245. (The reference implementations of the MIT and microhomology
+  scores the oracle is written from.)
+
+- Anzalone AV, Randolph PB, Davis JR, Sousa AA, Koblan LW, Levy JM, Chen PJ,
+  Wilson C, Newby GA, Raguram A, Liu DR (2019) "Search-and-replace genome
+  editing without double-strand breaks or donor DNA." *Nature* 576:149-157.
+  (Prime editing: the primer binding site and template lengths, the C to
+  avoid at the 5' end of the extension, and the band the second nick falls
+  in.)
+
+- Komor AC, Kim YB, Packer MS, Zuris JA, Liu DR (2016) "Programmable editing
+  of a target base in genomic DNA without double-stranded DNA cleavage."
+  *Nature* 533:420-424. (The cytosine editing window.)
+
+- Gaudelli NM, Komor AC, Rees HA, Packer MS, Badran AH, Bryson DI, Liu DR
+  (2017) "Programmable base editing of A to G in genomic DNA without DNA
+  cleavage." *Nature* 551:464-471. (The adenine editing window.)
+
+- Kleinstiver BP, Prew MS, Tsai SQ, Topkar VV, Nguyen NT, Zheng Z, Gonzales
+  APW, Li Z, Peterson RT, Yeh JJ, Aryee MJ, Joung JK (2015) "Engineered
+  CRISPR-Cas9 nucleases with altered PAM specificities." *Nature*
+  523:481-485. (The VQR and VRER PAMs.)
+
+- Nishimasu H, Shi X, Ishiguro S, Gao L, Hirano S, Okazaki S, Noda T,
+  Abudayyeh OO, Gootenberg JS, Mori H, Oura S, Holmes B, Tanaka M, Seki M,
+  Hirano H, Aburatani H, Ishitani R, Ikawa M, Yachie N, Zhang F, Nureki O
+  (2018) "Engineered CRISPR-Cas9 nuclease with expanded targeting space."
+  *Science* 361:1259-1262. (SpCas9-NG.)
+
+- Chen B, Gilbert LA, Cimini BA, Schnitzbauer J, Zhang W, Li GW, Park J,
+  Blackburn EH, Weissman JS, Qi LS, Huang B (2013) "Dynamic imaging of
+  genomic loci in living human cells by an optimized CRISPR/Cas system."
+  *Cell* 155:1479-1491. (The sgRNA scaffold with the flipped base pair and
+  the extended stem loop.)
 
 - Jinek M, Chylinski K, Fonfara I, Hauer M, Doudna JA, Charpentier E (2012) "A
   programmable dual-RNA-guided DNA endonuclease in adaptive bacterial

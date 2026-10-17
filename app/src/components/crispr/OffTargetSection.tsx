@@ -13,7 +13,14 @@ import { Crosshair, FileUp, X } from 'lucide-react'
 import { useEditorStore } from '../../store'
 import { useOffTargetRun } from '../../hooks/useOffTargetRun'
 import { loadTargetFile, SCOPE_LABEL, type TargetScope } from '../../crispr/targets'
-import { MAX_MISMATCHES } from '../../crispr/offtarget'
+import {
+  MAX_MISMATCHES,
+  OFF_TARGET_MODELS,
+  offTargetModelFor,
+  offTargetModelsFor,
+} from '../../crispr/offtarget'
+import type { OffTargetModelId } from '../../crispr/types'
+import { defaultSpacerLength, resolveNuclease } from '../../crispr/nucleases'
 import { notify } from '../../toast'
 import Chevron from '../Chevron'
 
@@ -31,6 +38,14 @@ export default function OffTargetSection({ pickedKeys, hasSelection }: Props) {
   const setParams = useEditorStore(s => s.setOffTargetParams)
   const progress = useEditorStore(s => s.offTargetRun)
   const { run, ready } = useOffTargetRun()
+  const nucleaseId = useEditorStore(s => s.crisprNucleaseId)
+  const spacerLength = useEditorStore(s => s.crisprSpacerLength)
+  const customNucleases = useEditorStore(s => s.customNucleases)
+  const nuclease = resolveNuclease(nucleaseId, customNucleases)
+  const spacerLen = spacerLength > 0 ? spacerLength : (nuclease ? defaultSpacerLength(nuclease) : 0)
+  const available = nuclease ? offTargetModelsFor(nuclease, spacerLen) : ['position' as const]
+  const effective = nuclease ? offTargetModelFor(nuclease, spacerLen, settings.model) : 'position'
+  const weakerPams = (nuclease?.altPams ?? []).map(a => a.pam).join(', ')
   const fileRef = useRef<HTMLInputElement>(null)
   const [loading, setLoading] = useState(false)
   // Collapsed to start: the candidate list is what the panel is for, and the
@@ -131,6 +146,27 @@ export default function OffTargetSection({ pickedKeys, hasSelection }: Props) {
           </select>
         </div>
 
+        {nuclease && (
+          <div className="gp-field">
+            <label htmlFor="gp-ot-model">Score with</label>
+            <select
+              id="gp-ot-model"
+              // The model in force, not the one asked for: a search set to
+              // CFD and then pointed at a nuclease it was never fitted for
+              // runs on the heuristic, and the control has to say so.
+              value={effective}
+              onChange={e => setParams({
+                offTargetSettings: { ...settings, model: e.target.value as OffTargetModelId },
+              })}
+              title={OFF_TARGET_MODELS[effective].caveat}
+            >
+              {available.map(id => (
+                <option key={id} value={id}>{OFF_TARGET_MODELS[id].name}</option>
+              ))}
+            </select>
+          </div>
+        )}
+
         <div className="gp-checks">
           <label className="gp-check" title="Also look for sites with one unpaired base. Slower, and they do happen.">
             <input
@@ -140,10 +176,16 @@ export default function OffTargetSection({ pickedKeys, hasSelection }: Props) {
             />
             Allow a bulge
           </label>
-          <label className="gp-check" title="Also search the weaker PAMs this nuclease will bind.">
+          <label
+            className="gp-check"
+            title={weakerPams
+              ? `Also search ${weakerPams}, which this nuclease binds less often but does bind.`
+              : 'This nuclease has no weaker PAMs on file.'}
+          >
             <input
               type="checkbox"
               checked={settings.alternativePams}
+              disabled={!weakerPams}
               onChange={e => setParams({ offTargetSettings: { ...settings, alternativePams: e.target.checked } })}
             />
             Weaker PAMs

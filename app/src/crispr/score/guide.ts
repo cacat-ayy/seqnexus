@@ -47,7 +47,10 @@ function repairFor(
   bases: string,
   topology: 'linear' | 'circular',
 ): MicrohomologyResult | null {
-  if (nuclease.cleaves === 'none' || site.offEnd) return null
+  // Microhomology-mediated repair follows a double-strand break. A nickase
+  // leaves a nick, which is repaired without deleting anything, so there is
+  // no out-of-frame share to report and a dash is the right answer.
+  if (nuclease.cleaves !== 'both' || site.offEnd) return null
   const cut = cutPosition(site, bases.length, topology === 'circular')
   return microhomologyOutcome(bases, cut, topology, {})
 }

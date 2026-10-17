@@ -82,8 +82,44 @@ describe('finding off-target sites', () => {
     const target = targetWith(SPACER, 'AAG')
     expect(findOffTargets(SPACER, spCas9, [target]).hits).toHaveLength(0)
     const withAlt = findOffTargets(SPACER, spCas9, [target], { ...DEFAULT_OFFTARGET, alternativePams: true })
-    expect(withAlt.hits).toHaveLength(1)
-    expect(withAlt.hits[0].pamKind).toBe('alternative')
+    const planted = withAlt.hits.find(h => h.start === FILLER.length && h.strand === 1)
+    expect(planted).toBeDefined()
+    expect(planted!.mismatches).toBe(0)
+    expect(planted!.pam).toBe('AAG')
+    expect(planted!.pamKind).toBe('alternative')
+  })
+
+  it('looks at every PAM the nuclease is known to bind, not just NAG', () => {
+    // Each of these was measured as cut, so a guide that binds one of them is
+    // an off-target the search has to be able to reach.
+    const pams = ['AAG', 'ACG', 'AGA', 'ATG', 'AGC', 'AGT']
+    for (const pam of pams) {
+      const report = findOffTargets(SPACER, spCas9, [targetWith(SPACER, pam)],
+        { ...DEFAULT_OFFTARGET, alternativePams: true })
+      const planted = report.hits.find(h => h.start === FILLER.length && h.strand === 1)
+      expect(planted, pam).toBeDefined()
+      expect(planted!.pam).toBe(pam)
+    }
+    // AGG is the canonical one, and AAA was never seen cut, so it is not
+    // searched at all.
+    const none = findOffTargets(SPACER, spCas9, [targetWith(SPACER, 'AAA')],
+      { ...DEFAULT_OFFTARGET, alternativePams: true })
+    expect(none.hits.find(h => h.start === FILLER.length && h.strand === 1)).toBeUndefined()
+  })
+
+  it('scores each weaker PAM by what was measured for it', () => {
+    // NAG is bound far more often than NGT, and a flat factor for every
+    // alternative hid that.
+    const score = (pam: string) => {
+      const report = findOffTargets(SPACER, spCas9, [targetWith(SPACER, pam)],
+        { ...DEFAULT_OFFTARGET, alternativePams: true })
+      return report.hits.find(h => h.start === FILLER.length && h.strand === 1)!.score
+    }
+    expect(score('AGG')).toBe(1)
+    expect(score('AAG')).toBeCloseTo(0.259259, 5)
+    expect(score('AGT')).toBeCloseTo(0.016129, 5)
+    expect(score('AAG')).toBeGreaterThan(score('AGA'))
+    expect(score('AGA')).toBeGreaterThan(score('AGT'))
   })
 
   it('leaves the guide its own site out, and counts it', () => {
@@ -187,11 +223,16 @@ describe('bulges', () => {
   })
 
   it('scores a bulged site below a clean one', () => {
-    const clean = hitScore([], 20, 'threePrime', 'canonical', false)
-    const bulged = hitScore([], 20, 'threePrime', 'canonical', true)
+    const clean = hitScore([], 20, 'threePrime', 'AGG', 1, false)
+    const bulged = hitScore([], 20, 'threePrime', 'AGG', 1, true)
     expect(bulged).toBeLessThan(clean)
   })
 })
+
+/** One mismatch at a position, with bases the position model ignores. */
+function mm(position: number) {
+  return { position, spacerBase: 'A', targetBase: 'C' }
+}
 
 describe('scoring', () => {
   it('costs a mismatch most next to the PAM', () => {
@@ -201,22 +242,22 @@ describe('scoring', () => {
   })
 
   it('falls as mismatches accumulate', () => {
-    const one = hitScore([19], 20, 'threePrime', 'canonical', false)
-    const two = hitScore([19, 18], 20, 'threePrime', 'canonical', false)
+    const one = hitScore([mm(19)], 20, 'threePrime', 'AGG', 1, false)
+    const two = hitScore([mm(19), mm(18)], 20, 'threePrime', 'AGG', 1, false)
     expect(two).toBeLessThan(one)
     expect(one).toBeLessThan(1)
   })
 
   it('counts the PAM-proximal end correctly for either PAM side', () => {
     // Position 19 is next to a 3' PAM, and furthest from a 5' one.
-    const nearThree = hitScore([19], 20, 'threePrime', 'canonical', false)
-    const farFive = hitScore([19], 20, 'fivePrime', 'canonical', false)
+    const nearThree = hitScore([mm(19)], 20, 'threePrime', 'AGG', 1, false)
+    const farFive = hitScore([mm(19)], 20, 'fivePrime', 'AGG', 1, false)
     expect(nearThree).toBeLessThan(farFive)
   })
 
   it('discounts an alternative PAM', () => {
-    expect(hitScore([], 20, 'threePrime', 'alternative', false))
-      .toBeLessThan(hitScore([], 20, 'threePrime', 'canonical', false))
+    expect(hitScore([], 20, 'threePrime', 'AAG', 0.26, false))
+      .toBeLessThan(hitScore([], 20, 'threePrime', 'AGG', 1, false))
   })
 
   it('gives a guide with nothing else to bind full marks', () => {
@@ -274,5 +315,35 @@ describe('what gets searched', () => {
     expect(searchedLine([
       { name: 'a', length: 1 }, { name: 'b', length: 1 }, { name: 'c', length: 1 }, { name: 'd', length: 1 },
     ])).toBe('Searched 4 sequences, 4 bp in all.')
+  })
+})
+
+describe('the mismatch diagram', () => {
+  it('lines up the columns when a base is unpaired', () => {
+    const spacer = 'ACGTTGCATGCAACGTTGCA'
+    // An extra base in the target, inside the pairing.
+    const extra = spacer.slice(0, 9) + 'A' + spacer.slice(9)
+    const bases = 'TTTTTTTTTT' + extra + 'AGG' + 'TTTTTTTTTT'
+    const report = findOffTargets(spacer, spCas9, [{
+      id: 't', name: 't', bases, topology: 'linear', source: 'document',
+    }], { ...DEFAULT_OFFTARGET, bulges: true })
+    const hit = report.hits.find(h => h.bulge)
+    expect(hit).toBeDefined()
+    expect(hit!.bulge!.kind).toBe('dna')
+    const diagram = mismatchDiagram(spacer, hit!)
+    expect(diagram.query).toHaveLength(diagram.site.length)
+    expect(diagram.query).toContain('-')
+    // Every paired column matches, so only the unpaired base shows a letter.
+    expect(diagram.site.replace(/\./g, '')).toBe('A')
+  })
+
+  it('marks a plain hit against the spacer base for base', () => {
+    const site = mutate(SPACER, 4)
+    const report = findOffTargets(SPACER, spCas9, [targetWith(site)])
+    const diagram = mismatchDiagram(SPACER, report.hits[0])
+    expect(diagram.query).toBe(SPACER)
+    expect(diagram.site).toHaveLength(SPACER.length)
+    expect([...diagram.site].filter(c => c !== '.')).toHaveLength(1)
+    expect(diagram.site[4]).toBe(site[4])
   })
 })

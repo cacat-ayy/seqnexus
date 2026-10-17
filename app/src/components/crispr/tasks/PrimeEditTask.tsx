@@ -11,7 +11,19 @@
 import { useMemo, useState } from 'react'
 import { Copy } from 'lucide-react'
 import { useEditorStore } from '../../../store'
-import { designPegRna, nickingGuides, describeEdit, DEFAULT_PEG, PBS_BAND } from '../../../crispr/pegrna'
+import {
+  designPegRna,
+  editedSequence,
+  nickingGuides,
+  pe3bGuides,
+  describeEdit,
+  DEFAULT_PEG,
+  NICK_BAND,
+  PBS_BAND,
+} from '../../../crispr/pegrna'
+import { findGuideSites } from '../../../crispr/finder'
+import { scoreSites } from '../../../crispr/score/guide'
+import { MAX_PAM, MAX_SPACER } from '../../../crispr/nucleases'
 import { defaultScaffold, scaffoldsFor } from '../../../crispr/scaffolds'
 import { guideKey } from '../../../utils/guide-features'
 import { displayPosition } from '../../../models/Document'
@@ -64,10 +76,31 @@ export default function PrimeEditTask({ candidates, nuclease }: Props) {
     })
   }, [candidate, edit, scaffold, doc.sequence.bases, pbsLength, homology])
 
-  const nicks = useMemo(
-    () => (peg ? nickingGuides(candidates, peg).slice(0, 6) : []),
-    [candidates, peg],
-  )
+  const nicks = useMemo(() => {
+    if (!peg || !edit) return []
+    const molecule = { length: doc.sequence.length, topology: doc.sequence.topology }
+    const plain = nickingGuides(candidates, peg, undefined, molecule)
+    // PE3b: the same question asked of the sequence as it will read once the
+    // edit is in. Only the stretch around the edit is scanned, since a guide
+    // that does not touch the edit is already in the list above.
+    const edited = editedSequence(doc.sequence.bases, edit)
+    const reach = NICK_BAND.high + edit.replacement.length + MAX_SPACER + MAX_PAM
+    const region = {
+      start: Math.max(0, edit.start - reach),
+      end: Math.min(edited.length, edit.start + reach),
+    }
+    const scan = findGuideSites(edited, nuclease, doc.sequence.topology, { region })
+    const pe3b = pe3bGuides(
+      scoreSites(scan.sites, nuclease, edited, doc.sequence.topology),
+      peg,
+      edit,
+      undefined,
+      { ...molecule, length: edited.length },
+    )
+    // A spacer offered by both is not a PE3b guide: it matches either way.
+    const seen = new Set(plain.map(n => n.candidate.site.spacer))
+    return [...pe3b.filter(n => !seen.has(n.candidate.site.spacer)), ...plain].slice(0, 6)
+  }, [candidates, peg, edit, nuclease, doc.sequence.bases, doc.sequence.length, doc.sequence.topology])
 
   return (
     <>
@@ -179,7 +212,14 @@ export default function PrimeEditTask({ candidates, nuclease }: Props) {
               <p className="gi-caveat">
                 No guide nicks the other strand in the usual band. The edit can still be made with the pegRNA alone.
               </p>
-            ) : (
+            ) : (<></>)}
+            {nicks.some(n => n.pe3b) && (
+              <p className="gi-caveat">
+                A PE3b guide only matches once the edit is in, so the second nick waits for it. That is the
+                strategy to prefer: with PE3 both nicks can be open at once, which is what leaves indels behind.
+              </p>
+            )}
+            {nicks.length > 0 && (
               <ul className="gp-list gp-list-inline">
                 {nicks.map(n => (
                   <li
@@ -194,7 +234,10 @@ export default function PrimeEditTask({ candidates, nuclease }: Props) {
                       <span className="gp-pos">{at(n.candidate.site.start)}{n.candidate.site.strand === 1 ? '+' : '-'}</span>
                       <span className="gp-seq"><span className="gp-spacer-seq">{n.candidate.site.spacer}</span></span>
                     </div>
-                    <div className="gp-scores"><span>{n.distance} nt away</span></div>
+                    <div className="gp-scores">
+                      <span>{n.distance} nt away</span>
+                      {n.pe3b && <span className="gp-chip note">PE3b</span>}
+                    </div>
                   </li>
                 ))}
               </ul>

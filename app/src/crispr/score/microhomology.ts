@@ -59,9 +59,16 @@ export interface MicrohomologyOptions {
   keep?: number
 }
 
-export const DEFAULT_WINDOW = 40
-export const DEFAULT_MIN_LENGTH = 3
-export const DEFAULT_MAX_DELETION = 40
+/**
+ * The defaults are the ones the authors' own implementation uses: 30 bases
+ * either side of the cut, microhomologies from two bases up, and no limit on
+ * the deletion length beyond the window itself. They were chosen here to
+ * match rather than to improve on it, so the out-of-frame score can be read
+ * beside one from the published tool.
+ */
+export const DEFAULT_WINDOW = 30
+export const DEFAULT_MIN_LENGTH = 2
+export const DEFAULT_MAX_DELETION = 2 * DEFAULT_WINDOW - 1
 /** The length that halves a pattern's weight roughly every 14 bases. */
 export const LENGTH_WEIGHT = 20
 
@@ -118,6 +125,8 @@ export function microhomologyOutcome(
 
   const cutInWindow = window
   const patterns: MicrohomologyPattern[] = []
+  // Where each pattern's two copies sit, for the containment rule below.
+  const extent: { leftEnd: number; rightStart: number; length: number }[] = []
 
   // One diagonal per deletion length: positions x and x + d are compared, and
   // a maximal run of matches along the diagonal is one microhomology.
@@ -146,6 +155,7 @@ export function microhomologyOutcome(
               patternScore: score,
               frameshift: d % 3 !== 0,
             })
+            extent.push({ leftEnd: from + length, rightStart: from + d, length })
           }
           runStart = -1
         }
@@ -153,14 +163,35 @@ export function microhomologyOutcome(
     }
   }
 
-  const totalScore = patterns.reduce((sum, p) => sum + p.patternScore, 0)
+  // The authors' own implementation drops a pattern that a longer one already
+  // accounts for: one whose left copy ends no further right and whose right
+  // copy starts no further left. It applies the rule across deletion lengths
+  // as well as within one, which is what makes two deletions of different
+  // sizes count once between them. That is a choice rather than a
+  // consequence of the formula, and it is kept here so the out-of-frame
+  // score can be read beside one from the published tool. Without it the two
+  // differ by about 12 points on average.
+  const covered = (b: number): boolean => {
+    const target = extent[b]
+    return extent.some((a, i) => {
+      if (i === b) return false
+      // The reference walks the longest microhomologies first, so only a
+      // longer one, or an equally long one met earlier, can do the covering.
+      const earlier = a.length > target.length
+        || (a.length === target.length && a.rightStart < target.rightStart)
+      return earlier && a.leftEnd >= target.leftEnd && a.rightStart <= target.rightStart
+    })
+  }
+  const kept = patterns.filter((_, i) => !covered(i))
+
+  const totalScore = kept.reduce((sum, p) => sum + p.patternScore, 0)
   if (totalScore === 0) return { outOfFrame: 0, totalScore: 0, patterns: [] }
-  const shifted = patterns.reduce((sum, p) => sum + (p.frameshift ? p.patternScore : 0), 0)
-  patterns.sort((a, b) => b.patternScore - a.patternScore)
+  const shifted = kept.reduce((sum, p) => sum + (p.frameshift ? p.patternScore : 0), 0)
+  kept.sort((a, b) => b.patternScore - a.patternScore)
 
   return {
     outOfFrame: (shifted / totalScore) * 100,
     totalScore,
-    patterns: patterns.slice(0, keep),
+    patterns: kept.slice(0, keep),
   }
 }

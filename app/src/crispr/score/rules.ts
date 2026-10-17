@@ -11,6 +11,7 @@
  */
 
 import { maxHomopolymerRun, hairpinScore } from '../../primers/scoring'
+import { spacerStartsGuide } from '../scaffolds'
 import type { GuideFlag, GuideSite, Nuclease, PromoterId } from '../types'
 
 /** GC fraction outside this band is worth a warning. */
@@ -111,9 +112,17 @@ export function spacerFlags(
     })
   }
 
-  const note = startBaseNote(s, promoter)
-  if (note) {
-    flags.push({ id: 'start-base', label: '5′ base', severity: 'warn', detail: note })
+  // The start-base rule is about the first base of the transcript. It only
+  // concerns the spacer when the spacer comes first, which is true of an
+  // sgRNA and false of a Cas12a crRNA, where the repeat is in front of it.
+  if (spacerStartsGuide(nuclease)) {
+    const note = startBaseNote(s, promoter)
+    if (note) {
+      // A note, not a warning. Three spacers in four do not start on a G, so
+      // as a warning this crowded out the flags that say a guide is a poor
+      // one, and the order step adds the base by itself and says it did.
+      flags.push({ id: 'start-base', label: '5′ base', severity: 'note', detail: note })
+    }
   }
 
   if (site?.offEnd) {

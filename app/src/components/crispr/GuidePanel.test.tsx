@@ -15,6 +15,7 @@ import { findGuideSites } from '../../crispr/finder'
 import { scoreSites } from '../../crispr/score/guide'
 import { builtInNuclease } from '../../crispr/nucleases'
 import { guideKey } from '../../utils/guide-features'
+import type { OffTargetReport } from '../../crispr/offtarget'
 import type { Nuclease } from '../../crispr/types'
 
 const store = () => useEditorStore.getState()
@@ -238,7 +239,7 @@ describe('GuidePanel off-targets', () => {
       store().setGuideResults(candidates)
       store().setOffTargetReports({
         [key]: {
-          spacer: candidates[0].site.spacer, nucleaseId: 'spcas9', hits: [], specificity: 100,
+          spacer: candidates[0].site.spacer, nucleaseId: 'spcas9', model: 'cfd', hits: [], specificity: 100,
           searched: [], onTargetSites: 1, truncated: false,
           settings: { maxMismatches: 3, bulges: false, alternativePams: false, maxHits: 1000 },
         },
@@ -247,5 +248,56 @@ describe('GuidePanel off-targets', () => {
     expect(Object.keys(store().offTargetReports)).toHaveLength(1)
     act(() => { store().setGuideResults([]) })
     expect(Object.keys(store().offTargetReports)).toHaveLength(0)
+  })
+})
+
+describe('an off-target report belongs to a spacer, not to a position', () => {
+  const key = () => guideKey(scan()[0].site)
+
+  function reportFor(spacer: string): OffTargetReport {
+    return {
+      spacer,
+      nucleaseId: 'spcas9',
+      model: 'cfd',
+      hits: [],
+      specificity: 100,
+      searched: [{ id: 'd', name: 'doc', length: BASES.length }],
+      onTargetSites: 1,
+      truncated: false,
+      settings: { maxMismatches: 3, bulges: false, alternativePams: false, maxHits: 1000 },
+    }
+  }
+
+  beforeEach(() => {
+    for (const tab of store().tabs) store().closeTab(tab.id)
+    store().openDocument('guides', BASES)
+    store().setCrisprParams({ crisprNucleaseId: 'spcas9', crisprSpacerLength: 0 })
+    store().clearGuides()
+  })
+
+  it('keeps a report while the spacer at that position is the same', () => {
+    act(() => {
+      store().setGuideResults(scan())
+      store().setOffTargetReports({ [key()]: reportFor('ACGTACGTACGTACGTACGT') })
+      store().setGuideResults(scan())
+    })
+    expect(Object.keys(store().offTargetReports)).toEqual([key()])
+  })
+
+  it('drops it once the bases under that position are edited', () => {
+    // The site keeps its coordinates, so it keeps its key, but one base of
+    // the protospacer has changed and the report was run for the old one.
+    const edited = BASES.slice(0, 15) + (BASES[15] === 'A' ? 'C' : 'A') + BASES.slice(16)
+    const { sites } = findGuideSites(edited, spCas9, 'linear')
+    const after = scoreSites(sites, spCas9, edited, 'linear')
+    act(() => {
+      store().setGuideResults(scan())
+      store().setOffTargetReports({ [key()]: reportFor('ACGTACGTACGTACGTACGT') })
+    })
+    expect(Object.keys(store().offTargetReports)).toHaveLength(1)
+    act(() => { store().setGuideResults(after) })
+    expect(guideKey(after[0].site)).toBe(key())
+    expect(after[0].site.spacer).not.toBe('ACGTACGTACGTACGTACGT')
+    expect(store().offTargetReports).toEqual({})
   })
 })

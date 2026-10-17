@@ -133,6 +133,11 @@ export interface SceneGuide {
   strand: 1 | -1
   /** A staggered cutter: the second cut, drawn as a short companion tick. */
   secondCut?: number
+  /**
+   * A nickase: one strand only. The tick stands off the backbone rather
+   * than touching it, so a nick is not read as a break.
+   */
+  nick?: true
 }
 
 export interface SceneGcSeries {
@@ -707,7 +712,7 @@ export function buildPlasmidScene(input: PlasmidSceneInput): PlasmidScene {
     const hovered = guide.key === hoveredGuideKey
     const chosen = guide.key === selectedGuideKey
     const ink = chosen ? colors.accent : colors.guide
-    const from = baseRadius + 2
+    const from = baseRadius + (guide.nick ? 6 : 2)
     const to = baseRadius + (chosen || hovered ? 16 : 11)
     items.push({
       kind: 'line',

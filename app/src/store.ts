@@ -2483,12 +2483,17 @@ export const useEditorStore = create<EditorStore>((set, get) => {
       }
       const selected = get().selectedGuideKey
       if (selected && !live.has(selected)) set({ selectedGuideKey: null })
-      // A report belongs to the spacer it was run for; a site that is no
-      // longer found has no report to show.
+      // A report belongs to the spacer it was run for, not to the place it
+      // was found. A site that is gone has no report to show, and so has a
+      // site whose bases were edited: the key is only its position, so an
+      // edit inside the protospacer leaves the key standing while the spacer
+      // under it is a different one.
+      const spacers = new Map(candidates.map(c => [guideKey(c.site), c.site.spacer.toUpperCase()]))
       const reports = get().offTargetReports
       const keys = Object.keys(reports)
-      if (keys.some(k => !live.has(k))) {
-        set({ offTargetReports: Object.fromEntries(keys.filter(k => live.has(k)).map(k => [k, reports[k]])) })
+      const stale = (k: string) => !live.has(k) || spacers.get(k) !== reports[k].spacer.toUpperCase()
+      if (keys.some(stale)) {
+        set({ offTargetReports: Object.fromEntries(keys.filter(k => !stale(k)).map(k => [k, reports[k]])) })
       }
     },
     clearGuides: () => set({

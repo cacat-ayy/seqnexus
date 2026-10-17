@@ -188,6 +188,7 @@ export function usePlasmidSceneData(doc: DocumentState) {
       cutPos: cutPosition(c.site, doc.sequence.length, circular),
       strand: c.site.strand,
       ...(c.site.cutTop !== c.site.cutBottom ? { secondCut: c.site.cutBottom } : {}),
+      ...(nuclease.cleaves === 'both' ? {} : { nick: true as const }),
     }))
   }, [showGuides, guideResults, crisprNucleaseId, customNucleases, drawScope, guidePicks, selectedKey, doc.sequence.length, doc.sequence.topology])
 

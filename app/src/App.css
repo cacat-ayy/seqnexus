@@ -231,10 +231,17 @@
    below its trigger (menus, popovers, tooltips), pop-up for anything that
    opens above it (toasts, status-bar popovers, hints), pop-in for a menu at
    the pointer, pop-left for a panel coming in at the right edge, modal-in
-   for dialogs. Exits play the same keyframes with `reverse`. Durations come from --dur-*, easing from --ease-out. */
+   for dialogs. An exit has keyframes of its own (fade-out, modal-out), not
+   the entrance reversed: a reversed name that has already finished never
+   starts a new animation, so no animationend arrives to unmount anything.
+   Durations come from --dur-*, easing from --ease-out. */
 @keyframes fade-in {
   from { opacity: 0; }
   to   { opacity: 1; }
+}
+@keyframes fade-out {
+  from { opacity: 1; }
+  to   { opacity: 0; }
 }
 @keyframes pop-down {
   from { opacity: 0; transform: translateY(-4px) scale(.98); }
@@ -261,6 +268,10 @@
 @keyframes modal-in {
   from { opacity: 0; transform: translateY(8px) scale(.96); }
   to   { opacity: 1; transform: none; }
+}
+@keyframes modal-out {
+  from { opacity: 1; transform: none; }
+  to   { opacity: 0; transform: translateY(8px) scale(.96); }
 }
 @keyframes pulse {
   0%, 100% { opacity: 1; }
@@ -1990,13 +2001,19 @@
 
 
 
+/* The exit has keyframes of its own rather than the entrance played in
+   reverse. A browser only starts a new animation when the animation-name
+   changes, so reversing a name that has already finished repaints the
+   element without running anything: no animationend fires, useExitAnimation
+   never unmounts the dialog, and an invisible aria-modal dialog is left in
+   the page with the keyboard focus still inside it. */
 .modal-backdrop.closing {
-  animation: fade-in var(--dur-fast) var(--ease-out) reverse forwards;
+  animation: fade-out var(--dur-fast) var(--ease-out) forwards;
   pointer-events: none;
 }
 
 .modal-backdrop.closing .modal-dialog {
-  animation: modal-in var(--dur-fast) var(--ease-out) reverse forwards;
+  animation: modal-out var(--dur-fast) var(--ease-out) forwards;
 }
 
 .modal-dialog {

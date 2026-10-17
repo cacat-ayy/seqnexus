@@ -175,6 +175,13 @@ export interface NickingGuide {
   distance: number
   /** Whether it nicks the other strand, which is what the strategy needs. */
   opposite: boolean
+  /**
+   * PE3b: the spacer matches the edited sequence and not the original, so
+   * the second nick is only made once the edit is in. The strategy is worth
+   * asking for because the two nicks are then never open at the same time,
+   * which is what makes PE3 leave indels behind.
+   */
+  pe3b?: true
 }
 
 /** The band of distances a second nick is usually put in. */
@@ -191,22 +198,70 @@ export function nickingGuides(
   candidates: readonly GuideCandidate[],
   peg: PegRna,
   band: { low: number; high: number } = NICK_BAND,
+  molecule?: { length: number; topology: 'linear' | 'circular' },
 ): NickingGuide[] {
   const pegStrand = peg.candidate.site.strand
   const out: NickingGuide[] = []
+  // On a circle the two nicks can sit either side of the origin, and then the
+  // plain difference is nearly the whole molecule. Without the short way
+  // round, a pegRNA nicking within a band's length of the origin is offered
+  // no second nick at all, which on a plasmid is a common place to be.
+  const apart = (a: number, b: number): number => {
+    const d = Math.abs(a - b)
+    if (!molecule || molecule.topology !== 'circular') return d
+    return Math.min(d, molecule.length - d)
+  }
   for (const candidate of candidates) {
     if (candidate.site.offEnd) continue
     const nick = candidate.site.strand === 1 ? candidate.site.cutTop : candidate.site.cutBottom
-    const distance = Math.abs(nick - peg.nick)
+    const distance = apart(nick, peg.nick)
     if (distance < band.low || distance > band.high) continue
     out.push({ candidate, distance, opposite: candidate.site.strand !== pegStrand })
   }
   return out
     .filter(n => n.opposite)
     .sort((a, b) => {
+      // PE3b first: a nick that waits for the edit is the better strategy
+      // whatever its distance.
+      if (!!a.pe3b !== !!b.pe3b) return a.pe3b ? -1 : 1
       const mid = (band.low + band.high) / 2
       return Math.abs(a.distance - mid) - Math.abs(b.distance - mid)
     })
+}
+
+/**
+ * Second nicks that only exist once the edit is in: the PE3b strategy.
+ *
+ * Anzalone and colleagues found that nicking the unedited strand at the same
+ * time as the pegRNA nick leaves indels behind, and that a nicking guide
+ * whose spacer spans the edit avoids it: before the edit the spacer does not
+ * match, so nothing is nicked until the new strand is written.
+ *
+ * `editedCandidates` are guides found in the edited sequence, which the
+ * caller scans; a guide is PE3b when its protospacer covers the edit, so the
+ * original sequence could not have offered it.
+ */
+export function pe3bGuides(
+  editedCandidates: readonly GuideCandidate[],
+  peg: PegRna,
+  edit: PrimeEdit,
+  band: { low: number; high: number } = NICK_BAND,
+  molecule?: { length: number; topology: 'linear' | 'circular' },
+): NickingGuide[] {
+  // In edited coordinates the new bases occupy [edit.start, editedEnd). A
+  // span written with its end before its start has crossed the origin, and
+  // then it covers everything outside the two.
+  const editedEnd = edit.start + edit.replacement.length
+  const overlaps = (start: number, end: number): boolean => (
+    end > start
+      ? start < editedEnd && end > edit.start
+      : start < editedEnd || end > edit.start
+  )
+  // The PAM counts as much as the protospacer: a guide whose PAM the edit
+  // creates cannot bind the sequence as it stands either.
+  const spans = editedCandidates.filter(c =>
+    overlaps(c.site.start, c.site.end) || overlaps(c.site.pamStart, c.site.pamEnd))
+  return nickingGuides(spans, peg, band, molecule).map(n => ({ ...n, pe3b: true as const }))
 }
 
 /** What the sequence looks like once the edit is in, for the panel to show. */

@@ -27,6 +27,26 @@ export type CleaveMode = 'both' | 'site' | 'opposite' | 'none'
 
 export type OnTargetModelId = 'heuristic-cas9' | 'none'
 
+/**
+ * Which model scores an off-target site. 'cfd' is the fitted table of Doench
+ * et al. 2016, which applies to SpCas9 with a 20 base spacer; 'position' is
+ * the transparent heuristic that applies to anything.
+ */
+export type OffTargetModelId = 'cfd' | 'position'
+
+/**
+ * A PAM the nuclease also binds, with how often it is bound relative to the
+ * canonical one. The SpCas9 numbers are the PAM activities fitted in Doench
+ * et al. 2016, so a weaker PAM is scored by what was measured for it rather
+ * than by one factor standing for all of them.
+ */
+export interface AltPam {
+  /** IUPAC, written 5' to 3' on the protospacer strand. */
+  pam: string
+  /** 0 to 1, against the canonical PAM's 1. */
+  activity: number
+}
+
 export interface Nuclease {
   id: string
   name: string
@@ -38,7 +58,7 @@ export interface Nuclease {
    * used to find guides, only to look for places a finished guide could bind
    * by accident, and only when the off-target search is asked for them.
    */
-  altPams?: readonly string[]
+  altPams?: readonly AltPam[]
   /** Spacer lengths this nuclease accepts; the first is the default. */
   spacerLengths: readonly number[]
   /** Distances from the PAM edge of the protospacer to each cut. */
@@ -48,6 +68,11 @@ export interface Nuclease {
   cleaves: CleaveMode
   /** Which on-target model applies; 'none' means no model is shown. */
   onTargetModel: OnTargetModelId
+  /**
+   * Which off-target model applies. Left unset, sites are scored by the
+   * position heuristic, which is the only one that fits every nuclease.
+   */
+  offTargetModel?: OffTargetModelId
   /** Scaffold or crRNA family, resolved to a sequence in a later phase. */
   scaffoldId?: string
   /** Promoter whose transcript start rules apply by default. */
@@ -90,8 +115,11 @@ export interface GuideSite {
 export interface GuideFlag {
   id: GuideFlagId
   label: string
-  /** 'warn' is worth knowing, 'bad' is usually disqualifying. */
-  severity: 'warn' | 'bad'
+  /**
+   * 'note' is a fact about the spacer that the order step deals with on its
+   * own, 'warn' is worth knowing, 'bad' is usually disqualifying.
+   */
+  severity: 'note' | 'warn' | 'bad'
   /** One line of detail, shown on hover. */
   detail: string
 }
