@@ -157,39 +157,3 @@ export const ENZYME_GROUPS: Record<string, string[]> = {
 export function getEnzyme(name: string): RestrictionEnzyme | undefined {
   return ENZYME_DB.find(e => e.name.toLowerCase() === name.toLowerCase())
 }
-
-/**
- * Check if an enzyme's activity is affected by the document's methylation state.
- * Returns 'blocked' if the enzyme cannot cut, 'impaired' if activity is reduced,
- * or null if unaffected. An enzyme that requires a methylation is blocked
- * where it is absent.
- */
-export function methylationEffect(
-  enzyme: RestrictionEnzyme,
-  damMethylated?: boolean,
-  dcmMethylated?: boolean,
-): 'blocked' | 'impaired' | null {
-  let dominated: 'blocked' | 'impaired' | null = null
-  if (!damMethylated && enzyme.dam === 'required') return 'blocked'
-  if (!dcmMethylated && enzyme.dcm === 'required') return 'blocked'
-  if (damMethylated && enzyme.dam === 'blocked') return 'blocked'
-  if (dcmMethylated && enzyme.dcm === 'blocked') return 'blocked'
-  if (damMethylated && enzyme.dam === 'impaired') dominated = 'impaired'
-  if (dcmMethylated && enzyme.dcm === 'impaired') dominated = 'impaired'
-  return dominated
-}
-
-/**
- * What to tell someone about an enzyme's methylation effect, or null. A
- * blocked DpnI is blocked for want of Dam methylation, not by it, and says so.
- */
-export function methylationNote(
-  enzyme: RestrictionEnzyme,
-  damMethylated?: boolean,
-  dcmMethylated?: boolean,
-): string | null {
-  if (!damMethylated && enzyme.dam === 'required') return 'Cuts only Dam-methylated DNA'
-  if (!dcmMethylated && enzyme.dcm === 'required') return 'Cuts only Dcm-methylated DNA'
-  const effect = methylationEffect(enzyme, damMethylated, dcmMethylated)
-  return effect === 'blocked' ? 'Blocked by methylation' : effect === 'impaired' ? 'Impaired by methylation' : null
-}

@@ -8,7 +8,8 @@ import './EnzymePanel.css'
 import { useState, useMemo, useEffect, useCallback, useRef } from 'react'
 import { X, GalleryVertical } from 'lucide-react'
 import { useEditorStore } from '../store'
-import { methylationEffect, methylationNote, type RestrictionEnzyme } from '../enzymes/db'
+import type { RestrictionEnzyme } from '../enzymes/db'
+import { summarizeMethylation, siteMethylationNote, type MethylationSummary } from '../enzymes/methylation'
 import { BUILT_IN_SUBSETS, setKey, subsetEnzymes } from '../enzymes/sets'
 import EnzymeSetControls from './EnzymeSetControls'
 import { cuttingSites, type CutSite } from '../enzymes/finder'
@@ -223,6 +224,18 @@ export default function EnzymePanel({ open, onClose }: Props) {
     return map
   }, [filteredResult.sites])
 
+  // What methylation does to each enzyme's sites, site by site, as the
+  // digest and the gel decide it. The sites are rescanned after every edit,
+  // so the bases read here match them.
+  const damMethylated = doc.metadata?.damMethylated ?? false
+  const dcmMethylated = doc.metadata?.dcmMethylated ?? false
+  const methylationByEnzyme = useMemo(() => {
+    const ctx = { bases: sequence.bases, topology, dam: damMethylated, dcm: dcmMethylated }
+    const map = new Map<string, MethylationSummary>()
+    for (const [name, sites] of sitesByEnzyme) map.set(name, summarizeMethylation(sites, ctx))
+    return map
+  }, [sitesByEnzyme, sequence, topology, damMethylated, dcmMethylated])
+
   // Backdrop click / Escape
   const backdropRef = useRef<HTMLDivElement>(null)
   useFocusTrap(backdropRef, open)
@@ -365,11 +378,14 @@ export default function EnzymePanel({ open, onClose }: Props) {
                   const ovLabel = enz.overhang === 'blunt' ? 'blunt'
                     : enz.overhang === '5prime' ? "5'"
                     : "3'"
-                  const methEffect = methylationEffect(enz, doc.metadata?.damMethylated, doc.metadata?.dcmMethylated)
-                  const methClass = methEffect === 'blocked' ? ' re-methyl-blocked' : methEffect === 'impaired' ? ' re-methyl-impaired' : ''
-                  const methLabel = methylationNote(enz, doc.metadata?.damMethylated, doc.metadata?.dcmMethylated) ?? undefined
+                  const meth = methylationByEnzyme.get(name)
+                  // The row fades only when methylation stops every site; a
+                  // partial block is shown on the tag and on the sites it hits.
+                  const allBlocked = !!meth && meth.total > 0 && meth.blocked === meth.total
+                  const allImpaired = !!meth && meth.total > 0 && meth.blocked === 0 && meth.impaired === meth.total
+                  const methClass = allBlocked ? ' re-methyl-blocked' : allImpaired ? ' re-methyl-impaired' : ''
                   return (
-                  <li key={name} className={`re-enzyme-group${methClass}`} title={methLabel}>
+                  <li key={name} className={`re-enzyme-group${methClass}`} title={meth?.note ?? undefined}>
                     <div className="re-enzyme-row">
                       <span className="re-enzyme-name">{name}</span>
                       <span className="re-enzyme-count">{cuttingSites(sites).length}×</span>
@@ -377,21 +393,31 @@ export default function EnzymePanel({ open, onClose }: Props) {
                         <RecogWithCut enzyme={enz} />
                       </span>
                       <span className="re-enzyme-overhang">{ovLabel}</span>
-                      {methEffect && <span className={`re-methyl-tag re-methyl-tag-${methEffect}`}>{methEffect === 'blocked' ? 'blocked' : 'impaired'}</span>}
+                      {meth?.tag && (
+                        <span className={`re-methyl-tag re-methyl-tag-${allBlocked ? 'blocked' : meth.blocked > 0 ? 'partial' : 'impaired'}`}>
+                          {meth.tag}
+                        </span>
+                      )}
                       {/* The positions sit in the enzyme's row, not a line of their own. */}
                       <div className="re-site-badges">
-                        {sites.slice(0, MAX_BADGES).map((site, i) => (
-                          <span
-                            key={i}
-                            className={site.offEnd ? 're-site-badge re-site-off-end' : 're-site-badge'}
-                            onClick={() => handleSiteClick(site)}
-                            title={site.offEnd
-                              ? `${site.enzyme.name} at ${site.position + 1} cuts past the end of the sequence, so it does not cut`
-                              : `${site.enzyme.name} at ${site.position + 1}`}
-                          >
-                            {site.position + 1}
-                          </span>
-                        ))}
+                        {sites.slice(0, MAX_BADGES).map((site, i) => {
+                          const eff = meth?.effects[i] ?? null
+                          const cls = site.offEnd ? ' re-site-off-end'
+                            : eff ? ` re-site-${eff.effect}` : ''
+                          return (
+                            <span
+                              key={i}
+                              className={`re-site-badge${cls}`}
+                              onClick={() => handleSiteClick(site)}
+                              title={site.offEnd
+                                ? `${site.enzyme.name} at ${site.position + 1} cuts past the end of the sequence, so it does not cut`
+                                : eff ? `${site.enzyme.name} at ${site.position + 1}: ${siteMethylationNote(eff)}`
+                                : `${site.enzyme.name} at ${site.position + 1}`}
+                            >
+                              {site.position + 1}
+                            </span>
+                          )
+                        })}
                         {sites.length > MAX_BADGES && (
                           <span className="re-site-more">+{(sites.length - MAX_BADGES).toLocaleString('en-US')} more</span>
                         )}

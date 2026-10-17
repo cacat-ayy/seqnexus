@@ -49,9 +49,10 @@ export function usePlasmidSceneData(doc: DocumentState) {
   const enzymeCutSites = useMemo(() => (showEnzymes ? allEnzymeCutSites : []), [showEnzymes, allEnzymeCutSites])
   const damMeth = doc.metadata?.damMethylated || false
   const dcmMeth = doc.metadata?.dcmMethylated || false
+  const sequence = doc.sequence
   const groupedEnzymeSites = useMemo(
-    () => groupCutSites(enzymeCutSites, damMeth, dcmMeth),
-    [enzymeCutSites, damMeth, dcmMeth],
+    () => groupCutSites(enzymeCutSites, { bases: sequence.bases, topology: sequence.topology, dam: damMeth, dcm: dcmMeth }),
+    [enzymeCutSites, sequence, damMeth, dcmMeth],
   )
   const orfResults = useMemo(() => (showOrfs ? allOrfResults : []), [showOrfs, allOrfResults])
 

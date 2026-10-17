@@ -28,13 +28,22 @@ export interface ClampOptions {
    * near the bottom of the window, which sliding up would cover.
    */
   above?: boolean
+  /** Open to the left of the point rather than to its right. */
+  before?: boolean
+  /**
+   * Space kept between the point and the card on each axis, on whichever
+   * side the card opens (and flips to): a card beside a mark stays off it.
+   */
+  gap?: { x?: number; y?: number }
 }
 
 export function useClampedPosition(
   x: number,
   y: number,
-  { flip = false, above = false }: ClampOptions = {},
+  { flip = false, above = false, before = false, gap }: ClampOptions = {},
 ): { ref: React.RefCallback<HTMLDivElement>; pos: ClampedPosition } {
+  const gapX = gap?.x ?? 0
+  const gapY = gap?.y ?? 0
   const elRef = useRef<HTMLDivElement | null>(null)
   const [pos, setPos] = useState<ClampedPosition>({ left: x, top: y })
   const observerRef = useRef<ResizeObserver | null>(null)
@@ -71,12 +80,18 @@ export function useClampedPosition(
     const vw = window.innerWidth
     const vh = window.innerHeight
 
-    let left = x
-    let top = above ? y - rect.height : y
+    const afterX = x + gapX
+    const beforeX = x - rect.width - gapX
+    const belowY = y + gapY
+    const aboveY = y - rect.height - gapY
+    let left = before ? beforeX : afterX
+    let top = above ? aboveY : belowY
 
     if (flip) {
-      if (left + rect.width > vw - MARGIN && x - rect.width >= MARGIN) left = x - rect.width
-      if (top + rect.height > vh - MARGIN && y - rect.height >= MARGIN) top = y - rect.height
+      if (!before && left + rect.width > vw - MARGIN && beforeX >= MARGIN) left = beforeX
+      else if (before && left < MARGIN && afterX + rect.width <= vw - MARGIN) left = afterX
+      if (!above && top + rect.height > vh - MARGIN && aboveY >= MARGIN) top = aboveY
+      else if (above && top < MARGIN && belowY + rect.height <= vh - MARGIN) top = belowY
     }
     if (left + rect.width > vw - MARGIN) left = vw - rect.width - MARGIN
     if (left < MARGIN) left = MARGIN
@@ -84,7 +99,7 @@ export function useClampedPosition(
     if (top < MARGIN) top = MARGIN
 
     setPos({ left, top })
-  }, [x, y, flip, above, size])
+  }, [x, y, flip, above, before, gapX, gapY, size])
 
   return { ref, pos }
 }

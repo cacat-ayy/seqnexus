@@ -111,6 +111,7 @@ short version.
   - [Large sequences](#large-sequences)
   - [Checks against Biopython](#checks-against-biopython)
   - [How sites are drawn in the sequence view](#how-sites-are-drawn-in-the-sequence-view)
+  - [The site hover card](#the-site-hover-card)
   - [Saved enzyme sets](#saved-enzyme-sets)
 - [Virtual Gel](#virtual-gel)
   - [Lanes](#lanes)
@@ -2386,8 +2387,13 @@ A site counts as affected by Dam or Dcm methylation only when a methylated
 base of the motif falls inside it (see [Methylation](#methylation) under
 cloning): XbaI's TCTAGA is blocked in TCTAGATC and cut in TCTAGAACGGATC. The
 digest, the gel and the cloning workspace drop blocked sites when the
-sequence is marked Dam- or Dcm-methylated (Sequence Properties), and the maps
-draw them faded. Whether an enzyme is blocked at all is data, per enzyme.
+sequence is marked Dam- or Dcm-methylated (Sequence Properties), and the
+sequence view and the maps draw them faded, by the same per-site rule, so a
+site drawn faded is one the digest drops. The Restriction Enzymes dialog
+follows it too: an enzyme's row fades only when methylation stops every one
+of its sites; when it stops some, the row says how many ("1/3 blocked") and
+those positions are struck out. Whether an enzyme is blocked at all is data,
+per enzyme.
 
 Each enzyme's Dam and Dcm sensitivity comes from REBASE's methylation records,
 fetched by `scripts/fetch-rebase-methylation.ts` into
@@ -2410,8 +2416,8 @@ the other way: it cuts next to 5-methylcytosine (mCNNR), which in E. coli
 DNA is Dcm's, so its Dcm flag is "required". The app checks that a
 Dcm-methylated base lies in the site, not that it is the first base, so on
 Dcm-methylated DNA it may name a few sites MspJI would not cut. CpG sensitivity is
-shown on the hover card of the curated enzymes but not applied, since no
-sequence carries a CpG-methylated flag.
+shown on the hover card of the curated enzymes, as whether a CpG reaches the
+site, but not applied, since no sequence carries a CpG-methylated flag.
 
 ### Large sequences
 
@@ -2467,6 +2473,45 @@ Known differences, by convention:
   line to the ruler, its bar, a tint over its bases and its cut light up, and
   every other site fades. Names are the reliable target in a crowded stretch,
   since they are the one part already spread out.
+
+### The site hover card
+
+Hovering a site on the sequence view or the map opens a card about that
+cut in that sequence, rather than about the enzyme in general:
+
+- **The name as written** (NdeI, not NDEI: the capitals carry the genus and
+  species it was isolated from) and **how many times the enzyme cuts** the
+  sequence ("1×", "3×"), counted from the sites that cut, so a site past an
+  end of a linear sequence does not count.
+- **The bases around the site, both strands, with the cut as a step**, the
+  same step the sequence view draws: down through the top strand at its
+  cut, along between the strands, down through the bottom strand. The bases
+  are read from the sequence, not from the enzyme's recognition string, so a
+  degenerate site shows the bases it matched and a Type IIS enzyme shows the
+  actual overhang it leaves, which for Golden Gate is the part that matters.
+  Three bases on each side give context; a stretch of four or more between a
+  site and a distant cut (MmeI cuts 20 bases away) is shortened to its
+  length. A site found on the bottom strand is drawn in top-strand
+  coordinates, where its cuts actually fall, and the card says which strand
+  it reads on.
+- **The overhang**, read 5′ to 3′ on the top strand ("5′ AATT" for EcoRI,
+  "3′ TGCA" for PstI), and both of them for a Type IIB enzyme.
+- **What methylation does at this site.** Each sensitivity the enzyme has is
+  reported for this site: blocked or impaired here (red or amber) when a
+  methylated base of a Dam, Dcm or CpG motif falls inside the recognition
+  sequence and the sequence is marked methylated; "if Dam-methylated" when the
+  motif is there but the sequence is not marked; "not affected here" when no
+  motif reaches the site. An XbaI site that is not next to a GATC is not shown
+  as blocked just because XbaI is Dam-sensitive.
+
+A site several enzymes share lists them one per row (name, cut count,
+overhang, and whether methylation stops it here). When they all cut alike
+(isoschizomers) the cut is drawn once; when they cut differently
+(neoschizomers such as SmaI and XmaI) the list alone is shown, and pinning
+the card (Shift) draws each cut. The card opens above the pointer on the
+sequence view, since names sit above their bases, and diagonally outward from
+the site on the map, away from the circle, so neither covers the site it
+describes.
 
 ### Saved enzyme sets
 

@@ -119,7 +119,7 @@ export function mapSites(q: SiteQuery): { sites: MapSite[]; picked: Set<string> 
 
   // A site the host's methylation blocks is still drawn, faded, so the
   // reason it cannot be used is visible rather than the site going missing.
-  const groups = groupCutSites(all, q.damMethylated ?? false, q.dcmMethylated ?? false)
+  const groups = groupCutSites(all, { bases: q.bases, topology: q.topology, dam: q.damMethylated ?? false, dcm: q.dcmMethylated ?? false })
   const chosen = new Set(q.chosen.map(n => n.toLowerCase()))
   const picked = new Set<string>()
   const sites = groups.map(g => {

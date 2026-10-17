@@ -28,7 +28,8 @@ import { Annotation } from '../models/Annotation'
 import { displayPosition } from '../models/Document'
 import { IntervalTree } from '../models/IntervalTree'
 import { getLayout, baseX as zBaseX, type ZoomLayout, RowLayoutMap, MAX_ZOOM, LETTERS_FROM } from './zoom-layout'
-import { groupCutSites, enzymeGroupKey, type GroupedCutSite } from '../enzymes/grouping'
+import { groupCutSites, enzymeGroupKey, cutCountsByEnzyme, type GroupedCutSite } from '../enzymes/grouping'
+import { methylationContextOf } from '../enzymes/methylation'
 import AnnotationTooltip from './AnnotationTooltip'
 import { copyText } from '../utils/clipboard'
 import { useDelayedHover, type HoverTarget } from '../hooks/useDelayedHover'
@@ -483,8 +484,8 @@ function hitTestSelectionEdge(
 }
 
 
-// EnzymeTooltipPopup alias for backward compat within this file
-const EnzymeTooltipPopup = EnzymeTooltip
+/** A site card keeps clear of the pointer, and drops below it when there is no room above. */
+const SITE_CARD_PLACEMENT = { flip: true, gap: { y: 14 } }
 
 interface SequenceViewProps {
   onFindRequest?: () => void
@@ -617,9 +618,11 @@ function SequenceView({ onFindRequest, onFindClose, onAnnotateRequest, onEditFea
   // keys match the main view's.
   const damMethylated = doc.metadata?.damMethylated || false
   const dcmMethylated = doc.metadata?.dcmMethylated || false
+  // Sites are rescanned after every edit, so the bases read here match them.
+  const sequence = doc.sequence
   const minimapEnzymeGroups = useMemo(
-    () => (showEnzymes ? groupCutSites(allEnzymeCutSites, damMethylated, dcmMethylated) : null),
-    [showEnzymes, allEnzymeCutSites, damMethylated, dcmMethylated],
+    () => (showEnzymes ? groupCutSites(allEnzymeCutSites, { bases: sequence.bases, topology: sequence.topology, dam: damMethylated, dcm: dcmMethylated }) : null),
+    [showEnzymes, allEnzymeCutSites, sequence, damMethylated, dcmMethylated],
   )
 
   // Everything in the feature lanes, and the translation settings, built the
@@ -721,7 +724,7 @@ function SequenceView({ onFindRequest, onFindClose, onAnnotateRequest, onEditFea
     const showEnzymesNow = showEnzymesRef.current && enzymeCutSitesRef.current.length > 0
     const perRowTranslations = translationFramesRef.current.length === 0
     const sites = showEnzymesNow
-      ? groupCutSites(enzymeCutSitesRef.current, doc.metadata?.damMethylated || false, doc.metadata?.dcmMethylated || false)
+      ? groupCutSites(enzymeCutSitesRef.current, methylationContextOf(doc))
       : NO_SITES
     let best = 0
     for (let z = 0; z <= MAX_ZOOM; z++) {
@@ -802,9 +805,7 @@ function SequenceView({ onFindRequest, onFindClose, onAnnotateRequest, onEditFea
 
     // Group cut sites for rendering (isoschizomer merging). Kept for the
     // mouse handlers, so hit-testing uses exactly what was drawn.
-    const damMeth = doc.metadata?.damMethylated || false
-    const dcmMeth = doc.metadata?.dcmMethylated || false
-    const groupedSites = groupCutSites(enzymeCutSites, damMeth, dcmMeth)
+    const groupedSites = groupCutSites(enzymeCutSites, methylationContextOf(doc))
     groupedSitesRef.current = groupedSites
 
     const seq = doc.sequence
@@ -1980,7 +1981,7 @@ function SequenceView({ onFindRequest, onFindClose, onAnnotateRequest, onEditFea
     const perRowTranslations = translationFramesRef.current.length === 0
     const doc = docRef.current
     const sites = showEnzymesNow
-      ? groupCutSites(enzymeCutSitesRef.current, doc.metadata?.damMethylated || false, doc.metadata?.dcmMethylated || false)
+      ? groupCutSites(enzymeCutSitesRef.current, methylationContextOf(doc))
       : NO_SITES
     let best: { z: number; top: number; span: number; rowStart: number } | null = null
     for (let z = 0; z <= MAX_ZOOM; z++) {
@@ -2159,13 +2160,18 @@ function SequenceView({ onFindRequest, onFindClose, onAnnotateRequest, onEditFea
       <div ref={locateRef} className="seq-locate" aria-hidden="true" onAnimationEnd={e => e.currentTarget.classList.remove('flash')} />
       <div ref={dragPillRef} className="seq-drag-pill" aria-hidden="true" />
       {/* Hover tooltips - hidden when context menu is open */}
+      {/* Site cards open above the pointer: names sit above their bases, so
+          the bases of the site stay in view. */}
       {!ctxMenu && enzymeTooltip && (enzymeTooltip.more ? (
-        <SiteListTooltip x={enzymeTooltip.x + 12} y={enzymeTooltip.y - 10} groups={enzymeTooltip.more} />
+        <SiteListTooltip
+          x={enzymeTooltip.x - 16} y={enzymeTooltip.y} above placement={SITE_CARD_PLACEMENT}
+          groups={enzymeTooltip.more}
+        />
       ) : (
-        <EnzymeTooltipPopup
-          x={enzymeTooltip.x + 12}
-          y={enzymeTooltip.y - 10}
+        <EnzymeTooltip
+          x={enzymeTooltip.x - 16} y={enzymeTooltip.y} above placement={SITE_CARD_PLACEMENT}
           group={enzymeTooltip.group}
+          ctx={{ methylation: methylationContextOf(doc), cutCounts: cutCountsByEnzyme(allEnzymeCutSites) }}
         />
       ))}
       {!ctxMenu && annTooltip && (() => {

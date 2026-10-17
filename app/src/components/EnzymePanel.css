@@ -251,6 +251,22 @@
   color: var(--text-muted);
   border: 1px dashed var(--border-light);
 }
+/* Methylation blocks some of the enzyme's sites but not all: the row stays
+   at full strength, and the tag and the blocked sites say which. */
+.re-methyl-tag-partial {
+  color: var(--warning);
+  border: 1px solid color-mix(in srgb, var(--warning) 45%, transparent);
+  background: color-mix(in srgb, var(--warning) 10%, transparent);
+}
+/* A site methylation blocks (struck out) or impairs (dashed) */
+.re-site-badge.re-site-blocked {
+  color: var(--text-muted);
+  background: none;
+  text-decoration: line-through;
+}
+.re-site-badge.re-site-impaired {
+  border-style: dashed;
+}
 
 .re-no-results {
   font-size: var(--text-sm);

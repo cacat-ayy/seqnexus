@@ -100,6 +100,26 @@ describe('useClampedPosition', () => {
     expect(result.current.pos.top).toBeGreaterThanOrEqual(MARGIN)
   })
 
+  it('opens to the left of the point with a gap, and flips right when the left has no room', () => {
+    const mount = (x: number) => renderHook(() => {
+      const h = useClampedPosition(x, 300, { before: true, flip: true, gap: { x: 16 } })
+      h.ref(document.createElement('div'))
+      return h
+    }).result
+    expect(mount(600).current.pos).toEqual({ left: 600 - W - 16, top: 300 })
+    expect(mount(100).current.pos).toEqual({ left: 100 + 16, top: 300 })
+  })
+
+  it('opens above with a gap, and drops below the point when there is no room above', () => {
+    const mount = (y: number) => renderHook(() => {
+      const h = useClampedPosition(300, y, { above: true, flip: true, gap: { y: 14 } })
+      h.ref(document.createElement('div'))
+      return h
+    }).result
+    expect(mount(500).current.pos).toEqual({ left: 300, top: 500 - H - 14 })
+    expect(mount(100).current.pos).toEqual({ left: 300, top: 100 + 14 })
+  })
+
   it('falls back to the requested point when there is no element yet', () => {
     const { result } = renderHook(() => useClampedPosition(123, 456))
     expect(result.current.pos).toEqual({ left: 123, top: 456 })

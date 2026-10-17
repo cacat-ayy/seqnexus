@@ -18,7 +18,8 @@ import { keyFromOrfId } from '../utils/orf-features'
 import AnnotationTooltip from './AnnotationTooltip'
 import { useDelayedHover, type HoverTarget } from '../hooks/useDelayedHover'
 import EnzymeTooltip from './EnzymeTooltip'
-import { type GroupedCutSite } from '../enzymes/grouping'
+import { cutCountsByEnzyme, type GroupedCutSite } from '../enzymes/grouping'
+import { methylationContextOf } from '../enzymes/methylation'
 import SequenceContextMenu from './SequenceContextMenu'
 import ConfirmDialog from './ConfirmDialog'
 import PrimerTooltip from './primers/PrimerTooltip'
@@ -39,6 +40,9 @@ const MIN_ZOOM = 1
 const MAX_ZOOM = 6
 const FIT: Viewport = { scale: 1, tx: 0, ty: 0 }
 
+/** Where a position sits on the map, in radians clockwise from the top. */
+const siteAngle = (pos: number, length: number) => (pos / Math.max(1, length)) * 2 * Math.PI
+
 interface PlasmidMapProps {
   onFindRequest?: () => void
   onEditFeature?: (annId: string) => void
@@ -53,6 +57,7 @@ function PlasmidMap(_props: PlasmidMapProps) {
   const containerRef = useRef<HTMLDivElement>(null)
 
   const doc = useEditorStore(s => s.doc)
+  const allEnzymeCutSites = useEditorStore(s => s.enzymeCutSites)
   const selection = useEditorStore(s => s.selection)
   const extraSelections = useEditorStore(extraSelectionsOf)
   const search = useEditorStore(s => s.search)
@@ -733,11 +738,21 @@ function PlasmidMap(_props: PlasmidMapProps) {
         )
       })()}
 
+      {/* A site card opens diagonally outward from its site, away from the
+          circle: the names of a busy stretch stack along the circle, so
+          heading outward keeps it off the site and off them. */}
       {!ctxMenu && enzymeTooltip && (
         <EnzymeTooltip
           x={enzymeTooltip.x}
           y={enzymeTooltip.y}
+          above={Math.cos(siteAngle(enzymeTooltip.group.labelPos, doc.sequence.length)) > 0}
+          placement={{
+            flip: true,
+            gap: { x: 16, y: 8 },
+            before: Math.sin(siteAngle(enzymeTooltip.group.labelPos, doc.sequence.length)) < 0,
+          }}
           group={enzymeTooltip.group}
+          ctx={{ methylation: methylationContextOf(doc), cutCounts: cutCountsByEnzyme(allEnzymeCutSites) }}
         />
       )}
 

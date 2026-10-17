@@ -55,9 +55,10 @@ export function useSequencePdfSource(): SequencePdfSource {
 
   const damMeth = doc.metadata?.damMethylated || false
   const dcmMeth = doc.metadata?.dcmMethylated || false
+  const sequence = doc.sequence
   const groupedSites = useMemo(
-    () => (showEnzymes ? groupCutSites(cutSites, damMeth, dcmMeth) : []),
-    [showEnzymes, cutSites, damMeth, dcmMeth],
+    () => (showEnzymes ? groupCutSites(cutSites, { bases: sequence.bases, topology: sequence.topology, dam: damMeth, dcm: dcmMeth }) : []),
+    [showEnzymes, cutSites, sequence, damMeth, dcmMeth],
   )
 
   // Read once per dialog: the print palette does not follow the theme.

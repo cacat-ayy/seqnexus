@@ -11,9 +11,10 @@ import './HoverCard.css'
  * must not pin anything.
  */
 
-import { useEffect, useRef, useSyncExternalStore, type ReactNode } from 'react'
+import { useCallback, useEffect, useRef, useSyncExternalStore, type ReactNode } from 'react'
 import { X } from 'lucide-react'
-import { useClampedPosition } from '../hooks/useClampedPosition'
+import { useClampedPosition, type ClampOptions } from '../hooks/useClampedPosition'
+import { PinnedCardContext } from './hoverCardPinned'
 
 interface PinnedCard {
   /** Identity of what the card describes, so its hover twin can step aside. */
@@ -38,16 +39,18 @@ function usePinnedCard(): PinnedCard | null {
   )
 }
 
-export default function HoverCard({ x, y, pinKey, className = 'ft-tooltip', above = false, children }: {
+export default function HoverCard({ x, y, pinKey, className = 'ft-tooltip', above = false, placement, children }: {
   x: number
   y: number
   pinKey: string
   className?: string
   /** Open above (x, y) instead of below it. */
   above?: boolean
+  /** Where to open relative to (x, y), for a card that must keep its mark in view. */
+  placement?: Omit<ClampOptions, 'above'>
   children: ReactNode
 }) {
-  const { ref, pos } = useClampedPosition(x, y, { above })
+  const { ref, pos } = useClampedPosition(x, y, { above, ...placement })
   const current = usePinnedCard()
   const latest = useRef({ pinKey, pos, className, children })
   latest.current = { pinKey, pos, className, children }
@@ -94,7 +97,11 @@ export default function HoverCard({ x, y, pinKey, className = 'ft-tooltip', abov
 /** Mounted once, at the app root. */
 export function PinnedCardHost() {
   const card = usePinnedCard()
-  const ref = useRef<HTMLDivElement>(null)
+  const ref = useRef<HTMLDivElement | null>(null)
+  // Pinned content can grow (a card with more to show once pinned), so it is
+  // kept inside the window from where the hover card stood.
+  const { ref: clampRef, pos } = useClampedPosition(card?.left ?? 0, card?.top ?? 0)
+  const setRef = useCallback((el: HTMLDivElement | null) => { ref.current = el; clampRef(el) }, [clampRef])
 
   useEffect(() => {
     if (!card) return
@@ -113,16 +120,16 @@ export function PinnedCardHost() {
   if (!card) return null
   return (
     <div
-      ref={ref}
+      ref={setRef}
       className={`${card.className} hc-pinned`}
-      style={{ position: 'fixed', left: card.left, top: card.top }}
+      style={{ position: 'fixed', left: pos.left, top: pos.top }}
       role="dialog"
       aria-label="Pinned details"
     >
       <button className="hc-close" onClick={unpinCard} aria-label="Unpin" title="Unpin (Esc)">
         <X size={12} />
       </button>
-      {card.content}
+      <PinnedCardContext.Provider value={true}>{card.content}</PinnedCardContext.Provider>
     </div>
   )
 }

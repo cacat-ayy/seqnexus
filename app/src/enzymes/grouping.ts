@@ -4,8 +4,8 @@
  * view and its minimap.
  */
 
-import type { CutSite } from './finder'
-import { methylationEffect, methylationNote } from './db'
+import { cuttingSites, type CutSite } from './finder'
+import { siteMethylationEffect, siteMethylationNote, type MethylationContext } from './methylation'
 
 export interface GroupedCutSite {
   /** All individual cut sites in this group */
@@ -42,16 +42,40 @@ export function enzymeGroupKey(group: GroupedCutSite): string {
   return `${group.label}@${group.recognitionStart}`
 }
 
-/** Group cut sites at the same position into combined entries. */
-let _groupedCache: { input: CutSite[]; dam: boolean; dcm: boolean; result: GroupedCutSite[] } | null = null
-export function groupCutSites(sites: CutSite[], damMethylated = false, dcmMethylated = false): GroupedCutSite[] {
-  if (_groupedCache && _groupedCache.input === sites && _groupedCache.dam === damMethylated && _groupedCache.dcm === dcmMethylated) return _groupedCache.result
-  const result = _groupCutSitesImpl(sites, damMethylated, dcmMethylated)
-  _groupedCache = { input: sites, dam: damMethylated, dcm: dcmMethylated, result }
+/** No methylation and no bases: only an enzyme that needs a methylation is affected. */
+const UNMETHYLATED: MethylationContext = { bases: '', topology: 'linear', dam: false, dcm: false }
+
+/**
+ * Group cut sites at the same position into combined entries. `methylation`
+ * is the sequence the sites are in and how it is methylated: a site is
+ * blocked only where a methylated base falls inside it, so it takes the bases.
+ */
+let _groupedCache: { input: CutSite[]; ctx: MethylationContext; result: GroupedCutSite[] } | null = null
+export function groupCutSites(sites: CutSite[], methylation: MethylationContext = UNMETHYLATED): GroupedCutSite[] {
+  const c = _groupedCache
+  if (c && c.input === sites && c.ctx.bases === methylation.bases && c.ctx.topology === methylation.topology
+    && c.ctx.dam === methylation.dam && c.ctx.dcm === methylation.dcm) return c.result
+  const result = _groupCutSitesImpl(sites, methylation)
+  _groupedCache = { input: sites, ctx: methylation, result }
   return result
 }
 
-function _groupCutSitesImpl(sites: CutSite[], damMethylated: boolean, dcmMethylated: boolean): GroupedCutSite[] {
+/**
+ * How many times each enzyme cuts, by name: sites past an end of a linear
+ * sequence do not count. For the "1×" on a site's hover card.
+ */
+const _countCache = new WeakMap<readonly CutSite[], Map<string, number>>()
+export function cutCountsByEnzyme(sites: readonly CutSite[]): ReadonlyMap<string, number> {
+  let counts = _countCache.get(sites)
+  if (!counts) {
+    counts = new Map()
+    for (const s of cuttingSites(sites)) counts.set(s.enzyme.name, (counts.get(s.enzyme.name) ?? 0) + 1)
+    _countCache.set(sites, counts)
+  }
+  return counts
+}
+
+function _groupCutSitesImpl(sites: CutSite[], methylation: MethylationContext): GroupedCutSite[] {
   if (sites.length === 0) return []
   const groups: GroupedCutSite[] = []
   let i = 0
@@ -86,12 +110,12 @@ function _groupCutSitesImpl(sites: CutSite[], damMethylated: boolean, dcmMethyla
     let methEffect: 'blocked' | 'impaired' | null = null
     let methNote: string | null = null
     for (const site of bucket) {
-      const eff = methylationEffect(site.enzyme, damMethylated, dcmMethylated)
-      if (eff === 'blocked' || (eff === 'impaired' && methEffect === null)) {
-        methEffect = eff
-        methNote = methylationNote(site.enzyme, damMethylated, dcmMethylated)
+      const eff = siteMethylationEffect(site, methylation)
+      if (eff && (eff.effect === 'blocked' || methEffect === null)) {
+        methEffect = eff.effect
+        methNote = siteMethylationNote(eff)
       }
-      if (eff === 'blocked') break
+      if (eff?.effect === 'blocked') break
     }
     groups.push({
       sites: bucket,
