@@ -110,7 +110,7 @@ export interface PdfFont {
 
 /**
  * The PDF font for a CSS font shorthand, as the canvas code writes them
- * ("500 11px Inter, sans-serif", "10.5px 'SF Mono', monospace"). Monospaced
+ * ("500 11px system-ui, sans-serif", "10.5px 'SF Mono', monospace"). Monospaced
  * families become Courier, the rest Helvetica, each bold from weight 600.
  */
 export function pdfFontFor(css: string): PdfFont {

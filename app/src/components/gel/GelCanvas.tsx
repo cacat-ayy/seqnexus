@@ -136,7 +136,7 @@ export default function GelCanvas({
       ctx.strokeRect(g.x + 0.5, g.y + 0.5, g.w - 1, g.h - 1)
       ctx.setLineDash([])
       ctx.fillStyle = ghostHover ? ACCENT : look.textMuted
-      ctx.font = '600 13px Inter, system-ui, sans-serif'
+      ctx.font = '600 13px system-ui, sans-serif'
       ctx.textAlign = 'center'
       ctx.textBaseline = 'middle'
       ctx.fillText('+', g.x + g.w / 2, slab.y - 12)
@@ -158,7 +158,7 @@ export default function GelCanvas({
       ctx.setLineDash([])
       if (bp !== null) {
         const text = `≈ ${formatGelSize(Math.round(bp), layout.conditions)}`
-        ctx.font = '600 10px Inter, system-ui, sans-serif'
+        ctx.font = '600 10px system-ui, sans-serif'
         const w = ctx.measureText(text).width + 10
         const x = Math.min(scene.width - w - 2, slab.x + slab.w + 4)
         ctx.fillStyle = look.frame

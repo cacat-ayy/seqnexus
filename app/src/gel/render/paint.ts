@@ -15,7 +15,7 @@ export interface PaintOptions extends RasterOptions {
   showDyeFronts: boolean
 }
 
-const FONT = 'Inter, system-ui, sans-serif'
+const FONT = 'system-ui, sans-serif'
 const SLAB_RADIUS = 4
 const RAN_OFF_COLOUR = '#f59e0b'
 
