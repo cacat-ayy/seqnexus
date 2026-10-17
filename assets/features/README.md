@@ -6,7 +6,12 @@ expected name, so the pages work before every image exists.
 
 Naming: `<name>.png` for the light theme and `<name>-dark.png` for the dark
 theme. The dark file is optional; if it is missing the light one is shown in
-both themes. Make them at the same size (1440 x 900 or 2880 x 1800 for a crisp
+both themes. The pages load the `.webp` encoded from each PNG by
+`.claude/skills/drive-app/screenshots/towebp.mjs` (about a third of the size,
+no visible loss); the PNGs stay here as the lossless masters, so rerun that
+script after replacing one. `og-image.png` in the repo root, the link preview
+card, is rendered from `map.png` by `screenshots/og-image.mjs` in the same
+folder. Make them at the same size (1440 x 900 or 2880 x 1800 for a crisp
 2x image) so the frames line up down the page.
 
 | File | Page | Shows |

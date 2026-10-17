@@ -1,6 +1,4 @@
 User-agent: *
 Allow: /
-Disallow: /impressum.html
-Disallow: /datenschutz.html
 
 Sitemap: https://seqnexus.app/sitemap.xml
