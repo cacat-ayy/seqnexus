@@ -16,7 +16,7 @@ import { ChevronRight, CircleCheck, CircleSlash, Info, TriangleAlert, Wand2 } fr
 import type { Assembly } from '../../cloning/product'
 import type { CloningDesign } from '../../cloning/design'
 import { productKey } from '../../cloning/run'
-import { isIntended, missingPart, productLabel, type DesignFix } from '../../cloning/outcome'
+import { isIntended, missingPart, productLabel, whyNoConstruct, type DesignFix } from '../../cloning/outcome'
 import { formatBp } from '../../utils/format'
 
 interface Props {
@@ -129,7 +129,7 @@ export default function ProductsPanel({
       {!hasIntended && (
         <Diagnosis
           title="The construct does not form"
-          problems={['None of these has every part once, closed into a circle.']}
+          problems={whyNoConstruct(products, design)}
           fixes={fixes}
           onFix={onFix}
         />

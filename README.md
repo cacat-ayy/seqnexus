@@ -169,6 +169,8 @@ short version.
   - [The reaction strip](#the-reaction-strip)
   - [The product keeps the vector's numbering](#the-product-keeps-the-vectors-numbering)
   - [Ends and ligation](#ends-and-ligation)
+  - [A part made of two oligos](#a-part-made-of-two-oligos)
+  - [Cuts that cannot both happen](#cuts-that-cannot-both-happen)
   - [Seamless assembly (HiFi, Gibson, In-Fusion, SLIC)](#seamless-assembly-hifi-gibson-in-fusion-slic)
   - [Golden Gate](#golden-gate)
   - [Overhang fidelity](#overhang-fidelity)
@@ -3803,7 +3805,11 @@ its longest piece (cut twice, that is the backbone, and the short piece is
 what the insert replaces), an insert being taken out of a donor plasmid gives
 its shortest (the long piece is the donor's own backbone, which is discarded),
 and a linear insert gives its longest, since its ends are only the few bases
-outside the sites.
+outside the sites. That rule only accounts for two cuts. When a part's own
+enzymes cut it into more pieces than that (a vector cut three times has two
+short pieces besides its backbone) and no piece has been clicked, the rule is
+still applied, but a warning names how many pieces there are and which one
+was used, since the guess may be the wrong band.
 
 ### The reaction strip
 
@@ -3862,6 +3868,84 @@ compatible ends goes in either way round and the wrong way round is a real
 product people get. A path of fragments whose touching ends anneal is a
 product: circular when the last end meets the first, linear otherwise.
 Products are deduplicated up to rotation and listed best first.
+
+A phosphatase works on whatever came out of the digest, not on the one
+piece the design keeps, so with gel-purify off every piece of a treated
+part goes into the tube without its phosphates. The design's own pieces are
+still picked out of that tube by name, which is what tells the intended
+product from the rest.
+
+### A part made of two oligos
+
+A short insert is not cut out of anything: it is ordered as a pair of
+complementary oligos, annealed, and ligated into a cut vector. A CRISPR
+guide is the standard case, and the pair is ordered the way the protocol
+writes it, with no overhang stated anywhere:
+
+```
+top     5' CACCG GTCAGCATGCATCGAGTTAC    3'
+bottom  5'  AAAC GTAACTCGATGCATGCTGAC C  3'
+```
+
+So the overhangs are computed rather than asked for. The two strands are
+aligned by sliding one along the other, scoring each offset by its longest
+unbroken run of paired bases, and the best offset decides what protrudes at
+each end: here the top strand's first four bases and the bottom strand's
+first four, as 5' overhangs, over a 21 bp core, since the G ahead of the
+guide pairs with the C at the end of the bottom oligo. Those are the
+overhangs a BsmBI-cut lentiCRISPRv2 offers.
+
+The longest run is the score, rather than the total number of paired bases,
+because that is what holds a duplex together: twenty paired bases in a row
+are a duplex, while twenty matches scattered through forty bases are two
+oligos that have nothing to do with each other. The standing mistake of
+writing the second oligo in the same sense as the first (rather than as its
+reverse complement) lines up a chance palindrome of about six bases and no
+more, so it is reported as not annealing instead of being read as a duplex
+with mismatches. A pair that anneals but leaves most of each strand single
+stranded is flagged too, as is a mismatch inside the paired stretch.
+
+Synthetic oligos are supplied without a 5' phosphate, so both ends of a
+duplex are unphosphorylated unless the pair was ordered phosphorylated. One
+phosphate per junction comes from the vector, which leaves the product
+nicked, and the cell seals it: that is why guide cloning works, and why
+dephosphorylating the vector as well gives nothing. Two duplexes cannot
+ligate to each other at all.
+
+A duplex is not cut, so it asks for no enzymes, takes no part in the
+questions about which enzymes to use or which piece to keep, and enters the
+pot as it is. It belongs in a ligation: seamless assembly, Gateway and TOPO
+join parts by homology arms, att sites and a topoisomerase overhang
+respectively, none of which a pair of oligos carries, so a duplex in one of
+those designs is refused with that reason rather than quietly failing. In a
+one-pot Golden Gate reaction a duplex that anneals blunt at both ends
+carries no fusion sites, which is said in the same words as an uncut part.
+
+### Cuts that cannot both happen
+
+Two cuts close enough to run into each other are not two cuts: whichever
+enzyme gets there first breaks the strands the other one needs, so the
+first is used and the pair is named in a warning. Two enzymes that break
+the top strand in the same place are the same case, even when the stretches
+they occupy do not overlap, since either break runs through the other's
+recognition sequence.
+
+Which cuts those are is worked out around the circle rather than along a
+line. A cut whose protrusion straddles the origin has one of its two strand
+breaks near the end of the sequence and the other just past it; reading that
+in plain coordinates makes it look as though it spans almost the whole
+plasmid, and every other cut then appears to run into it. Reading the short
+way round instead, as the overhang itself is read, keeps the rest of the
+digest. The plasmid's first base is arbitrary, so without this a sequence
+rotated by one base could give a different digest from the same molecule
+written another way: pYTK001 rotated by a single base used to come out of a
+BsmBI digest in one piece instead of two.
+
+A stretch between two cuts that is shorter than the protrusions either side
+has no base pairs holding it together. It comes away as a single strand
+rather than a fragment, so it is reported and left out of the reaction,
+while its neighbours keep the ends the cuts gave them. The same goes for a
+cut exactly at the end of a linear molecule, which leaves nothing at all.
 
 ### Seamless assembly (HiFi, Gibson, In-Fusion, SLIC)
 
@@ -3930,12 +4014,14 @@ any two linear parts that joined.
 ### Golden Gate
 
 Every part is cut with the design's one Type IIS enzyme, as it would be in
-the pot. A piece that still contains the recognition site is a backbone
-piece and is discarded; the rest are the inserts. Inserts join where one's
-3' overhang is the partner of another's 5' overhang, so the engine builds a
-graph of compatible ends and walks it for circular products (Golden Gate
+the pot. What makes the reaction specific is not that any piece is thrown
+away but that enzyme and ligase work at the same time: a circular product
+that still carries a recognition site is cut open again and never
+accumulates, so it is marked as recut and is never the expected one. Pieces
+join where one's overhang is the partner of another's, so the engine builds
+a graph of compatible ends and walks it for circular products (Golden Gate
 produces circular products), deduplicating rotations. The expected product
-is a circle using every insert exactly once. Overhangs that read the same
+is a circle using every part exactly once and keeping no site. Overhangs that read the same
 on both strands, or appear on more than one fragment end, are warned
 about, since the first will ligate to itself and the second makes the order
 ambiguous, and ends that match nothing are listed.
@@ -3977,30 +4063,67 @@ that will cross-react, and picking a set that will not.
   handful of overhangs a real assembly needs it gets within a hair of the
   best possible.
 
+**How close the model is.** Scored against the measured four-base ligation
+matrix (every ordered pair of overhangs, T4 ligase, 18 h at 25 °C, from
+NEB's Ligase Fidelity Viewer), the model ranks pairs in the same order
+(Spearman 0.63 over 65,025 pairs) and flags 940 of the 1,095 pairs that
+really cross-react at one per cent of the correct rate or more, at the cost
+of raising about 1,400 false alarms among the 62,745 pairs that never
+mispair. It reproduces the shape of the measurement, that a single mismatch
+at either outer position matters about twice as much as one in the middle,
+but it is about twice as pessimistic as the measurement there, and it caps
+the worst real cross-reactions at the wobble value when some reach half the
+correct rate. The chooser is the part that matters most in practice, and on
+the same matrix its sets score 0.998 to 1.000, level with NEB's published
+ten-overhang set (0.9998) and far above sets picked at random (0.983 for
+ten overhangs, 0.956 for twenty).
+
 ### Gateway
 
 Three reactions: BP (attB x attP gives an entry clone with attL sites and
 a byproduct with attR), LR (attL x attR gives an expression clone with attB
 and a byproduct with attP) and MultiSite (two or three entry clones and a
-destination vector). att sites are found by matching the roughly 25 bp
-core recognition sequences of attB, attP, attL and attR, numbered 1 to 4
-for MultiSite (from the Invitrogen Gateway manual and Hartley et al.
-2000), on both strands with up to two mismatches, exact matches preferred
-and overlapping matches of the same type deduplicated. In a real
-recombination the full sites include flanking arms; the core is enough to
-identify them.
+destination vector).
 
-The product's att sites are taken from the site table (attL is what attB x
-attP leaves behind), since the arms that actually cross over lie outside
-the cores stored here; the flanks on either side are the real parents'
-sequence. The byproduct carries off the cassette the donor or destination
-vector gave up, the ccdB counter-selection marker, which is why only the
-product grows. Sites may sit on the bottom strand (an entry clone's sites
-are often cloned in reverse, so the cassette is read backwards and goes in
-reverse complemented, with its features turned round) and the cassette or
-the backbone may run across the origin of a circular source; both are
-handled. Two sites recombine as a pair only when they sit on the same
-strand. For MultiSite, each entry clone must have exactly two attL sites
+Every att site is the same arrangement: an arm, the seven-base spacer that
+gives the site its number, then another arm. Which arms they are is what
+makes a site attB, attP, attL or attR, and the spacer is the only part that
+differs between the numbers, so attB1, attL1, attP1 and attR1 all share it.
+Sites are found by matching the stored cores on both strands with up to two
+mismatches, exact matches preferred and overlapping matches of the same
+type deduplicated, with the spacer required to match exactly: it is what
+names the site, and two numbered sites of one type can differ by as little
+as three bases, all of them in the spacer.
+
+The cores are the real ones, taken from deposited vectors rather than from
+a vector-specific stretch around them: attL1 and attL2 as they read in
+Addgene's pENTR1A (#17398), attR1 and attR2 as they read in pDest-527
+(#11518). An attL core that carried six bases of donor-vector sequence
+after the arm matched no real entry clone at all, so LR gave nothing on
+every genuine pENTR plasmid.
+
+Recombination crosses over inside the spacer, so that is what a product is
+built around: the destination gives everything outside its pair of sites,
+the entry clone everything between its pair, and each junction reads one
+parent's arm, the shared spacer, then the other parent's arm. That is where
+the product's attB sites come from. Pasting a stored core in instead looks
+right and is not: on a real pENTR1A x pDest-527 reaction it put fifteen
+bases that belong to neither parent into one junction.
+
+The byproduct carries off the cassette the donor or destination vector gave
+up, the ccdB counter-selection marker, which is why only the product grows.
+Sites may sit on the bottom strand and the cassette or the backbone may run
+across the origin of a circular source; both are handled, with features
+turned round when a stretch is read backwards.
+
+A pair of sites recombines only when the two point **towards** each other,
+which puts them on opposite strands. That is how every working vector is
+built: an entry clone carries attL1 reading into the cassette and attL2
+reading back out of it, and a destination vector carries attR1 and attR2
+around its stuffer the same way. Two sites pointing the same way would
+invert the stretch between them rather than swap it, and are warned about.
+
+For MultiSite, each entry clone must have exactly two attL sites
 (when similar sites overlap, the two most separated with the fewest
 mismatches are taken), and the sites must chain: attR1 to the first
 entry's left site, each entry's right site to the next entry's left, and
@@ -4159,7 +4282,24 @@ column saying which position each part belongs to. Bins come out in the
 order they first appear, so the file's own order decides the order of the
 assembly, and a row with no bin goes into one named after itself, which is
 what a plain list of inserts should do. The product names follow a
-template. What comes out is a table with a row per construct and a column
+template.
+
+A part list is names as much as sequences, and those names are usually the
+names of sequences already open: a promoter that has been annotated, or a
+vector being worked on. So each row is looked up by name among the open
+sequences, and a match brings that sequence's features with it, which is
+the difference between a library of fifty bare constructs and fifty
+annotated ones. The lookup ignores case and surrounding spaces, and the
+bases decide what is taken: identical to the named sequence, the whole of
+it is used; a stretch of it (found across the origin too, for a circular
+one) is expressed as that sequence with a region marking the stretch, which
+is how a part taken from a selection is already represented, so the
+coordinates come out right everywhere downstream. A row whose bases appear
+twice in the sequence it names, or not at all, is left with the file's own
+bases and no features rather than annotated from the wrong place, and the
+name is reported: either the name or the sequence in the file is out of
+date. Nothing is auto-annotated, since a library of invented features is
+worse than a bare one. A row naming nothing that is open is used as given. What comes out is a table with a row per construct and a column
 per position (did it form, is it ambiguous, its size), exported as CSV, and
 the constructs themselves as multi-FASTA for ordering or handing on.
 
@@ -4175,6 +4315,12 @@ the constructs themselves as multi-FASTA for ordering or handing on.
 - The ligase fidelity score is a model of the published matrix, not the
   matrix itself, and a set it calls clean is a prediction, not a
   measurement.
+- An oligo duplex is aligned by complementarity alone: the pair is read as
+  it would anneal, with no melting temperature behind it, so an alignment
+  too weak to hold at room temperature is not told from one that holds.
+- A part list is matched to open sequences by name on the sense strand
+  only: a row giving the reverse complement of the stretch it names is
+  used as given, without features.
 
 ---
 
@@ -6705,8 +6851,17 @@ saved, so nothing is written without a word.
   "Enabling one-pot Golden Gate assemblies of unprecedented complexity
   using data-optimized assembly design." *PLoS ONE* 15:e0238592.
 
+- New England Biolabs, Ligase Fidelity Viewer, the measured ligation counts
+  for every pair of four-base overhangs (the data behind Potapov et al.
+  2018). <https://tools.neb.com/~potapov/cgi-bin/ligase-fidelity-viewer>
+  (Used to check the overhang model and the chooser, not shipped with the
+  app.)
+
 - Hartley JL, Temple GF, Brasch MA (2000) "DNA cloning using in vitro
   site-specific recombination." *Genome Res* 10:1788-1795.
+
+- Addgene plasmids pENTR1A no ccDB (#17398) and pDest-527 (#11518), the
+  deposited vectors the att site cores were read from.
 
 - Shuman S (1994) "Novel approach to molecular cloning and polynucleotide
   synthesis using vaccinia DNA topoisomerase." *J Biol Chem*

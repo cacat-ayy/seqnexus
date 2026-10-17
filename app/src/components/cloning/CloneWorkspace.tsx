@@ -30,6 +30,7 @@ import {
   partBases,
   partEnzymes,
   partFromDoc,
+  partFromDuplex,
   partTopology,
   sequenceHash,
   vectorsFirst,
@@ -40,6 +41,7 @@ import {
 import { productDocument, runDesign, selectedProduct } from '../../cloning/run'
 import { findFixes, type DesignFix } from '../../cloning/outcome'
 import { binsFromDesign, type BulkRow, type DesignBin } from '../../cloning/bulk'
+import type { KnownSequence } from '../../cloning/bulk-io'
 import EnzymeField, { type CutTarget } from '../EnzymeField'
 import { partColor } from './colors'
 import LibraryPanel from './LibraryPanel'
@@ -113,6 +115,18 @@ export default function CloneWorkspace({ clone, onClose }: Props) {
   // this only costs anything while the design is broken.
   const fixes = useMemo(() => findFixes(design, 3, result), [design, result])
 
+  // Every open sequence with its features, so a part list read from a file
+  // can take them by name rather than landing as bare bases.
+  const known = useMemo((): KnownSequence[] => tabs.map(tab => {
+    const doc = tab.id === activeTabId ? liveDoc : tab.doc
+    return {
+      name: doc.name,
+      bases: doc.sequence.bases,
+      topology: doc.sequence.topology,
+      annotations: doc.annotations.map(a => a.toData()),
+    }
+  }), [tabs, activeTabId, liveDoc])
+
   // The parts as the enzyme field counts cuts on them, vector first so its
   // suggestions are the enzymes that open the vector once. Each keeps the
   // colour it has in the parts list.
@@ -178,6 +192,18 @@ export default function CloneWorkspace({ clone, onClose }: Props) {
     },
     [tabs, activeTabId, liveDoc, selection, clone.id, updateClone],
   )
+
+  /**
+   * A part that is ordered rather than cut out of something: two oligos,
+   * annealed. It starts empty and opens its own fields in the parts list,
+   * since the oligos are the part.
+   */
+  const addDuplex = useCallback(() => {
+    const added = partFromDuplex('Annealed oligos', { top: '', bottom: '', phosphate: false })
+    updateClone(clone.id, d => ({ ...d, parts: [...d.parts, added] }))
+    setTab(added.id)
+    setAddOpen(false)
+  }, [clone.id, updateClone])
 
   const refreshPart = useCallback(
     (id: string) => {
@@ -328,7 +354,13 @@ export default function CloneWorkspace({ clone, onClose }: Props) {
             className={`cw-btn ${aside === 'oligos' ? 'active' : ''}`}
             onClick={() => setAside(a => (a === 'oligos' ? 'none' : 'oligos'))}
             disabled={!needsOligos(design)}
-            title="Primers to order for this design"
+            title={
+              needsOligos(design)
+                ? 'Primers to order for this design'
+                : design.method !== 'homology' && design.method !== 'golden-gate'
+                  ? `Oligos are designed for seamless assembly and Golden Gate. ${METHOD_LABEL[design.method]} joins sequences you already have rather than ones you amplify.`
+                  : 'Add the parts first and the primers for them can be designed'
+            }
           >
             Oligos
           </button>
@@ -470,6 +502,15 @@ export default function CloneWorkspace({ clone, onClose }: Props) {
                 {addOpen && (
                   <div className="cw-menu" role="menu">
                     {tabs.length === 0 && <span className="cw-menu-empty">No sequences are open</span>}
+                    <div className="cw-menu-row">
+                      <button
+                        role="menuitem"
+                        onClick={addDuplex}
+                        title="Two oligos annealed into a short insert, the way a guide or a linker is made"
+                      >
+                        Annealed oligos…
+                      </button>
+                    </div>
                     {tabs.map(tab => {
                       const name = sources.get(tab.id)?.name ?? tab.doc.name
                       const hasSelection =
@@ -525,6 +566,7 @@ export default function CloneWorkspace({ clone, onClose }: Props) {
           ) : mode === 'library' ? (
             <LibraryPanel
               design={design}
+              known={known}
               bins={bins}
               onBinsChange={setBins}
               onOpenRow={openRow}

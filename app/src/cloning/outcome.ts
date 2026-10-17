@@ -15,6 +15,7 @@ import type { Assembly } from './product'
 import { chosenFragment, runDesign, type RunResult } from './run'
 import type { Fragment } from './fragment'
 import {
+  isDuplex,
   partBases,
   partTopology,
   vectorsFirst,
@@ -82,6 +83,41 @@ export function productLabel(product: Assembly, design: CloningDesign): string {
   return names.join(' + ')
 }
 
+/**
+ * Why none of the products is the construct, when some products do form. The
+ * nearest miss is named: a circle the enzyme opens again, a line whose two
+ * free ends do not fit, or a part whose ends join nothing else in the tube.
+ */
+export function whyNoConstruct(products: readonly Assembly[], design: CloningDesign): string[] {
+  const recut = products.find(p => p.usesAll && p.topology === 'circular' && p.recut.length > 0)
+  if (recut) {
+    const sites = recut.recut.join(' and ')
+    return [
+      `Every part joins into a circle, but it still has a ${sites} site, so the enzyme in the pot opens it ` +
+      'again. Take the site out of the part that carries it.',
+    ]
+  }
+  if (products.some(p => p.usesAll && p.topology === 'linear')) {
+    return ['Every part joins in a line, but the two ends left over do not fit each other, so it never closes.']
+  }
+  if (design.method !== 'gateway' && design.method !== 'topo') {
+    // A part found in no product beside another part: its ends are the
+    // problem. Joining a copy of itself does not count.
+    const joined = new Set<string>()
+    for (const p of products) {
+      const ids = new Set(p.parts.map(piece => designPartFor(piece.fragmentId, design.parts)?.id))
+      ids.delete(undefined)
+      if (ids.size > 1) for (const id of ids) joined.add(id!)
+    }
+    const alone = design.parts.filter(p => !joined.has(p.id)).map(p => p.name)
+    if (alone.length === design.parts.length) {
+      return ['No two parts have ends that fit each other, so each only joins itself.']
+    }
+    if (alone.length > 0) return [`The ends of ${alone.join(' and ')} join no other part.`]
+  }
+  return ['None of these has every part once, closed into a circle.']
+}
+
 export interface DesignFix {
   label: string
   /** A change to the design that gives the construct, or a panel to open. */
@@ -120,7 +156,9 @@ const formatBp = (n: number) => (n >= 1000 ? `${(n / 1000).toFixed(n >= 10000 ? 
  * trying when the chosen digest leaves nothing that fits.
  */
 function usefulEnzymes(design: CloningDesign): string[] {
-  const parts = vectorsFirst(design.parts)
+  // An annealed pair is not cut, so an enzyme is no less useful for leaving
+  // it alone; requiring a cut in it would rule out every enzyme there is.
+  const parts = vectorsFirst(design.parts.filter(p => !isDuplex(p)))
   return CLONING_ENZYMES.filter(name => {
     const enzyme = getEnzyme(name)
     if (!enzyme) return false

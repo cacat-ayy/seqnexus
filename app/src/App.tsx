@@ -608,6 +608,11 @@ export default function App() {
   // For the key handlers registered once, on window.
   const sequenceShownRef = useRef(sequenceShown)
   sequenceShownRef.current = sequenceShown
+  // Filled in further down, once the history and its actions are known: the
+  // keyboard handler below is set up once and reads them when a key arrives.
+  const ownHistoryRef = useRef<unknown>(null)
+  const runUndoRef = useRef<() => void>(() => {})
+  const runRedoRef = useRef<() => void>(() => {})
   const undoAlignment = useEditorStore(s => s.undoAlignment)
   const redoAlignment = useEditorStore(s => s.redoAlignment)
   const gelOpen = activeGel !== null
@@ -872,6 +877,26 @@ export default function App() {
           setExportModalOpen(true)
         }
       }
+    }
+    window.addEventListener('keydown', handler)
+    return () => window.removeEventListener('keydown', handler)
+  }, [])
+
+  // Ctrl+Z and Ctrl+Y for whatever is on screen that keeps its own history:
+  // a cloning design, a gel, an alignment, a contig, a read. The sequence
+  // view takes these keys itself, so this only runs when something else is
+  // open; a text field keeps them for its own typing.
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (!(e.ctrlKey || e.metaKey) || e.altKey) return
+      const key = e.key.toLowerCase()
+      const redo = key === 'y' || (key === 'z' && e.shiftKey)
+      if (key !== 'z' && !redo) return
+      if (!ownHistoryRef.current) return
+      if (isWidgetKeyTarget(e.target)) return
+      e.preventDefault()
+      if (redo) runRedoRef.current()
+      else runUndoRef.current()
     }
     window.addEventListener('keydown', handler)
     return () => window.removeEventListener('keydown', handler)
@@ -1541,10 +1566,10 @@ export default function App() {
   // Shared by the Undo/Redo buttons and their palette entries, so the two
   // cannot disagree about whether there is anything to step to.
   // A gel or an alignment on screen keeps its own history.
-  const ownHistory = activeGel ?? activeAln ?? activeContig ?? activeRead
+  const ownHistory = activeGel ?? activeAln ?? activeContig ?? activeRead ?? activeClone
   const undoDisabled = ownHistory ? ownHistory.undoStack.length === 0 : noDoc || readOnly || undoTop === null
   const redoDisabled = ownHistory ? ownHistory.redoStack.length === 0 : noDoc || readOnly || redoTop === null
-  const historyOf = activeAln ?? activeContig ?? activeRead
+  const historyOf = activeAln ?? activeContig ?? activeRead ?? activeClone
   const undoDesc = activeGel ? undefined : historyOf ? historyOf.undoStack[historyOf.undoStack.length - 1]?.label : undoTop || undefined
   const redoDesc = activeGel ? undefined : historyOf ? historyOf.redoStack[historyOf.redoStack.length - 1]?.label : redoTop || undefined
   const activeGelId = activeGel?.id
@@ -1568,6 +1593,9 @@ export default function App() {
     else if (activeReadId) useEditorStore.getState().redoSequencing(activeReadId)
     else redo()
   }, [activeCloneId, activeGelId, activeAlnId, activeContigIdForHistory, activeReadId, redoGel, redoAlignment, redo])
+  ownHistoryRef.current = ownHistory
+  runUndoRef.current = runUndo
+  runRedoRef.current = runRedo
   const stepWhy = (verb: 'undo' | 'redo') =>
     !ownHistory && noDoc ? `Open a sequence to ${verb} its edits`
       : !ownHistory && readOnly ? 'This sequence is read-only. Unlock it to edit'

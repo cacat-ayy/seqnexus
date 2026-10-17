@@ -15,6 +15,8 @@ import type { Assembly } from '../../cloning/product'
 import type { RunResult } from '../../cloning/run'
 import { isIntended, missingPart, productLabel, keptFragment, type DesignFix } from '../../cloning/outcome'
 import { mapSites, type MapSite } from '../../cloning/sites'
+import { annealOligos, duplexLines } from '../../cloning/duplex'
+import { endLabel } from '../../cloning/ends'
 import { pickSite, pieceAt, siteHint } from '../../cloning/picking'
 import {
   partBases,
@@ -92,7 +94,9 @@ export default function MapStage({
         </button>
       </div>
 
-      {part ? (
+      {part?.duplex ? (
+        <DuplexView part={part} />
+      ) : part ? (
         <PartView design={design} result={result} part={part} index={index} onPart={onPart} />
       ) : (
         <ProductView design={design} product={chosen} />
@@ -117,6 +121,43 @@ export default function MapStage({
             onFix={onFix}
           />
         </div>
+      )}
+    </div>
+  )
+}
+
+/**
+ * A duplex part's tab. There are no sites to click and no piece to choose:
+ * what there is to see is the pair written out with its overhangs, which is
+ * what tells you whether the oligos were ordered right.
+ */
+function DuplexView({ part }: { part: DesignPart }) {
+  const duplex = part.duplex!
+  const annealed = annealOligos(duplex)
+  const lines = duplexLines(duplex)
+  const ready = annealed.top.length > 0 && duplex.bottom.trim().length > 0
+
+  if (!ready) {
+    return (
+      <div className="cw-map cw-map-empty">
+        <p>Paste the two oligos for {part.name} under Parts, and the duplex they form is drawn here.</p>
+      </div>
+    )
+  }
+
+  return (
+    <div className="cw-map cw-map-duplex">
+      <pre className="cw-duplex-strands big" aria-label={`${part.name} as annealed oligos`}>
+        {`5’ ${lines.top}\n3’ ${lines.bottom}`}
+      </pre>
+      <p className="cw-duplex-note">
+        {annealed.core} bp paired, ends {endLabel(annealed.left)} · {endLabel(annealed.right)}
+        {duplex.phosphate ? ', 5’ phosphorylated' : ', no 5’ phosphate'}
+      </p>
+      {annealed.warnings.length > 0 && (
+        <ul className="cw-product-warnings">
+          {annealed.warnings.map((w, i) => <li key={i}>{w}</li>)}
+        </ul>
       )}
     </div>
   )

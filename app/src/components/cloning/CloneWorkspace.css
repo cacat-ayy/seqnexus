@@ -357,6 +357,38 @@
 
 .cw-detail-note { margin: 0; font-size: var(--text-sm); color: var(--text-muted); font-style: italic; }
 
+/* The two oligos of a duplex part, and the pair they form. */
+.cw-duplex-fields {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1-5);
+}
+
+.cw-oligo-input {
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  resize: vertical;
+  width: 100%;
+}
+
+/* Written out as a bench sheet would: one strand over the other, so the
+   overhangs are the bases with nothing above or below them. */
+.cw-duplex-strands {
+  margin: 0;
+  padding: var(--space-1-5) var(--space-2);
+  background: var(--bg-alt);
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-sm);
+  font-family: var(--font-mono);
+  font-size: var(--text-2xs);
+  line-height: 1.5;
+  color: var(--text);
+  overflow-x: auto;
+  white-space: pre;
+}
+
+.cw-duplex-strands.big { font-size: var(--text-sm); }
+
 .cw-icon-btn {
   display: inline-flex;
   align-items: center;
@@ -431,6 +463,20 @@
   text-align: center;
   color: var(--text-muted);
   font-size: var(--text-md);
+}
+
+/* A duplex has no map: it is short enough to read base by base. */
+.cw-map-duplex {
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-3);
+  padding: var(--space-4);
+}
+
+.cw-duplex-note {
+  margin: 0;
+  font-size: var(--text-sm);
+  color: var(--text-secondary);
 }
 
 .cw-maphint {

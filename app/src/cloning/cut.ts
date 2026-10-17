@@ -34,6 +34,38 @@ interface Boundary {
   enzyme: string
 }
 
+/**
+ * The stretch of the top strand a boundary's two breaks sit either side of:
+ * the bases that end up single-stranded at the junction.
+ *
+ * On a circle either break may be the one that wrapped past the origin, so
+ * the distance between them is read the short way round, the same way
+ * `cutEnds` reads the overhang itself. Doing this in plain coordinates
+ * instead makes a wrapped cut look as though it spans almost the whole
+ * plasmid, which would have every other cut appear to clash with it.
+ */
+function occupiedBy(b: Boundary, seqLen: number, circular: boolean): { start: number; length: number } {
+  let delta = b.revCut - b.fwdCut
+  if (circular && seqLen > 0) {
+    delta = ((delta % seqLen) + seqLen) % seqLen
+    if (delta > seqLen / 2) delta -= seqLen
+  }
+  const raw = delta >= 0 ? b.fwdCut : b.fwdCut + delta
+  const start = circular && seqLen > 0 ? ((raw % seqLen) + seqLen) % seqLen : raw
+  return { start, length: Math.abs(delta) }
+}
+
+/**
+ * The bases of a piece that are double-stranded: its top strand less
+ * whatever the top strand lends to a protrusion at either end. Mirrors
+ * `coreOf` in ./fragment, without building the fragment first.
+ */
+function coreLength(top: string, left: End, right: End): number {
+  const lent = (left.kind === 'five_prime' ? left.span.length : 0)
+    + (right.kind === 'three_prime' ? right.span.length : 0)
+  return top.length - lent
+}
+
 export function formatSize(bp: number): string {
   return bp >= 1000 ? `${(bp / 1000).toFixed(1)} kb` : `${bp} bp`
 }
@@ -118,26 +150,55 @@ function boundariesOf(
     boundaries.push({ fwdCut: site.fwdCut, revCut: site.revCut, enzyme: site.enzyme.name })
   }
 
-  // Overlapping cuts would leave fragments whose ends run past each other,
-  // which no real digest produces: the first enzyme to cut destroys the
-  // other's site. Keep the leftmost of any overlapping pair and say so.
-  const kept: Boundary[] = []
-  let dropped = 0
-  for (const b of boundaries) {
+  // Two cuts that run into each other cannot both happen: whichever enzyme
+  // gets there first breaks the strands the other one needs. The same is true
+  // of two enzymes breaking the top strand in the same place, even when the
+  // stretches they occupy do not overlap, since either break runs through the
+  // other's recognition sequence. Keep the first of such a pair and say so.
+  //
+  // The comparison is done in the order the occupied stretches sit on the
+  // molecule, not in cut order, because on a circle a wrapped cut's stretch
+  // starts near the end of the sequence while its top-strand break is at the
+  // beginning.
+  const seqLen = bases.length
+  const circular = topology === 'circular'
+  const inOrder = boundaries
+    .map(b => ({ b, at: occupiedBy(b, seqLen, circular) }))
+    .sort((x, y) => x.at.start - y.at.start || x.b.fwdCut - y.b.fwdCut)
+
+  const kept: typeof inOrder = []
+  const clashes: string[] = []
+  const clashesWith = (prev: typeof inOrder[number], next: typeof inOrder[number]): boolean =>
+    prev.at.start + prev.at.length > next.at.start || prev.b.fwdCut === next.b.fwdCut
+
+  for (const entry of inOrder) {
     const prev = kept[kept.length - 1]
-    if (prev && Math.max(prev.fwdCut, prev.revCut) > Math.min(b.fwdCut, b.revCut)) {
-      dropped++
+    if (prev && clashesWith(prev, entry)) {
+      clashes.push(`${prev.b.enzyme} and ${entry.b.enzyme}`)
       continue
     }
-    kept.push(b)
+    kept.push(entry)
   }
-  if (dropped > 0) {
+  // On a circle the last stretch can run back into the first one.
+  if (circular && kept.length > 1) {
+    const last = kept[kept.length - 1]
+    const first = kept[0]
+    if (last.at.start + last.at.length > first.at.start + seqLen || last.b.fwdCut === first.b.fwdCut) {
+      clashes.push(`${first.b.enzyme} and ${last.b.enzyme}`)
+      kept.pop()
+    }
+  }
+
+  if (clashes.length > 0) {
+    const named = [...new Set(clashes)].slice(0, 2).join('; ')
     warnings.push(
-      `${dropped} cut site${dropped > 1 ? 's' : ''} overlap another and cannot both cut: the first one was used`,
+      `${clashes.length} cut site${clashes.length > 1 ? 's' : ''} cannot both cut, because the cuts run into each other (${named}): the first one was used`,
     )
   }
 
-  return { boundaries: kept, sites, warnings }
+  // The fragment builders walk the boundaries in top-strand order.
+  const ordered = kept.map(k => k.b).sort((a, b) => a.fwdCut - b.fwdCut || a.revCut - b.revCut)
+  return { boundaries: ordered, sites, warnings }
 }
 
 /**
@@ -192,18 +253,9 @@ export function digest(
   const bodyBetween = (from: number, to: number): string =>
     to > from ? bases.slice(from, to) : bases.slice(from) + bases.slice(0, to)
 
-  const push = (index: number, top: string, start: number, end: number, left: End, right: End) => {
-    fragments.push({
-      id: idOf(index),
-      name: `${doc.name} fragment ${index + 1} (${formatSize(top.length)})`,
-      topology: 'linear',
-      top,
-      left,
-      right,
-      annotations: sliceAnnotations(annData, start, end, seqLen, circular),
-      source: source(start, end),
-      reversed: false,
-    })
+  const pieces: { top: string; start: number; end: number; left: End; right: End }[] = []
+  const push = (_index: number, top: string, start: number, end: number, left: End, right: End) => {
+    pieces.push({ top, start, end, left, right })
   }
 
   if (circular) {
@@ -239,6 +291,36 @@ export function digest(
     }
     const last = boundaries[n - 1]
     push(n, bases.slice(last.fwdCut), last.fwdCut, seqLen, endsAt(last).right, bluntEnd())
+  }
+
+  // A piece with nothing double-stranded left in it is not a fragment: two
+  // cuts that close together release the bases between them as a single
+  // strand, and the neighbours keep the protrusions. A cut exactly at the end
+  // of a linear molecule leaves nothing at all. Either way there is no piece
+  // to carry into a ligation, so it is reported rather than offered.
+  let released = 0
+  for (const piece of pieces) {
+    if (coreLength(piece.top, piece.left, piece.right) <= 0) {
+      released++
+      continue
+    }
+    const index = fragments.length
+    fragments.push({
+      id: idOf(index),
+      name: `${doc.name} fragment ${index + 1} (${formatSize(piece.top.length)})`,
+      topology: 'linear',
+      top: piece.top,
+      left: piece.left,
+      right: piece.right,
+      annotations: sliceAnnotations(annData, piece.start, piece.end, seqLen, circular),
+      source: source(piece.start, piece.end),
+      reversed: false,
+    })
+  }
+  if (released > 0) {
+    warnings.push(
+      `${released} stretch${released > 1 ? 'es' : ''} between two cuts ${released > 1 ? 'are' : 'is'} shorter than the protrusions either side, so ${released > 1 ? 'they come' : 'it comes'} away as a single strand rather than a fragment`,
+    )
   }
 
   return { fragments, warnings, sites }
@@ -333,18 +415,9 @@ function fragmentsFromBoundaries(
   const out: Fragment[] = []
   const n = boundaries.length
 
-  const push = (index: number, top: string, start: number, end: number, left: End, right: End) => {
-    out.push({
-      id: idOf(index),
-      name: `${doc.name} fragment ${index + 1} (${formatSize(top.length)})`,
-      topology: 'linear',
-      top,
-      left,
-      right,
-      annotations: sliceAnnotations(annData, start, end, seqLen, circular),
-      source: source(start, end),
-      reversed: false,
-    })
+  const pieces: { top: string; start: number; end: number; left: End; right: End }[] = []
+  const push = (_index: number, top: string, start: number, end: number, left: End, right: End) => {
+    pieces.push({ top, start, end, left, right })
   }
 
   if (circular) {
@@ -365,6 +438,24 @@ function fragmentsFromBoundaries(
     }
     const last = boundaries[n - 1]
     push(n, bases.slice(last.fwdCut), last.fwdCut, seqLen, endsAt(last).right, bluntEnd())
+  }
+
+  // As in `digest`: a piece with no base pairs left in it is a released
+  // single strand, not a fragment.
+  for (const piece of pieces) {
+    if (coreLength(piece.top, piece.left, piece.right) <= 0) continue
+    const index = out.length
+    out.push({
+      id: idOf(index),
+      name: `${doc.name} fragment ${index + 1} (${formatSize(piece.top.length)})`,
+      topology: 'linear',
+      top: piece.top,
+      left: piece.left,
+      right: piece.right,
+      annotations: sliceAnnotations(annData, piece.start, piece.end, seqLen, circular),
+      source: source(piece.start, piece.end),
+      reversed: false,
+    })
   }
 
   return out

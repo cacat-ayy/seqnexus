@@ -18,7 +18,7 @@ import {
   type DesignBin,
 } from './bulk'
 import { parsePartList, productTableCsv, productsFasta } from './bulk-io'
-import { emptyDesign, partFromDoc, type CloningDesign, type DesignPart } from './design'
+import { emptyDesign, partBases, partFromDoc, type CloningDesign, type DesignPart } from './design'
 
 function filler(n: number, seed = 1): string {
   let x = (seed | 0) || 1
@@ -280,7 +280,96 @@ describe('reading a part list', () => {
   })
 
   it('takes an empty file quietly', () => {
-    expect(parsePartList('')).toEqual({ bins: [], skipped: [] })
+    expect(parsePartList('')).toEqual({ bins: [], skipped: [], annotated: 0, mismatched: [] })
+  })
+})
+
+describe('a part list read against the sequences already open', () => {
+  const promoter = 'ATGCGTACGTTAGCACCGGTTAACGATCGA'
+  const plasmid = `TTTT${promoter}GGGGCCCCAAAATTTTGGGGCCCCAAAA`
+  const feature = { id: 'f1', type: 'promoter', name: 'pTest', start: 0, end: promoter.length, strand: 1 as const }
+
+  const known = [
+    {
+      name: 'pTest promoter',
+      bases: promoter,
+      topology: 'linear' as const,
+      annotations: [feature],
+    },
+    {
+      name: 'pDonor',
+      bases: plasmid,
+      topology: 'circular' as const,
+      annotations: [{ ...feature, id: 'f2', start: 4, end: 4 + promoter.length }],
+    },
+    {
+      name: 'pRing',
+      bases: `AATTGGCCTTAA${promoter}CGTCAGTTACGA`,
+      topology: 'circular' as const,
+      annotations: [{ ...feature, id: 'f3', start: 12, end: 12 + promoter.length }],
+    },
+  ]
+
+  it('takes the features of an open sequence a row names', () => {
+    const text = `name,sequence\npTest promoter,${promoter}`
+    const { bins, annotated, mismatched } = parsePartList(text, known)
+    expect(mismatched).toEqual([])
+    expect(annotated).toBe(1)
+    expect(bins[0].parts[0].annotations).toEqual([feature])
+  })
+
+  it('marks the stretch when a row is part of the sequence it names', () => {
+    // The row gives the promoter; the open sequence is the whole plasmid.
+    const text = `name,sequence\npDonor,${promoter}`
+    const { bins, annotated } = parsePartList(text, known)
+    const part = bins[0].parts[0]
+    expect(annotated).toBe(1)
+    // The whole plasmid is kept, with the region saying which stretch is used,
+    // which is how a part taken from a selection is expressed.
+    expect(part.bases).toBe(plasmid)
+    expect(part.region).toEqual({ start: 4, end: 4 + promoter.length })
+    expect(partBases(part)).toBe(promoter)
+    expect(part.annotations).toHaveLength(1)
+  })
+
+  it('leaves a row bare when nothing of that name is open', () => {
+    const text = `name,sequence\nsomething else,${promoter}`
+    const { bins, annotated, mismatched } = parsePartList(text, known)
+    expect(annotated).toBe(0)
+    expect(mismatched).toEqual([])
+    expect(bins[0].parts[0].annotations).toEqual([])
+    expect(bins[0].parts[0].bases).toBe(promoter)
+  })
+
+  it('says so when the name matches but the sequence does not', () => {
+    const text = 'name,sequence\npTest promoter,TTTTTTTTTTTTTTTTTTTT'
+    const { bins, annotated, mismatched } = parsePartList(text, known)
+    expect(mismatched).toEqual(['pTest promoter'])
+    expect(annotated).toBe(0)
+    // The file's own bases are still used: the row is not thrown away.
+    expect(bins[0].parts[0].bases).toBe('TTTTTTTTTTTTTTTTTTTT')
+    expect(bins[0].parts[0].annotations).toEqual([])
+  })
+
+  it('ignores case and spacing in the name', () => {
+    const text = `name,sequence\n  PTEST PROMOTER ,${promoter}`
+    expect(parsePartList(text, known).annotated).toBe(1)
+  })
+
+  it('finds a stretch that runs across the origin of a circular sequence', () => {
+    // The last six bases of the plasmid and the first six, as one part.
+    const ring = known[2].bases
+    const across = ring.slice(-6) + ring.slice(0, 6)
+    const { bins } = parsePartList(`name,sequence\npRing,${across}`, known)
+    const part = bins[0].parts[0]
+    expect(part.region).toEqual({ start: ring.length - 6, end: 6 })
+    expect(partBases(part)).toBe(across)
+  })
+
+  it('will not guess when the row occurs twice in the sequence it names', () => {
+    const { mismatched, bins } = parsePartList('name,sequence\npDonor,GGGGCCCCAAAA', known)
+    expect(mismatched).toEqual(['pDonor'])
+    expect(bins[0].parts[0].region).toBeUndefined()
   })
 })
 

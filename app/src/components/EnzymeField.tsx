@@ -228,7 +228,13 @@ export default function EnzymeField({ value, onChange, targets, placeholder, sug
           aria-activedescendant={open && options[active] ? `${listId}-${active}` : undefined}
           onChange={e => onInput(e.target.value)}
           onFocus={() => setOpen(true)}
-          onBlur={() => setTimeout(() => setOpen(false), 120)}
+          onBlur={() => {
+            // Text left in the box is what the user meant to choose. Dropped,
+            // a typed "EcoRI" that was never confirmed silently meant no
+            // enzymes; committed, it is added, or flagged as not recognised.
+            if (query.trim()) commitText(query)
+            setTimeout(() => setOpen(false), 120)
+          }}
           onKeyDown={onKeyDown}
           onPaste={e => {
             const text = e.clipboardData.getData('text')

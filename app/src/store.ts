@@ -4177,7 +4177,14 @@ export const useEditorStore = create<EditorStore>((set, get) => {
       const id = cloneIds.next()
       const now = Date.now()
       const first = design.parts[0]
-      const name = opts.name ?? (first ? `${first.name} cloning` : `Cloning ${s.clones.length + 1}`)
+      // Every new design starts from the same sequence in view, so a name that
+      // is already taken gets a number: three designs on pUC19 are not three
+      // rows reading "pUC19 cloning" in the explorer.
+      const taken = new Set(s.clones.map(c => c.name))
+      const named = (n: number) => (first ? `${first.name} cloning${n > 1 ? ` ${n}` : ''}` : `Cloning ${n}`)
+      let n = 1
+      while (taken.has(named(n))) n++
+      const name = opts.name ?? named(n)
       set({ clones: [...s.clones, { id, name, createdAt: now, modifiedAt: now, design, undoStack: [], redoStack: [] }] })
       if (opts.activate !== false) get().setActiveClone(id)
       return id

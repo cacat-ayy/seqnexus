@@ -21,7 +21,7 @@ import {
   type BulkRow,
   type DesignBin,
 } from '../../cloning/bulk'
-import { parsePartList, productTableCsv, productsFasta } from '../../cloning/bulk-io'
+import { parsePartList, productTableCsv, productsFasta, type KnownSequence } from '../../cloning/bulk-io'
 import { partLength, type CloningDesign, type DesignPart } from '../../cloning/design'
 import { startBulk } from '../../workers/cloning'
 import { partColor } from './colors'
@@ -29,6 +29,8 @@ import { formatBp } from '../../utils/format'
 
 interface Props {
   design: CloningDesign
+  /** Open sequences, for a part list to take its features from by name. */
+  known: KnownSequence[]
   bins: DesignBin[]
   onBinsChange: (bins: DesignBin[]) => void
   /** Open one construct as a sequence. */
@@ -39,7 +41,7 @@ interface Props {
 
 const LIMIT = 500
 
-export default function LibraryPanel({ design, bins, onBinsChange, onOpenRow, onSaveRows }: Props) {
+export default function LibraryPanel({ design, known, bins, onBinsChange, onOpenRow, onSaveRows }: Props) {
   const [result, setResult] = useState<BulkResult | null>(null)
   const [progress, setProgress] = useState<{ done: number; total: number } | null>(null)
   const [template, setTemplate] = useState('')
@@ -76,7 +78,7 @@ export default function LibraryPanel({ design, bins, onBinsChange, onOpenRow, on
 
   const importFile = useCallback(async (file: File) => {
     const text = await file.text()
-    const { bins: read, skipped } = parsePartList(text)
+    const { bins: read, skipped, annotated, mismatched } = parsePartList(text, known)
     if (read.length === 0) {
       notify.error(skipped[0]?.reason ?? 'Nothing in that file could be read as a part list')
       return
@@ -86,9 +88,18 @@ export default function LibraryPanel({ design, bins, onBinsChange, onOpenRow, on
     const parts = read.reduce((n, b) => n + b.parts.length, 0)
     notify.success(
       `${parts} parts in ${read.length} position${read.length === 1 ? '' : 's'}` +
+      (annotated > 0 ? `; ${annotated} took their features from open sequences` : '') +
       (skipped.length > 0 ? `; ${skipped.length} line${skipped.length === 1 ? '' : 's'} skipped` : ''),
     )
-  }, [onBinsChange])
+    // A name that points at an open sequence the row is not part of is worth
+    // saying: either the name or the sequence in the file is out of date.
+    if (mismatched.length > 0) {
+      notify.warning(
+        `${mismatched.slice(0, 3).join(', ')}${mismatched.length > 3 ? ` and ${mismatched.length - 3} more` : ''}: ` +
+        'the sequence in the file is not in the open sequence of that name, so the file’s bases were used bare.',
+      )
+    }
+  }, [known, onBinsChange])
 
   const renameBin = (id: string, name: string) => {
     onBinsChange(bins.map(b => (b.id === id ? { ...b, name } : b)))

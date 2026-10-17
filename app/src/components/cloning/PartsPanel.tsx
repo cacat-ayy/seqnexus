@@ -9,7 +9,7 @@
  * dephosphorylated) open beneath it from the arrow.
  */
 
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { ChevronRight, Crosshair, Trash2, TriangleAlert } from 'lucide-react'
 import type { Fragment } from '../../cloning/fragment'
 import { endLabel } from '../../cloning/ends'
@@ -21,6 +21,7 @@ import {
   type DesignPart,
   type PartOrientation,
 } from '../../cloning/design'
+import { annealOligos, duplexLines, type OligoDuplex } from '../../cloning/duplex'
 import { partColor } from './colors'
 import { formatBp } from '../../utils/format'
 
@@ -47,6 +48,70 @@ const ORIENTATION_NOTE: Record<PartOrientation, string | null> = {
   reverse: 'reverse complement',
 }
 
+/**
+ * The two oligos a duplex part is made of. There is nothing to pick here:
+ * the overhangs come out of how the strands pair, so what is shown back is
+ * the pair written out as it will go into the tube (see cloning/duplex).
+ */
+function DuplexFields({ duplex, onChange }: {
+  duplex: OligoDuplex
+  onChange: (duplex: OligoDuplex) => void
+}) {
+  const annealed = annealOligos(duplex)
+  const lines = duplexLines(duplex)
+  const both = duplex.top.trim().length > 0 && duplex.bottom.trim().length > 0
+
+  return (
+    <div className="cw-duplex-fields">
+      <label className="cw-detail">
+        <span>Top oligo 5’→3’</span>
+        <textarea
+          className="input cw-oligo-input"
+          rows={2}
+          spellCheck={false}
+          value={duplex.top}
+          placeholder="CACCG…"
+          onChange={e => onChange({ ...duplex, top: e.target.value })}
+        />
+      </label>
+      <label className="cw-detail">
+        <span>Bottom oligo 5’→3’</span>
+        <textarea
+          className="input cw-oligo-input"
+          rows={2}
+          spellCheck={false}
+          value={duplex.bottom}
+          placeholder="AAAC…"
+          onChange={e => onChange({ ...duplex, bottom: e.target.value })}
+        />
+      </label>
+      <label className="cw-detail-check" title="Synthetic oligos come without one unless ordered phosphorylated">
+        <input
+          type="checkbox"
+          checked={duplex.phosphate ?? false}
+          onChange={e => onChange({ ...duplex, phosphate: e.target.checked })}
+        />
+        Ordered 5’ phosphorylated
+      </label>
+      {both && (
+        <pre className="cw-duplex-strands" aria-label="The annealed pair">
+          {`5’ ${lines.top}\n3’ ${lines.bottom}`}
+        </pre>
+      )}
+      {both && annealed.warnings.length > 0 && (
+        <ul className="cw-product-warnings">
+          {annealed.warnings.map((w, i) => <li key={i}><TriangleAlert size={12} />{w}</li>)}
+        </ul>
+      )}
+      {!both && (
+        <p className="cw-detail-note">
+          Paste both strands as they would be ordered. The overhangs follow from where they pair.
+        </p>
+      )}
+    </div>
+  )
+}
+
 export default function PartsPanel({
   design,
   fragments,
@@ -62,6 +127,20 @@ export default function PartsPanel({
 }: Props) {
   const [expanded, setExpanded] = useState<ReadonlySet<string>>(new Set())
   const cut = design.method === 'restriction' || design.method === 'golden-gate'
+
+  // A duplex part is nothing but its two oligos, so a new one opens on them.
+  // It is opened once, when it appears, rather than kept open while they are
+  // empty: deriving it from the oligos would fold the fields away under the
+  // cursor as soon as the first strand was pasted.
+  const greeted = useRef<ReadonlySet<string>>(new Set())
+  useEffect(() => {
+    const fresh = design.parts
+      .filter(p => p.duplex && !p.duplex.top && !p.duplex.bottom && !greeted.current.has(p.id))
+      .map(p => p.id)
+    if (fresh.length === 0) return
+    greeted.current = new Set([...greeted.current, ...fresh])
+    setExpanded(current => new Set([...current, ...fresh]))
+  }, [design.parts])
 
   const toggle = (id: string) => setExpanded(current => {
     const next = new Set(current)
@@ -85,13 +164,16 @@ export default function PartsPanel({
         const open = expanded.has(part.id)
 
         const summary = [
-          design.method === 'restriction' && part.enzymes
+          design.method === 'restriction' && part.enzymes && !part.duplex
             ? (part.enzymes.length > 0 ? `cut with ${part.enzymes.join(' + ')}` : 'not cut')
             : null,
-          cut && chosen ? `${formatBp(chosen.top.length)} piece, ends ${endLabel(chosen.left!)} · ${endLabel(chosen.right!)}` : null,
+          part.duplex && chosen
+            ? `annealed oligos, ends ${endLabel(chosen.left!)} · ${endLabel(chosen.right!)}`
+            : cut && chosen ? `${formatBp(chosen.top.length)} piece, ends ${endLabel(chosen.left!)} · ${endLabel(chosen.right!)}` : null,
           ORIENTATION_NOTE[part.orientation],
           part.region ? 'selection only' : null,
-          design.method === 'restriction' && part.dephosphorylated ? 'dephosphorylated' : null,
+          design.method === 'restriction' && !part.duplex && part.dephosphorylated ? 'dephosphorylated' : null,
+          part.duplex?.phosphate ? '5’ phosphorylated' : null,
         ].filter((s): s is string => !!s)
 
         return (
@@ -186,7 +268,7 @@ export default function PartsPanel({
                       <option value="reverse">Reverse complement</option>
                     </select>
                   </label>
-                  {design.method === 'restriction' && (
+                  {design.method === 'restriction' && !part.duplex && (
                     <label className="cw-detail-check" title="Stops this part closing on itself">
                       <input
                         type="checkbox"
@@ -195,6 +277,17 @@ export default function PartsPanel({
                       />
                       Dephosphorylated
                     </label>
+                  )}
+                  {part.duplex && (
+                    <DuplexFields
+                      duplex={part.duplex}
+                      onChange={duplex => onChange(part.id, {
+                        duplex,
+                        // The top strand is what the part is, so it follows
+                        // the oligos rather than being edited beside them.
+                        bases: annealOligos(duplex).top,
+                      }, `duplex-${part.id}`)}
+                    />
                   )}
                   {source && <p className="cw-detail-note">From {source.name}{part.region ? ', the selected stretch' : ''}</p>}
                 </div>

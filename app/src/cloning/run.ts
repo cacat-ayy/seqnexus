@@ -16,12 +16,15 @@ import type { Assembly } from './product'
 import { canonical, rotateAssembly } from './product'
 import { assemble } from './assemble'
 import { digest } from './cut'
-import type { Fragment } from './fragment'
+import { dephosphorylate, type Fragment } from './fragment'
 import { homologyAssemble, type HomologyPart } from './homology'
 import { gatewayClone } from './gateway'
 import { topoClone } from './topo'
 import { junctionOverhangs, setFidelity } from './fidelity'
+import { formatBp } from '../utils/format'
 import {
+  METHOD_LABEL,
+  isDuplex,
   partBases,
   partLength,
   partEnzymes,
@@ -30,6 +33,7 @@ import {
   type CloningDesign,
   type DesignPart,
 } from './design'
+import { duplexFragment } from './duplex'
 
 export interface RunResult {
   products: Assembly[]
@@ -92,6 +96,24 @@ export function chosenFragment(part: DesignPart, fragments: Fragment[]): Fragmen
   return cut.reduce((a, b) => (shortest ? b.top.length < a.top.length : b.top.length > a.top.length) ? b : a)
 }
 
+/**
+ * The rest of a warning when the part's own cuts leave more pieces than the
+ * design can account for, and nobody has said which to keep. A vector cut
+ * three times has two short pieces besides its backbone, and the guess of
+ * the longest (or, for an insert in its donor, the shortest) is then only a
+ * guess, so it is said rather than taken silently.
+ */
+function surplusPieces(part: DesignPart, fragments: Fragment[], keep: Fragment): string | null {
+  const pieces = fragments.filter(f => f.topology === 'linear').length
+  // Two ends cut out of a circle make two pieces; out of a line, three.
+  const expected = partTopology(part) === 'circular' ? 2 : 3
+  if (pieces <= expected) return null
+  if (part.keep && keep.source.start === part.keep.start && keep.source.end === part.keep.end) return null
+  const which = part.role === 'insert' && partTopology(part) === 'circular' ? 'shortest' : 'longest'
+  return `${pieces} pieces, so the design uses the ${which} (${formatBp(keep.top.length)}). ` +
+    'Click the piece you want on its map if that is not it.'
+}
+
 function enzymesOf(names: readonly string[]): RestrictionEnzyme[] {
   return names.map(n => getEnzyme(n)).filter((e): e is RestrictionEnzyme => !!e)
 }
@@ -103,10 +125,19 @@ function runCut(design: CloningDesign, typeIIS: boolean): RunResult {
   // are cut separately, each with its own enzymes.
   const enzymesFor = (part: DesignPart) =>
     typeIIS ? enzymesOf([design.typeIIS]) : enzymesOf(partEnzymes(part, design))
-  const unchosen = parts.filter(p => enzymesFor(p).length === 0)
-  if (typeIIS && unchosen.length > 0) return empty(['Choose a Type IIS enzyme.'])
-  if (unchosen.length === parts.length) {
-    return empty(['Choose the enzymes, or click the sites to cut on each part’s map.'])
+  // An annealed pair of oligos is not cut, so it asks for no enzymes and is
+  // left out of every question about which enzymes to use.
+  const cuttable = parts.filter(p => !isDuplex(p))
+  const unchosen = cuttable.filter(p => enzymesFor(p).length === 0)
+  // An annealed pair has its ends whatever the enzymes are, so it is reported
+  // even while the rest of the design is still waiting for them: the parts
+  // list and the reaction strip show what it offers rather than "not cut".
+  const annealed = () => parts.filter(p => p.duplex).map(p => duplexFragment(p.duplex!, p).fragment)
+  const waiting = (problem: string): RunResult =>
+    ({ products: [], warnings: [], problems: [problem], fragments: annealed() })
+  if (typeIIS && unchosen.length > 0) return waiting('Choose a Type IIS enzyme.')
+  if (cuttable.length > 0 && unchosen.length === cuttable.length) {
+    return waiting('Choose the enzymes, or click the sites to cut on each part’s map.')
   }
 
   const warnings: string[] = []
@@ -117,6 +148,15 @@ function runCut(design: CloningDesign, typeIIS: boolean): RunResult {
   const uncut: string[] = unchosen.map(p => `Click the sites to cut ${p.name} at on its map.`)
 
   for (const part of parts) {
+    if (part.duplex) {
+      // Already double-stranded with its ends on it: it goes into the pot as
+      // it is, and is always one of the pieces the design is counting on.
+      const { fragment, warnings: oligoWarnings } = duplexFragment(part.duplex, part)
+      warnings.push(...oligoWarnings)
+      all.push(fragment)
+      kept.push(fragment)
+      continue
+    }
     const enzymes = enzymesFor(part)
     if (enzymes.length === 0) continue
     const result = digest(partDoc(part), enzymes, { idPrefix: part.id })
@@ -128,9 +168,9 @@ function runCut(design: CloningDesign, typeIIS: boolean): RunResult {
       uncut.push(`${enzymes.map(e => e.name).join(' + ')} does not cut ${part.name}, so it has no ends to join.`)
       continue
     }
-    kept.push(part.dephosphorylated
-      ? { ...keep, left: { ...keep.left!, phosphate: false }, right: { ...keep.right!, phosphate: false } }
-      : keep)
+    kept.push(keep)
+    const extra = surplusPieces(part, result.fragments, keep)
+    if (extra) warnings.push(`${enzymes.map(e => e.name).join(' + ')} cuts ${part.name} into ${extra}`)
   }
 
   if (uncut.length > 0) {
@@ -140,9 +180,19 @@ function runCut(design: CloningDesign, typeIIS: boolean): RunResult {
 
   // Purified, only the chosen fragments are in the tube. Otherwise everything
   // the digests produced is, which is what shows the off-target products.
-  const pool = design.purify ? kept : all
+  //
+  // A phosphatase works on whatever came out of the digest, so the treatment
+  // follows the part, not the one piece of it the design keeps: with
+  // gel-purify off, every piece of a treated part goes into the tube without
+  // its phosphates. Matching by fragment id rather than by object also keeps
+  // the design's own pieces identifiable in the pool, which is what tells the
+  // intended product from the rest.
+  const treated = new Set(parts.filter(p => p.dephosphorylated).map(p => p.id))
+  const isTreated = (f: Fragment) => [...treated].some(id => f.id.startsWith(`${id}:`))
+  const pool = (design.purify ? kept : all).map(f => (isTreated(f) ? dephosphorylate(f) : f))
+  const keptIds = new Set(kept.map(f => f.id))
   const required = new Set(
-    kept.map(f => pool.indexOf(f)).filter(i => i >= 0),
+    pool.map((f, i) => (keptIds.has(f.id) ? i : -1)).filter(i => i >= 0),
   )
   const noFlip = new Set(
     pool.map((f, i) => {
@@ -161,17 +211,47 @@ function runCut(design: CloningDesign, typeIIS: boolean): RunResult {
   const result: RunResult = { products, warnings, problems: [], fragments: all }
 
   if (typeIIS) {
+    // A part the enzyme does not cut brings no fusion sites, so it cannot
+    // take its place in the assembly: whatever it does in the tube (close on
+    // itself, join another blunt end) is not the construct. Say so, rather
+    // than letting a blunt circle stand in for the product.
+    const enzymeName = enzymes[0]?.name ?? design.typeIIS
+    const uncutParts = cuttable.filter(part => {
+      const fragments = all.filter(f => f.id.startsWith(`${part.id}:`))
+      return fragments.length > 0 && fragments.every(f => f.left?.kind === 'blunt' && f.right?.kind === 'blunt')
+    })
+    for (const part of uncutParts) {
+      result.problems.push(
+        `${enzymeName} does not cut ${part.name}, so it carries no fusion sites and cannot join the others. ` +
+        'Add the sites to it, or take it out of the design.',
+      )
+    }
+    // A duplex is not cut, so it has fusion sites only if its oligos were
+    // ordered with the overhangs on them.
+    for (const part of parts.filter(isDuplex)) {
+      const fragment = all.find(f => f.id === `${part.id}:0`)
+      if (fragment?.left?.kind === 'blunt' && fragment.right?.kind === 'blunt') {
+        result.problems.push(
+          `${part.name} anneals blunt at both ends, so it carries no fusion sites and cannot join the others. ` +
+          'Order the oligos with the overhangs the enzyme leaves on them.',
+        )
+      }
+    }
+
     const ends = kept.flatMap(f => [f.left?.span, f.right?.span].filter((s): s is string => !!s))
-    const score = setFidelity(junctionOverhangs(ends))
-    result.fidelity = {
-      score: score.fidelity,
-      notes: [
-        ...score.palindromic.map(s => `Overhang ${s} reads the same on both strands, so it ligates to itself.`),
-        ...score.risks
-          .filter(r => r.from !== r.to && r.propensity >= 0.05)
-          .slice(0, 3)
-          .map(r => `Overhangs ${r.from} and ${r.to} differ too little and will cross-react.`),
-      ],
+    const overhangs = junctionOverhangs(ends)
+    if (overhangs.length > 0) {
+      const score = setFidelity(overhangs)
+      result.fidelity = {
+        score: score.fidelity,
+        notes: [
+          ...score.palindromic.map(s => `Overhang ${s} reads the same on both strands, so it ligates to itself.`),
+          ...score.risks
+            .filter(r => r.from !== r.to && r.propensity >= 0.05)
+            .slice(0, 3)
+            .map(r => `Overhangs ${r.from} and ${r.to} differ too little and will cross-react.`),
+        ],
+      }
     }
   }
 
@@ -269,7 +349,23 @@ function liftProducts(
 export function runDesign(design: CloningDesign): RunResult {
   const parts = design.parts
   if (parts.length === 0) return empty(['Add the sequences to be cloned.'])
-  if (parts.some(p => partLength(p) === 0)) return empty(['One of the parts is empty.'])
+  const blank = parts.find(p => partLength(p) === 0)
+  if (blank) {
+    return empty([
+      blank.duplex ? `Paste the two oligos that make up ${blank.name}.` : 'One of the parts is empty.',
+    ])
+  }
+  // An annealed pair brings sticky ends and nothing else: no homology arms,
+  // no att sites, no overhang for a topoisomerase. It belongs in a ligation.
+  if (design.method !== 'restriction' && design.method !== 'golden-gate') {
+    const duplexes = parts.filter(isDuplex).map(p => p.name)
+    if (duplexes.length > 0) {
+      return empty([
+        `${duplexes.join(' and ')} ${duplexes.length === 1 ? 'is' : 'are'} annealed oligos, which join by their ` +
+        `overhangs. Use restriction & ligation or Golden Gate, or add the ends ${METHOD_LABEL[design.method]} needs.`,
+      ])
+    }
+  }
 
   switch (design.method) {
     case 'restriction':

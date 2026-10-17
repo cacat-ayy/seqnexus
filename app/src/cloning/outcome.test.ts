@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import { emptyDesign, newPartId, type CloningDesign, type DesignPart } from './design'
 import { runDesign } from './run'
-import { findFixes, isIntended, productLabel } from './outcome'
+import { findFixes, isIntended, productLabel, whyNoConstruct } from './outcome'
 
 // No common cloning enzyme's site occurs in (ACGT)n, so the sites below are
 // the only ones there are.
@@ -73,5 +73,37 @@ describe('the outcome of a design', () => {
 
   it('does not guess with only one part', () => {
     expect(findFixes(design(['EcoRI'], [VECTOR]))).toEqual([])
+  })
+})
+
+describe('why the construct does not form', () => {
+  it('names a line whose free ends do not fit', () => {
+    // PstI cuts nothing: the insert joins the vector by its EcoRI end and
+    // keeps its own blunt end on the other side.
+    const d = design(['EcoRI', 'PstI'])
+    expect(whyNoConstruct(runDesign(d).products, d)).toEqual([
+      'Every part joins in a line, but the two ends left over do not fit each other, so it never closes.',
+    ])
+  })
+
+  it('names the part whose ends join no other part', () => {
+    // The third part is cut with PstI and XbaI, which fit neither vector end.
+    const odd = { ...part('odd', put(put(fill(800), 10, 'CTGCAG'), 780, 'TCTAGA'), 'insert'), enzymes: ['PstI', 'XbaI'] }
+    const d = design(['EcoRI', 'BamHI'], [VECTOR, INSERT, odd])
+    const result = runDesign(d)
+    expect(result.products.some(isIntended)).toBe(false)
+    expect(whyNoConstruct(result.products, d)).toEqual(['The ends of odd join no other part.'])
+  })
+
+  it('says so when no two parts fit, even though each closes on itself', () => {
+    // The vector opened by EcoRI alone, the insert cut by PstI near one end.
+    const vector = { ...VECTOR, enzymes: ['EcoRI'] }
+    const insert = { ...part('pst', put(fill(800), 10, 'CTGCAG'), 'insert'), enzymes: ['PstI'] }
+    const d = design([], [vector, insert])
+    const result = runDesign(d)
+    expect(result.products.length).toBeGreaterThan(0)
+    expect(whyNoConstruct(result.products, d)).toEqual([
+      'No two parts have ends that fit each other, so each only joins itself.',
+    ])
   })
 })

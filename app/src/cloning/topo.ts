@@ -168,6 +168,8 @@ function validateInsertEnds(
       return { valid: false, message: `Insert lacks 5' CACC overhang: Directional TOPO requires CACC at the 5' end of the forward primer (found: ${prefix})` }
     }
   }
+  // Only reachable from untyped input; say so rather than return nothing.
+  return { valid: false, message: `Unknown TOPO variant: ${String(variant)}` }
 }
 
 // ---------------------------------------------------------------------------

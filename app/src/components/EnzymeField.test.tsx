@@ -45,4 +45,25 @@ describe('EnzymeField', () => {
     const ecoRI = screen.getByText('EcoRI', { selector: '.ef-chip' })
     expect(within(ecoRI).queryByText('0×')).not.toBeInTheDocument()
   })
+
+  it('adds a name left typed in the box when focus moves away', () => {
+    const onChange = vi.fn()
+    render(<EnzymeField value={[]} onChange={onChange} targets={[VECTOR]} />)
+    const box = screen.getByRole('combobox')
+    fireEvent.focus(box)
+    fireEvent.change(box, { target: { value: 'EcoRI' } })
+    fireEvent.blur(box)
+    expect(onChange).toHaveBeenCalledWith(['EcoRI'])
+  })
+
+  it('flags text left in the box that names no enzyme', () => {
+    const onChange = vi.fn()
+    render(<EnzymeField value={[]} onChange={onChange} targets={[VECTOR]} />)
+    const box = screen.getByRole('combobox')
+    fireEvent.focus(box)
+    fireEvent.change(box, { target: { value: 'EcoQ' } })
+    fireEvent.blur(box)
+    expect(onChange).not.toHaveBeenCalled()
+    expect(screen.getByText('Not recognised: EcoQ')).toBeInTheDocument()
+  })
 })

@@ -16,6 +16,8 @@ import type { DocumentState } from '../models/Document'
 import type { KitId } from './kits'
 import type { GatewayReaction } from './gateway'
 import type { TopoVariant } from './topo'
+import type { OligoDuplex } from './duplex'
+import { annealOligos } from './duplex'
 import { withoutSegments } from './fragment'
 
 export type CloningMethodId = 'restriction' | 'golden-gate' | 'homology' | 'gateway' | 'topo'
@@ -70,6 +72,13 @@ export interface DesignPart {
   enzymes?: string[]
   /** Restriction cloning: take the phosphates off this part's ends. */
   dephosphorylated?: boolean
+  /**
+   * A pair of oligos annealed into the part rather than a piece cut out of a
+   * sequence: a short insert is ordered, not digested. Set, the part is not
+   * cut at all and brings the ends the two strands leave (see ./duplex);
+   * `bases` is its top strand, so its length and its map still read.
+   */
+  duplex?: OligoDuplex
   /**
    * Restriction and Golden Gate: which digest fragment to keep, by where it
    * sits on the part. Unset means the obvious choice; see ./run.
@@ -162,6 +171,30 @@ export function partFromDoc(
   }
 }
 
+/** A part made of two oligos annealed together, not cut from a sequence. */
+export function isDuplex(part: DesignPart): boolean {
+  return part.duplex !== undefined
+}
+
+/**
+ * A part from a pair of oligos. The top strand is what the part carries as
+ * its bases, so its length, its map and its place in the product read like
+ * any other part; the ends come from annealing the two (see ./duplex).
+ */
+export function partFromDuplex(name: string, duplex: OligoDuplex): DesignPart {
+  const { top } = annealOligos(duplex)
+  return {
+    id: newPartId(),
+    name,
+    role: 'insert',
+    bases: top,
+    topology: 'linear',
+    annotations: [],
+    orientation: 'auto',
+    duplex,
+  }
+}
+
 /**
  * Whether a part still matches the sequence it was taken from.
  *
@@ -234,6 +267,7 @@ export function sanitizeDesign(raw: unknown): CloningDesign | null {
     const region = q.region as { start?: unknown; end?: unknown } | undefined
     const keep = q.keep as { start?: unknown; end?: unknown } | undefined
     const source = q.source as { id?: unknown; hash?: unknown } | undefined
+    const duplex = q.duplex as { top?: unknown; bottom?: unknown; phosphate?: unknown } | undefined
     parts.push({
       id: typeof q.id === 'string' ? q.id : newPartId(),
       name: q.name,
@@ -253,6 +287,9 @@ export function sanitizeDesign(raw: unknown): CloningDesign | null {
         ? { keep: { start: keep.start, end: keep.end } } : {}),
       ...(q.damMethylated === true ? { damMethylated: true } : {}),
       ...(q.dcmMethylated === true ? { dcmMethylated: true } : {}),
+      ...(duplex && typeof duplex.top === 'string' && typeof duplex.bottom === 'string'
+        ? { duplex: { top: duplex.top, bottom: duplex.bottom, phosphate: duplex.phosphate === true } }
+        : {}),
     })
   }
 

@@ -45,6 +45,15 @@ describe('creating a design', () => {
     expect(useEditorStore.getState().clones.find(c => c.id === id)!.name).toBe('pUC cloning')
   })
 
+  it('numbers a design whose name is already taken', () => {
+    openSequence('pUC', 'ACGT'.repeat(100), 'circular')
+    const names = [1, 2, 3].map(() => {
+      const id = useEditorStore.getState().createClone({ activate: false })
+      return useEditorStore.getState().clones.find(c => c.id === id)!.name
+    })
+    expect(names).toEqual(['pUC cloning', 'pUC cloning 2', 'pUC cloning 3'])
+  })
+
   it('remembers which sequence a part came from', () => {
     const tabId = openSequence('pUC', 'ACGT'.repeat(100), 'circular')
     const id = useEditorStore.getState().createClone()

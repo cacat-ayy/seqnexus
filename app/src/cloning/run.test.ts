@@ -11,6 +11,7 @@ import { reverseComplement } from '../models/complement'
 import {
   emptyDesign,
   partFromDoc,
+  partFromDuplex,
   sanitizeDesign,
   partMatchesSource,
   sequenceHash,
@@ -18,6 +19,7 @@ import {
   type DesignPart,
 } from './design'
 import { productDocument, productKey, runDesign, selectedProduct } from './run'
+import { findFixes } from './outcome'
 import { rotateAssembly } from './product'
 import { PUC19_SEQUENCE } from '../demo'
 
@@ -127,6 +129,136 @@ describe('restriction cloning through a design', () => {
 
   it('reports the fragments so the parts list can show them', () => {
     expect(runDesign(base).fragments.length).toBeGreaterThan(2)
+  })
+
+  it('says which piece it took when a part is cut into more than it needs', () => {
+    expect(runDesign(base).warnings.join(' ')).not.toContain('pieces')
+    // A third site in the vector leaves two short pieces beside the backbone.
+    const busy = part(doc('pVec', pad(300) + 'GAATTC' + pad(300) + vectorBases.slice(600), 'circular'), 'vector')
+    const d = { ...base, parts: [busy, base.parts[1]] }
+    const result = runDesign(d)
+    expect(result.warnings.join(' ')).toContain('cuts pVec into 3 pieces, so the design uses the longest')
+    // Once a piece is clicked, the choice is the user's and needs no warning.
+    const longest = result.fragments
+      .filter(f => f.id.startsWith(`${busy.id}:`) && f.topology === 'linear')
+      .reduce((a, b) => (b.top.length > a.top.length ? b : a))
+    const kept = { ...d, parts: [{ ...busy, keep: { start: longest.source.start, end: longest.source.end } }, base.parts[1]] }
+    expect(runDesign(kept).warnings.join(' ')).not.toContain('pieces')
+  })
+})
+
+describe('a pair of oligos annealed as a part', () => {
+  const core = 'AAGCTTGGCACTGGCCGTCGTTTTACAACGT'
+
+  it('ligates into a vector cut with the same overhangs, without being cut itself', () => {
+    // A BamHI-cut vector offers GATC at both ends; the adapter is ordered
+    // with GATC ahead of each strand, which is how a linker is made.
+    const vector = part(doc('pVec', pad(600) + 'GGATCC' + pad(600), 'circular'), 'vector')
+    const adapter = partFromDuplex('linker', { top: `GATC${core}`, bottom: `GATC${reverseComplement(core)}` })
+    const d = design({ method: 'restriction', enzymes: ['BamHI'], parts: [vector, adapter] })
+    const result = runDesign(d)
+    expect(result.problems).toEqual([])
+    const product = selectedProduct(d, result.products)!
+    expect(product.usesAll).toBe(true)
+    expect(product.topology).toBe('circular')
+    expect(product.sequence).toContain(core)
+    // Synthetic oligos carry no 5' phosphate, so every junction is left with
+    // one nick for the cell to seal.
+    expect(product.nicked).toBe(true)
+  })
+
+  it('does not ask for enzymes for a part that is not cut', () => {
+    const adapter = partFromDuplex('linker', { top: `GATC${core}`, bottom: `GATC${reverseComplement(core)}` })
+    const vector = part(doc('pVec', pad(600) + 'GGATCC' + pad(600), 'circular'), 'vector')
+    const d = design({ method: 'restriction', enzymes: ['BamHI'], parts: [vector, adapter] })
+    expect(runDesign(d).problems.join(' ')).not.toContain('Click the sites')
+    // The adapter contributes one piece, and it is not a digest of anything.
+    expect(runDesign(d).fragments.filter(f => f.id.startsWith(`${adapter.id}:`))).toHaveLength(1)
+  })
+
+  it('takes a guide duplex into a BsmBI-cut vector', () => {
+    // lentiCRISPRv2 in miniature: the two BsmBI sites point outward, so the
+    // cut leaves them on the stuffer that is thrown away and gives the
+    // backbone the CACC and GTTT overhangs the guide pair was ordered for.
+    const guide = 'GTCAGCATGCATCGAGTTAC'
+    const vector = part(
+      doc('pLenti', pad(500) + 'CACC' + 'A' + 'GAGACG' + pad(40) + 'CGTCTC' + 'A' + 'GTTT' + pad(500), 'circular'),
+      'vector',
+    )
+    const duplex = partFromDuplex('sgRNA', {
+      top: `CACCG${guide}`,
+      bottom: `AAAC${reverseComplement(guide)}C`,
+    })
+    const d = design({ method: 'golden-gate', typeIIS: 'BsmBI', parts: [vector, duplex] })
+    const result = runDesign(d)
+    expect(result.problems).toEqual([])
+    const product = selectedProduct(d, result.products)!
+    expect(product.usesAll).toBe(true)
+    expect(product.topology).toBe('circular')
+    expect(product.sequence).toContain(guide)
+    // The sites went with the stuffer, so the enzyme leaves the product alone.
+    expect(product.recut).toEqual([])
+  })
+
+  it('says a blunt duplex carries no fusion sites in a one-pot reaction', () => {
+    const blunt = partFromDuplex('blunt bit', { top: core, bottom: reverseComplement(core) })
+    const vector = part(
+      doc('pLenti', pad(500) + 'CACC' + 'A' + 'GAGACG' + pad(40) + 'CGTCTC' + 'A' + 'GTTT' + pad(500), 'circular'),
+      'vector',
+    )
+    const d = design({ method: 'golden-gate', typeIIS: 'BsmBI', parts: [vector, blunt] })
+    expect(runDesign(d).problems.join(' ')).toContain('anneals blunt at both ends')
+  })
+
+  it('refuses a method that joins parts by anything other than their ends', () => {
+    const adapter = partFromDuplex('linker', { top: `GATC${core}`, bottom: `GATC${reverseComplement(core)}` })
+    const vector = part(doc('pVec', pad(600) + 'GGATCC' + pad(600), 'circular'), 'vector')
+    const problems = runDesign(design({ method: 'homology', parts: [vector, adapter] })).problems
+    expect(problems.join(' ')).toContain('annealed oligos')
+    expect(problems.join(' ')).toContain('Golden Gate')
+  })
+
+  it('passes the annealing complaint on as a warning', () => {
+    // The second oligo written in the same sense as the first, which anneals
+    // to nothing.
+    const wrong = partFromDuplex('linker', { top: core, bottom: core })
+    const vector = part(doc('pVec', pad(600) + 'GGATCC' + pad(600), 'circular'), 'vector')
+    const d = design({ method: 'restriction', enzymes: ['BamHI'], parts: [vector, wrong] })
+    expect(runDesign(d).warnings.join(' ')).toContain('do not anneal')
+  })
+
+  it('shows its ends before the other parts have their enzymes', () => {
+    const adapter = partFromDuplex('linker', { top: `GATC${core}`, bottom: `GATC${reverseComplement(core)}` })
+    const vector = part(doc('pVec', pad(600) + 'GGATCC' + pad(600), 'circular'), 'vector')
+    const d = design({ method: 'restriction', enzymes: [], parts: [vector, adapter] })
+    const result = runDesign(d)
+    expect(result.problems.join(' ')).toContain('Choose the enzymes')
+    const fragment = result.fragments.find(f => f.id.startsWith(`${adapter.id}:`))!
+    expect(fragment.left).toMatchObject({ kind: 'five_prime', span: 'GATC' })
+  })
+
+  it('asks for the oligos while the part is still empty', () => {
+    const empty = partFromDuplex('new duplex', { top: '', bottom: '' })
+    const vector = part(doc('pVec', pad(600) + 'GGATCC' + pad(600), 'circular'), 'vector')
+    const d = design({ method: 'restriction', enzymes: ['BamHI'], parts: [vector, empty] })
+    expect(runDesign(d).problems).toEqual(['Paste the two oligos that make up new duplex.'])
+  })
+
+  it('still suggests enzymes that leave the duplex alone', () => {
+    // PstI does not cut the vector usefully, so a fix has to be offered; an
+    // enzyme is not disqualified for leaving the annealed pair uncut.
+    const adapter = partFromDuplex('linker', { top: `GATC${core}`, bottom: `GATC${reverseComplement(core)}` })
+    const vector = part(doc('pVec', pad(600) + 'GGATCC' + pad(600), 'circular'), 'vector')
+    const d = design({ method: 'restriction', enzymes: ['PstI'], parts: [vector, adapter] })
+    const labels = findFixes(d).map(f => f.label)
+    expect(labels.some(l => /BamHI/.test(l))).toBe(true)
+  })
+
+  it('survives a round trip through storage', () => {
+    const adapter = partFromDuplex('linker', { top: `GATC${core}`, bottom: `GATC${reverseComplement(core)}` })
+    const d = design({ method: 'restriction', enzymes: ['BamHI'], parts: [adapter] })
+    const back = sanitizeDesign(JSON.parse(JSON.stringify(d)))!
+    expect(back.parts[0].duplex).toEqual({ top: `GATC${core}`, bottom: `GATC${reverseComplement(core)}`, phosphate: false })
   })
 })
 
@@ -413,5 +545,102 @@ describe('turning a circular product', () => {
 
   it('leaves a linear product alone', () => {
     expect(rotateAssembly({ ...base, topology: 'linear' }, 3)).toEqual({ ...base, topology: 'linear' })
+  })
+})
+
+describe('a dephosphorylated vector', () => {
+  // One enzyme at both ends, which is where a phosphatase earns its keep:
+  // the vector would otherwise just close on itself again.
+  const vectorBases = pad(600) + 'GAATTC' + pad(600)
+  const core = 'AAAT'.repeat(100)
+  const insertBases = pad(10) + 'GAATTC' + core + 'GAATTC' + pad(10)
+
+  const build = (purify: boolean, dephosphorylated: boolean): CloningDesign => {
+    const vector = { ...part(doc('pVec', vectorBases, 'circular'), 'vector'), dephosphorylated }
+    return design({
+      method: 'restriction',
+      enzymes: ['EcoRI'],
+      purify,
+      parts: [vector, part(doc('ins', insertBases), 'insert')],
+    })
+  }
+
+  for (const purify of [true, false]) {
+    it(`is still treated as the wanted product with gel-purify ${purify ? 'on' : 'off'}`, () => {
+      const result = runDesign(build(purify, true))
+      const wanted = result.products.filter(p => p.usesAll && p.topology === 'circular')
+      expect(wanted.length).toBeGreaterThan(0)
+      // the backbone and the insert, not the insert closing on itself
+      expect(wanted[0].parts.map(p => p.sourceName).sort()).toEqual(['ins', 'pVec'])
+      expect(wanted[0].sequence).toContain(core)
+    })
+
+    it(`leaves the product nicked with gel-purify ${purify ? 'on' : 'off'}`, () => {
+      // Each junction has one phosphate, from the insert, so ligase seals one
+      // of its two nicks: a real outcome, and the sign the treatment took.
+      const result = runDesign(build(purify, true))
+      const wanted = result.products.find(p => p.usesAll && p.topology === 'circular')!
+      expect(wanted.nicked).toBe(true)
+    })
+
+    it(`stops the vector closing on itself with gel-purify ${purify ? 'on' : 'off'}`, () => {
+      const treated = runDesign(build(purify, true))
+      const untreated = runDesign(build(purify, false))
+      const selfClosed = (r: ReturnType<typeof runDesign>) =>
+        r.products.some(p =>
+          p.topology === 'circular'
+          && p.parts.length === 1
+          && p.parts[0].sourceName === 'pVec')
+      expect(selfClosed(untreated)).toBe(true)
+      expect(selfClosed(treated)).toBe(false)
+    })
+  }
+
+  it('does not treat the insert', () => {
+    const result = runDesign(build(false, true))
+    const insertAlone = result.products.find(p =>
+      p.topology === 'circular' && p.parts.length === 1 && p.parts[0].sourceName === 'ins')
+    expect(insertAlone).toBeDefined()
+  })
+})
+
+describe('a Golden Gate part the enzyme does not cut', () => {
+  const noSites = filler(700, 31)
+  const acceptor = 'GGTCTC' + 'A' + 'GCTT' + filler(600, 7) + 'AATG' + 'T' + 'GAGACC'
+
+  const base = design({
+    method: 'golden-gate',
+    typeIIS: 'BsaI',
+    purify: true,
+    parts: [
+      part(doc('acceptor', acceptor, 'circular'), 'vector'),
+      part(doc('plain insert', noSites), 'insert'),
+    ],
+  })
+
+  it('says the part carries no fusion sites', () => {
+    const result = runDesign(base)
+    expect(result.problems.join(' ')).toContain('does not cut plain insert')
+  })
+
+  it('does not offer a blunt circle as the construct', () => {
+    const result = runDesign(base)
+    const asDesigned = result.products.filter(
+      p => p.usesAll && p.topology === 'circular' && p.recut.length === 0,
+    )
+    for (const product of asDesigned) {
+      expect(product.parts.length).toBeGreaterThan(1)
+    }
+  })
+
+  it('does not score fidelity when there are no fusion sites at all', () => {
+    const lone = design({
+      method: 'golden-gate',
+      typeIIS: 'BsaI',
+      purify: true,
+      parts: [part(doc('plain insert', noSites), 'insert')],
+    })
+    const result = runDesign(lone)
+    expect(result.fidelity).toBeUndefined()
   })
 })

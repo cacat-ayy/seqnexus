@@ -62,11 +62,20 @@ export const ATT_SITES: AttSiteDefinition[] = [
   { name: 'attP3', type: 'attP', number: 3, core: 'ACAACTTTGTATAATAAAGTTGGC' },
   { name: 'attP4', type: 'attP', number: 4, core: 'ACAACTTTGTATAGAAAAGTTGGC' },
 
-  // attL sites (on entry clones: attB-half + attP-half)
-  { name: 'attL1', type: 'attL', number: 1, core: 'ACAAGTTTGTACAAAAAAGCAGGCTCCGCGG' },
-  { name: 'attL2', type: 'attL', number: 2, core: 'ACCCAGCTTTCTTGTACAAAGTTGGCATTA' },
-  { name: 'attL3', type: 'attL', number: 3, core: 'ACAACTTTGTATAATAAAGTTGAAC' },
-  { name: 'attL4', type: 'attL', number: 4, core: 'ACAACTTTGTATAGAAAAGTTGAAC' },
+  // attL sites (on entry clones). An attL site is the end of the phage P arm,
+  // then the seven-base spacer that gives the site its number, then the B'
+  // arm. The arm is the same whatever the number, so the cores differ only in
+  // the spacer. The first few bases before the arm vary from vector to
+  // vector, which is why the core starts inside it.
+  //
+  // attL1 and attL2 are the two an entry clone carries, and both are written
+  // here as they read in a deposited pENTR vector (attL2 lies on the other
+  // strand, which is how these vectors are built). attL3 and attL4 are for
+  // MultiSite and follow the same arrangement with their own spacers.
+  { name: 'attL1', type: 'attL', number: 1, core: 'TATAATGCCAACTTTGTACAAAAAAGCAGGCT' },
+  { name: 'attL2', type: 'attL', number: 2, core: 'TATAATGCCAACTTTGTACAAGAAAGCTGGGT' },
+  { name: 'attL3', type: 'attL', number: 3, core: 'TATAATGCCAACTTTGTATAATAAAGTTG' },
+  { name: 'attL4', type: 'attL', number: 4, core: 'TATAATGCCAACTTTGTATAGAAAAGTTG' },
 
   // attR sites (on destination vectors: attP-half + attB-half)
   { name: 'attR1', type: 'attR', number: 1, core: 'ACAAGTTTGTACAAAAAAGCTGAACGAGAAAC' },
@@ -74,6 +83,40 @@ export const ATT_SITES: AttSiteDefinition[] = [
   { name: 'attR3', type: 'attR', number: 3, core: 'ACAACTTTGTATAATAAAGTTGGCAGTAAAC' },
   { name: 'attR4', type: 'attR', number: 4, core: 'ACAACTTTGTATAGAAAAGTTGGCAGTAAAC' },
 ]
+
+// ---------------------------------------------------------------------------
+// The spacer
+// ---------------------------------------------------------------------------
+
+/**
+ * The seven bases at the heart of every att site. Recombination crosses over
+ * inside this stretch, and it is the only part that differs between the
+ * numbered sites: attB1, attL1, attP1 and attR1 all carry the same spacer and
+ * differ in which arms flank it.
+ *
+ * So the spacer is what a product junction is built around (the bases either
+ * side come from whichever parent contributed that arm) and it is also what
+ * decides a site's number, which is why a match has to reproduce it exactly
+ * while the arms are allowed a mismatch or two.
+ */
+export const SPACERS: Record<number, string> = {
+  1: 'GTACAAA',
+  2: 'GTACAAG',
+  3: 'GTATAAT',
+  4: 'GTATAGA',
+}
+
+export const SPACER_LENGTH = 7
+
+/** Where the spacer sits inside a site's stored core. */
+export function spacerOffsetOf(site: AttSiteDefinition): number {
+  const spacer = SPACERS[site.number]
+  const at = site.core.toUpperCase().indexOf(spacer)
+  if (at < 0) {
+    throw new Error(`${site.name} core does not contain the att${site.number} spacer`)
+  }
+  return at
+}
 
 // ---------------------------------------------------------------------------
 // Pattern matching
@@ -115,6 +158,13 @@ export function findAttSites(
   for (const site of sites) {
     const core = site.core.toUpperCase()
     const coreLen = core.length
+    const spacerAt = spacerOffsetOf(site)
+    const spacer = SPACERS[site.number]
+    // The spacer names the site, so a window that differs there is a
+    // different site, not a worn copy of this one. Numbered sites of the same
+    // type differ by as little as three bases, all of them in the spacer.
+    const spacerMatches = (window: string): boolean =>
+      window.slice(spacerAt, spacerAt + SPACER_LENGTH) === spacer
 
     if (coreLen > seq.length) continue
 
@@ -122,7 +172,7 @@ export function findAttSites(
     for (let i = 0; i <= seq.length - coreLen; i++) {
       const window = seq.slice(i, i + coreLen)
       const mm = countMismatches(window, core)
-      if (mm <= maxMismatches) {
+      if (mm <= maxMismatches && spacerMatches(window)) {
         matches.push({
           site,
           start: i,
@@ -137,7 +187,7 @@ export function findAttSites(
     for (let i = 0; i <= rc.length - coreLen; i++) {
       const window = rc.slice(i, i + coreLen)
       const mm = countMismatches(window, core)
-      if (mm <= maxMismatches) {
+      if (mm <= maxMismatches && spacerMatches(window)) {
         // Convert RC position back to forward-strand coordinates
         const fwdStart = seq.length - i - coreLen
         const fwdEnd = seq.length - i

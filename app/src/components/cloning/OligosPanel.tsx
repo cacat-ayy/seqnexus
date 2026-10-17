@@ -25,6 +25,7 @@ import type { Assembly } from '../../cloning/product'
 import { designAssemblyOligos, planTypeIISOligos, type OligoPair, type OligoTarget } from '../../cloning/oligos'
 import { csvCell } from '../../utils/csv-cell'
 import {
+  isDuplex,
   partBases,
   partLength,
   partTopology,
@@ -86,7 +87,11 @@ function csvOf(pairs: OligoPair[]): string {
 
 export default function OligosPanel({ design, product, onClose }: Props) {
   const addLibraryOligos = useEditorStore(s => s.addLibraryOligos)
-  const parts = useMemo(() => vectorsFirst(design.parts), [design.parts])
+  // An annealed pair is already the oligos to order, so there are no primers
+  // to design for it: it is left out rather than given a pair that would
+  // amplify it.
+  const parts = useMemo(() => vectorsFirst(design.parts.filter(p => !isDuplex(p))), [design.parts])
+  const duplexes = useMemo(() => design.parts.filter(isDuplex), [design.parts])
 
   // Both the pairs and the overhangs they were built around come out of one
   // pass: choosing a fresh overhang set on every render would hand back
@@ -183,6 +188,13 @@ export default function OligosPanel({ design, product, onClose }: Props) {
 
       {supported && parts.length === 0 && (
         <p className="cw-hint">Add the parts first and the primers for them will appear here.</p>
+      )}
+
+      {supported && duplexes.length > 0 && (
+        <p className="cw-blurb">
+          {duplexes.map(p => p.name).join(' and ')} {duplexes.length === 1 ? 'is' : 'are'} ordered as oligos
+          already, so {duplexes.length === 1 ? 'it has' : 'they have'} no primers to design.
+        </p>
       )}
 
       {overhangsFromParts.length > 0 && (
