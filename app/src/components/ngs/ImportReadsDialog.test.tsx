@@ -2,9 +2,10 @@ import { describe, it, expect, vi } from 'vitest'
 import { render, screen, waitFor, fireEvent } from '@testing-library/react'
 
 vi.mock('../../ngs/peek', () => ({
-  // Every file is guessed as nanopore, so a guess landing on the wrong row would show.
+  PEEK_BYTES: 512 * 1024,
+  // Every file is guessed as nanopore, so a guess landing on the wrong row would show; a file named empty has no reads.
   peekReads: vi.fn(async (f: File) => ({
-    reads: [{ header: `${f.name} runid=1 ch=1`, seq: 'ACGT', qual: 'IIII' }],
+    reads: f.name.startsWith('empty') ? [] : [{ header: `${f.name} runid=1 ch=1`, seq: 'ACGT', qual: 'IIII' }],
     gz: false,
   })),
 }))
@@ -25,6 +26,21 @@ describe('ImportReadsDialog', () => {
     expect(onClose).toHaveBeenCalledTimes(1)
     fireEvent.click(screen.getByRole('button', { name: 'Leave out b' }))
     expect(onClose).toHaveBeenCalledTimes(2)
+  })
+
+  it('takes focus when it opens, so Escape closes it from wherever the user was', () => {
+    const onClose = vi.fn()
+    render(<ImportReadsDialog files={[file('a.fastq.gz')]} onClose={onClose} />)
+    const dialog = screen.getByRole('dialog')
+    expect(dialog.contains(document.activeElement)).toBe(true)
+    fireEvent.keyDown(document.activeElement!, { key: 'Escape' })
+    expect(onClose).toHaveBeenCalledTimes(1)
+  })
+
+  it('refuses a small file with no reads in it instead of making an empty read set', async () => {
+    render(<ImportReadsDialog files={[new File([], 'empty.fastq.gz'), file('a.fastq.gz')]} onClose={() => {}} />)
+    await waitFor(() => expect(screen.getByText(/No reads found in empty\.fastq\.gz/)).toBeTruthy())
+    expect(screen.getByRole('button', { name: 'Import 1 sample' })).toBeTruthy()
   })
 
   it('adds files dropped while it is open as more samples, where they used to be lost', async () => {

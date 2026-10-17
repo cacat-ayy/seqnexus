@@ -15,7 +15,10 @@ export interface Peek {
 }
 
 /** The whole records within the first `bytes` of the file (inflated first if gzipped). */
-export async function peekReads(file: Blob, bytes = 512 * 1024): Promise<Peek> {
+/** Bytes peekReads looks at: a file no larger than this is read whole, so a peek with no reads means the file has none. */
+export const PEEK_BYTES = 512 * 1024
+
+export async function peekReads(file: Blob, bytes = PEEK_BYTES): Promise<Peek> {
   const head = new Uint8Array(await file.slice(0, bytes).arrayBuffer())
   const gz = head[0] === 0x1f && head[1] === 0x8b
   let text = ''

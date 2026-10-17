@@ -123,6 +123,8 @@ describe('NGS variant calling', () => {
     const calls = decodeCalls((await storage.get(mappingStorageIds('c').calls, 0))!)
     const v = siteVariants(calls, REF, [], 'illumina')
     expect(v).toHaveLength(1)
+    expect(calls.find(c => c.pos === 1)?.wrapped).toBe(4)
+    expect(v[0].acrossOrigin).toBe(4)
     expect(v[0]).toMatchObject({ position: 2, ref: 'C', alt: 'T', count: 4 })
   })
 })

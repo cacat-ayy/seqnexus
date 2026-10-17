@@ -287,6 +287,7 @@ function VariantTable(p: Props) {
                       {v.strandBiasP < STRAND_BIAS_P && <span className="vt-flag" title={`Strand bias: p ${v.strandBiasP.toPrecision(2)}`}>strand</span>}
                       {v.homopolymer && <span className="vt-flag" title={`In a run of ${v.homopolymer} of the same base`}>HP{v.homopolymer}</span>}
                       {v.repeat && <span className="vt-flag" title={`In the tandem repeat ${v.repeat}`}>{v.repeat}</span>}
+                      {v.acrossOrigin && <span className="vt-flag" title={`${nf.format(v.acrossOrigin)} of the reads here were taken across the origin of the circular reference`}>origin</span>}
                     </span>
                     {showFiltered && <span className="vt-failed">{failed.map(f => FILTERS[f].vcf).join(', ')}</span>}
                   </div>
@@ -323,6 +324,7 @@ export function VariantCard({ v, x, y, failed }: { v: Variant; x: number; y: num
           {!v.coding && v.features.length > 0 && <tr><td>In</td><td>{v.features.join(', ')}</td></tr>}
           {v.homopolymer && <tr><td>Homopolymer</td><td>A run of {v.homopolymer} {(v.type === 'Insertion' ? v.alt : v.ref)[0]}: indels here are a common sequencing error</td></tr>}
           {v.repeat && <tr><td>Repeat</td><td>Inside {v.repeat}</td></tr>}
+          {v.acrossOrigin && <tr><td>Origin</td><td>{nf.format(v.acrossOrigin)} of the reads here run across the origin of the circular reference</td></tr>}
         </tbody>
       </table>
       {v.alleles && v.alleles.length > 0 && (

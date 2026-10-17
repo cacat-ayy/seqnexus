@@ -33,6 +33,7 @@ import type { MapReference } from '../../assembly/map'
 import { guessReferences } from '../../assembly/batch'
 import { startAssembly, type AssemblyHandle } from '../../workers/assembly'
 import { readQc, VERDICT_LABEL } from '../../sanger/qc'
+import { countMixedCalls } from '../../sanger/mixed'
 
 interface Props {
   readIds: string[]
@@ -243,6 +244,7 @@ export default function AssembleDialog({ readIds, onClose, referenceTabId, rerun
                   <th>Read</th>
                   {grouped && <th title="The clone the read's name puts it in">Clone</th>}
                   <th>QC</th><th className="num">Kept</th>
+                  <th title="Mixed-base calls (IUPAC codes from second peaks) that go into the contig, or second peaks not called">Mixed</th>
                 </tr>
               </thead>
               <tbody>
@@ -259,6 +261,13 @@ export default function AssembleDialog({ readIds, onClose, referenceTabId, rerun
                       )}
                       <td><span className={`read-qc-verdict ${v}`}>{VERDICT_LABEL[v]}</span></td>
                       <td className="num">{nf.format(Math.max(0, r.trimEnd - r.trimStart))}</td>
+                      <td>{(() => {
+                        const called = countMixedCalls(r.edits)
+                        const peaks = readQc(r.data).mixedPeaks
+                        if (called) return <span title="These go into the contig as IUPAC codes and show as variants at 50%">{nf.format(called)} {called === 1 ? 'call' : 'calls'}</span>
+                        if (peaks) return <span className="aw-muted" title="Strong second peaks in the high-quality region, not called: run Trim & call with mixed bases on to put them in">{nf.format(peaks)} not called</span>
+                        return <span className="aw-muted">none</span>
+                      })()}</td>
                     </tr>
                   )
                 })}

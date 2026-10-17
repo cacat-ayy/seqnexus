@@ -16,6 +16,7 @@ export interface SeqUndoSnapshot {
   edits: BaseEdit[]
   trimStart: number
   trimEnd: number
+  trimBy?: string
   /** What the change after this snapshot did ("Delete 3 bases"), for undo labels. */
   label?: string
 }
@@ -27,6 +28,8 @@ export interface SequencingRead {
   createdAt: number
   trimStart: number
   trimEnd: number
+  /** The rule that set the trim ("the Q20 score", "an error limit of 0.05", "hand"), shown beside it. */
+  trimBy?: string
   edits: BaseEdit[]
   undoStack: SeqUndoSnapshot[]
   redoStack: SeqUndoSnapshot[]

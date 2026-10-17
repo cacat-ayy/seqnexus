@@ -72,6 +72,17 @@ describe('variant calling', () => {
     expect(vs[0]).toMatchObject({ alt: 'G', count: 0.5, frequency: 0.5 })
   })
 
+  it('rounds the strand counts of mixed calls so they add up to the reads', () => {
+    // Two reads, one on each strand, both calling R at the A: one reference read and one variant read in all, not two of each.
+    const het = REF.slice(0, 6) + 'R' + REF.slice(7)
+    const vs = call([testRow('a', 0, het), testRow('b', 0, het, { reversed: true })])
+    const v = vs[0]
+    expect(v.coverage).toBe(2)
+    expect(v.forward.ref + v.reverse.ref + v.forward.alt + v.reverse.alt).toBe(2)
+    expect(v.forward.alt + v.reverse.alt).toBe(1)
+    expect(v.forward.ref + v.reverse.ref).toBe(1)
+  })
+
   it('calls against the consensus when there is no reference', () => {
     const doc = testContig([testRow('a', 0, 'ACGTACGT'), testRow('b', 0, 'ACGTACGT'), testRow('c', 0, 'ACCTACGT')])
     const vs = callVariants(doc, computeConsensus(doc).bases, [], all)

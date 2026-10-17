@@ -16,7 +16,8 @@ import { cleanOligo } from '../../primers/oligo'
 import {
   loadProcessSettings, planRead, processLabel, saveProcessSettings, type ProcessSettings,
 } from '../../sanger/process'
-import type { TrimSettings } from '../../sanger/trim'
+import { trimRuleLabel, type TrimSettings } from '../../sanger/trim'
+import DecimalInput from '../DecimalInput'
 
 interface Props {
   readIds: string[]
@@ -72,7 +73,7 @@ export default function TrimCallDialog({ readIds, onClose }: Props) {
     const store = useEditorStore.getState()
     const label = processLabel(effective)
     for (const { plan } of changing) {
-      store.changeSequencingRead(plan.readId, { trimStart: plan.trimStart, trimEnd: plan.trimEnd, edits: plan.edits }, label)
+      store.changeSequencingRead(plan.readId, { trimStart: plan.trimStart, trimEnd: plan.trimEnd, edits: plan.edits, ...(settings.trimEnabled ? { trimBy: trimRuleLabel(effective.trim) } : {}) }, label)
     }
     saveProcessSettings(settings)
     const calls = changing.reduce((a, p) => a + p.plan.mixedCalls, 0)
@@ -143,7 +144,7 @@ export default function TrimCallDialog({ readIds, onClose }: Props) {
                 {t.method === 'error' && (
                   <label className="aw-field">
                     <span title="Each base scores the limit minus its error probability; the stretch with the highest total is kept. Higher keeps more.">Error probability limit</span>
-                    <input className="aw-text" type="number" min={0.001} max={0.5} step={0.01} value={t.errorLimit} onChange={e => setTrim({ errorLimit: clamp(Number(e.target.value), 0.001, 0.5) })} />
+                    <DecimalInput className="aw-text" min={0.001} max={0.5} value={t.errorLimit} onChange={v => setTrim({ errorLimit: v })} />
                   </label>
                 )}
                 {t.method === 'quality' && (

@@ -111,7 +111,7 @@ describe('Trim and call dialog', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Apply to 2 reads' }))
     for (const r of useEditorStore.getState().sequencingReads) {
       expect([r.trimStart, r.trimEnd]).toEqual([15, 515])
-      expect(r.undoStack.map(s => s.label)).toEqual(['Trim'])
+      expect(r.undoStack.map(s => s.label)).toEqual(['Trim and call mixed bases'])
     }
     expect(screen.queryByRole('dialog')).toBeNull()
   })

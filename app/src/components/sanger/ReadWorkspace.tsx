@@ -28,6 +28,7 @@ import { downloadBlob, saveText } from '../../utils/download'
 import { writeScf } from '../../io/scf'
 import { reverseComplement } from '../../models/complement'
 import { autoTrim } from '../../io/ab1'
+import { Q20_RULE } from '../../sanger/import'
 import { buildLayout, KIND_DELETE, KIND_INSERT, forwardRange, trimForColumns } from '../../sanger/layout'
 import { buildTraceModel, findProblems, forwardColumn, translateShown, type TraceModel } from '../../sanger/model'
 import {
@@ -169,7 +170,7 @@ export default function ReadWorkspace({ read, onClose, onExportPrompt, findReque
     const r = current()
     const L = buildLayout(r.data, r.edits)
     const [ts, te] = trimForColumns(L, d0, d1, reversed, r.data.bases.length)
-    change(read.id, { trimStart: ts, trimEnd: te }, label)
+    change(read.id, { trimStart: ts, trimEnd: te, trimBy: 'hand' }, label)
   }, [change, read.id, reversed]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const onTrim = useCallback((d0: number, d1: number, commit: boolean) => {
@@ -391,9 +392,9 @@ export default function ReadWorkspace({ read, onClose, onExportPrompt, findReque
     autoTrim: () => {
       const [s, e] = autoTrim(data.qualityScores)
       if (e <= s) { notify.info('No stretch of this read reaches Q20'); return }
-      change(read.id, { trimStart: s, trimEnd: e }, 'Trim by quality')
+      change(read.id, { trimStart: s, trimEnd: e, trimBy: Q20_RULE }, 'Trim by quality')
     },
-    clearTrim: () => change(read.id, { trimStart: 0, trimEnd: data.bases.length }, 'Keep the whole read'),
+    clearTrim: () => change(read.id, { trimStart: 0, trimEnd: data.bases.length, trimBy: 'nothing (the whole read is kept)' }, 'Keep the whole read'),
     revertSelection: () => { const t = target(); if (t) revertRange(t.d0, t.d1) },
     openTrim: () => setTrimOpen(true),
     clearMixed: () => {
@@ -668,6 +669,7 @@ export default function ReadWorkspace({ read, onClose, onExportPrompt, findReque
             tab={tab}
             onTab={setTab}
             actions={actions}
+            trimBy={read.trimBy}
           />
         )}
       </div>

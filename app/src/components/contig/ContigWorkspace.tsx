@@ -81,6 +81,13 @@ export default function ContigWorkspace({ contig, onClose, onExportPrompt, findR
 
   const [selection, setSelection] = useState<ContigSelection | null>(null)
   const [caret, setCaret] = useState<{ row: number; col: number } | null>(null)
+
+  // Open on the reads: a contig mapped to a plasmid starts at the reference's
+  // first base, hundreds of empty columns before its first read.
+  useEffect(() => {
+    const first = doc.rows.reduce((m, r) => Math.min(m, r.start), Infinity)
+    if (Number.isFinite(first) && first > 0) canvasRef.current?.scrollToColumn(Math.max(0, first - 2))
+  }, [contig.id]) // eslint-disable-line react-hooks/exhaustive-deps
   const [editing, setEditing] = useState(false)
   const [inspectorOpen, setInspectorOpen] = useState(true)
   const [tab, setTab] = useState<'contig' | 'column' | 'variants'>('contig')

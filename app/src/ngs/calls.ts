@@ -46,6 +46,8 @@ export interface SiteCall {
   errSum: number
   /** Alleles: "A".."T", "N", "-SEQ" (a deletion of SEQ starting here), "+SEQ" (inserted after this base). */
   alleles: { a: string; f: number; r: number; q: number }[]
+  /** Reads counted here that reached the site across the origin of a circular reference. */
+  wrapped: number
 }
 
 /** Per-read chance of an indel at any one position, by technology. */
@@ -75,6 +77,7 @@ interface Acc {
   depth: number
   errSum: number
   alleles: Map<string, { f: number; r: number; q: number }>
+  wrapped: number
 }
 
 function bump(acc: Acc, a: string, rev: boolean, q: number) {
@@ -104,12 +107,15 @@ export function countAlignment(a: StoredAlignment, ref: string, sp: Int32Array, 
   const q = a.qual
   const qualAt = (i: number) => (q.length ? q.charCodeAt(i) - 33 : -1)
   const errOf = (qq: number) => (qq < 0 ? NO_QUALITY_ERROR : 10 ** (-qq / 10))
+  // A site index past the reference's end is the copy an alignment across the origin reaches.
+  const wrap = (k: number) => { if (sp[k] >= L) accs[k].wrapped++ }
   const base = (k: number, b: string, qq: number) => {
     if (qq >= 0 && qq < MIN_BASE_QUALITY) return
     const acc = accs[k]
     acc.depth++
     acc.errSum += errOf(qq)
     bump(acc, b, rev, Math.max(0, qq))
+    wrap(k)
   }
   let k = lo
   let p = a.start
@@ -146,12 +152,13 @@ export function countAlignment(a: StoredAlignment, ref: string, sp: Int32Array, 
           let lowQ = q.length ? 99 : -1
           for (let t = 0; t < seq.length && q.length; t++) lowQ = Math.min(lowQ, qualAt(qp + t))
           bump(accs[k - 1], '+' + seq, rev, Math.max(0, lowQ))
+          wrap(k - 1)
         }
         qp += seq.length
       } else {
         while (k < sp.length && sp[k] < p) k++
-        if (k < sp.length && sp[k] === p) bump(accs[k], '-' + seq, rev, 0)
-        while (k < sp.length && sp[k] < p + seq.length) { accs[k].depth++; k++ }
+        if (k < sp.length && sp[k] === p) { bump(accs[k], '-' + seq, rev, 0); wrap(k) }
+        while (k < sp.length && sp[k] < p + seq.length) { accs[k].depth++; wrap(k); k++ }
         p += seq.length
       }
       i = j
@@ -170,6 +177,7 @@ export function finishSites(sp: Int32Array, accs: readonly Acc[], L: number): Si
     if (!into) { byPos.set(pos, acc); continue }
     into.depth += acc.depth
     into.errSum += acc.errSum
+    into.wrapped += acc.wrapped
     for (const [a, x] of acc.alleles) {
       const y = into.alleles.get(a)
       if (y) { y.f += x.f; y.r += x.r; y.q += x.q } else into.alleles.set(a, { ...x })
@@ -183,11 +191,12 @@ export function finishSites(sp: Int32Array, accs: readonly Acc[], L: number): Si
       depth: acc.depth,
       errSum: acc.errSum,
       alleles: [...acc.alleles.entries()].map(([a, x]) => ({ a, ...x })).sort((x, y) => y.f + y.r - (x.f + x.r)),
+      wrapped: acc.wrapped,
     }))
 }
 
 export function newAccs(n: number): Acc[] {
-  return Array.from({ length: n }, () => ({ depth: 0, errSum: 0, alleles: new Map() }))
+  return Array.from({ length: n }, () => ({ depth: 0, errSum: 0, alleles: new Map(), wrapped: 0 }))
 }
 
 /** Site positions to look for, extended past the end of a circular reference by the longest overhang. */
@@ -197,13 +206,13 @@ export function sitePositions(sites: readonly number[], L: number, circular: boo
 }
 
 export function encodeCalls(calls: readonly SiteCall[]): Uint8Array {
-  const compact = calls.map(c => [c.pos, c.depth, Number(c.errSum.toPrecision(5)), c.alleles.map(a => [a.a, a.f, a.r, a.q])])
+  const compact = calls.map(c => [c.pos, c.depth, Number(c.errSum.toPrecision(5)), c.alleles.map(a => [a.a, a.f, a.r, a.q]), c.wrapped])
   return deflateSync(new TextEncoder().encode(JSON.stringify(compact)), { level: 4 })
 }
 
 export function decodeCalls(data: Uint8Array): SiteCall[] {
-  const raw = JSON.parse(new TextDecoder().decode(inflateSync(data))) as [number, number, number, [string, number, number, number][]][]
-  return raw.map(([pos, depth, errSum, al]) => ({ pos, depth, errSum, alleles: al.map(([a, f, r, q]) => ({ a, f, r, q })) }))
+  const raw = JSON.parse(new TextDecoder().decode(inflateSync(data))) as [number, number, number, [string, number, number, number][], number][]
+  return raw.map(([pos, depth, errSum, al, wrapped]) => ({ pos, depth, errSum, alleles: al.map(([a, f, r, q]) => ({ a, f, r, q })), wrapped }))
 }
 
 /**
@@ -296,6 +305,7 @@ export function siteVariants(calls: readonly SiteCall[], refSeq: string, feature
         ...ev,
         coverage: site.depth,
         count: n,
+        ...(site.wrapped ? { acrossOrigin: site.wrapped } : {}),
         forward: { ref: refA?.f ?? 0, alt: x.f },
         reverse: { ref: refA?.r ?? 0, alt: x.r },
         meanQuality,

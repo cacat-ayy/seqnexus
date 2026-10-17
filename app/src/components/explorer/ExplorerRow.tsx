@@ -178,6 +178,8 @@ function ExplorerRow({
           className={`ex-abtn ${starred ? 'starred' : 'on-hover'}`}
           title={starred ? 'Remove from favorites' : 'Add to favorites'}
           aria-pressed={starred}
+          // Hidden until the row is hovered: not a tab stop, or the keyboard lands on nothing visible twice per row.
+          tabIndex={starred ? 0 : -1}
           onClick={e => { e.stopPropagation(); onToggleStar(item.uid) }}
         >
           <Star size={12} fill={starred ? 'currentColor' : 'none'} />
@@ -185,6 +187,7 @@ function ExplorerRow({
         <button
           className="ex-abtn on-hover"
           title="More actions"
+          tabIndex={-1}
           onClick={e => { e.stopPropagation(); onOpenMenu(e, item) }}
         >
           <MoreHorizontal size={13} />

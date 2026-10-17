@@ -15,7 +15,7 @@ import type { Place } from '../../import/folders'
 import { notify } from '../../toast'
 import { useFocusTrap } from '../../hooks/useFocusTrap'
 import { pairFiles, detectTechnology, looksInterleaved } from '../../ngs/detect'
-import { peekReads } from '../../ngs/peek'
+import { PEEK_BYTES as PEEK_WHOLE, peekReads } from '../../ngs/peek'
 import { formatBytes } from '../../utils/format'
 import { TECHNOLOGY_LABEL, type Technology } from '../../ngs/types'
 import type { ReadLayout } from '../../ngs/importer'
@@ -104,6 +104,8 @@ export default function ImportReadsDialog({ files, placeOf, onClose }: Props) {
         setSamples(list => list.map(s => {
           if (s.id !== sample.id) return s
           if (p.error) return { ...s, status: 'error', message: p.error }
+          // A small file with no record in it (an empty gzip, say) would import as a read set of nothing.
+          if (p.reads.length === 0 && sample.files[0].size <= PEEK_WHOLE) return { ...s, status: 'error', message: `No reads found in ${sample.files[0].name}` }
           const guess = detectTechnology(p.reads)
           const interleaved = s.files.length === 1 && looksInterleaved(p.reads)
           return { ...s, technology: guess.technology, certain: guess.certain, layout: interleaved ? 'interleaved' : s.layout }
@@ -138,6 +140,7 @@ export default function ImportReadsDialog({ files, placeOf, onClose }: Props) {
       handle.current = h
       try {
         const res = await h.promise
+        if (res.stats.reads === 0) throw new Error(`No reads found in ${s.files.map(f => f.name).join(' and ')}`)
         const now = Date.now()
         const record: ReadSet = {
           id, name: s.name.trim() || s.files[0].name, createdAt: now, modifiedAt: now,

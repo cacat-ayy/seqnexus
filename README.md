@@ -4465,6 +4465,10 @@ clone shows the detail.
 
 ### Trimmed ends in a contig
 
+A contig opens on its first read rather than on the reference's first base:
+two reads of a plasmid mapped from 255 on would otherwise open on a screen
+of empty columns, as the reference starts hundreds of columns before them.
+
 A read goes into an assembly as trimmed, and the contig keeps its own copy
 of the bases inside the trim. The rest of the read is still in its trace,
 so the contig shows it: each row's trimmed-off bases are drawn faded beyond
@@ -4501,6 +4505,25 @@ contig changes: the read's own trim stays as it is, as with every edit in a
 contig, so running the assembly again starts from the reads' own trims.
 
 ### Trimming reads
+
+A freshly imported trace is trimmed at once by the Q20 cumulative score
+(each base scores its quality minus 20 and the stretch with the highest
+total is kept, which is Mott's algorithm on scores rather than error
+probabilities), the "Trim by quality" button's rule; on the real 3730 and
+3130 traces in Biopython's test suite and on synthetic ones this gives the
+same stretch as the Q20 computation done independently in Python, and the
+exported FASTQ carries the instrument's PBAS calls and PCON qualities
+unchanged. The read page names the rule that set the trim ("trimmed by the
+Q20 score", "by an error limit of 0.05", "by hand"), since the dialog's
+default rule keeps a few more bases than the import's and the number would
+otherwise change on Apply without a word. Mixed-base calling (second peaks
+to IUPAC codes, see Trimming reads) is on by default in the dialog: with it
+off, a 50/50 heterozygous position that the instrument called as one base
+in both reads is invisible to the assembly and the verification, and the
+Assemble dialog shows per read how many mixed calls will go in, or how many
+strong second peaks were left uncalled. The Trim & call dialog then re-trims a read by one of the rules
+below (its default, the error-probability rule, keeps a few more bases at
+each end than the Q20 rule).
 
 A read's ends are trimmed before it is assembled: by error probability
 (Mott's algorithm with a limit of 0.05, as Geneious and phred do), by a
@@ -4834,11 +4857,24 @@ The result is an assembly holding the mapping.
   references written out each run; indexing a few megabases takes a moment
   against the mapping itself. Mates are written to two files in the same
   order, which is how minimap2 pairs them.
-- **Circular references:** the start of the sequence is appended (as long as
-  the longest read needs, at least 1 kb, at most the sequence's own length),
-  so a read across the origin maps in one piece; positions past the end are
-  folded back. In the appended stretch the sequence is there twice, so
-  minimap2 gives reads there mapping quality 0.
+- **Circular references:** each batch is mapped twice. The first pass is
+  against the sequences as they are. The reads that may lie across an origin
+  (unmapped, split, stopped at an end of a circular reference with bases left
+  over, or a pair that is not proper on one) go to a second pass against the
+  references with their start appended (as long as the longest read needs,
+  at least 1 kb, at most the sequence's own length), so a read across the
+  origin maps in one piece; positions past the end are folded back. The
+  second pass takes the result only where it placed the read better (mapped,
+  proper, in one piece, not stopped at an end). In the appended stretch the
+  sequence is there twice, so minimap2 gives a read mapped inside it mapping
+  quality 0; mapping every read against the extended references, as was
+  done at first, gave every read lying wholly in the first kilobase of a
+  plasmid mapping quality 0 (a third of pUC19's reads), and since variant
+  calling leaves out reads of mapping quality 0, a deletion and an insertion
+  planted there were not even candidate sites. With the two passes only
+  reads that need the origin see the appended stretch, and the mapping
+  qualities match those of a linear reference (`ngs/metamorphic.test.ts`
+  checks that rotating the reference shifts every variant and nothing else).
 - **Coverage** counts the aligned bases (CIGAR M, = and X) of every primary
   and supplementary alignment, whatever its mapping quality, so the origin of
   a circular reference is not left uncovered. Deletions are not counted, as
@@ -5122,7 +5158,12 @@ VCF can name the thresholds a variant failed.
   allele (a gap too; a two-base IUPAC call counts half for each base).
   Neighbouring gap columns carried by the same reads merge into one insertion
   or deletion. The P-value is the exact Poisson-binomial chance that the
-  carrying reads are all errors, from their base qualities.
+  carrying reads are all errors, from their base qualities. The whole-read
+  counts VCF needs (DP4, AD) are rounded so that they add up to the reads:
+  the variant reads first, the reference reads within what is left of the
+  coverage, each split by strand so the strands add up. Two reads calling Y
+  at a C are one reference read and one variant read (AD 1,1 at DP 2), not
+  two of each, which rounding each strand's half on its own used to give.
 - **NGS evidence:** calling starts from the candidate sites stored with the
   mapping (positions where at least 5% of reads, 10% for indels, differ). The
   pages over them are read once, in order, and every read is counted again in
@@ -5137,7 +5178,11 @@ VCF can name the thresholds a variant failed.
   low-frequency variants. This is what Geneious's mapper does with "Map
   multiple best matches: to none"; GATK goes further and leaves out reads
   below MAPQ 20. Such reads are still drawn and still count in the coverage,
-  so in a repeat the called depth can be lower than the coverage track.
+  so in a repeat the called depth can be lower than the coverage track. The
+  stretch a circular reference is extended by is not such a repeat: only
+  reads that need the origin are mapped against it (see Mapping to a
+  reference), so the reads over a plasmid's first kilobase keep their
+  mapping quality and are counted.
   Indels are counted where the aligner put them, without left-normalising
   them first. An indel inside a repeat could be written at any of several
   equivalent positions, and if reads disagreed its evidence would be split
@@ -5167,6 +5212,11 @@ VCF can name the thresholds a variant failed.
   the length of the reference's run of that base where it happens (a
   deletion of A in AAAAA gives 5). Nanopore reads miscount the bases of such
   runs, so their indels there are mostly errors.
+- **Across the origin:** on a circular reference a variant counted from
+  reads that reached it across the origin is flagged "origin" in the table,
+  with the number of such reads on its card, so a call near a plasmid's
+  first or last base can be seen to rest on reads mapped in one piece
+  across the join rather than on clipped ends.
 - **Thresholds** (presets, then editable): depth, share of reads carrying
   the variant, number of reads carrying it, quality, leaving out strand-biased
   calls (Fisher p below 1e-5), leaving out indels in homopolymers of a given
@@ -5833,6 +5883,14 @@ browser (`src/ngs/scale.bench.test.ts`, run with `SEQNEXUS_BENCH=1`):
 | Find soft-clip junctions (every page) | 2 s | |
 | Export BAM with index | 17 s | 42 MB file |
 | Open the view; load 300 kb (100,000 reads) around a 100 kb view, its pileup and rows | under half a second | |
+
+In the browser itself (Chrome, the app served over http so the jobs run in
+a worker), 100,000 pairs of 150 bases from lambda phage (200,000 reads,
+30 Mb) imported with their quality report in about 5 s, mapped to the
+48.5 kb genome (618x) in about 38 s, had their variants called in under a
+second, and exported as a 9 MB BAM with its index in about 7 s; the page's
+own heap stayed under 160 MB throughout (the worker's heap is not readable
+from the page).
 
 IndexedDB holds this comfortably (about 110 MB for reads and mapping), so
 the Origin Private File System, kept in reserve for larger data, was not

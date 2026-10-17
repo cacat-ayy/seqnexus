@@ -24,7 +24,7 @@ import { parseSnapGene } from '../io/snapgene'
 import { describeSkipped, readGeneious, type GeneiousImport, type GeneiousSkipped } from '../io/geneious'
 import { resolveEnzymeNames } from '../enzymes/sets'
 import { toUid } from '../explorer/types'
-import { importTraceFiles, initialTrim, isTraceFile } from '../sanger/import'
+import { importTraceFiles, initialTrim, initialTrimRule, isTraceFile } from '../sanger/import'
 import { parseFastq, meanQuality } from '../io/fastq'
 import { countRecords, isNgsByName, NGS_FEW_RECORDS, peekReads } from '../ngs/peek'
 import { structureFromFile } from '../structure/sources'
@@ -436,7 +436,7 @@ export function useFileImport(h: FileImportHandlers) {
       const readIds = result.traces.length > 0
         ? store().addSequencingReads(result.traces.map(t => {
           const [trimStart, trimEnd] = t.trim ?? initialTrim(t.data)
-          return { data: t.data, trimStart, trimEnd }
+          return { data: t.data, trimStart, trimEnd, trimBy: t.trim ? 'the trim saved in the Geneious file' : initialTrimRule(t.data) }
         }))
         : []
       if (readIds.length > 0 && tabIds.length > 0) store().setActiveTab(tabIds[tabIds.length - 1])

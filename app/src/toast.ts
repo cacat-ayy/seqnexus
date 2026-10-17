@@ -106,7 +106,9 @@ export const useToastStore = create<ToastStore>((set) => ({
         }
       }
 
-      const toasts = [...state.toasts, toast]
+      // A success means the user has moved on: the errors before it have been seen, and stayed only because errors never time out.
+      const kept = toast.severity === 'success' ? state.toasts.filter(t => !(t.severity === 'error' && t.duration === 0)) : state.toasts
+      const toasts = [...kept, toast]
       while (toasts.length > MAX_VISIBLE) {
         // Evict the oldest one the user could have dismissed anyway, never a
         // sticky error and never the toast being added. Dropping the new one

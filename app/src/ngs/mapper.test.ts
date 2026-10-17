@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { File as NodeFile } from 'node:buffer'
-import { mapReads, minimap2Args, referenceFasta, parseSamLine, type ToolRunner } from './mapper'
+import { mapReads, minimap2Args, needsOriginPass, referenceFasta, parseSamLine, type ToolRunner } from './mapper'
 import { encodeChunk } from './codec'
 import { runTool } from '../msa/engines/emscripten'
 import { exportMapping, readMappingIndex } from './sam'
@@ -248,6 +248,27 @@ describe('mapReads with minimap2', () => {
       expect(body(await blobText(again.file))).toEqual(body(text))
     }
   }, 60_000)
+
+  it('sends only the reads that may lie across an origin to the second pass', () => {
+    const refs = [{ length: 5000, circular: true }, { length: 3000, circular: false }]
+    const rec = (line: string) => [sam(line, ['ref0', 'ref1'])]
+    // A proper pair inside the circular reference: placed once, left alone.
+    expect(needsOriginPass([rec('a\t99\tref0\t101\t60\t100M\t=\t301\t300\t*\t*'), rec('a\t147\tref0\t301\t60\t100M\t=\t101\t-300\t*\t*')], refs)).toBe(false)
+    // Unmapped, split, clipped at the start or the end of a circular reference, or a pair not proper there: mapped again.
+    expect(needsOriginPass([rec('b\t4\t*\t0\t0\t*\t*\t0\t0\t*\t*')], refs)).toBe(true)
+    expect(needsOriginPass([[...rec('c\t0\tref0\t4951\t60\t50M50S\t*\t0\t0\t*\t*'), ...rec('c\t2048\tref0\t1\t60\t50H50M\t*\t0\t0\t*\t*')]], refs)).toBe(true)
+    expect(needsOriginPass([rec('d\t0\tref0\t1\t60\t30S70M\t*\t0\t0\t*\t*')], refs)).toBe(true)
+    expect(needsOriginPass([rec('e\t16\tref0\t4951\t60\t50M50S\t*\t0\t0\t*\t*')], refs)).toBe(true)
+    // Clipped bases that do not fit before the start (minimap2 began the alignment a few bases in) or after the end.
+    expect(needsOriginPass([rec('d2\t0\tref0\t6\t60\t35S115M\t*\t0\t0\t*\t*')], refs)).toBe(true)
+    expect(needsOriginPass([rec('e2\t16\tref0\t4941\t60\t50M20S\t*\t0\t0\t*\t*')], refs)).toBe(true)
+    // Clipped bases that do fit: an adapter or a low-quality end, not the origin.
+    expect(needsOriginPass([rec('d3\t0\tref0\t6\t60\t3S115M\t*\t0\t0\t*\t*')], refs)).toBe(false)
+    expect(needsOriginPass([rec('e3\t16\tref0\t4901\t60\t50M20S\t*\t0\t0\t*\t*')], refs)).toBe(false)
+    expect(needsOriginPass([rec('f\t97\tref0\t4801\t60\t100M\t=\t101\t4700\t*\t*'), rec('f\t145\tref0\t101\t60\t100M\t=\t4801\t-4700\t*\t*')], refs)).toBe(true)
+    // The same clipping on a linear reference is just a read running off its end.
+    expect(needsOriginPass([rec('g\t0\tref1\t2951\t60\t50M50S\t*\t0\t0\t*\t*')], refs)).toBe(false)
+  })
 
   it('builds minimap2 arguments and extends circular references', () => {
     expect(minimap2Args('sr', true)).toEqual(['-a', '-x', 'sr', '--secondary=no', '-t', '1', '-o', 'out.sam', 'ref.fa', 'r1.fq', 'r2.fq'])

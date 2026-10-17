@@ -1181,7 +1181,7 @@ interface EditorStore {
    * Add several reads in one update, already trimmed, optionally filed into
    * a new folder. The first read is opened. Returns the new read ids.
    */
-  addSequencingReads: (reads: { data: Ab1Data; trimStart: number; trimEnd: number }[], folderName?: string) => string[]
+  addSequencingReads: (reads: { data: Ab1Data; trimStart: number; trimEnd: number; trimBy?: string }[], folderName?: string) => string[]
   removeSequencingRead: (id: string) => void
   setActiveSequencingRead: (id: string | null) => void
   /** Show several reads at once, stacked; a single id opens that read on its own. */
@@ -1194,7 +1194,7 @@ interface EditorStore {
   undoSequencing: (id: string) => void
   redoSequencing: (id: string) => void
   /** Change a read's edits and/or trim as one named undo step. */
-  changeSequencingRead: (id: string, patch: { edits?: BaseEdit[]; trimStart?: number; trimEnd?: number }, label: string) => void
+  changeSequencingRead: (id: string, patch: { edits?: BaseEdit[]; trimStart?: number; trimEnd?: number; trimBy?: string }, label: string) => void
   setSequencingReversed: (id: string, reversed: boolean) => void
 
   // Primer library: oligos kept across sequences, listed in the explorer
@@ -3845,6 +3845,7 @@ export const useEditorStore = create<EditorStore>((set, get) => {
         createdAt: now,
         trimStart: item.trimStart,
         trimEnd: item.trimEnd,
+        ...(item.trimBy ? { trimBy: item.trimBy } : {}),
         edits: [],
         undoStack: [],
         redoStack: [],
@@ -3939,9 +3940,10 @@ export const useEditorStore = create<EditorStore>((set, get) => {
             edits: patch.edits ?? r.edits,
             trimStart: patch.trimStart ?? r.trimStart,
             trimEnd: patch.trimEnd ?? r.trimEnd,
+            trimBy: patch.trimBy ?? r.trimBy,
           }
           if (next.edits === r.edits && next.trimStart === r.trimStart && next.trimEnd === r.trimEnd) return r
-          const snap: SeqUndoSnapshot = { edits: r.edits, trimStart: r.trimStart, trimEnd: r.trimEnd, label }
+          const snap: SeqUndoSnapshot = { edits: r.edits, trimStart: r.trimStart, trimEnd: r.trimEnd, trimBy: r.trimBy, label }
           return { ...r, ...next, undoStack: [...r.undoStack, snap].slice(-100), redoStack: [] }
         }),
       }))
@@ -3957,8 +3959,8 @@ export const useEditorStore = create<EditorStore>((set, get) => {
       set(s => ({
         sequencingReads: s.sequencingReads.map(r => {
           if (r.id !== id) return r
-          const snap: SeqUndoSnapshot = { edits: r.edits, trimStart: r.trimStart, trimEnd: r.trimEnd, label: 'Trim' }
-          return { ...r, trimStart: start, trimEnd: end, undoStack: [...r.undoStack, snap].slice(-50), redoStack: [] }
+          const snap: SeqUndoSnapshot = { edits: r.edits, trimStart: r.trimStart, trimEnd: r.trimEnd, trimBy: r.trimBy, label: 'Trim' }
+          return { ...r, trimStart: start, trimEnd: end, trimBy: 'hand', undoStack: [...r.undoStack, snap].slice(-50), redoStack: [] }
         }),
       }))
     },
@@ -4000,12 +4002,13 @@ export const useEditorStore = create<EditorStore>((set, get) => {
         sequencingReads: s.sequencingReads.map(r => {
           if (r.id !== id || r.undoStack.length === 0) return r
           const prev = r.undoStack[r.undoStack.length - 1]
-          const redoSnap: SeqUndoSnapshot = { edits: r.edits, trimStart: r.trimStart, trimEnd: r.trimEnd, label: prev.label }
+          const redoSnap: SeqUndoSnapshot = { edits: r.edits, trimStart: r.trimStart, trimEnd: r.trimEnd, trimBy: r.trimBy, label: prev.label }
           return {
             ...r,
             edits: prev.edits,
             trimStart: prev.trimStart,
             trimEnd: prev.trimEnd,
+            trimBy: prev.trimBy,
             undoStack: r.undoStack.slice(0, -1),
             redoStack: [...r.redoStack, redoSnap],
           }
@@ -4018,12 +4021,13 @@ export const useEditorStore = create<EditorStore>((set, get) => {
         sequencingReads: s.sequencingReads.map(r => {
           if (r.id !== id || r.redoStack.length === 0) return r
           const next = r.redoStack[r.redoStack.length - 1]
-          const undoSnap: SeqUndoSnapshot = { edits: r.edits, trimStart: r.trimStart, trimEnd: r.trimEnd, label: next.label }
+          const undoSnap: SeqUndoSnapshot = { edits: r.edits, trimStart: r.trimStart, trimEnd: r.trimEnd, trimBy: r.trimBy, label: next.label }
           return {
             ...r,
             edits: next.edits,
             trimStart: next.trimStart,
             trimEnd: next.trimEnd,
+            trimBy: next.trimBy,
             redoStack: r.redoStack.slice(0, -1),
             undoStack: [...r.undoStack, undoSnap],
           }

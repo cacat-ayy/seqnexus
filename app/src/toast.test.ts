@@ -23,6 +23,13 @@ describe('toast store', () => {
     expect(toasts()[0].duration).toBe(3000)
   })
 
+  it('dismisses the sticky errors once something succeeds', () => {
+    notify.error('could not read x')
+    notify.warning('check y')
+    notify.success('imported z')
+    expect(toasts().map(t => t.message)).toEqual(['check y', 'imported z'])
+  })
+
   it('honours an explicit duration override', () => {
     notify.success('copied', { duration: 2000 })
     expect(toasts()[0].duration).toBe(2000)
@@ -60,9 +67,9 @@ describe('toast store', () => {
     expect(toasts().map(t => t.message)).toEqual(['s2', 's3', 's4'])
   })
 
-  it('never evicts a sticky error to make room for a confirmation', () => {
+  it('never evicts a sticky error to make room for a warning or a note', () => {
     notify.error('save failed')
-    for (let i = 1; i <= MAX_VISIBLE; i++) notify.success(`s${i}`)
+    for (let i = 1; i <= MAX_VISIBLE; i++) notify.warning(`s${i}`)
 
     const messages = toasts().map(t => t.message)
     expect(messages).toContain('save failed')

@@ -64,6 +64,18 @@ export const DEFAULT_TRIM: TrimSettings = {
   maxAmbiguities: 2,
 }
 
+/** The rule a setting applies, for the read page ("an error limit of 0.05, then a primer and the vector"). */
+export function trimRuleLabel(s: TrimSettings): string {
+  const parts: string[] = []
+  if (s.method === 'error') parts.push(`an error limit of ${s.errorLimit}`)
+  else if (s.method === 'quality') parts.push(`the Q${s.minQuality} score`)
+  if (s.cutStart > 0 || s.cutEnd > 0) parts.push('fixed cuts')
+  if (s.primers.length) parts.push(s.primers.length === 1 ? 'a primer' : 'primers')
+  if (s.vector) parts.push(`the ${s.vector.name} vector`)
+  if (parts.length === 0) return 'hand'
+  return parts.length === 1 ? parts[0] : `${parts.slice(0, -1).join(', ')} and ${parts[parts.length - 1]}`
+}
+
 export interface TrimPlan {
   start: number
   end: number

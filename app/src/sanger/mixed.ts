@@ -23,7 +23,7 @@ export interface MixedSettings {
   keepUserEdits: boolean
 }
 
-export const DEFAULT_MIXED: MixedSettings = { enabled: false, ratio: 0.33, keepUserEdits: true }
+export const DEFAULT_MIXED: MixedSettings = { enabled: true, ratio: 0.33, keepUserEdits: true }
 
 export interface MixedPlan {
   edits: BaseEdit[]

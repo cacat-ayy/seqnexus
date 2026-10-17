@@ -40,6 +40,13 @@ export function initialTrim(data: TraceData): [number, number] {
   return e > s ? [s, e] : [0, data.bases.length]
 }
 
+/** The rule initialTrim applied, for the read page. */
+export const Q20_RULE = 'the Q20 score'
+export const NO_TRIM_RULE = 'nothing (no quality values)'
+export function initialTrimRule(data: TraceData): string {
+  return data.metadata.qualityMissing ? NO_TRIM_RULE : Q20_RULE
+}
+
 const collator = new Intl.Collator(undefined, { numeric: true, sensitivity: 'base' })
 
 /**
@@ -95,7 +102,7 @@ export async function importTraceFiles(files: File[], opts: { folder?: () => str
   const ids = store.addSequencingReads(
     parsed.map(data => {
       const [trimStart, trimEnd] = initialTrim(data)
-      return { data, trimStart, trimEnd }
+      return { data, trimStart, trimEnd, trimBy: initialTrimRule(data) }
     }),
     target ? undefined : folder,
   )

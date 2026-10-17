@@ -39,11 +39,13 @@ interface Props {
   tab: 'read' | 'selection'
   onTab: (t: 'read' | 'selection') => void
   actions: ReadActions
+  /** The rule that set the trim, shown beside it. */
+  trimBy?: string
 }
 
 const nf = new Intl.NumberFormat('en-US')
 
-function ReadInspector({ model, view, selection, caret, tab, onTab, actions }: Props) {
+function ReadInspector({ model, view, selection, caret, tab, onTab, actions, trimBy }: Props) {
   return (
     <aside className="aw-inspector" aria-label="Read inspector">
       <div className="aw-tabs" role="tablist">
@@ -56,7 +58,7 @@ function ReadInspector({ model, view, selection, caret, tab, onTab, actions }: P
       </div>
       <div className="aw-inspector-body">
         {tab === 'read'
-          ? <ReadPanel model={model} actions={actions} />
+          ? <ReadPanel model={model} actions={actions} trimBy={trimBy} />
           : <SelectionPanel model={model} view={view} selection={selection} caret={caret} actions={actions} />}
       </div>
     </aside>
@@ -69,7 +71,7 @@ export default memo(ReadInspector)
 // Read
 // ---------------------------------------------------------------------------
 
-function ReadPanel({ model: m, actions }: { model: TraceModel; actions: ReadActions }) {
+function ReadPanel({ model: m, actions, trimBy }: { model: TraceModel; actions: ReadActions; trimBy?: string }) {
   let mixedCalls = 0
   for (let d = 0; d < m.n; d++) if (m.auto[d]) mixedCalls++
   const [t0, t1] = m.trim
@@ -86,8 +88,8 @@ function ReadPanel({ model: m, actions }: { model: TraceModel; actions: ReadActi
       <div className="aw-section-label">Trim</div>
       <p className="tw-note">
         {t1 > t0
-          ? <>Keeping <b>{nf.format(kept)}</b> of {nf.format(total)} bases ({nf.format(t0 + 1)}-{nf.format(t1)}).</>
-          : <>Everything is trimmed away.</>}
+          ? <>Keeping <b>{nf.format(kept)}</b> of {nf.format(total)} bases ({nf.format(t0 + 1)}-{nf.format(t1)}){trimBy ? `, trimmed by ${trimBy}` : ''}.</>
+          : <>Everything is trimmed away{trimBy ? ` by ${trimBy}` : ''}.</>}
         {' '}Drag the handles in the ruler to change it.
       </p>
       <div className="aw-actions">

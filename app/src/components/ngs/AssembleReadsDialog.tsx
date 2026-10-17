@@ -169,8 +169,8 @@ export default function AssembleReadsDialog({ readSet: rs, rerun, onClose }: Pro
             <div className="ngs-field-row">
               <label className="aw-field" title="Used to take about 40x of the longest reads. Left empty, up to 200 Mb of the longest reads are used.">
                 <span>Genome length, Mb <span className="field-optional">optional</span></span>
-                <input className="aw-text" type="number" min={0.01} max={50} step={0.1} value={genomeMb} placeholder="Unknown" disabled={running}
-                  onChange={e => setGenomeMb(e.target.value)} />
+                <input className="aw-text" type="text" inputMode="decimal" value={genomeMb} placeholder="Unknown" disabled={running}
+                  onChange={e => setGenomeMb(e.target.value.replace(',', '.'))} />
               </label>
               <label className="aw-field" title="Illumina reads of the same sample correct the errors a long-read consensus keeps, mostly homopolymer lengths. A position changes where more than half of the short reads there disagree with it.">
                 <span>Polish with short reads</span>

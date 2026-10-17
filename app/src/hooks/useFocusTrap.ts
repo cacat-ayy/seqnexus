@@ -80,6 +80,12 @@ export function useFocusTrap(
     // focus a specific input asynchronously (rAF/setTimeout), and those should
     // win. Focusing a button here could also land the user on a destructive
     // action by default.
+    // A plain <div> cannot take focus, so without a tabindex the call below
+    // did nothing: focus stayed on the page behind (on <body> after a file
+    // chooser or a menu), and a dialog whose Escape handler sits on its own
+    // element, like Import Sequencing Reads, could not be closed from the
+    // keyboard until the user clicked into it.
+    if (!container.hasAttribute('tabindex')) container.setAttribute('tabindex', '-1')
     if (!container.contains(document.activeElement)) {
       container.focus({ preventScroll: true })
     }

@@ -139,6 +139,8 @@ export interface Variant {
   againstConsensus: boolean
   /** Every allele seen at the site (NGS), for the evidence card. */
   alleles?: AlleleCount[]
+  /** NGS on a circular reference: reads counted here that reached the site across the origin. */
+  acrossOrigin?: number
 }
 
 /** One allele at a site: "A", "-CA" (those bases deleted), "+TT" (inserted after the base). */
@@ -168,6 +170,7 @@ export interface VariantEvidence {
   reverse: { ref: number; alt: number }
   meanQuality: number
   alleles?: AlleleCount[]
+  acrossOrigin?: number
 }
 
 export interface VariantContext {
@@ -290,13 +293,22 @@ export function evaluateVariants(
       while (c >= 0 && posOf[c] < 0) c--
       p = c >= 0 ? posOf[c] : -1
     }
+    // A mixed call counts half for each base. The whole-read counts VCF
+    // needs (DP4, AD) are rounded so that they add up: the variant reads
+    // first, the reference reads within what is left of the coverage, each
+    // split by strand so the strands add up to the total. Two reads calling
+    // Y are one reference read and one variant read, not two of each.
+    const altTotal = Math.min(coverage, Math.round(a.count))
+    const refTotal = Math.min(coverage - altTotal, Math.round(refA?.count ?? 0))
+    const altFwd = Math.min(altTotal, Math.round(a.fwd))
+    const refFwd = Math.min(refTotal, Math.round(refA?.fwd ?? 0))
     out.push(describeVariant({
       c0: first.col, c1: last.col + 1, type, pos: p,
       ref: type === 'Insertion' ? '' : g.map(x => x.ref).join(''),
       alt: type === 'Deletion' ? '' : g.map(x => x.alt).join(''),
       coverage, count, pValue,
-      forward: { ref: Math.round(refA?.fwd ?? 0), alt: Math.round(a.fwd) },
-      reverse: { ref: Math.round(refA?.rev ?? 0), alt: Math.round(a.rev) },
+      forward: { ref: refFwd, alt: altFwd },
+      reverse: { ref: refTotal - refFwd, alt: altTotal - altFwd },
       meanQuality: a.count ? a.qual / a.count : 0,
     }, ctx))
   }
@@ -344,6 +356,7 @@ export function describeVariant(ev: VariantEvidence, ctx: VariantContext): Varia
     homopolymer: type === 'SNP' ? null : homopolymerRun(refSeq, type, p, type === 'Insertion' ? alt : ref),
     againstConsensus: ctx.againstConsensus,
     ...(ev.alleles ? { alleles: ev.alleles } : {}),
+    ...(ev.acrossOrigin ? { acrossOrigin: ev.acrossOrigin } : {}),
   }
 }
 
