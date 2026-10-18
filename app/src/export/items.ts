@@ -58,6 +58,18 @@ export function combinable(format: ExportFormat): boolean {
   return format === 'gb' || format === 'embl' || format === 'fasta' || format === 'fastq'
 }
 
+/**
+ * Whether the format writes this item as itself, rather than falling back to
+ * another format. EMBL and SnapGene hold nucleotides, so a protein comes out
+ * as FASTA instead: one file of its own is honest, but inside a combined
+ * file it would be a FASTA record in the middle of an EMBL flat file.
+ */
+export function fitsFormat(item: ExportItem, format: ExportFormat): boolean {
+  if (item.kind !== 'sequence') return true
+  const protein = item.doc.sequence.alphabet === 'protein'
+  return !protein || (format !== 'embl' && format !== 'dna')
+}
+
 /** A name without the characters file systems refuse. */
 const fileSafe = (s: string) => s.replace(/[\\/:*?"<>|]+/g, '_').trim() || 'export'
 /** A name for formats and files where whitespace ends the name. */
@@ -75,7 +87,9 @@ export function itemBaseName(item: ExportItem): string {
 
 function sequenceFile(d: DocumentState, format: ExportFormat): ItemFile {
   const base = fileSafe(d.name)
-  const text = (data: string, ext: string, mime = 'text/plain'): ItemFile => ({ data, mime, base, ext })
+  // The charset belongs on every text export: the files are UTF-8, and the
+  // menu exports (downloadText) have always said so.
+  const text = (data: string, ext: string, mime = 'text/plain'): ItemFile => ({ data, mime: `${mime};charset=utf-8`, base, ext })
   const protein = d.sequence.alphabet === 'protein'
   // SnapGene's .dna holds DNA; a protein goes out as GenPept instead.
   if (format === 'dna' && !protein) return { data: writeSnapGene(d), mime: 'application/octet-stream', base, ext: '.dna' }
@@ -101,15 +115,15 @@ export function itemFile(item: ExportItem, format: ExportFormat): ItemFile {
       }
       const r = editedRead(item.read.data, item.read.edits, item.read.trimStart, item.read.trimEnd, { reversed: !!item.read.reversed })
       return format === 'fastq'
-        ? { data: toFastq(base, r), mime: 'text/plain', base, ext: '.fastq' }
-        : { data: toFasta(base, r.bases), mime: 'text/plain', base, ext: '.fasta' }
+        ? { data: toFastq(base, r), mime: 'text/plain;charset=utf-8', base, ext: '.fastq' }
+        : { data: toFasta(base, r.bases), mime: 'text/plain;charset=utf-8', base, ext: '.fasta' }
     }
     case 'alignment':
     case 'contig': {
       const id = ALN_FORMAT[format] ?? 'fasta'
       const doc = item.kind === 'alignment' ? item.doc : contigToAlignment(item.contig.doc, item.contig.name, item.contig.view.consensus)
       const title = item.kind === 'alignment' ? item.name : item.contig.name
-      return { data: writeAlignment(doc, id, { title }), mime: 'text/plain', base, ext: ALN_EXT[id] }
+      return { data: writeAlignment(doc, id, { title }), mime: 'text/plain;charset=utf-8', base, ext: ALN_EXT[id] }
     }
   }
 }
@@ -119,8 +133,15 @@ export function itemFile(item: ExportItem, format: ExportFormat): ItemFile {
  * GenBank or GFF3 file cannot place because they bind nowhere.
  */
 export function exportWarnings(items: readonly ExportItem[], format: ExportFormat): string[] {
-  if (format !== 'gb' && format !== 'embl' && format !== 'gff3' && format !== 'gff3-seq') return []
   const out: string[] = []
+  // A protein in a combined EMBL file would be a FASTA record inside a flat
+  // file, so it is left out; on its own it is written as FASTA.
+  const unfit = items.filter(i => !fitsFormat(i, format))
+  if (unfit.length > 0 && items.length > 1 && combinable(format)) {
+    const names = unfit.map(i => (i.kind === 'sequence' ? i.doc.name : '')).filter(Boolean)
+    out.push(`${names.length === 1 ? `The protein ${names[0]} is` : `${names.length} proteins (${names.join(', ')}) are`} left out of a combined EMBL file: EMBL holds nucleotides. Export ${names.length === 1 ? 'it' : 'them'} as separate files to keep ${names.length === 1 ? 'it' : 'them'}.`)
+  }
+  if (format !== 'gb' && format !== 'embl' && format !== 'gff3' && format !== 'gff3-seq') return out
   for (const item of items) {
     if (item.kind !== 'sequence') continue
     const names = unwrittenPrimers(item.doc)

@@ -9,7 +9,7 @@
 import type { DocumentState } from '../models/Document'
 import { Annotation, type AnnotationData, type Strand } from '../models/Annotation'
 import { Sequence } from '../models/Sequence'
-import { guessAlphabet } from '../models/alphabet'
+import { guessAlphabet, type Alphabet } from '../models/alphabet'
 import { readFasta, recordName, writeFastaRecord } from './fasta'
 import { resolveForward } from './location'
 import { idSource } from './ids'
@@ -17,6 +17,13 @@ import { primerFeatures, primersFromFeatures } from './genbank'
 import type { PrimerData } from '../primers/oligo'
 
 const gffIds = idSource('gff')
+
+/**
+ * The control characters GFF3 reserves, built rather than written as a
+ * literal so the pattern is readable and the linter is not asked to accept
+ * control characters in a regular expression.
+ */
+const CONTROL_CHARS = new RegExp(`[${Array.from({ length: 0x20 }, (_, i) => `\\u${i.toString(16).padStart(4, '0')}`).join('')}\\u007f]`, 'g')
 
 /** Characters that must be percent-encoded in GFF3 column 9 values. */
 function encodeGff3(s: string): string {
@@ -29,6 +36,30 @@ function encodeGff3(s: string): string {
     .replace(/\t/g, '%09')
     .replace(/\n/g, '%0A')
     .replace(/\r/g, '%0D')
+    // The specification also reserves the other control characters.
+    .replace(CONTROL_CHARS, c => `%${c.charCodeAt(0).toString(16).toUpperCase().padStart(2, '0')}`)
+}
+
+/**
+ * A seqid, which the specification restricts further than a value: anything
+ * outside `[a-zA-Z0-9.:^*$@!+_?|-]` is percent-encoded, non-ASCII included
+ * (encodeURIComponent gives the UTF-8 bytes the specification's RFC 3986
+ * percent-encoding asks for).
+ */
+function encodeSeqId(s: string): string {
+  return [...s].map(c => (/[a-zA-Z0-9.:^*$@!+_?|-]/.test(c) ? c : encodeURIComponent(c).replace(/[^%0-9A-F]/gi, x => `%${x.charCodeAt(0).toString(16).toUpperCase().padStart(2, '0')}`))).join('')
+}
+
+/**
+ * One attribute. Several values of one qualifier are one comma-separated
+ * list, as the specification has it: the same tag twice on a line is not
+ * allowed, and readers keep only one of them. A qualifier carried without a
+ * value (GenBank's /pseudo) becomes `tag=true`, there being no way to write
+ * a valueless attribute.
+ */
+function attribute(key: string, values: readonly string[]): string {
+  const list = values.map(v => (v === '' ? 'true' : encodeGff3(v))).join(',')
+  return `${encodeGff3(key)}=${list}`
 }
 
 /**
@@ -50,26 +81,46 @@ function cdsPhases(parts: readonly [number, number][], strand: number, codonStar
 
 /**
  * The document as GFF3. A whole-sequence region carries the topology
- * (Is_circular=true), so the file reopens onto the right kind of sequence.
+ * (Is_circular=true), which the specification puts on the landmark feature
+ * and nowhere else, so the file reopens onto the right kind of sequence.
+ *
  * A feature in several parts is one line per part sharing an ID, as the
  * specification has it; a part list that crosses the origin is marked
- * Is_circular=true so the reader keeps the parts in file order. A feature
- * crossing the origin in one piece runs to the end with circular_end
- * giving where it stops. A site between two bases (start = end) is written
- * on the base before it, the specification's way, with zero_length=true so
- * it is not read as a one-base feature. Primers go out as primer_bind
- * lines carrying their oligo, as in GenBank.
+ * circular_join=true so the reader keeps the parts in file order. A feature
+ * crossing the origin in one piece is written the way the specification's
+ * circular-genome example writes it, running past the end of the landmark
+ * (6006..7238 on a 6407 bp genome), with circular_end alongside for this
+ * reader. Both marks are lower case, which the specification leaves to
+ * applications: Is_circular on anything but the landmark is not valid, and
+ * GenomeTools 1.6.1 aborts on it.
+ *
+ * A site between two bases (start = end) is written on the base before it,
+ * the specification's way, with zero_length=true so it is not read as a
+ * one-base feature. Primers go out as primer_bind lines carrying their
+ * oligo, as in GenBank.
  */
 export function writeGff3(doc: DocumentState, opts: { withSequence?: boolean } = {}): string {
   const seqLen = doc.sequence.bases.length
   const circular = doc.sequence.topology === 'circular'
-  const seqId = encodeGff3(doc.name.trim().replace(/\s+/g, '_') || 'sequence')
-  const lines: string[] = ['##gff-version 3', `##sequence-region ${seqId} 1 ${seqLen}`]
+  const seqId = encodeSeqId(doc.name.trim().replace(/\s+/g, '_') || 'sequence')
+  // A ##sequence-region needs a region: an empty sequence has none, and
+  // "1 0" is a start past its end, which validators refuse.
+  const lines: string[] = ['##gff-version 3', ...(seqLen > 0 ? [`##sequence-region ${seqId} 1 ${seqLen}`] : [])]
   // seqid  source  type  start  end  score  strand  phase  attributes
   const row = (type: string, start: number, end: number, strand: string, phase: string, attrs: string[]) =>
     lines.push(`${seqId}\tSeqNexus\t${type}\t${start}\t${end}\t.\t${strand}\t${phase}\t${attrs.join(';')}`)
 
-  if (seqLen > 0) row('region', 1, seqLen, '.', '.', [`ID=${seqId}_region`, ...(circular ? ['Is_circular=true'] : [])])
+  // The landmark. Is_circular belongs here and nowhere else; molecule_type
+  // says which alphabet the ##FASTA section is written in, which the
+  // letters alone do not always settle (a degenerate oligo is all IUPAC
+  // ambiguity codes, every one of them also an amino-acid letter).
+  if (seqLen > 0) {
+    row('region', 1, seqLen, '.', '.', [
+      `ID=${seqId}_region`,
+      `molecule_type=${doc.sequence.alphabet === 'protein' ? 'protein' : 'DNA'}`,
+      ...(circular ? ['Is_circular=true'] : []),
+    ])
+  }
 
   for (const ann of [...doc.annotations, ...primerFeatures(doc)]) {
     const strand = ann.strand === 1 ? '+' : ann.strand === -1 ? '-' : '.'
@@ -78,7 +129,8 @@ export function writeGff3(doc: DocumentState, opts: { withSequence?: boolean } =
     if (ann.color) attrs.push(`color=${encodeGff3(ann.color)}`)
     // Name carries the current name; any further labels are kept as they are.
     for (const [key, values] of Object.entries(ann.qualifiers ?? {})) {
-      for (const val of key === 'label' ? values.slice(1) : values) attrs.push(`${encodeGff3(key)}=${encodeGff3(val)}`)
+      const rest = key === 'label' ? values.slice(1) : values
+      if (rest.length > 0) attrs.push(attribute(key, rest))
     }
 
     if (ann.start === ann.end) {
@@ -86,11 +138,13 @@ export function writeGff3(doc: DocumentState, opts: { withSequence?: boolean } =
       row(type, base, base, strand, '.', [...attrs, 'zero_length=true'])
       continue
     }
+    // One piece crossing the origin runs past the end of the landmark, as
+    // the specification's circular-genome example writes it.
     const parts: [number, number][] = ann.segments
       ? ann.segments.map(([s, e]) => [s, e])
-      : ann.start < ann.end ? [[ann.start, ann.end]] : [[ann.start, seqLen]]
+      : ann.start < ann.end ? [[ann.start, ann.end]] : [[ann.start, seqLen + ann.end]]
     const wrapped = ann.start > ann.end
-    const marks = wrapped ? (ann.segments ? ['Is_circular=true'] : ['Is_circular=true', `circular_end=${ann.end}`]) : []
+    const marks = wrapped ? (ann.segments ? ['circular_join=true'] : [`circular_end=${ann.end}`]) : []
     const codonStart = Number(ann.qualifiers?.codon_start?.[0]) || 1
     const phases = type === 'CDS'
       ? cdsPhases(ann.segments ? parts : [[ann.start, wrapped ? ann.end + seqLen : ann.end]], ann.strand, codonStart)
@@ -135,7 +189,7 @@ const SO_TO_KEY: Record<string, string> = {
 }
 
 /** Column 9 keys that are GFF3 structure, not qualifiers to keep. */
-const RESERVED_ATTRS = new Set(['ID', 'Name', 'Parent', 'color', 'Is_circular', 'circular_end', 'zero_length', 'Alias', 'Target', 'Gap', 'Derives_from'])
+const RESERVED_ATTRS = new Set(['ID', 'Name', 'Parent', 'color', 'Is_circular', 'circular_end', 'circular_join', 'molecule_type', 'zero_length', 'Alias', 'Target', 'Gap', 'Derives_from'])
 
 /** Qualifier names GFF3 spells differently from GenBank. */
 const ATTR_TO_QUALIFIER: Record<string, string> = {
@@ -155,6 +209,8 @@ export interface Gff3Read {
   lengths: Map<string, number>
   /** Seqids a whole-sequence region marks Is_circular=true. */
   circular: Set<string>
+  /** Alphabets a whole-sequence region declares (molecule_type), by seqid. */
+  alphabets: Map<string, Alphabet>
   /** Lines that could not be read, said in words. */
   warnings: string[]
 }
@@ -182,7 +238,7 @@ export function looksLikeGff3(text: string): boolean {
  */
 export function readGff3(text: string): Gff3Read {
   gffIds.reset()
-  const out: Gff3Read = { features: new Map(), primers: new Map(), sequences: new Map(), lengths: new Map(), circular: new Set(), warnings: [] }
+  const out: Gff3Read = { features: new Map(), primers: new Map(), sequences: new Map(), lengths: new Map(), circular: new Set(), alphabets: new Map(), warnings: [] }
   const lines = text.split(/\r?\n/)
   type Part = { type: string; start: number; end: number; strand: Strand; attrs: Map<string, string[]> }
   const groups = new Map<string, Map<string, Part[]>>()
@@ -239,10 +295,16 @@ export function readGff3(text: string): Gff3Read {
     const parts = groups.get(seqid)!.get(id)!
     const first = parts[0]
     const seqLen = out.sequences.get(seqid)?.bases.length ?? out.lengths.get(seqid) ?? 0
-    const circularMark = first.attrs.get('Is_circular')?.[0] === 'true'
+    // Parts of one feature that cross the origin are in file order, not in
+    // position order. Is_circular is what SeqNexus wrote before the mark
+    // moved to circular_join, and what a landmark feature carries.
+    const circularMark = first.attrs.get('circular_join')?.[0] === 'true' || first.attrs.get('Is_circular')?.[0] === 'true'
     // The whole-sequence region is the record itself.
     if (parts.length === 1 && (first.type === 'region' || first.type === 'source') && seqLen > 0 && first.start === 1 && first.end === seqLen) {
       if (circularMark) out.circular.add(seqid)
+      // molecule_type, where the landmark declares one, settles the alphabet.
+      const mol = first.attrs.get('molecule_type')?.[0]
+      if (mol) out.alphabets.set(seqid, /protein/i.test(mol) ? 'protein' : 'dna')
       continue
     }
     const wrapEnd = Number(first.attrs.get('circular_end')?.[0])
@@ -252,10 +314,17 @@ export function readGff3(text: string): Gff3Read {
     if (parts.length === 1 && first.attrs.get('zero_length')?.[0] === 'true') {
       // A site between two bases, written on the base before it.
       start = end = first.end === seqLen && out.circular.has(seqid) ? 0 : first.end
-    } else if (parts.length === 1 && circularMark && Number.isInteger(wrapEnd)) {
-      // Written by writeGff3 as [start, seqLen] with the true end alongside.
+    } else if (parts.length === 1 && Number.isInteger(wrapEnd)) {
+      // Written by writeGff3 running past the end of the landmark, with the
+      // true end alongside.
       start = first.start - 1
       end = wrapEnd
+    } else if (parts.length === 1 && seqLen > 0 && first.end > seqLen && first.start <= seqLen) {
+      // Another tool's way of writing a feature across the origin of a
+      // circular landmark: an end past the landmark's length (GFF3
+      // specification, "Circular Genomes").
+      start = first.start - 1
+      end = first.end - seqLen
     } else {
       // Parts marked as crossing the origin are in order along the top
       // strand from the feature's start; any others are sorted.
@@ -304,7 +373,7 @@ export function readGff3(text: string): Gff3Read {
 /** The sequences of a GFF3 file with a ##FASTA section, each with its features. */
 export function gff3Documents(read: Gff3Read): DocumentState[] {
   return [...read.sequences].map(([seqid, seq]) => {
-    const alphabet = guessAlphabet(seq.bases)
+    const alphabet = read.alphabets.get(seqid) ?? guessAlphabet(seq.bases)
     return {
       // A seqid written with underscores for a name with spaces comes back with them.
       ...recordName({ name: seqid, bases: seq.bases, ...(seq.description ? { description: seq.description } : {}) }),

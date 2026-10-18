@@ -77,8 +77,13 @@ export function parseEmbl(text: string, warnings?: string[]): DocumentState[] {
 /** Text after a two-letter line code, wrapped at 80 columns. */
 function tagged(tag: string, text: string): string[] {
   const out: string[] = []
+  const room = 80 - 5
   let line = ''
-  for (const word of text.split(/\s+/).filter(Boolean)) {
+  // A word longer than a line of its own is broken: every line of an EMBL
+  // record has to fit 80 columns, and a description is free text, so a
+  // break in an unbroken 200-character run costs nothing a reader minds.
+  const words = text.split(/\s+/).filter(Boolean).flatMap(w => (w.length <= room ? [w] : w.match(new RegExp(`.{1,${room}}`, 'g')) ?? [w]))
+  for (const word of words) {
     if (line && 5 + line.length + 1 + word.length > 80) { out.push(`${tag}   ${line}`); line = word }
     else line = line ? `${line} ${word}` : word
   }
@@ -104,6 +109,11 @@ export function writeEmbl(doc: DocumentState): string {
   const molType = doc.metadata?.source?.[0]?.mol_type?.[0] ?? 'other DNA'
   const out: string[] = [
     `ID   ${name}; SV 1; ${seq.topology === 'circular' ? 'circular' : 'linear'}; ${molType}; STD; SYN; ${bases.length} BP.`,
+    'XX',
+    // An AC line is required exactly once (ENA's flat-file checker, FF.5).
+    // A sequence of one's own has no accession, so the list is empty, which
+    // is what ENA's own submission template writes.
+    'AC   ;',
     'XX',
     ...tagged('DE', (doc.description || doc.name).replace(/[\r\n\t]+/g, ' ')),
     'XX',

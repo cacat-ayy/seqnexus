@@ -418,3 +418,12 @@ describe('SnapGene writer: what used to be lost on the way back', () => {
     expect(back.primers?.[0].notes).toBe('one\ntwo')
   })
 })
+
+describe('a record with no bases', () => {
+  it('writes and reads back as an empty sequence, not as a broken file', () => {
+    const doc = { name: 'Empty', sequence: new Sequence('', 'linear'), annotations: [] }
+    const back = parseSnapGene(writeSnapGene(doc))
+    expect(back.sequence.bases).toBe('')
+    expect(back.name).toBe('Empty')
+  })
+})

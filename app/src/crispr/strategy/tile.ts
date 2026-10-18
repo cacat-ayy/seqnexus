@@ -97,5 +97,5 @@ export function tilingCsv(plan: TilePlan, nucleaseName: string): string {
       nucleaseName,
     ]))
   })
-  return rows.join('\n')
+  return rows.join('\n') + '\n'
 }

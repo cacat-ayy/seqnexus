@@ -127,7 +127,7 @@ describe('what to order', () => {
     }
     const csv = orderCsv([annealedOligos(base)])
     expect(csv.split('\n')[0]).toBe('name,sequence,length,format')
-    expect(csv.split('\n')).toHaveLength(3)
+    expect(csv.trimEnd().split('\n')).toHaveLength(3)
   })
 
   it('ships vector presets that name their enzyme', () => {
@@ -320,7 +320,7 @@ describe('the guide library', () => {
     const record = recordFromCandidate(candidate, spCas9, 'g1', 'tab1', 'pDemo', 'id1')
     const csv = libraryCsv([{ ...record, notes: 'a note\nwith a line break' }])
     expect(csv.split('\n')[0]).toBe('name,spacer,pam,nuclease,from,at,notes')
-    expect(csv.split('\n')).toHaveLength(2)
+    expect(csv.trimEnd().split('\n')).toHaveLength(2)
     expect(csv.split('\n')[1]).toContain('pDemo')
     expect(csv.split('\n')[1]).not.toContain('\r')
   })

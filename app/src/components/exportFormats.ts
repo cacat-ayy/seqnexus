@@ -41,7 +41,7 @@ const k = (label: string, kept: boolean, detail?: string): Kept => ({ label, kep
 const SEQUENCE_FORMATS: FormatOption[] = [
   {
     id: 'gb', label: 'GenBank', ext: '.gb', description: 'Sequence with its features and primers; opens in every editor', icon: Database,
-    keeps: [k('Sequence', true), k('Features', true), k('Joined features', true), k('Primers', true, 'Where they bind; a primer that binds nowhere has no place'), k('Colours', true, "As ApE's colour qualifiers"), k('Topology', true), k('Description', true)],
+    keeps: [k('Sequence', true, 'The bases come back upper case: the flat file holds no case'), k('Features', true, 'A feature with no strand comes back on the forward strand: the feature table has no way to say "no strand"'), k('Joined features', true), k('Primers', true, 'Where they bind; a primer that binds nowhere has no place'), k('Colours', true, "As ApE's colour qualifiers"), k('Topology', true), k('Description', true, 'A name with spaces survives in full only when there is no description to put it in')],
   },
   {
     id: 'fasta', label: 'FASTA', ext: '.fasta', description: 'Sequence only, for BLAST, aligners and pipelines', icon: FileText,
@@ -49,11 +49,11 @@ const SEQUENCE_FORMATS: FormatOption[] = [
   },
   {
     id: 'dna', label: 'SnapGene', ext: '.dna', description: "SnapGene's own file, with features and primers", icon: Dna, separateOnly: true,
-    keeps: [k('Sequence', true), k('Features', true), k('Joined features', true), k('Primers', true), k('Colours', true), k('Topology', true), k('Description', true)],
+    keeps: [k('Sequence', true, 'The bases come back upper case'), k('Features', true, 'A feature with no strand comes back on the forward strand'), k('Joined features', true), k('Primers', true), k('Colours', true), k('Topology', true), k('Description', true)],
   },
   {
     id: 'embl', label: 'EMBL', ext: '.embl', description: "ENA's flat file, with the same features as GenBank", icon: Database,
-    keeps: [k('Sequence', true), k('Features', true), k('Joined features', true), k('Primers', true, 'Where they bind; a primer that binds nowhere has no place'), k('Colours', true, "As ApE's colour qualifiers"), k('Topology', true), k('Description', true)],
+    keeps: [k('Sequence', true, 'The bases come back upper case: the flat file holds no case'), k('Features', true, 'A feature with no strand comes back on the forward strand'), k('Joined features', true), k('Primers', true, 'Where they bind; a primer that binds nowhere has no place'), k('Colours', true, "As ApE's colour qualifiers"), k('Topology', true), k('Description', true, 'A name with spaces survives in full only when there is no description to put it in')],
   },
   {
     id: 'gff3', label: 'GFF3', ext: '.gff', description: 'Features without the sequence, for genome browsers', icon: List, annotationsOnly: true,
@@ -88,7 +88,7 @@ const READ_FORMATS: FormatOption[] = [
     keeps: [k('Bases', true), k('Edits', true), k('Trimming', true), k('Quality scores', false), k('Trace', false)],
   },
   {
-    id: 'scf', label: 'SCF trace', ext: '.scf', description: 'The chromatogram with the edited calls, for any trace viewer', icon: Activity, separateOnly: true,
+    id: 'scf', label: 'SCF trace', ext: '.scf', description: 'The chromatogram with the edited calls, for any trace viewer. Chrome saves it as .download: rename it to .scf', icon: Activity, separateOnly: true,
     keeps: [k('Bases', true), k('Edits', true), k('Trimming', false, 'The whole read: trace viewers ignore a clip'), k('Quality scores', true), k('Trace', true)],
   },
 ]
@@ -102,7 +102,7 @@ const names = (kept: boolean, numbering = false) => [
 const ALIGNMENT_FORMATS: FormatOption[] = [
   { id: 'aligned-fasta', label: 'Aligned FASTA', ext: '.fasta', description: 'Aligned sequences with gap characters', icon: FileText, separateOnly: true, keeps: names(true) },
   { id: 'clustal', label: 'Clustal', ext: '.aln', description: 'Clustal ALN format with conservation', icon: AlignLeft, separateOnly: true, keeps: names(false) },
-  { id: 'phylip', label: 'PHYLIP', ext: '.phy', description: 'For RAxML, IQ-TREE, PhyML and PHYLIP', icon: FileText, separateOnly: true, keeps: names(false) },
+  { id: 'phylip', label: 'PHYLIP', ext: '.phy', description: 'For RAxML, IQ-TREE and PhyML: relaxed names, which PHYLIP itself cuts to ten characters', icon: FileText, separateOnly: true, keeps: names(false) },
   { id: 'nexus', label: 'NEXUS', ext: '.nex', description: 'For MrBayes, PAUP*, BEAST and SplitsTree', icon: FileText, separateOnly: true, keeps: names(true) },
   { id: 'mega', label: 'MEGA', ext: '.meg', description: 'For MEGA phylogenetics', icon: FileText, separateOnly: true, keeps: names(true) },
   { id: 'stockholm', label: 'Stockholm', ext: '.sto', description: 'For HMMER, Pfam and Rfam', icon: FileText, separateOnly: true, keeps: names(false, true) },

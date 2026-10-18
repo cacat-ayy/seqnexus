@@ -11,7 +11,7 @@
 
 import { consensus, docProfile } from '../stats'
 import { ungapped, type AlnDoc } from '../model'
-import { noSpaces, RowCollector, splitLines } from './util'
+import { noSpaces, RowCollector, splitLines, uniqueNames } from './util'
 import { AlignmentParseError, type AlnFormat, type ParsedAlignment, type WriteOptions } from './types'
 
 /** A name's `/start-end` numbering, when it has one. */
@@ -53,11 +53,13 @@ export function parseStockholm(text: string): ParsedAlignment {
 }
 
 export function writeStockholm(doc: AlnDoc, opts: WriteOptions = {}): string {
-  const names = doc.rows.map(r => {
-    const name = noSpaces(r.name)
-    if (r.start === undefined || r.start === 1) return name
+  // Names must be unique within a block; a row cut from a longer
+  // sequence carries its numbering, which often tells two apart by itself.
+  const plain = uniqueNames(doc.rows.map(r => r.name))
+  const names = doc.rows.map((r, i) => {
+    if (r.start === undefined || r.start === 1) return plain[i]
     const residues = ungapped(r.seq).length
-    return `${name}/${r.start}-${r.start + residues - 1}`
+    return `${plain[i]}/${r.start}-${r.start + residues - 1}`
   })
   const pad = Math.max(12, ...names.map(n => n.length)) + 2
   const out = ['# STOCKHOLM 1.0']

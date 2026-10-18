@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { combinable, exportWarnings, itemFile, type ExportItem } from './items'
+import { combinable, exportWarnings, fitsFormat, itemFile, type ExportItem } from './items'
 import { Sequence } from '../models/Sequence'
 import type { DocumentState } from '../models/Document'
 import { makeDoc } from '../msa/model'
@@ -63,5 +63,24 @@ describe('exportWarnings', () => {
     expect(exportWarnings([item], 'gb')[0]).toContain('nowhere')
     expect(exportWarnings([item], 'gff3')).toHaveLength(1)
     expect(exportWarnings([item], 'fasta')).toEqual([])
+  })
+})
+
+describe('what a format cannot hold', () => {
+  const protein: ExportItem = { kind: 'sequence', doc: { name: 'prot', sequence: new Sequence('MKWV*', 'linear', 'protein'), annotations: [] } }
+  const dna: ExportItem = { kind: 'sequence', doc: { name: 'dna', sequence: new Sequence('ACGT', 'circular'), annotations: [] } }
+
+  it('says EMBL and SnapGene cannot hold a protein', () => {
+    expect(fitsFormat(protein, 'embl')).toBe(false)
+    expect(fitsFormat(protein, 'dna')).toBe(false)
+    expect(fitsFormat(protein, 'gb')).toBe(true)
+    expect(fitsFormat(dna, 'embl')).toBe(true)
+  })
+
+  it('warns that a protein is left out of a combined EMBL file', () => {
+    const w = exportWarnings([dna, protein], 'embl')
+    expect(w.join(' ')).toMatch(/protein prot is left out of a combined EMBL file/)
+    // One item on its own is written as FASTA, which is honest in its own file.
+    expect(exportWarnings([protein], 'embl')).toEqual([])
   })
 })

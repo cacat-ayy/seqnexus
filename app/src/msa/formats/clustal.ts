@@ -7,7 +7,7 @@
 
 import { docProfile, clustalMark } from '../stats'
 import type { AlnDoc } from '../model'
-import { noSpaces, splitLines } from './util'
+import { splitLines, uniqueNames } from './util'
 import { AlignmentParseError, type AlnFormat, type ParsedAlignment } from './types'
 
 const HEADER = /^(CLUSTAL|MUSCLE|PROBCONS|MSAPROBS|KALIGN)/i
@@ -50,7 +50,8 @@ export function parseClustal(text: string): ParsedAlignment {
 
 export function writeClustal(doc: AlnDoc): string {
   const BLOCK = 60
-  const names = doc.rows.map(r => noSpaces(r.name))
+  // A Clustal block names each row, and readers match rows by name.
+  const names = uniqueNames(doc.rows.map(r => r.name))
   const pad = Math.max(10, ...names.map(n => n.length)) + 4
   const w = doc.rows[0]?.seq.length ?? 0
   const p = docProfile(doc)

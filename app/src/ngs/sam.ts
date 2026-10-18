@@ -12,7 +12,7 @@
  */
 
 import { inflateSync } from 'fflate'
-import { decodePage, sequenceOf, type RefBases, type SamFields } from './alignments'
+import { decodePage, editDistance, sequenceOf, type RefBases, type SamFields } from './alignments'
 import { BaiBuilder, bamHeader, bamRecord, BgzfWriter } from './bam'
 import { mappingStorageIds, type MappingIndex, type MappingReport, type MappingStorage } from './builder'
 import { samNames } from './refNames'
@@ -34,14 +34,26 @@ export async function readReferenceBases(storage: Pick<MappingStorage, 'get'>, s
 /** A read group's ID or SM value: SAM header values end at a tab or a line break. */
 const headerValue = (s: string) => s.replace(/[\t\r\n]+/g, ' ').trim() || 'sample'
 
+/**
+ * The @RG platform. SAMv1 1.3 takes PL from a fixed list, and a read group
+ * without one is an error to Picard's ValidateSamFile, so each minimap2
+ * preset names the platform it is for. An imported mapping (no preset) says
+ * nothing rather than guessing.
+ */
+const PLATFORM: Record<string, string> = { sr: 'ILLUMINA', 'map-ont': 'ONT', 'map-hifi': 'PACBIO' }
+
 export function samHeaderText(
   names: readonly string[], lengths: readonly number[], program: MappingReport['program'],
-  readGroup?: { id: string; sample: string },
+  readGroup?: { id: string; sample: string; platform?: string },
+  /** Which references are circular, for the @SQ TP tag. */
+  circular: readonly boolean[] = [],
 ): string {
   return [
     '@HD\tVN:1.6\tSO:coordinate',
-    ...names.map((n, i) => `@SQ\tSN:${n}\tLN:${lengths[i]}`),
-    ...(readGroup ? [`@RG\tID:${headerValue(readGroup.id)}\tSM:${headerValue(readGroup.sample)}`] : []),
+    // TP:circular says the reference is a circle, which is what lets an
+    // alignment run past LN (SAMv1 2.7.1, "Circular reference sequences").
+    ...names.map((n, i) => `@SQ\tSN:${n}\tLN:${lengths[i]}${circular[i] ? '\tTP:circular' : ''}`),
+    ...(readGroup ? [`@RG\tID:${headerValue(readGroup.id)}\tSM:${headerValue(readGroup.sample)}${readGroup.platform ? `\tPL:${readGroup.platform}` : ''}`] : []),
     `@PG\tID:${program.id || program.name}\tPN:${program.name}${program.version ? `\tVN:${program.version}` : ''}${program.command ? `\tCL:${program.command}` : ''}`,
   ].join('\n') + '\n'
 }
@@ -54,12 +66,15 @@ export async function exportMapping(o: {
   program: MappingReport['program']
   /** The sample as a read group: an @RG header line and an RG tag on every record. */
   readGroup?: { id: string; sample: string }
+  /** minimap2's preset, which names the platform for @RG PL; absent for an imported mapping. */
+  preset?: string | null
   onProgress?: (done: number, total: number) => void
 }): Promise<{ file: Blob; index: Blob | null }> {
   const ids = mappingStorageIds(o.storageId)
   const index = await readMappingIndex(o.storage, o.storageId)
   const names = samNames(o.references.map(r => r.name))
-  const header = samHeaderText(names, o.references.map(r => r.length), o.program, o.readGroup)
+  const rgroup = o.readGroup && { ...o.readGroup, platform: o.preset ? PLATFORM[o.preset] : undefined }
+  const header = samHeaderText(names, o.references.map(r => r.length), o.program, rgroup, o.references.map(r => r.circular))
   const rg = o.readGroup ? headerValue(o.readGroup.id) : undefined
   const total = index.refs.reduce((n, r) => n + r.pages.length, 0)
   let done = 0
@@ -86,14 +101,15 @@ export async function exportMapping(o: {
           qname: a.name, flag: a.flag, ref: r, pos: a.start, mapq: a.mapq, cigar: a.cigar,
           mateRef: a.mateRef, matePos: a.matePos, tlen: a.tlen, seq: sequenceOf(ref, a), qual: a.qual || '*',
         }
+        const nm = editDistance(a.diff)
         if (writer && bai) {
           const vbeg = writer.voffset
-          writer.write(bamRecord(f, a.end, rg))
+          writer.write(bamRecord(f, a.end, rg, nm))
           bai.add(r, a.start, a.end, vbeg, writer.voffset)
         } else {
           const rnext = f.mateRef < 0 ? '*' : f.mateRef === r ? '=' : names[f.mateRef]
           const pnext = f.mateRef < 0 || f.matePos < 0 ? 0 : f.matePos + 1
-          const line = `${f.qname}\t${f.flag}\t${names[r]}\t${f.pos + 1}\t${f.mapq}\t${f.cigar}\t${rnext}\t${pnext}\t${f.tlen}\t${f.seq}\t${f.qual}${rg ? `\tRG:Z:${rg}` : ''}\n`
+          const line = `${f.qname}\t${f.flag}\t${names[r]}\t${f.pos + 1}\t${f.mapq}\t${f.cigar}\t${rnext}\t${pnext}\t${f.tlen}\t${f.seq}\t${f.qual}${rg ? `\tRG:Z:${rg}` : ''}${nm === null ? '' : `\tNM:i:${nm}`}\n`
           lines.push(line)
           lineBytes += line.length
           if (lineBytes > 8_000_000) { textParts.push(lines.join('')); lines = []; lineBytes = 0 }

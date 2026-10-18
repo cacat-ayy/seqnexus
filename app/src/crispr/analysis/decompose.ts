@@ -224,5 +224,5 @@ export function spectrumCsv(result: DecomposeResult): string {
   for (const entry of [...result.spectrum].sort((a, b) => b.fraction - a.fraction)) {
     rows.push([entry.size > 0 ? `+${entry.size}` : String(entry.size), (entry.fraction * 100).toFixed(2)].join(','))
   }
-  return rows.join('\n')
+  return rows.join('\n') + '\n'
 }

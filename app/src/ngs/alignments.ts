@@ -158,6 +158,33 @@ export function describeAlignment(ref: RefBases, pos: number, cigar: string, seq
 }
 
 /** The read's bases as SAM stores them, written back from the reference; '*' when they were not stored. */
+/**
+ * The edit distance of an alignment: substitutions plus inserted plus
+ * deleted bases, read off the difference string. SAM's recommended practice
+ * asks for it in an NM tag (SAMv1 2.6), and Picard reports a record without
+ * one.
+ */
+export function editDistance(diff: string): number | null {
+  if (diff === '*') return null
+  let nm = 0
+  let i = 0
+  while (i < diff.length) {
+    const op = diff[i++]
+    if (op === ':' || op === '~') {
+      while (i < diff.length && diff.charCodeAt(i) >= 48 && diff.charCodeAt(i) <= 57) i++
+    } else if (op === '*') {
+      nm++
+      i += 2
+    } else {
+      let j = i
+      while (j < diff.length && diff.charCodeAt(j) >= 97 && diff.charCodeAt(j) <= 122) j++
+      nm += j - i
+      i = j
+    }
+  }
+  return nm
+}
+
 export function sequenceOf(ref: RefBases, a: Pick<StoredAlignment, 'start' | 'diff' | 'clipL' | 'clipR'>): string {
   if (a.diff === '*') return '*'
   const parts: string[] = [a.clipL]

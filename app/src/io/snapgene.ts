@@ -82,7 +82,9 @@ export function parseSnapGene(buffer: ArrayBuffer): DocumentState {
   offset = 5 + cookieLen
 
   // --- Parse remaining packets ---
-  let sequence = ''
+  // null until a DNA packet is seen: a record of no bases is a record, and
+  // telling the two apart is what an empty sequence needs to read back.
+  let sequence: string | null = null
   let topology: Topology = 'linear'
   let name = 'Untitled'
   let description: string | null = null
@@ -143,7 +145,7 @@ export function parseSnapGene(buffer: ArrayBuffer): DocumentState {
     offset = dataEnd
   }
 
-  if (!sequence) {
+  if (sequence === null) {
     throw new Error('No DNA sequence packet found in SnapGene file')
   }
 
@@ -348,6 +350,17 @@ function buildDnaPacket(state: DocumentState): Uint8Array {
   return makePacket(PACKET_DNA, payload)
 }
 
+/**
+ * One qualifier as SnapGene writes it: a single `<Q>` holding a `<V>` per
+ * value. The same name twice would be two qualifiers, and a reader keyed by
+ * name (this one included) keeps only the last, so a feature with two notes
+ * used to come back with one.
+ */
+function qualifierXml(key: string, values: readonly string[]): string {
+  const vs = values.map(v => `<V text="${escXml(toHtml(v))}" />`).join('')
+  return `<Q name="${escXml(key)}">${vs}</Q>`
+}
+
 function buildFeaturesPacket(annotations: Annotation[], seqLen: number, source: readonly Record<string, string[]>[] = []): Uint8Array | null {
   const features = annotations.filter(a => a.type !== 'primer_bind')
   if (features.length === 0 && source.length === 0) return null
@@ -357,9 +370,7 @@ function buildFeaturesPacket(annotations: Annotation[], seqLen: number, source: 
   // source feature over the whole sequence, which the reader takes back out.
   for (const quals of source) {
     parts.push(`<Feature type="source" name="source" directionality="0">`, `<Segment range="1-${seqLen}" />`)
-    for (const [key, values] of Object.entries(quals)) {
-      for (const val of values) parts.push(`<Q name="${escXml(key)}"><V text="${escXml(toHtml(val))}" /></Q>`)
-    }
+    for (const [key, values] of Object.entries(quals)) parts.push(qualifierXml(key, values))
     parts.push('</Feature>')
   }
   for (const ann of features) {
@@ -383,11 +394,10 @@ function buildFeaturesPacket(annotations: Annotation[], seqLen: number, source: 
     // Qualifiers. /label always carries the current name: the reader names a
     // feature by its label, so a stale one would undo a rename.
     const quals = ann.qualifiers ?? {}
-    parts.push(`<Q name="label"><V text="${escXml(toHtml(ann.name))}" /></Q>`)
+    parts.push(qualifierXml('label', [ann.name]))
     for (const [key, values] of Object.entries(quals)) {
-      for (const val of key === 'label' ? values.slice(1) : values) {
-        parts.push(`<Q name="${escXml(key)}"><V text="${escXml(toHtml(val))}" /></Q>`)
-      }
+      const rest = key === 'label' ? values.slice(1) : values
+      if (rest.length > 0) parts.push(qualifierXml(key, rest))
     }
     parts.push('</Feature>')
   }

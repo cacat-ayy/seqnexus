@@ -8,7 +8,7 @@
  */
 
 import type { AlnDoc } from '../model'
-import { grouped, noSpaces, residuesOnly, splitLines, uniqueNames } from './util'
+import { grouped, residuesOnly, splitLines, uniqueNames } from './util'
 import { AlignmentParseError, type AlnFormat, type ParsedAlignment, type WriteOptions } from './types'
 
 type Row = { name: string; seq: string }
@@ -72,7 +72,8 @@ export function writePhylip(doc: AlnDoc, opts: WriteOptions = {}): string {
   const strict = opts.phylipNames === 'strict'
   const interleaved = opts.phylipLayout === 'interleaved'
   const w = doc.rows[0]?.seq.length ?? 0
-  const names = strict ? uniqueNames(doc.rows.map(r => r.name), 10) : doc.rows.map(r => noSpaces(r.name))
+  // PHYLIP identifies a species by its name, in either layout.
+  const names = uniqueNames(doc.rows.map(r => r.name), strict ? 10 : undefined)
   const pad = strict ? 10 : Math.max(...names.map(n => n.length), 0) + 2
   const out = [`${doc.rows.length} ${w}`]
   if (!interleaved) {

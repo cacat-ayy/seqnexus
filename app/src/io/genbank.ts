@@ -343,9 +343,17 @@ function buildRecord(r: RecordInProgress): GenBankRecord {
   // Remove trailing period
   if (description.endsWith('.')) description = description.slice(0, -1)
   // The writer turns spaces in a name into underscores for LOCUS and, with
-  // no description, writes the name in full as DEFINITION.
+  // no description, writes the name in full as DEFINITION. A DEFINITION
+  // that is the name again is therefore no description: without this, a
+  // record with none came back with its own name as its description, and
+  // the next export wrote that out as one.
   let name = r.name
-  if (description && name.includes('_') && name.replace(/_/g, ' ') === description.replace(/\s+/g, ' ')) {
+  if (description === name) {
+    // The name had nothing to put in DEFINITION's place, so DEFINITION is
+    // the name again: no description, rather than one that is the name.
+    description = ''
+  } else if (description && description.replace(/\s+/g, '_') === name) {
+    // Spaces became underscores in LOCUS; DEFINITION kept them.
     name = description
     description = ''
   }
@@ -452,8 +460,11 @@ export function writeGenBank(state: DocumentState): string {
     `LOCUS       ${padRight(locusName, 16)} ${bp.toString().padStart(11)} ${units}  ${padRight(topo, 8)} SYN ${genbankDate(new Date())}`,
   )
 
-  // DEFINITION. One line of text: a line break would end the record's header.
-  lines.push(...wrapText('DEFINITION  ', `${oneLine(state.description || state.name)}.`))
+  // DEFINITION. One line of text: a line break would end the record's
+  // header. A word too long for a line is broken, since every line of the
+  // record has to fit the 79 columns of the release notes and a description
+  // is free text.
+  lines.push(...wrapText('DEFINITION  ', breakLongWords(`${oneLine(state.description || state.name)}.`, 79 - 12)))
 
   // FEATURES
   lines.push('FEATURES             Location/Qualifiers')
@@ -488,12 +499,11 @@ export function writeGenBank(state: DocumentState): string {
     for (const [key, values] of Object.entries(quals)) {
       if (ownColor && (key === APE_FWD_COLOR || key === APE_REV_COLOR)) continue
       const rest = key === 'label' ? values.slice(1) : values
-      for (const val of rest) {
-        // A note's lines become notes of their own: GenBank values hold no
-        // line breaks, and a raw one would end the feature table.
-        if (key === 'note') for (const line of val.split(/\r?\n/)) lines.push(...qualifierLines(key, line))
-        else lines.push(...qualifierLines(key, val))
-      }
+      // A value's line breaks become spaces (qualifierLines flattens them):
+      // the feature table holds no line breaks, and a raw one would end the
+      // table. Splitting a note at its line breaks instead turned one note
+      // into several, which came back as several notes.
+      for (const val of rest) lines.push(...qualifierLines(key, val))
     }
   }
 
@@ -546,7 +556,10 @@ export function primerFeatures(state: DocumentState): Annotation[] {
           label: [p.name],
           [PRIMER_SEQ]: [p.sequence],
           ...(p.role === 'probe' ? { [PRIMER_ROLE]: ['probe'] } : {}),
-          ...(p.notes ? { note: [p.notes] } : {}),
+          // A primer's notes are one free-text field, which may hold line
+          // breaks; a qualifier value may not, so each line is a /note of
+          // its own and primersFromFeatures joins them back with them.
+          ...(p.notes ? { note: p.notes.split(/\r?\n/) } : {}),
         },
       }))
     }
@@ -598,6 +611,16 @@ const UNQUOTED_QUALIFIERS = new Set([
   'rpt_type', 'direction', 'transl_except', 'anticodon', 'rpt_unit_range', 'tag_peptide', 'mod_base',
 ])
 
+/**
+ * Qualifiers the feature table defines as carrying no value ("Value format
+ * none" in the DDBJ/ENA/GenBank Feature Table definition), written bare.
+ * Any other qualifier takes a value, so an empty one is written as "".
+ */
+const VALUELESS_QUALIFIERS = new Set([
+  'circular_RNA', 'environmental_sample', 'focus', 'germline', 'macronuclear', 'partial',
+  'proviral', 'pseudo', 'rearranged', 'ribosomal_slippage', 'trans_splicing', 'transgenic',
+])
+
 const QUALIFIER_INDENT = ' '.repeat(21)
 
 /** Text on one line: line breaks and tabs become spaces. */
@@ -605,9 +628,22 @@ function oneLine(s: string): string {
   return s.replace(/[\r\n\t]+/g, ' ')
 }
 
-/** One qualifier as file lines: quoted unless numeric/symbolic, inner quotes doubled, wrapped at 79 columns. */
+/** `text` with any word longer than `room` broken, so every line can fit. */
+function breakLongWords(text: string, room: number): string {
+  return text.split(' ').map(w => (w.length <= room ? w : (w.match(new RegExp(`.{1,${room}}`, 'g')) ?? [w]).join(' '))).join(' ')
+}
+
+/**
+ * One qualifier as file lines: quoted unless numeric/symbolic, inner quotes
+ * doubled, wrapped at 79 columns.
+ *
+ * A qualifier with nothing to say is written bare (/pseudo), which the
+ * feature table allows only for the qualifiers defined that way; one that
+ * takes text keeps its empty value as "" rather than turning into a flag a
+ * strict reader would refuse.
+ */
 function qualifierLines(key: string, value: string): string[] {
-  if (!value) return [`${QUALIFIER_INDENT}/${key}`]
+  if (!value) return VALUELESS_QUALIFIERS.has(key) ? [`${QUALIFIER_INDENT}/${key}`] : [`${QUALIFIER_INDENT}/${key}=""`]
   const flat = oneLine(value)
   const text = UNQUOTED_QUALIFIERS.has(key) ? flat : `"${flat.replace(/"/g, '""')}"`
   return wrapText(`${QUALIFIER_INDENT}/${key}=`, text, UNSPACED_QUALIFIERS.has(key) ? '' : ' ', QUALIFIER_INDENT)

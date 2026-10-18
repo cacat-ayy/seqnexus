@@ -294,7 +294,7 @@ describe('calling alleles from reads', () => {
 
   it('writes the alleles out as a table', () => {
     const table = callAlleles([unedited, deletion], amplicon, cut)
-    const lines = alleleCsv(table).split('\n')
+    const lines = alleleCsv(table).trimEnd().split('\n')
     expect(lines[0]).toBe('kind,indel,substitutions,reads,share,sequence')
     expect(lines).toHaveLength(3)
   })

@@ -9,7 +9,7 @@
  */
 
 import type { AlnDoc, AlnKind } from '../model'
-import { noSpaces, splitLines, wrap } from './util'
+import { splitLines, uniqueNames, wrap } from './util'
 import { AlignmentParseError, type AlnFormat, type ParsedAlignment } from './types'
 
 const HEADER = /^>([A-Z][A-Z0-9]);(.*)$/i
@@ -41,14 +41,16 @@ export function parsePir(text: string): ParsedAlignment {
 export function writePir(doc: AlnDoc): string {
   const code = doc.kind === 'protein' ? 'P1' : 'DL'
   const out: string[] = []
-  for (const r of doc.rows) {
-    out.push(`>${code};${noSpaces(r.name)}`)
+  // The id after the type code identifies the entry.
+  const names = uniqueNames(doc.rows.map(r => r.name))
+  doc.rows.forEach((r, i) => {
+    out.push(`>${code};${names[i]}`)
     out.push(r.source?.name && r.source.name !== r.name ? r.source.name : r.name)
     const lines = wrap(r.seq, 60)
     lines[lines.length - 1] += '*'
     out.push(...lines)
     out.push('')
-  }
+  })
   return out.join('\n')
 }
 

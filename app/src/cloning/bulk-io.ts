@@ -227,7 +227,7 @@ export function productTableCsv(result: BulkResult): string {
       row.notes.join('; '),
     ].map(csvCell).join(','))
   }
-  return lines.join('\n')
+  return lines.join('\n') + '\n'
 }
 
 /** The constructs themselves, as multi-FASTA, for ordering or handing on. */

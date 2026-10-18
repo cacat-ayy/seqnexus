@@ -110,5 +110,5 @@ export function laneCsv(lanes: GelLane[], layout: GelLayout, sourceName: (id: st
     format: s => (s.form === 'linear' ? String(s.bp) : `${s.bp} ${s.form}`),
   })
   const header = `Lane,Type,Source,Enzymes,# Fragments,Fragments (${layout.conditions.kind === 'sds-page' ? 'Da' : 'bp'})`
-  return [header, ...rows.map(r => [r.lane, r.type, r.source, r.enzymes, r.fragCount, r.fragments].map(csvCell).join(','))].join('\n')
+  return [header, ...rows.map(r => [r.lane, r.type, r.source, r.enzymes, r.fragCount, r.fragments].map(csvCell).join(','))].join('\n') + '\n'
 }

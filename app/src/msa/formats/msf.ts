@@ -4,7 +4,7 @@
  */
 
 import type { AlnDoc } from '../model'
-import { grouped, noSpaces, RowCollector, splitLines } from './util'
+import { grouped, noSpaces, RowCollector, splitLines, uniqueNames } from './util'
 import { AlignmentParseError, type AlnFormat, type ParsedAlignment, type WriteOptions } from './types'
 
 /** GCG's checksum of one sequence as written. */
@@ -42,7 +42,8 @@ export function parseMsf(text: string): ParsedAlignment {
 
 export function writeMsf(doc: AlnDoc, opts: WriteOptions = {}): string {
   const w = doc.rows[0]?.seq.length ?? 0
-  const names = doc.rows.map(r => noSpaces(r.name))
+  // Each row has a Name entry of its own, which readers match by.
+  const names = uniqueNames(doc.rows.map(r => r.name))
   const seqs = doc.rows.map(r => r.seq.replace(/-/g, '.'))
   const checks = seqs.map(gcgChecksum)
   const total = checks.reduce((a, b) => (a + b) % 10000, 0)

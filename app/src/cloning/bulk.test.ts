@@ -384,7 +384,8 @@ describe('writing the results out', () => {
 
   it('writes a row per construct with a column per position', () => {
     const csv = productTableCsv(runBulk(homologyDesign(), bins))
-    const lines = csv.split('\n')
+    // The file ends with a line break, so the last split piece is empty.
+    const lines = csv.trimEnd().split('\n')
     expect(lines[0]).toBe('Name,Vector,Insert,Size (bp),Topology,Outcome,Notes')
     expect(lines).toHaveLength(3)
     expect(lines[1]).toContain('As designed')

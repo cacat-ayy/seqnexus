@@ -54,6 +54,7 @@ export default function MappingReport({ ngs, name, onOpenReference }: {
       references: r.references.map(x => ({ name: x.name, length: x.length, circular: x.circular })),
       program: r.program,
       readGroup: { id: safe(ngs.readSetName), sample: ngs.readSetName },
+      preset: r.preset,
     }, (d, t) => setExporting(t ? d / t : 0))
     h.promise.then(({ file, index }) => {
       // An imported mapping is named after its file, which already says what it was mapped to.

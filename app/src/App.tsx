@@ -17,7 +17,7 @@ import DisplayPopover from './components/DisplayPopover'
 import { downloadBlob, downloadMany, type DownloadFile } from './utils/download'
 import { registerExportPrompt } from './utils/export-prompt'
 import { zipFiles } from './utils/zip'
-import { combinable, exportWarnings, itemFile, type ExportItem, type ItemFile } from './export/items'
+import { combinable, exportWarnings, fitsFormat, itemFile, type ExportItem, type ItemFile } from './export/items'
 import { folderExport } from './export/folder'
 import './components/Shell.css'
 import FindDialog, { type FindPreset } from './components/FindDialog'
@@ -1404,7 +1404,10 @@ export default function App() {
     if (items.length === 1 && !isMixed) {
       files.push({ blob: blobOf(itemFile(items[0], format)), name: filename })
     } else if (items.length > 1 && !isMixed && mode === 'combined' && combinable(format)) {
-      const parts = items.map(item => itemFile(item, format).data as string)
+      // Only items the format writes as themselves: a protein written as
+      // FASTA because EMBL has no protein record would otherwise be a FASTA
+      // record in the middle of an EMBL file. The dialog says so first.
+      const parts = items.filter(item => fitsFormat(item, format)).map(item => itemFile(item, format).data as string)
       files.push({ blob: new Blob(parts, { type: 'text/plain' }), name: filename })
     } else if (mode === 'zip' && items.length > 0) {
       // A file per item, packed into one archive: one download.

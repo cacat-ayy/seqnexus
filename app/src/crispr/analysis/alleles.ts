@@ -265,5 +265,5 @@ export function alleleCsv(table: AlleleTable): string {
       allele.sequence,
     ]))
   }
-  return rows.join('\n')
+  return rows.join('\n') + '\n'
 }

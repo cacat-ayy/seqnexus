@@ -16,15 +16,17 @@ import { defaultColorForType, type Annotation } from '../../models/Annotation'
 import { reverseComplement } from '../../models/complement'
 import { annotationBases, annotationProtein, canTranslateAnnotation } from '../../utils/annotation-sequence'
 import { copyText } from '../../utils/clipboard'
+import { writeFastaRecord } from '../../io/fasta'
 import { blastFeature, blastFeatureProtein, duplicateFeature, selectAndCenterFeature, zoomToFeature } from './feature-actions'
 
 const ICON = 13
 
-/** FASTA with 70 bases a line, as GenBank and most tools write it. */
-function fasta(name: string, bases: string): string {
-  const lines = bases.match(/.{1,70}/g) ?? []
-  return `>${name.replace(/\s+/g, '_')}\n${lines.join('\n')}`
-}
+/**
+ * One FASTA record, written the way the FASTA export writes one, so a copy
+ * and a file agree. It ends with a line break, which the next record pasted
+ * after it needs: without one, its header ran onto the last sequence line.
+ */
+const fasta = (name: string, bases: string): string => writeFastaRecord(name, bases)
 
 export function FeatureContextMenu({ x, y, ann, hidden, readOnly, onClose, onEdit, onRename, onDelete, onDuplicated }: {
   x: number

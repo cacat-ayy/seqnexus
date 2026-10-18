@@ -66,6 +66,8 @@ export type ReadSetJob =
       program: MappingReport['program']
       /** The sample, as a read group (@RG with SM) on every record, which GATK and others need. */
       readGroup?: { id: string; sample: string }
+      /** The mapping's minimap2 preset, which names the platform in @RG PL. */
+      preset?: string | null
     }
   | {
       type: 'call-variants'
@@ -251,6 +253,7 @@ export async function runReadSetJob(
       references: job.references,
       program: job.program,
       readGroup: job.readGroup,
+      preset: job.preset,
       onProgress: progress,
     })
   }

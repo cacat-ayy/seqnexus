@@ -388,7 +388,7 @@ describe('tiling', () => {
   it('writes the set out as a table', () => {
     const plan = planTiling(candidates, region, bases.length, false, spCas9, { ...DEFAULT_TILE, count: 3 })
     const csv = tilingCsv(plan, 'SpCas9')
-    const lines = csv.split('\n')
+    const lines = csv.trimEnd().split('\n')
     expect(lines[0]).toBe('name,spacer,pam,cut,strand,score,nuclease')
     expect(lines).toHaveLength(plan.picks.length + 1)
     expect(lines[1].split(',')[1]).toBe(plan.picks[0].candidate.site.spacer)

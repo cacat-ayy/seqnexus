@@ -255,5 +255,5 @@ export function orderCsv(constructs: readonly OrderedConstruct[]): string {
   for (const c of constructs) {
     for (const o of c.oligos) rows.push(csvRow([o.name, o.sequence, o.length, c.format]))
   }
-  return rows.join('\n')
+  return rows.join('\n') + '\n'
 }

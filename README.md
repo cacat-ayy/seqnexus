@@ -217,6 +217,7 @@ short version.
   - [Opening files](#opening-files)
   - [EMBL and GFF3](#embl-and-gff3)
   - [What an export keeps](#what-an-export-keeps)
+  - [Checked against the standards](#checked-against-the-standards)
   - [Geneious files](#geneious-files)
 - [PDF Export](#pdf-export)
   - [One painter, two outputs](#one-painter-two-outputs)
@@ -6374,15 +6375,21 @@ format holds, and the choices that make it come back:
   strandedness at 45, molecule at 48, topology at 56, division at 65 and
   the date at 69. The division is `SYN` (synthetic), as plasmid editors
   write it, since the app keeps none of its own. A qualifier value is one
-  line of text in GenBank, and a raw line break ends the feature table for
-  every reader, losing all the features after it; so each line of a note
-  becomes a `/note` of its own (a primer's notes are joined back with line
-  breaks on import), and in any other value a line break becomes a space.
+  line of text in GenBank (release notes 3.4.12.3), and a raw line break
+  ends the feature table for every reader, losing all the features after
+  it; so a line break inside a value becomes a space, which keeps one
+  value one value. A primer's notes are one free-text field that may hold
+  line breaks, so they go out as a `/note` per line and are joined back
+  with them on import. An empty value is written as `/key=""`, except for
+  the twelve qualifiers the feature table defines as carrying no value
+  (`/pseudo`, `/partial`, `/germline` and the rest), which are written
+  bare: a bare `/note` is not a qualifier a strict reader accepts.
   Text is wrapped at 79 columns only at spaces, never where the next line
   would start with `/`, which readers take as a new qualifier. A word too
   long for a line (a URL) stays whole on a longer line: readers join
   wrapped text with a space, so breaking inside a word would put a space
-  into it. The reader, for files from elsewhere, treats a line starting
+  into it. DEFINITION is the exception, since every line of a record has
+  to fit the width: a 200-character word with no space in it is broken. The reader, for files from elsewhere, treats a line starting
   with `/` inside an open quoted value as its continuation unless it reads
   as a qualifier (`/key=` or `/key`). A feature's own colour is written as
   ApE's `/ApEinfo_fwdcolor` and `/ApEinfo_revcolor`, which ApE and
@@ -6395,9 +6402,12 @@ format holds, and the choices that make it come back:
   description it comes back with underscores.
 - **SnapGene (.dna).** Names and values are HTML in SnapGene's files, so
   they are written escaped, with `<br>` for a line break, and a note
-  reading "Tm < 60" comes back as written. The `label` qualifier always
-  carries the feature's current name, since the reader names a feature by
-  it. The description goes in the Notes packet and the source qualifiers as
+  reading "Tm < 60" comes back as written. A qualifier with several values
+  is one `<Q>` holding a `<V>` per value, which is how SnapGene writes
+  one: the same name in two `<Q>` elements is two qualifiers, and a reader
+  keyed by name (this one included) keeps only the last. The `label`
+  qualifier always carries the feature's current name, since the reader
+  names a feature by it. The description goes in the Notes packet and the source qualifiers as
   a `source` feature over the whole sequence, which the reader takes back
   out. A primer's probe role has no place in the format.
 - **FASTA.** Readers take the first word of a header as the id, so a name
@@ -6411,7 +6421,14 @@ format holds, and the choices that make it come back:
   contigs, are exported as separate files. Clustal, PHYLIP, Stockholm, PIR
   and MSF end a name at whitespace and write it with underscores; FASTA,
   NEXUS (quoted) and MEGA keep it. The NEXUS reader keeps a `;` inside a
-  quoted name.
+  quoted name. Every format that identifies a row by its name numbers a
+  repeated one (`seqA`, `seqA1`): NEXUS and MEGA taxon labels, MSF `Name:`
+  entries, PHYLIP species and the Clustal and Stockholm blocks all have to
+  be unique, and a reader that matches rows by name either merges two rows
+  that share one (this app's reader did, giving one row of twice the
+  width) or refuses the file (Biopython's MSF and PHYLIP readers do).
+  Aligned FASTA is left alone: repeated ids are legal there and readers
+  keep both rows.
 - **Reference names in NGS files.** The BAM and SAM header, the VCF's
   contig lines and the bedGraph rows name a reference by one rule, SAM's
   (which VCF follows): whitespace, backslashes, commas, quotes, backticks,
@@ -6444,6 +6461,33 @@ format holds, and the choices that make it come back:
   in GenBank. The ID line gives the name, topology, molecule (the source's
   /mol_type, or "other DNA"), data class STD and division SYN; SQ counts
   the bases, and each sequence line ends with the count of its last base.
+  An `AC   ;` line follows the ID line: ENA's flat-file checker requires an
+  AC block exactly once (FF.5), and a sequence of one's own has no
+  accession, which is what ENA's own submission template writes.
+- **GFF3.** Column 9 holds one `tag=value` per qualifier: several values
+  of one qualifier are one comma-separated list, the specification's way,
+  since the same tag twice on a line is not valid and readers keep only
+  one of them (GenomeTools reports it as an error). `;`, `=`, `&`, `,`,
+  tab, newline, carriage return, `%` and the control characters are
+  percent-encoded inside a value; the seqid is restricted further, to
+  `[a-zA-Z0-9.:^*$@!+_?|-]`, so a name with a slash or an accent is
+  percent-encoded there. A qualifier carried without a value becomes
+  `tag=true`, there being no way to write a valueless attribute.
+  `Is_circular=true` goes on the landmark region feature and nowhere else,
+  which is where the specification puts it; a feature that crosses the
+  origin in one piece runs past the end of the landmark instead
+  (`201..270` on a 240 bp circle), as the specification's own
+  circular-genome example writes it, with `circular_end` alongside for
+  this reader, and the parts of a joined feature that crosses the origin
+  are marked `circular_join=true` so their file order is kept. Both of
+  those are lower case, which the specification leaves to applications;
+  `Is_circular` on an ordinary feature is not valid, and GenomeTools 1.6.1
+  aborts on it. The landmark also carries `molecule_type`, since the
+  letters alone do not always say which alphabet a `##FASTA` section is
+  in: a degenerate oligo is written entirely in IUPAC ambiguity codes,
+  every one of which is also an amino-acid letter. A sequence with no
+  bases gets no `##sequence-region` line, `1 0` being a start past its
+  end.
 - **GFF3 with sequence** adds a `##FASTA` section, so the file opens as the
   sequence again rather than needing one open to land on; its header is
   written like a FASTA export's, so a name with spaces comes back.
@@ -6452,8 +6496,14 @@ format holds, and the choices that make it come back:
   such a suffix back into the row's start when its numbers agree with the
   row's residue count, so a name that only looks numbered is left alone.
 - **Read groups and samples.** A BAM or SAM has an `@RG` line naming the
-  read set as its sample (SM) and an RG tag on every record, which GATK and
-  other callers need. A VCF has a sample column, `GT:AD:DP:AF`: the reads
+  read set as its sample (SM), its platform (PL, from the minimap2 preset:
+  ILLUMINA, ONT or PACBIO) and an RG tag on every record, which GATK and
+  other callers need; Picard's ValidateSamFile counts a read group with no
+  platform as an error. The `@SQ` line of a circular reference carries
+  `TP:circular`, which is what lets a read across the origin keep the
+  position where it starts and run past LN (SAMv1 2.7.1). Every record
+  carries its edit distance in an `NM` tag, counted from the differences the
+  mapping stored: substitutions plus inserted and deleted bases. A VCF has a sample column, `GT:AD:DP:AF`: the reads
   for the reference and the variant, the depth, the variant's share, and a
   haploid call, 1 when most covering reads carry the variant. A plasmid or
   a clone is one molecule, so the call is a majority; the share is there for
@@ -6464,6 +6514,10 @@ format holds, and the choices that make it come back:
   inserted base where the layout puts it, between its neighbours) and its
   quality on its own channel. The whole read goes out, trimmed ends
   included: version 3 reserves the clip fields and viewers ignore them.
+  Chrome saves a `.scf` download as `.download`, `.scf` being a Windows
+  Shell Command File on its list of dangerous extensions; the bytes are
+  right and renaming the file is all a trace viewer needs, which the
+  dialog says.
 - **ZIP.** Several items can go out as one ZIP instead of a download each,
   and an explorer folder exports with its subfolders as directories: a
   sequence as GenBank (a protein as GenPept), a read as FASTQ, an alignment
@@ -6475,6 +6529,74 @@ format holds, and the choices that make it come back:
 - **Copying a figure.** Every figure dialog and the gel's menu copy the
   figure as a PNG (at the chosen resolution; 150 dpi for the gel) to paste
   into slides or a document.
+- **Copying a sequence as a file format.** Copy Selection > GenBank, a
+  feature or a primer as FASTA, and the bulk bar's FASTA of several
+  features all write what the file export writes, through the same writers:
+  a record ends with a line break, so a second one pasted after it starts
+  on its own line rather than running onto the last sequence line. The
+  Windows clipboard returns the text with CRLF line endings, which is the
+  clipboard, not the writer.
+
+### Checked against the standards
+
+Every format is written against its specification and read back by another
+program, not only by this app. The checks run on a corpus of the awkward
+cases: a feature across the origin, a `complement(join())`, a feature on
+the reverse strand covering a whole circle, qualifier values holding a
+quote, a slash, a line break and non-ASCII text, a name longer than the
+LOCUS name field, lower case and every IUPAC ambiguity code, an empty
+sequence, a protein with X and a stop, a read trimmed at both ends with a
+quality 0 and a quality 93 base, reads across the origin of a circular
+reference, a variant called in half the reads, and an alignment with a
+gap-only column and two rows of one name.
+
+| Format | Specification | Read back by |
+|--------|---------------|--------------|
+| GenBank, GenPept | GenBank release notes 3.4.4 (LOCUS columns), 3.4.12 (feature table, column 6 and 22, 79 columns, quote doubling), 3.4.14 (ORIGIN layout) | Biopython |
+| EMBL | ENA user manual 3.4 (line codes), 3.4.1 (ID), 3.4.17 (SQ), 3.4.18 (sequence lines) | Biopython; ENA's flat-file checker (see below) |
+| FASTA, FASTQ | NCBI and the Sanger Phred+33 convention | Biopython, seqkit |
+| SnapGene (.dna) | The format's block layout (type byte, big-endian length) | this app only: no other reader is on hand |
+| GFF3 | Sequence Ontology GFF3, including escaping, phase and circular genomes | GenomeTools `gff3validator` and `gff3 -tidy` |
+| SAM, BAM, BAI | SAMv1 1.3 (header), 1.4 (fields), 2 (recommended practice), 2.7.1 (circular references) | Picard ValidateSamFile, IGV's igvtools, bamnostic |
+| VCF | VCFv4.2 and 4.3 1.4 (header), 1.6.1 (fixed fields) | vcfpy |
+| SCF | Staden SCF 3.00 (header, sample points, sequence block, comments) | this app only: no other reader is on hand |
+| Alignments | Clustal W, PHYLIP (strict and relaxed), NEXUS, MEGA, Stockholm (HMMER user guide), PIR/NBRF, GCG MSF with its checksum | Biopython; Jalview for Clustal, Stockholm, PIR, MSF and FASTA |
+| PDF | PDF 1.5, the standard 14 fonts | qpdf `--check`, pdftotext, pypdf |
+| SVG | SVG 1.1 | libxml2 and a headless Chrome render |
+| PNG | PNG (W3C), chunk CRCs and the IDAT stream | a chunk-by-chunk check and Pillow |
+| ZIP, gzip | PKZIP and RFC 1952 | `unzip -t`, `gzip -t` |
+
+What the other programs lose, and what they refuse:
+
+- **Biopython** reads every text format here. It truncates a feature key
+  longer than 15 characters when it writes one back (the feature table's
+  limit), and joins a wrapped qualifier value with a space, as this reader
+  does: a 200-character word with no space in it cannot survive either
+  way.
+- **ENA's flat-file checker** parses an EMBL export and reports the
+  editor conventions in it: `/label`, `/ApEinfo_fwdcolor`,
+  `/ApEinfo_revcolor` and `/primer_sequence` are not INSDC qualifiers.
+  They are how a feature's name, its colour and a primer's oligo survive a
+  trip through ApE, Benchling, SnapGene and back, so they are written on
+  purpose; a file meant for submission to ENA or GenBank needs them taken
+  out, and the record needs an accession and a `source` feature with
+  `/organism` and `/mol_type`.
+- **GenomeTools** validates the GFF3 export, with the sequence and
+  without.
+- **Picard** validates the BAM and its index, and the SAM.
+- **Jalview** opens the Clustal, Stockholm, PIR, MSF and aligned FASTA
+  exports with every row and column intact. It has no reader for MEGA,
+  NEXUS or PHYLIP, so those were checked with Biopython instead.
+- **IGV** reads the BAM through `igvtools count` (coverage over the whole
+  reference) and indexes it.
+- **PDF readers** substitute the standard 14 fonts rather than finding
+  them embedded: the export carries no font file, which keeps a figure a
+  few kilobytes. A journal that requires embedded fonts wants the SVG or a
+  PNG at 600 dpi instead.
+
+Not verified here, for want of the program: SnapGene itself, UGENE,
+Inkscape, bcftools and NCBI's table2asn, which reads a FASTA and a feature
+table rather than a GenBank flat file and so cannot check this export.
 
 ### Geneious files
 
@@ -7270,6 +7392,40 @@ saved, so nothing is written without a word.
 
 - NCBI. "GenBank Release Notes", section 3.4.4 (the LOCUS line's columns).
   https://ftp.ncbi.nih.gov/genbank/gbrel.txt
+
+- NCBI, EMBL-EBI, DDBJ. "The DDBJ/ENA/GenBank Feature Table: Definition"
+  (feature keys, which qualifiers each takes, and the twelve that carry no
+  value). https://ftp.ebi.ac.uk/pub/databases/embl/doc/FT_current.txt
+
+- EMBL-EBI. "ENA flat file validator" (`embl-api-validator`), used to check
+  an EMBL export. https://github.com/enasequence/sequencetools
+
+- Gremme G, Steinbiss S, Kurtz S (2013) "GenomeTools: a comprehensive
+  software library for efficient processing of structured genome
+  annotations." *IEEE/ACM Trans Comput Biol Bioinform* 10:645-656. (Its
+  `gff3validator` checks the GFF3 export.)
+
+- Cock PJA, Antao T, Chang JT, Chapman BA, Cox CJ, Dalke A, Friedberg I,
+  Hamelryck T, Kauff F, Wilczynski B, de Hoon MJL (2009) "Biopython: freely
+  available Python tools for computational molecular biology and
+  bioinformatics." *Bioinformatics* 25:1422-1423. (Reads the exports back
+  in the round-trip checks.)
+
+- Broad Institute. "Picard: ValidateSamFile", used to check the SAM and BAM
+  exports. https://broadinstitute.github.io/picard/
+
+- Robinson JT, Thorvaldsdóttir H, Winckler W, Guttman M, Lander ES, Getz G,
+  Mesirov JP (2011) "Integrative Genomics Viewer." *Nat Biotechnol*
+  29:24-26. (Its igvtools reads the BAM export.)
+
+- Eddy SR. "HMMER User's Guide", the Stockholm format and its markup.
+  http://eddylab.org/software/hmmer/Userguide.pdf
+
+- Felsenstein J. "PHYLIP: the molecular sequence input file format."
+  https://phylipweb.github.io/phylip/doc/sequence.html
+
+- Maddison DR, Swofford DL, Maddison WP (1997) "NEXUS: an extensible file
+  format for systematic information." *Syst Biol* 46:590-621.
 
 - Davis MW, Jorgensen EM (2022) "ApE, A Plasmid Editor: a freely available
   DNA manipulation and visualization program." *Front Bioinform* 2:818619.

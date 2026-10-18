@@ -127,5 +127,5 @@ export function libraryCsv(guides: readonly GuideRecord[]): string {
       (g.notes ?? '').replace(/[\r\n]+/g, ' '),
     ]))
   }
-  return rows.join('\n')
+  return rows.join('\n') + '\n'
 }

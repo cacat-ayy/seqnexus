@@ -17,6 +17,7 @@ import { saveText } from '../utils/download'
 import { copyText } from '../utils/clipboard'
 import { writeGff3 } from '../io/gff3'
 import { writeCsv } from '../io/csv'
+import { writeFastaRecord } from '../io/fasta'
 import './FeatureBulkBar.css'
 
 interface Props {
@@ -54,9 +55,13 @@ export default function FeatureBulkBar({
 
   /** Selected features as a multi-record FASTA, in list order. */
   const handleCopy = useCallback(() => {
+    // The record the FASTA export writes, so a copy and a file agree: the
+    // span as the description, wrapped, and ended with a line break, which
+    // the next record needs (without one its header ran onto the last
+    // sequence line).
     const fasta = selected
-      .map(a => `>${a.name || a.id} ${a.start + 1}..${a.end}\n${annotationBases(a, doc.sequence)}`)
-      .join('\n')
+      .map(a => writeFastaRecord(a.name || a.id, annotationBases(a, doc.sequence), `${a.start + 1}..${a.end}`))
+      .join('')
     copyText(fasta, `Copied ${count} feature${count === 1 ? '' : 's'}`)
   }, [selected, doc.sequence, count])
 

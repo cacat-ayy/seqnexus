@@ -156,7 +156,7 @@ function cigarOps(cigar: string): number[] {
  * One BAM record. `end` is the exclusive end on the reference, for the bin.
  * `readGroup` adds an RG:Z tag naming the record's read group.
  */
-export function bamRecord(f: SamFields, end: number, readGroup?: string): Uint8Array {
+export function bamRecord(f: SamFields, end: number, readGroup?: string, nm?: number | null): Uint8Array {
   const name = enc.encode(f.qname.slice(0, 254))
   const rg = readGroup ? enc.encode(readGroup) : null
   let ops = cigarOps(f.cigar)
@@ -169,8 +169,10 @@ export function bamRecord(f: SamFields, end: number, readGroup?: string): Uint8A
     cg = ops
     ops = [l * 16 + 4, Math.max(0, end - f.pos) * 16 + 3]
   }
+  // NM goes in as the smallest integer type that holds it (SAMv1 4.2.4).
+  const nmBytes = nm === undefined || nm === null ? 0 : 3 + (nm < 256 ? 1 : nm < 65536 ? 2 : 4)
   const size = 32 + name.length + 1 + ops.length * 4 + ((l + 1) >> 1) + l + (cg ? 3 + 1 + 4 + cg.length * 4 : 0)
-    + (rg ? 3 + rg.length + 1 : 0)
+    + (rg ? 3 + rg.length + 1 : 0) + nmBytes
   const out = new Uint8Array(4 + size)
   const dv = new DataView(out.buffer)
   dv.setInt32(0, size, true)
@@ -205,6 +207,12 @@ export function bamRecord(f: SamFields, end: number, readGroup?: string): Uint8A
     out.set([82, 71, 90], at) // "RG", type Z: a NUL-terminated string
     out.set(rg, at + 3)
     at += 3 + rg.length + 1
+  }
+  if (nm !== undefined && nm !== null) {
+    out.set([78, 77], at) // "NM"
+    if (nm < 256) { out[at + 2] = 67 /* C */; out[at + 3] = nm; at += 4 }
+    else if (nm < 65536) { out[at + 2] = 83 /* S */; dv.setUint16(at + 3, nm, true); at += 5 }
+    else { out[at + 2] = 73 /* I */; dv.setUint32(at + 3, nm, true); at += 7 }
   }
   return out
 }

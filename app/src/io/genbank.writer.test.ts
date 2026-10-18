@@ -90,14 +90,35 @@ describe('GenBank writer: what used to be lost on the way back', () => {
     expect(line).toHaveLength(79)
   })
 
-  it('keeps every feature after one whose note has line breaks', () => {
+  it('keeps every feature after one whose note has line breaks, as one note', () => {
     const text = writeGenBank(doc('p', [
       feature({ id: 'a', name: 'first', qualifiers: { note: ['line one\nline two'] } }),
       feature({ id: 'b', name: 'second' }),
     ]))
     const back = parseGenBank(text)
     expect(back.annotations.map(a => a.name)).toEqual(['first', 'second'])
-    expect(back.annotations[0].qualifiers.note).toEqual(['line one', 'line two'])
+    // A value holds no line break, so it becomes a space: one note in, one
+    // note out. Splitting it made a second note that was never there.
+    expect(back.annotations[0].qualifiers.note).toEqual(['line one line two'])
+  })
+
+  it('keeps the values of a qualifier that has several, in order', () => {
+    const text = writeGenBank(doc('p', [feature({ qualifiers: { note: ['first value', 'second value'] } })]))
+    expect(parseGenBank(text).annotations[0].qualifiers.note).toEqual(['first value', 'second value'])
+  })
+
+  it('writes an empty value as "" and a valueless qualifier bare', () => {
+    const text = writeGenBank(doc('p', [feature({ qualifiers: { note: [''], pseudo: [''] } })]))
+    expect(text).toContain('/note=""')
+    expect(text).toContain('/pseudo\n')
+    expect(text).not.toContain('/note\n')
+  })
+
+  it('wraps a description with no spaces in it, so no line runs past 79 columns', () => {
+    const long = 'D'.repeat(200)
+    const text = writeGenBank(doc('p', [], long))
+    for (const line of text.split('\n')) expect(line.length).toBeLessThanOrEqual(79)
+    expect(parseGenBank(text).description?.replace(/ /g, '')).toBe(long)
   })
 
   it('writes a description with line breaks on one line', () => {
@@ -171,5 +192,27 @@ describe('GenBank reader: colours written by SnapGene', () => {
     const text = writeGenBank(doc('p', [feature({ qualifiers: { note: ['color: #b7e6d7'], ApEinfo_fwdcolor: ['#ff0000'] } })]))
     const a = parseGenBank(text).annotations[0]
     expect(a.color).toBe('#ff0000')
+  })
+})
+
+describe('GenBank writer: a record with no description', () => {
+  it('does not come back with its own name as a description', () => {
+    const back = parseGenBank(writeGenBank(doc('plasmid7', [feature()])))
+    expect(back.name).toBe('plasmid7')
+    expect(back.description).toBeUndefined()
+  })
+
+  it('keeps a name with spaces and still has no description', () => {
+    const back = parseGenBank(writeGenBank(doc('my plasmid 7', [feature()])))
+    expect(back.name).toBe('my plasmid 7')
+    expect(back.description).toBeUndefined()
+  })
+})
+
+describe('GenBank writer: a description that is the name again', () => {
+  it('is written once and reads back as the name, with no description', () => {
+    const back = parseGenBank(writeGenBank(doc('pUC19', [feature()], 'pUC19')))
+    expect(back.name).toBe('pUC19')
+    expect(back.description).toBeUndefined()
   })
 })

@@ -8,7 +8,7 @@
  */
 
 import type { AlnDoc, AlnKind } from '../model'
-import { expandMatchChar, noSpaces, RowCollector, splitLines, stripBom, wrap } from './util'
+import { expandMatchChar, RowCollector, splitLines, stripBom, uniqueNames, wrap } from './util'
 import { AlignmentParseError, type AlnFormat, type ParsedAlignment, type WriteOptions } from './types'
 
 function stripQuotedComments(text: string): string {
@@ -64,11 +64,13 @@ export function writeMega(doc: AlnDoc, opts: WriteOptions = {}): string {
     `!Format DataType=${doc.kind === 'protein' ? 'Protein' : 'Nucleotide'} indel=-;`,
     '',
   ]
-  for (const r of doc.rows) {
-    out.push(`#${noSpaces(r.name)}`)
+  // MEGA identifies a taxon by its name.
+  const names = uniqueNames(doc.rows.map(r => r.name))
+  doc.rows.forEach((r, i) => {
+    out.push(`#${names[i]}`)
     out.push(...wrap(r.seq, 60))
     out.push('')
-  }
+  })
   return out.join('\n')
 }
 

@@ -82,7 +82,7 @@ describe('writeGff3: what used to be lost on the way back', () => {
 
   it('writes the topology and reads it back', () => {
     const text = writeGff3(doc([]))
-    expect(text).toContain('pTest\tSeqNexus\tregion\t1\t120\t.\t.\t.\tID=pTest_region;Is_circular=true')
+    expect(text).toContain('pTest\tSeqNexus\tregion\t1\t120\t.\t.\t.\tID=pTest_region;molecule_type=DNA;Is_circular=true')
     const read = readGff3(text)
     expect(read.circular.has('pTest')).toBe(true)
     expect(read.features.size).toBe(0)
@@ -157,5 +157,23 @@ describe('GFF3 with its sequence', () => {
     expect(back.sequence.bases).toBe(doc.sequence.bases)
     expect(back.sequence.topology).toBe('circular')
     expect(back.annotations.map(a => [a.name, a.start, a.end])).toEqual([['ori', 10, 30]])
+  })
+})
+
+describe('writeGff3: the seqid', () => {
+  it('percent-encodes what the specification does not allow in column 1', () => {
+    const d = {
+      name: 'p/lasmid ünï',
+      sequence: new Sequence('ACGTACGTACGT', 'circular'),
+      annotations: [new Annotation({ id: 'a', name: 'f', type: 'CDS', start: 0, end: 6, strand: 1 })],
+    }
+    const text = writeGff3(d, { withSequence: true })
+    const seqid = text.split('\n').find(l => l.includes('\tCDS\t'))!.split('\t')[0]
+    expect(seqid).toBe('p%2Flasmid_%C3%BCn%C3%AF')
+    expect(seqid).toMatch(/^[a-zA-Z0-9.:^*$@!+_?|%-]+$/)
+    // The sequence and its features still find each other on the way back.
+    const back = gff3Documents(readGff3(text))[0]
+    expect(back.name).toBe('p/lasmid ünï')
+    expect(back.annotations.map(a => [a.start, a.end])).toEqual([[0, 6]])
   })
 })

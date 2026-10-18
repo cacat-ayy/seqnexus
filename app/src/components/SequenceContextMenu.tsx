@@ -25,6 +25,7 @@ import type { Annotation } from '../models/Annotation'
 import { reverseComplement as reverseComplementStr } from '../models/complement'
 import { translate as translateSequenceStr } from '../utils/codon'
 import { copyText, readText } from '../utils/clipboard'
+import { writeFastaRecord } from '../io/fasta'
 import {
   annotationBases, annotationLength, annotationProtein, canTranslateAnnotation, translationIssues,
 } from '../utils/annotation-sequence'
@@ -59,11 +60,12 @@ export interface SequenceMenuTarget {
 
 const ICON = 13
 
-/** FASTA with 70 bases a line, as GenBank and most tools write it. */
-function fasta(name: string, bases: string): string {
-  const lines = bases.match(/.{1,70}/g) ?? []
-  return `>${name.replace(/\s+/g, '_')}\n${lines.join('\n')}`
-}
+/**
+ * One FASTA record, written the way the FASTA export writes one, so a copy
+ * and a file agree. It ends with a line break, which the next record pasted
+ * after it needs: without one, its header ran onto the last sequence line.
+ */
+const fasta = (name: string, bases: string): string => writeFastaRecord(name, bases)
 
 const fmtTm = (t: number | null) => (t === null || !Number.isFinite(t) ? '-' : `${t.toFixed(1)} °C`)
 

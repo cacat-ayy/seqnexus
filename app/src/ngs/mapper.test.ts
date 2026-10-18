@@ -191,7 +191,8 @@ describe('mapReads with minimap2', () => {
     const out = await exportMapping({ format: 'sam', storageId: 'asm_1', storage, references, program })
     const text = await blobText(out.file)
     const lines = text.split('\n').filter(Boolean)
-    expect(lines[1]).toBe('@SQ\tSN:p_X\tLN:5000')
+    // TP:circular is what lets the reads across the origin run past LN.
+    expect(lines[1]).toBe('@SQ\tSN:p_X\tLN:5000\tTP:circular')
     const recs = lines.filter(l => l[0] !== '@').map(l => l.split('\t'))
     expect(recs.length).toBe(report.mapped + report.supplementary)
     expect(recs.map(r => Number(r[3]))).toEqual([...recs.map(r => Number(r[3]))].sort((a, b) => a - b))

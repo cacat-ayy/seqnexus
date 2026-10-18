@@ -30,10 +30,16 @@ export function noSpaces(name: string): string {
 }
 
 /**
- * Names cut to `max` characters and made unique by numbering, for formats
- * with a fixed name width (strict PHYLIP's ten characters).
+ * Names cut to `max` characters and made unique by numbering.
+ *
+ * Needed by every format that identifies a row by its name: NEXUS and MEGA
+ * taxon labels, MSF Name entries, PHYLIP species and the Clustal and
+ * Stockholm blocks all have to be unique, and a reader that matches rows by
+ * name (this one, Jalview, Biopython) merges or refuses two rows that share
+ * one. `max` caps the width where the format fixes it (strict PHYLIP's ten
+ * characters); without it a name is only numbered, never cut.
  */
-export function uniqueNames(names: readonly string[], max: number): string[] {
+export function uniqueNames(names: readonly string[], max = Infinity): string[] {
   const used = new Set<string>()
   return names.map(raw => {
     const base = noSpaces(raw).slice(0, max)
