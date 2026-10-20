@@ -1,4 +1,5 @@
-// SeqNexus site script, shared by index.html and features.html.
+// SeqNexus site script, shared by every page of the site (index.html,
+// features.html, the guide pages and 404.html).
 // The initial dark class is set by an inline script in <head> of each page;
 // this file handles the toggle, the themed screenshots, the sequence rules
 // and the features page table of contents.
@@ -10,7 +11,16 @@
 
   // Screenshots can come in a light and a dark version. An <img> with
   // data-light and data-dark shows the one for the current theme; if the
-  // dark file does not exist the light one is shown in both themes.
+  // dark file does not exist the light one is shown in both themes. Each
+  // file has -720 and -1080 variants beside it (towebp.mjs writes them), so
+  // the srcset is rebuilt from the file that is shown.
+  function show(img, path) {
+    img.setAttribute('src', path);
+    if (img.hasAttribute('srcset')) {
+      var base = path.replace(/\.webp$/, '');
+      img.setAttribute('srcset', base + '-720.webp 720w, ' + base + '-1080.webp 1080w, ' + path + ' 1440w');
+    }
+  }
   function syncShots() {
     var imgs = document.querySelectorAll('img[data-light]');
     for (var i = 0; i < imgs.length; i++) {
@@ -18,7 +28,7 @@
       var want = isDark() && img.getAttribute('data-dark') && !img.darkMissing
         ? img.getAttribute('data-dark')
         : img.getAttribute('data-light');
-      if (img.getAttribute('src') !== want) img.setAttribute('src', want);
+      if (img.getAttribute('src') !== want) show(img, want);
     }
   }
 
@@ -27,7 +37,7 @@
     var fig = img.closest('figure');
     if (img.getAttribute('src') === img.getAttribute('data-dark')) {
       img.darkMissing = true;
-      img.setAttribute('src', img.getAttribute('data-light'));
+      show(img, img.getAttribute('data-light'));
       return;
     }
     if (fig) fig.classList.add('missing');

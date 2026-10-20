@@ -3,15 +3,16 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Features: everything in SeqNexus</title>
+<title>SeqNexus features: plasmid maps, cloning, primers, CRISPR, alignment, Sanger and NGS</title>
 <meta name="description" content="Every tool in SeqNexus, with screenshots: sequence editor, plasmid map, annotation, proteins, primers, codon optimization, CRISPR, cloning, restriction analysis, virtual gel, alignment, BLAST, Sanger and NGS.">
 <meta name="author" content="Christopher Acatay">
 <meta name="theme-color" content="#0b5f58">
+<meta name="robots" content="max-image-preview:large">
 <link rel="canonical" href="https://seqnexus.app/features.html">
 
 <meta property="og:type" content="website">
 <meta property="og:url" content="https://seqnexus.app/features.html">
-<meta property="og:title" content="Features: everything in SeqNexus">
+<meta property="og:title" content="SeqNexus features: plasmid maps, cloning, primers, CRISPR, alignment, Sanger and NGS">
 <meta property="og:description" content="Every tool in SeqNexus, with screenshots. Free, open source, and computed in your browser.">
 <meta property="og:image" content="https://seqnexus.app/og-image.png">
 <meta property="og:image:width" content="1200">
@@ -19,7 +20,7 @@
 <meta property="og:image:alt" content="SeqNexus: the molecular biology bench, in a browser tab. A plasmid map in the editor.">
 <meta property="og:site_name" content="SeqNexus">
 <meta name="twitter:card" content="summary_large_image">
-<meta name="twitter:title" content="Features: everything in SeqNexus">
+<meta name="twitter:title" content="SeqNexus features: plasmid maps, cloning, primers, CRISPR, alignment, Sanger and NGS">
 <meta name="twitter:description" content="Every tool in SeqNexus, with screenshots. Free, open source, and computed in your browser.">
 <meta name="twitter:image" content="https://seqnexus.app/og-image.png">
 
@@ -29,7 +30,7 @@
   "@graph": [
     {
       "@type": "WebPage",
-      "name": "Features: everything in SeqNexus",
+      "name": "SeqNexus features: plasmid maps, cloning, primers, CRISPR, alignment, Sanger and NGS",
       "url": "https://seqnexus.app/features.html",
       "description": "Every tool in SeqNexus, with screenshots: sequence editor, plasmid map, annotation, proteins, primers, codon optimization, CRISPR, cloning, restriction analysis, virtual gel, alignment, BLAST, Sanger and NGS.",
       "primaryImageOfPage": "https://seqnexus.app/assets/features/map.webp",
@@ -75,7 +76,7 @@
 
 <header class="masthead">
   <div class="masthead-inner">
-    <a class="brand" href="index.html">
+    <a class="brand" href="/">
       <svg width="22" height="22" viewBox="-2 -2 28 28" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
         <circle cx="12" cy="12" r="13" stroke-width="1.5"/>
         <g stroke-width="2">
@@ -91,9 +92,9 @@
       SeqNexus
     </a>
     <nav aria-label="Primary">
-      <a href="index.html">Overview</a>
+      <a href="/">Overview</a>
       <a class="hide-sm" href="features.html" aria-current="page">Features</a>
-      <a class="hide-sm" href="index.html#formats">Formats</a>
+      <a class="hide-sm" href="/#formats">Formats</a>
       <a class="hide-sm" href="https://github.com/cacat-ayy/seqnexus">Source</a>
       <a class="btn btn-small" href="app.html">Open the editor</a>
       <button class="theme-toggle" id="theme-toggle" type="button" aria-label="Toggle dark mode" aria-pressed="false">
@@ -108,8 +109,8 @@
 
   <section class="page-head">
     <div class="wrap">
-      <p class="label"><a class="back" href="index.html">&larr; Overview</a></p>
-      <h1 style="margin-top:14px">Everything in the bench.</h1>
+      <p class="label"><a class="back" href="/">&larr; Overview</a></p>
+      <h1 style="margin-top:14px">Every tool in the bench, from plasmid maps to NGS.</h1>
       <p class="lede">Every tool in SeqNexus, grouped by what you are doing with it. All of it is free, open source, and computed in your browser. The <a class="link" href="https://github.com/cacat-ayy/seqnexus#readme">README</a> has the algorithms, parameters and references behind each one.</p>
     </div>
   </section>
@@ -164,7 +165,7 @@
             <p>DNA and protein in a canvas-rendered view that stays quick from a 20 bp oligo to a bacterial genome. Type, paste and delete in place, select several ranges at once, and read the translation, the complement and the melting temperature of whatever is selected.</p>
           </div>
           <figure class="shot" data-file="assets/features/editor.webp">
-            <img src="assets/features/editor.webp" data-light="assets/features/editor.webp" data-dark="assets/features/editor-dark.webp" alt="pEGFP-C1 in the sequence editor with the EGFP CDS selected, its translation and the feature panel" width="1440" height="900" loading="lazy" onerror="shotError(this)">
+            <img src="assets/features/editor.webp" srcset="assets/features/editor-720.webp 720w, assets/features/editor-1080.webp 1080w, assets/features/editor.webp 1440w" sizes="(max-width: 1080px) calc(100vw - 40px), 900px" data-light="assets/features/editor.webp" data-dark="assets/features/editor-dark.webp" alt="pEGFP-C1 in the sequence editor with the EGFP CDS selected, its translation and the feature panel" width="1440" height="900" loading="lazy" onerror="shotError(this)">
           </figure>
           <ul class="detail">
             <li><b>Genome scale.</b> Tested to around 5 Mb; the canvas draws only what is on screen.</li>
@@ -183,10 +184,10 @@
           </div>
           <div class="shot-pair">
             <figure class="shot" data-file="assets/features/map.webp">
-              <img src="assets/features/map.webp" data-light="assets/features/map.webp" data-dark="assets/features/map-dark.webp" alt="A circular plasmid map of pEGFP-C1 with features, cut sites and labels outside the ring" width="1440" height="900" loading="lazy" onerror="shotError(this)">
+              <img src="assets/features/map.webp" srcset="assets/features/map-720.webp 720w, assets/features/map-1080.webp 1080w, assets/features/map.webp 1440w" sizes="(max-width: 960px) calc(100vw - 40px), 440px" data-light="assets/features/map.webp" data-dark="assets/features/map-dark.webp" alt="A circular plasmid map of pEGFP-C1 with features, cut sites and labels outside the ring" width="1440" height="900" loading="lazy" onerror="shotError(this)">
             </figure>
             <figure class="shot" data-file="assets/features/map-ring.webp">
-              <img src="assets/features/map-ring.webp" data-light="assets/features/map-ring.webp" data-dark="assets/features/map-ring-dark.webp" alt="The same map in the sites-outside layout, every cut site named with its position" width="1440" height="900" loading="lazy" onerror="shotError(this)">
+              <img src="assets/features/map-ring.webp" srcset="assets/features/map-ring-720.webp 720w, assets/features/map-ring-1080.webp 1080w, assets/features/map-ring.webp 1440w" sizes="(max-width: 960px) calc(100vw - 40px), 440px" data-light="assets/features/map-ring.webp" data-dark="assets/features/map-ring-dark.webp" alt="The same map in the sites-outside layout, every cut site named with its position" width="1440" height="900" loading="lazy" onerror="shotError(this)">
             </figure>
           </div>
           <ul class="detail">
@@ -195,6 +196,7 @@
             <li><b>Rings and tracks.</b> Enzyme sites, ORFs, GC content and coverage as extra rings.</li>
             <li><b>Work on the map.</b> Click a feature to select it, drag to select a range, right-click for the same actions as in the sequence.</li>
           </ul>
+          <p class="more"><a class="link" href="plasmid-map.html">How the map is drawn: layouts, label placement, styles and export &rarr;</a></p>
         </article>
 
         <article class="feat" id="annotation">
@@ -203,7 +205,7 @@
             <p>A feature panel grouped by type or sorted by position, with a filter that takes <code>type:</code>, <code>len&gt;</code> and <code>strand:</code> terms. Auto-annotation scans the sequence against a built-in library of origins, resistance genes, promoters, tags and other common parts and proposes what it finds.</p>
           </div>
           <figure class="shot" data-file="assets/features/annotation.webp">
-            <img src="assets/features/annotation.webp" data-light="assets/features/annotation.webp" data-dark="assets/features/annotation-dark.webp" alt="The Annotate dialog proposing promoters, origins and a terminator for pEGFP-C1 from the built-in library" width="1440" height="900" loading="lazy" onerror="shotError(this)">
+            <img src="assets/features/annotation.webp" srcset="assets/features/annotation-720.webp 720w, assets/features/annotation-1080.webp 1080w, assets/features/annotation.webp 1440w" sizes="(max-width: 1080px) calc(100vw - 40px), 900px" data-light="assets/features/annotation.webp" data-dark="assets/features/annotation-dark.webp" alt="The Annotate dialog proposing promoters, origins and a terminator for pEGFP-C1 from the built-in library" width="1440" height="900" loading="lazy" onerror="shotError(this)">
           </figure>
           <ul class="detail">
             <li><b>CDS checks.</b> Every coding feature is checked for its frame, start and stop, and the problems are shown next to it.</li>
@@ -219,7 +221,7 @@
             <p>Nucleotide search with IUPAC codes, mismatches and regular expressions; protein search translated in all six frames; and replace. The six-frame ORF finder takes its start codons and minimum length from you and turns the ORFs it finds into features.</p>
           </div>
           <figure class="shot" data-file="assets/features/find.webp">
-            <img src="assets/features/find.webp" data-light="assets/features/find.webp" data-dark="assets/features/find-dark.webp" alt="The find panel with a Kozak consensus search allowing one mismatch and its hit in context" width="1440" height="900" loading="lazy" onerror="shotError(this)">
+            <img src="assets/features/find.webp" srcset="assets/features/find-720.webp 720w, assets/features/find-1080.webp 1080w, assets/features/find.webp 1440w" sizes="(max-width: 1080px) calc(100vw - 40px), 900px" data-light="assets/features/find.webp" data-dark="assets/features/find-dark.webp" alt="The find panel with a Kozak consensus search allowing one mismatch and its hit in context" width="1440" height="900" loading="lazy" onerror="shotError(this)">
           </figure>
           <ul class="detail">
             <li><b>Hits in context.</b> A list with strand, overlapping feature and flanking sequence; click to jump.</li>
@@ -235,10 +237,10 @@
           </div>
           <div class="shot-pair">
             <figure class="shot" data-file="assets/features/proteins.webp">
-              <img src="assets/features/proteins.webp" data-light="assets/features/proteins.webp" data-dark="assets/features/proteins-dark.webp" alt="GFP from UniProt with its variants drawn as a lollipop map above the sequence" width="1440" height="900" loading="lazy" onerror="shotError(this)">
+              <img src="assets/features/proteins.webp" srcset="assets/features/proteins-720.webp 720w, assets/features/proteins-1080.webp 1080w, assets/features/proteins.webp 1440w" sizes="(max-width: 960px) calc(100vw - 40px), 440px" data-light="assets/features/proteins.webp" data-dark="assets/features/proteins-dark.webp" alt="GFP from UniProt with its variants drawn as a lollipop map above the sequence" width="1440" height="900" loading="lazy" onerror="shotError(this)">
             </figure>
             <figure class="shot" data-file="assets/features/proteins-3d.webp">
-              <img src="assets/features/proteins-3d.webp" data-light="assets/features/proteins-3d.webp" data-dark="assets/features/proteins-3d-dark.webp" alt="The AlphaFold model of GFP beside the sequence, with the protein properties popover open" width="1440" height="900" loading="lazy" onerror="shotError(this)">
+              <img src="assets/features/proteins-3d.webp" srcset="assets/features/proteins-3d-720.webp 720w, assets/features/proteins-3d-1080.webp 1080w, assets/features/proteins-3d.webp 1440w" sizes="(max-width: 960px) calc(100vw - 40px), 440px" data-light="assets/features/proteins-3d.webp" data-dark="assets/features/proteins-3d-dark.webp" alt="The AlphaFold model of GFP beside the sequence, with the protein properties popover open" width="1440" height="900" loading="lazy" onerror="shotError(this)">
             </figure>
           </div>
           <ul class="detail">
@@ -260,7 +262,7 @@
             <p>A docked design workbench with a candidate track, a per-primer inspector and live pair checks. Melting temperatures come from the nearest-neighbour model with salt and oligo corrections; hairpins and dimers are scored by their own Tm, so you can see why a candidate was rejected.</p>
           </div>
           <figure class="shot" data-file="assets/features/primers.webp">
-            <img src="assets/features/primers.webp" data-light="assets/features/primers.webp" data-dark="assets/features/primers-dark.webp" alt="The primer design workbench with ranked pairs and the inspector showing Tm, GC, 3-prime dG and a self-dimer" width="1440" height="900" loading="lazy" onerror="shotError(this)">
+            <img src="assets/features/primers.webp" srcset="assets/features/primers-720.webp 720w, assets/features/primers-1080.webp 1080w, assets/features/primers.webp 1440w" sizes="(max-width: 1080px) calc(100vw - 40px), 900px" data-light="assets/features/primers.webp" data-dark="assets/features/primers-dark.webp" alt="The primer design workbench with ranked pairs and the inspector showing Tm, GC, 3-prime dG and a self-dimer" width="1440" height="900" loading="lazy" onerror="shotError(this)">
           </figure>
           <ul class="detail">
             <li><b>Primers as oligos.</b> With 5' and 3' overhangs and mismatches; binding sites are found automatically on every sequence.</li>
@@ -268,6 +270,7 @@
             <li><b>Primer library.</b> Keep the ones you own and find where they bind.</li>
             <li><b>Tm on selection.</b> Select any stretch and read its Tm in the tooltip.</li>
           </ul>
+          <p class="more"><a class="link" href="primer-design.html">How primers are designed: tasks, scoring, Tm model and defaults &rarr;</a></p>
         </article>
 
         <article class="feat" id="codon">
@@ -276,12 +279,13 @@
             <p>Nineteen genetic codes and host usage tables, built in or imported from EMBOSS cusp and GCG CodonFrequency. Avoid restriction sites, homopolymers, repeats and GC extremes while the protein stays exactly as it was, and read the CAI and GC profile before and after.</p>
           </div>
           <figure class="shot" data-file="assets/features/codon.webp">
-            <img src="assets/features/codon.webp" data-light="assets/features/codon.webp" data-dark="assets/features/codon-dark.webp" alt="The codon optimization dialog with avoided restriction sites and custom motifs, and CAI and GC before and after" width="1440" height="900" loading="lazy" onerror="shotError(this)">
+            <img src="assets/features/codon.webp" srcset="assets/features/codon-720.webp 720w, assets/features/codon-1080.webp 1080w, assets/features/codon.webp 1440w" sizes="(max-width: 1080px) calc(100vw - 40px), 900px" data-light="assets/features/codon.webp" data-dark="assets/features/codon-dark.webp" alt="The codon optimization dialog with avoided restriction sites and custom motifs, and CAI and GC before and after" width="1440" height="900" loading="lazy" onerror="shotError(this)">
           </figure>
           <ul class="detail">
             <li><b>Greedy with backtracking.</b> Keeps the best codon wherever it can and steps back only where a constraint forces it.</li>
             <li><b>Applied as an edit.</b> The optimized sequence replaces the coding feature in place, with undo.</li>
           </ul>
+          <p class="more"><a class="link" href="codon-optimization.html">How codons are chosen: usage tables, constraints and the algorithm &rarr;</a></p>
         </article>
 
         <article class="feat" id="crispr">
@@ -290,7 +294,7 @@
             <p>Protospacers for a dozen nucleases or one you describe yourself, scored in three separate columns: activity, the repair the break is likely to get, and the rules a spacer has to pass. Off-targets with mismatches and bulges over any sequence you name. Tasks for knocking out, deleting, knocking in, base editing and prime editing.</p>
           </div>
           <figure class="shot" data-file="assets/features/crispr.webp">
-            <img src="assets/features/crispr.webp" data-light="assets/features/crispr.webp" data-dark="assets/features/crispr-dark.webp" alt="The CRISPR guide designer with scored guides and the PAM and cut drawn on the sequence" width="1440" height="900" loading="lazy" onerror="shotError(this)">
+            <img src="assets/features/crispr.webp" srcset="assets/features/crispr-720.webp 720w, assets/features/crispr-1080.webp 1080w, assets/features/crispr.webp 1440w" sizes="(max-width: 1080px) calc(100vw - 40px), 900px" data-light="assets/features/crispr.webp" data-dark="assets/features/crispr-dark.webp" alt="The CRISPR guide designer with scored guides and the PAM and cut drawn on the sequence" width="1440" height="900" loading="lazy" onerror="shotError(this)">
           </figure>
           <ul class="detail">
             <li><b>Drawn on the sequence.</b> Every guide with its PAM and cut site; the sequence view shows them in place.</li>
@@ -299,6 +303,7 @@
             <li><b>Read the edit back.</b> Take an edited chromatogram apart against its control, or count alleles in amplicon reads.</li>
             <li><b>Guide library.</b> Keep the guides you use and find them on other sequences.</li>
           </ul>
+          <p class="more"><a class="link" href="crispr-guide-design.html">How guides are scored, searched for off-targets and designed for a goal &rarr;</a></p>
         </article>
 
         <article class="feat" id="cloning">
@@ -307,7 +312,7 @@
             <p>Each part is shown on its own plasmid map; click the sites to cut it and the reaction strip shows what goes into the ligation. Seamless assembly (HiFi, Gibson, In-Fusion, SLIC), Golden Gate with overhang fidelity, Gateway and TOPO follow the same path. The product keeps the vector's numbering and carries every feature across.</p>
           </div>
           <figure class="shot" data-file="assets/features/cloning.webp">
-            <img src="assets/features/cloning.webp" data-light="assets/features/cloning.webp" data-dark="assets/features/cloning-dark.webp" alt="The cloning workspace with a vector and an insert map and the reaction strip" width="1440" height="900" loading="lazy" onerror="shotError(this)">
+            <img src="assets/features/cloning.webp" srcset="assets/features/cloning-720.webp 720w, assets/features/cloning-1080.webp 1080w, assets/features/cloning.webp 1440w" sizes="(max-width: 1080px) calc(100vw - 40px), 900px" data-light="assets/features/cloning.webp" data-dark="assets/features/cloning-dark.webp" alt="The cloning workspace with a vector and an insert map and the reaction strip" width="1440" height="900" loading="lazy" onerror="shotError(this)">
           </figure>
           <ul class="detail">
             <li><b>Ends and methylation.</b> Compatible ends are checked, and sites blocked by Dam, Dcm or CpG methylation are marked.</li>
@@ -329,10 +334,10 @@
           </div>
           <div class="shot-pair">
             <figure class="shot" data-file="assets/features/enzymes.webp">
-              <img src="assets/features/enzymes.webp" data-light="assets/features/enzymes.webp" data-dark="assets/features/enzymes-dark.webp" alt="The restriction enzyme dialog listing the single cutters of pEGFP-C1 with their sites and overhangs" width="1440" height="900" loading="lazy" onerror="shotError(this)">
+              <img src="assets/features/enzymes.webp" srcset="assets/features/enzymes-720.webp 720w, assets/features/enzymes-1080.webp 1080w, assets/features/enzymes.webp 1440w" sizes="(max-width: 960px) calc(100vw - 40px), 440px" data-light="assets/features/enzymes.webp" data-dark="assets/features/enzymes-dark.webp" alt="The restriction enzyme dialog listing the single cutters of pEGFP-C1 with their sites and overhangs" width="1440" height="900" loading="lazy" onerror="shotError(this)">
             </figure>
             <figure class="shot" data-file="assets/features/enzymes-sites.webp">
-              <img src="assets/features/enzymes-sites.webp" data-light="assets/features/enzymes-sites.webp" data-dark="assets/features/enzymes-sites-dark.webp" alt="The same sites drawn in the sequence view, with cut steps on both strands and names in the overview" width="1440" height="900" loading="lazy" onerror="shotError(this)">
+              <img src="assets/features/enzymes-sites.webp" srcset="assets/features/enzymes-sites-720.webp 720w, assets/features/enzymes-sites-1080.webp 1080w, assets/features/enzymes-sites.webp 1440w" sizes="(max-width: 960px) calc(100vw - 40px), 440px" data-light="assets/features/enzymes-sites.webp" data-dark="assets/features/enzymes-sites-dark.webp" alt="The same sites drawn in the sequence view, with cut steps on both strands and names in the overview" width="1440" height="900" loading="lazy" onerror="shotError(this)">
             </figure>
           </div>
           <ul class="detail">
@@ -347,12 +352,13 @@
             <p>Lanes from digests, PCR products and whole plasmids, run against the ladder you use on a migration model fitted to real gels. Bands carry their size and the fragment behind them, and the diagnostic digest designer finds the enzymes that tell your clones apart.</p>
           </div>
           <figure class="shot" data-file="assets/features/gel.webp">
-            <img src="assets/features/gel.webp" data-light="assets/features/gel.webp" data-dark="assets/features/gel-dark.webp" alt="A virtual agarose gel of pEGFP-C1 digests beside a ladder, with the fragment table of the selected lane" width="1440" height="900" loading="lazy" onerror="shotError(this)">
+            <img src="assets/features/gel.webp" srcset="assets/features/gel-720.webp 720w, assets/features/gel-1080.webp 1080w, assets/features/gel.webp 1440w" sizes="(max-width: 1080px) calc(100vw - 40px), 900px" data-light="assets/features/gel.webp" data-dark="assets/features/gel-dark.webp" alt="A virtual agarose gel of pEGFP-C1 digests beside a ladder, with the fragment table of the selected lane" width="1440" height="900" loading="lazy" onerror="shotError(this)">
           </figure>
           <ul class="detail">
             <li><b>Ladders.</b> Common commercial ladders built in; add your own.</li>
             <li><b>Looks and export.</b> Agarose percentage, stain and exposure; export as SVG or PNG for a figure.</li>
           </ul>
+          <p class="more"><a class="link" href="virtual-gel.html">How the gel is simulated: the migration model, bands, ladders and the digest designer &rarr;</a></p>
         </article>
 
         <article class="feat" id="alignment">
@@ -361,13 +367,14 @@
             <p>Pairwise global and local alignment with the built-in aligner, and multiple alignment with MAFFT, MUSCLE and Kalign compiled to WebAssembly. The viewer shows conservation, lets you edit gaps, add sequences and realign, and exports Clustal, PHYLIP, NEXUS and figures.</p>
           </div>
           <figure class="shot" data-file="assets/features/alignment.webp">
-            <img src="assets/features/alignment.webp" data-light="assets/features/alignment.webp" data-dark="assets/features/alignment-dark.webp" alt="A MAFFT alignment of five GFP variants with translation rows and the statistics panel" width="1440" height="900" loading="lazy" onerror="shotError(this)">
+            <img src="assets/features/alignment.webp" srcset="assets/features/alignment-720.webp 720w, assets/features/alignment-1080.webp 1080w, assets/features/alignment.webp 1440w" sizes="(max-width: 1080px) calc(100vw - 40px), 900px" data-light="assets/features/alignment.webp" data-dark="assets/features/alignment-dark.webp" alt="A MAFFT alignment of five GFP variants with translation rows and the statistics panel" width="1440" height="900" loading="lazy" onerror="shotError(this)">
           </figure>
           <ul class="detail">
             <li><b>Automatic engine choice.</b> The built-in aligner for two sequences, MAFFT L-INS-i when it will finish within seconds, Kalign otherwise, with a warning before a long run.</li>
             <li><b>Every row checked.</b> A tool that dropped or changed a residue cannot slip a wrong alignment through.</li>
             <li><b>Hirschberg above a size limit.</b> Long pairwise alignments run in linear memory.</li>
           </ul>
+          <p class="more"><a class="link" href="sequence-alignment.html">The alignment engines, the viewer and the pairwise algorithms &rarr;</a></p>
         </article>
 
         <article class="feat" id="blast">
@@ -376,7 +383,7 @@
             <p>Search NCBI nucleotide and protein databases from the sequence or from a selection. Results are polled in the background, stored with the sequence so you can come back to them, filtered and sorted in a drawer under the view, and exported as a table.</p>
           </div>
           <figure class="shot" data-file="assets/features/blast.webp">
-            <img src="assets/features/blast.webp" data-light="assets/features/blast.webp" data-dark="assets/features/blast-dark.webp" alt="An NCBI BLAST result for the EGFP coding sequence of pEGFP-C1 in the drawer: hit map over the query and the sortable hit table" width="1440" height="900" loading="lazy" onerror="shotError(this)">
+            <img src="assets/features/blast.webp" srcset="assets/features/blast-720.webp 720w, assets/features/blast-1080.webp 1080w, assets/features/blast.webp 1440w" sizes="(max-width: 1080px) calc(100vw - 40px), 900px" data-light="assets/features/blast.webp" data-dark="assets/features/blast-dark.webp" alt="An NCBI BLAST result for the EGFP coding sequence of pEGFP-C1 in the drawer: hit map over the query and the sortable hit table" width="1440" height="900" loading="lazy" onerror="shotError(this)">
           </figure>
           <ul class="detail">
             <li><b>blastp from a CDS.</b> Translate a coding feature and search with the protein.</li>
@@ -395,13 +402,14 @@
             <p>AB1 and SCF chromatograms with quality scores, base editing and trimming. Assemble reads de novo or against a reference into contigs, and verify a whole plate of clones against several references at once, with every mismatch named.</p>
           </div>
           <figure class="shot" data-file="assets/features/sanger.webp">
-            <img src="assets/features/sanger.webp" data-light="assets/features/sanger.webp" data-dark="assets/features/sanger-dark.webp" alt="Two Sanger traces of a pEGFP-C1 clone assembled on the plasmid, with a G to C variant in EGFP called as a D130H missense" width="1440" height="900" loading="lazy" onerror="shotError(this)">
+            <img src="assets/features/sanger.webp" srcset="assets/features/sanger-720.webp 720w, assets/features/sanger-1080.webp 1080w, assets/features/sanger.webp 1440w" sizes="(max-width: 1080px) calc(100vw - 40px), 900px" data-light="assets/features/sanger.webp" data-dark="assets/features/sanger-dark.webp" alt="Two Sanger traces of a pEGFP-C1 clone assembled on the plasmid, with a G to C variant in EGFP called as a D130H missense" width="1440" height="900" loading="lazy" onerror="shotError(this)">
           </figure>
           <ul class="detail">
             <li><b>Assemblies and contigs.</b> Reads grouped by name into contigs with the consensus and the trace under each base.</li>
             <li><b>Plates of clones.</b> One page per plate, with each clone's verdict against its reference.</li>
             <li><b>Overview figures.</b> Coverage and agreement across the construct, exported for the lab book.</li>
           </ul>
+          <p class="more"><a class="link" href="sanger-sequencing.html">How traces are trimmed, assembled and verified by the plate &rarr;</a></p>
         </article>
 
         <article class="feat" id="ngs">
@@ -410,7 +418,7 @@
             <p>Import FASTQ and gzipped FASTQ with R1 and R2 paired automatically. A FastQC-style quality report with per-base quality, content, duplication and adapter charts and verdicts, then trimming and filtering with fastp in WebAssembly, and export of the result.</p>
           </div>
           <figure class="shot" data-file="assets/features/ngs.webp">
-            <img src="assets/features/ngs.webp" data-light="assets/features/ngs.webp" data-dark="assets/features/ngs-dark.webp" alt="The FastQC-style quality report for a paired read set with per-module verdicts" width="1440" height="900" loading="lazy" onerror="shotError(this)">
+            <img src="assets/features/ngs.webp" srcset="assets/features/ngs-720.webp 720w, assets/features/ngs-1080.webp 1080w, assets/features/ngs.webp 1440w" sizes="(max-width: 1080px) calc(100vw - 40px), 900px" data-light="assets/features/ngs.webp" data-dark="assets/features/ngs-dark.webp" alt="The FastQC-style quality report for a paired read set with per-module verdicts" width="1440" height="900" loading="lazy" onerror="shotError(this)">
           </figure>
           <ul class="detail">
             <li><b>Stored, not re-read.</b> Read sets are kept in the browser's database, indexed for the viewer.</li>
@@ -424,7 +432,7 @@
             <p>Map reads to a reference with minimap2, or assemble them first and map back. View a mapping from the whole genome down to single bases: coverage, reads coloured by strand or pair, soft-clip junctions. Call variants with live thresholds and technology presets, and read what each one does to every coding feature it falls in.</p>
           </div>
           <figure class="shot" data-file="assets/features/mapping.webp">
-            <img src="assets/features/mapping.webp" data-light="assets/features/mapping.webp" data-dark="assets/features/mapping-dark.webp" alt="A read mapping with coverage track, reads and called variants" width="1440" height="900" loading="lazy" onerror="shotError(this)">
+            <img src="assets/features/mapping.webp" srcset="assets/features/mapping-720.webp 720w, assets/features/mapping-1080.webp 1080w, assets/features/mapping.webp 1440w" sizes="(max-width: 1080px) calc(100vw - 40px), 900px" data-light="assets/features/mapping.webp" data-dark="assets/features/mapping-dark.webp" alt="A read mapping with coverage track, reads and called variants" width="1440" height="900" loading="lazy" onerror="shotError(this)">
           </figure>
           <ul class="detail">
             <li><b>Coding effects as HGVS names them.</b> Spliced CDSs read through their exons, frameshifts followed to their new stop, lost stops read on to the next one.</li>
@@ -433,6 +441,7 @@
             <li><b>Guided pipeline.</b> From FASTQ to consensus and VCF in one pass, with each step's result kept.</li>
             <li><b>BAM in and out.</b> Mappings imported from and written to BAM with their index.</li>
           </ul>
+          <p class="more"><a class="link" href="ngs-read-mapping.html">How reads are mapped, variants called and contigs assembled &rarr;</a></p>
         </article>
       </section>
 
@@ -447,10 +456,10 @@
           </div>
           <div class="shot-pair">
             <figure class="shot" data-file="assets/features/formats.webp">
-              <img src="assets/features/formats.webp" data-light="assets/features/formats.webp" data-dark="assets/features/formats-dark.webp" alt="The Import by Accession dialog over an explorer holding GenBank, FASTA and AB1 files" width="1440" height="900" loading="lazy" onerror="shotError(this)">
+              <img src="assets/features/formats.webp" srcset="assets/features/formats-720.webp 720w, assets/features/formats-1080.webp 1080w, assets/features/formats.webp 1440w" sizes="(max-width: 960px) calc(100vw - 40px), 440px" data-light="assets/features/formats.webp" data-dark="assets/features/formats-dark.webp" alt="The Import by Accession dialog over an explorer holding GenBank, FASTA and AB1 files" width="1440" height="900" loading="lazy" onerror="shotError(this)">
             </figure>
             <figure class="shot" data-file="assets/features/formats-export.webp">
-              <img src="assets/features/formats-export.webp" data-light="assets/features/formats-export.webp" data-dark="assets/features/formats-export-dark.webp" alt="The export dialog with its format cards" width="1440" height="900" loading="lazy" onerror="shotError(this)">
+              <img src="assets/features/formats-export.webp" srcset="assets/features/formats-export-720.webp 720w, assets/features/formats-export-1080.webp 1080w, assets/features/formats-export.webp 1440w" sizes="(max-width: 960px) calc(100vw - 40px), 440px" data-light="assets/features/formats-export.webp" data-dark="assets/features/formats-export-dark.webp" alt="The export dialog with its format cards" width="1440" height="900" loading="lazy" onerror="shotError(this)">
             </figure>
           </div>
           <ul class="detail">
@@ -466,7 +475,7 @@
             <p>The plasmid map, the sequence with its features and enzymes, alignments, gels, assemblies and mappings all export as SVG or PDF. One painter draws the screen and the export, so the figure is the view you were looking at, in a fixed palette that does not follow the theme.</p>
           </div>
           <figure class="shot" data-file="assets/features/figures.webp">
-            <img src="assets/features/figures.webp" data-light="assets/features/figures.webp" data-dark="assets/features/figures-dark.webp" alt="The Export PDF dialog with its page preview, map on the first page and feature table" width="1440" height="900" loading="lazy" onerror="shotError(this)">
+            <img src="assets/features/figures.webp" srcset="assets/features/figures-720.webp 720w, assets/features/figures-1080.webp 1080w, assets/features/figures.webp 1440w" sizes="(max-width: 1080px) calc(100vw - 40px), 900px" data-light="assets/features/figures.webp" data-dark="assets/features/figures-dark.webp" alt="The Export PDF dialog with its page preview, map on the first page and feature table" width="1440" height="900" loading="lazy" onerror="shotError(this)">
           </figure>
           <ul class="detail">
             <li><b>PDF with tables.</b> The sequence as the text view draws it, with an optional map page and feature and enzyme tables.</li>
@@ -485,7 +494,7 @@
       <p>No installation, no account. Your sequences are stored on your own device and never uploaded.</p>
       <div class="hero-actions">
         <a class="btn" href="app.html">Open the editor &rarr;</a>
-        <a class="btn btn-ghost" href="index.html">Back to the overview</a>
+        <a class="btn btn-ghost" href="/">Back to the overview</a>
       </div>
     </div>
   </section>
@@ -496,7 +505,7 @@
   <div class="wrap">
     <div class="foot-grid">
       <div class="foot-about">
-        <a class="brand" href="index.html">
+        <a class="brand" href="/">
           <svg width="22" height="22" viewBox="-2 -2 28 28" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
             <circle cx="12" cy="12" r="13" stroke-width="1.5"/>
             <g stroke-width="2">
@@ -511,14 +520,26 @@
           </svg>
           SeqNexus
         </a>
-        <p><strong>Free to use.</strong> Open source under the GNU AGPL v3. Figures and files you make are yours for publications, theses, talks and commercial work, with no fee.</p>
+        <p><strong>Free to use.</strong> Open source under the GNU AGPL v3. Figures and files you make are yours for publications, theses, talks and commercial work, with no fee. If one ends up in a paper, please cite the tool.</p>
       </div>
       <nav class="foot-col" aria-label="Product">
         <p class="label">Product</p>
         <a href="app.html">Editor</a>
-        <a href="index.html">Overview</a>
+        <a href="/">Overview</a>
         <a href="features.html">Features</a>
-        <a href="index.html#formats">Formats</a>
+        <a href="/#formats">Formats</a>
+      </nav>
+      <nav class="foot-col" aria-label="Guides">
+        <p class="label">Guides</p>
+        <a href="plasmid-map.html">Plasmid map</a>
+        <a href="primer-design.html">Primer design</a>
+        <a href="crispr-guide-design.html">CRISPR guides</a>
+        <a href="codon-optimization.html">Codon optimization</a>
+        <a href="virtual-gel.html">Virtual gel</a>
+        <a href="sequence-alignment.html">Alignment</a>
+        <a href="sanger-sequencing.html">Sanger</a>
+        <a href="ngs-read-mapping.html">NGS mapping</a>
+        <a href="snapgene-alternative.html">SnapGene alternative</a>
       </nav>
       <nav class="foot-col" aria-label="Project">
         <p class="label">Project</p>

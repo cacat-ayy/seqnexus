@@ -1,0 +1,329 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Primer design tool, free in your browser: Tm, dimers, pairs | SeqNexus</title>
+<meta name="description" content="Design PCR, qPCR, cloning, mutagenesis and sequencing primers in your browser. Nearest-neighbour Tm with salt and magnesium correction, hairpin and dimer checks, ranked pairs and a primer library. Free, no account, nothing uploaded.">
+<meta name="author" content="Christopher Acatay">
+<meta name="theme-color" content="#0b5f58">
+<meta name="robots" content="max-image-preview:large">
+<link rel="canonical" href="https://seqnexus.app/primer-design.html">
+
+<meta property="og:type" content="article">
+<meta property="og:url" content="https://seqnexus.app/primer-design.html">
+<meta property="og:title" content="Primer design tool, free in your browser: Tm, dimers, pairs">
+<meta property="og:description" content="PCR, qPCR, cloning, mutagenesis and sequencing primers with nearest-neighbour thermodynamics, hairpin and dimer checks and ranked pairs. Free, open source, computed on your machine.">
+<meta property="og:image" content="https://seqnexus.app/assets/features/primers.png">
+<meta property="og:image:width" content="1440">
+<meta property="og:image:height" content="900">
+<meta property="og:image:alt" content="The primer design workbench with ranked pairs and the inspector showing Tm, GC and a self-dimer">
+<meta property="og:site_name" content="SeqNexus">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Primer design tool, free in your browser: Tm, dimers, pairs">
+<meta name="twitter:description" content="PCR, qPCR, cloning, mutagenesis and sequencing primers with nearest-neighbour thermodynamics, hairpin and dimer checks and ranked pairs. Free, open source, computed on your machine.">
+<meta name="twitter:image" content="https://seqnexus.app/assets/features/primers.png">
+
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@graph": [
+    {
+      "@type": "TechArticle",
+      "headline": "Primer design tool, free in your browser: Tm, dimers, pairs",
+      "url": "https://seqnexus.app/primer-design.html",
+      "description": "How SeqNexus designs primers: the five design tasks, how candidates are scored and paired, the melting temperature model, hairpin and dimer grading, and the defaults.",
+      "image": "https://seqnexus.app/assets/features/primers.png",
+      "datePublished": "2026-10-20",
+      "dateModified": "2026-10-20",
+      "author": { "@type": "Person", "name": "Christopher Acatay", "url": "https://github.com/cacat-ayy" },
+      "about": { "@type": "SoftwareApplication", "name": "SeqNexus", "url": "https://seqnexus.app/app.html" },
+      "isPartOf": { "@type": "WebSite", "name": "SeqNexus", "url": "https://seqnexus.app/" }
+    },
+    {
+      "@type": "BreadcrumbList",
+      "itemListElement": [
+        { "@type": "ListItem", "position": 1, "name": "SeqNexus", "item": "https://seqnexus.app/" },
+        { "@type": "ListItem", "position": 2, "name": "Features", "item": "https://seqnexus.app/features.html" },
+        { "@type": "ListItem", "position": 3, "name": "Primer design", "item": "https://seqnexus.app/primer-design.html" }
+      ]
+    }
+  ]
+}
+</script>
+
+<link rel="icon" href="assets/favicon.svg" type="image/svg+xml">
+<link rel="icon" href="assets/favicon-48x48.png" sizes="48x48" type="image/png">
+<link rel="icon" href="assets/favicon-96x96.png" sizes="96x96" type="image/png">
+<link rel="icon" href="assets/favicon-144x144.png" sizes="144x144" type="image/png">
+<link rel="icon" href="assets/favicon-192x192.png" sizes="192x192" type="image/png">
+<link rel="apple-touch-icon" href="assets/favicon-192x192.png">
+
+<script>
+// Apply the stored theme before first paint. Must stay inline and in <head>.
+(function () {
+  try {
+    var stored = localStorage.getItem('seqnexus-landing-dark');
+    var dark = stored !== null
+      ? stored === '1'
+      : window.matchMedia('(prefers-color-scheme: dark)').matches;
+    if (dark) document.documentElement.classList.add('dark');
+  } catch (e) {
+    // localStorage blocked, so stay on light.
+  }
+})();
+</script>
+
+<link rel="stylesheet" href="site.css">
+</head>
+<body>
+
+<header class="masthead">
+  <div class="masthead-inner">
+    <a class="brand" href="/">
+      <svg width="22" height="22" viewBox="-2 -2 28 28" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <circle cx="12" cy="12" r="13" stroke-width="1.5"/>
+        <g stroke-width="2">
+          <path d="m10 16 1.5 1.5"/><path d="m14 8-1.5-1.5"/>
+          <path d="M15 2c-1.798 1.998-2.518 3.995-2.807 5.993"/>
+          <path d="m16.5 10.5 1 1"/><path d="m17 6-2.891-2.891"/>
+          <path d="M2 15c6.667-6 13.333 0 20-6"/><path d="m20 9 .891.891"/>
+          <path d="M3.109 14.109 4 15"/><path d="m6.5 12.5 1 1"/>
+          <path d="m7 18 2.891 2.891"/>
+          <path d="M9 22c1.798-1.998 2.518-3.995 2.807-5.993"/>
+        </g>
+      </svg>
+      SeqNexus
+    </a>
+    <nav aria-label="Primary">
+      <a href="/">Overview</a>
+      <a class="hide-sm" href="features.html">Features</a>
+      <a class="hide-sm" href="/#formats">Formats</a>
+      <a class="hide-sm" href="https://github.com/cacat-ayy/seqnexus">Source</a>
+      <a class="btn btn-small" href="app.html">Open the editor</a>
+      <button class="theme-toggle" id="theme-toggle" type="button" aria-label="Toggle dark mode" aria-pressed="false">
+        <svg class="icon-sun" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="5"/><path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/></svg>
+        <svg class="icon-moon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+      </button>
+    </nav>
+  </div>
+</header>
+
+<main>
+
+  <section class="page-head">
+    <div class="wrap">
+      <p class="label"><a class="back" href="features.html#primers">&larr; Features</a></p>
+      <h1 style="margin-top:14px">Primer design with real thermodynamics, in your browser.</h1>
+      <p class="lede">Select a target, get ranked primer pairs with their Tm, GC, 3' stability, hairpins and dimers, and see why every rejected candidate was rejected. PCR, qPCR with a probe, cloning tails, mutagenesis and sequencing primers, from one workbench. Free, no account, computed on your own machine.</p>
+      <div class="hero-actions">
+        <a class="btn" href="app.html">Open the editor &rarr;</a>
+      </div>
+    </div>
+  </section>
+
+  <div class="wrap">
+    <article class="doc">
+
+      <h2>Five design tasks</h2>
+      <p>The Primers tab of the sidebar has a Design view with one task for each thing a lab asks of a primer:</p>
+      <ul>
+        <li><b>PCR and qPCR.</b> A pair around a target, and optionally a TaqMan probe between them. The target follows your selection, and regions can be excluded.</li>
+        <li><b>Cloning.</b> Binding parts that start exactly at the insert's ends, behind restriction-site tails (with padding, and a warning if the enzyme also cuts the insert) or homology arms read off a vector for Gibson, HiFi or In-Fusion assembly.</li>
+        <li><b>Mutagenesis.</b> Substitutions, insertions and deletions, as back-to-back pairs (Q5 site-directed mutagenesis style) or overlapping pairs (the QuikChange rule, Tm of 78 °C or more). The mutant opens as a new sequence.</li>
+        <li><b>Sequencing.</b> Primers tiled so reads overlap across a region, each binding the template exactly once.</li>
+        <li><b>Check a primer.</b> Where an oligo you already own binds, in every open sequence.</li>
+      </ul>
+      <p>Any forward and reverse pick can be run as an in-silico PCR: the product opens as a new sequence with both 5' tails built in and the template's features carried over, ready for the cloning workspace.</p>
+
+      <figure class="shot" data-file="assets/features/primers.webp">
+        <img src="assets/features/primers.webp" srcset="assets/features/primers-720.webp 720w, assets/features/primers-1080.webp 1080w, assets/features/primers.webp 1440w" sizes="(max-width: 1080px) calc(100vw - 40px), 736px" data-light="assets/features/primers.webp" data-dark="assets/features/primers-dark.webp" alt="The primer design workbench with ranked pairs and the inspector showing Tm, GC, 3-prime dG and a self-dimer" width="1440" height="900" loading="lazy" onerror="shotError(this)">
+        <figcaption>The workbench: ranked pairs, the candidate track along the sequence, and the inspector for one primer with its Tm, GC, 3' stability and strongest self-dimer.</figcaption>
+      </figure>
+
+      <h2>How a pair is found</h2>
+      <ol>
+        <li><b>Enumerate candidates.</b> Windows of varying length slide upstream of the target for the forward primer and downstream for the reverse, skipping excluded regions.</li>
+        <li><b>Score each candidate.</b> Hard constraints reject a primer outright; everything else adds to a weighted penalty with a per-term breakdown, so the inspector can say why a candidate scored as it did.</li>
+        <li><b>Pair candidates.</b> The best 200 of each side are combined, filtered by product size, and given pair-level penalties for Tm mismatch and a 3' cross-dimer.</li>
+        <li><b>Rank.</b> Pairs are sorted by total penalty. The top pairs are returned, and the whole candidate landscape (the best candidate per 3' end) is drawn as a track, so either side can be picked by hand.</li>
+      </ol>
+      <p>Picks are oligo sequences: they can be trimmed or extended along the template, are drawn on the sequence and the map as dashed previews, and are re-scored as a pair live. A target longer than the maximum product is reported, not worked around by changing your settings.</p>
+
+      <h3>Hard constraints</h3>
+      <table class="doc-table">
+        <thead><tr><th>Criterion</th><th>Default</th></tr></thead>
+        <tbody>
+          <tr><td>Tm</td><td class="num">57 to 63 °C</td></tr>
+          <tr><td>GC content</td><td class="num">40 to 60 %</td></tr>
+          <tr><td>Homopolymer run</td><td class="num">4 bases at most</td></tr>
+        </tbody>
+      </table>
+
+      <h3>Soft penalties</h3>
+      <table class="doc-table">
+        <thead><tr><th>Criterion</th><th>Weight</th><th>What it catches</th></tr></thead>
+        <tbody>
+          <tr><td>Tm deviation</td><td class="num">1.0 per °C</td><td>Distance from the optimal Tm (default 60 °C)</td></tr>
+          <tr><td>Length deviation</td><td class="num">0.5 per base</td><td>Distance from the optimal length (default 20 bp)</td></tr>
+          <tr><td>GC deviation</td><td class="num">0.1 per %</td><td>Distance from 50 % GC</td></tr>
+          <tr><td>No GC clamp</td><td class="num">+1.0</td><td>No G or C in the last two 3' bases</td></tr>
+          <tr><td>3' end too stable</td><td class="num">+2.0</td><td>&Delta;G<sub>37</sub> of the last five bases below &minus;9.0 kcal/mol, which mispriming forgives</td></tr>
+          <tr><td>3' end too weak</td><td class="num">+1.0</td><td>&Delta;G<sub>37</sub> of the last five bases above &minus;5.0 kcal/mol</td></tr>
+          <tr><td>Self-complementarity</td><td class="num">+1.0 / +3.0</td><td>A self-dimer of 5 or more, or 8 or more, paired bases</td></tr>
+          <tr><td>3' end self-dimer</td><td class="num">+1.5 / +4.0</td><td>The 3' end pairs with itself over 3, or 4 or more, bases, which the polymerase can extend</td></tr>
+          <tr><td>Hairpin</td><td class="num">+0.5 / +2.0</td><td>A stem of 3, or 4 or more, base pairs</td></tr>
+          <tr><td>Homopolymer run</td><td class="num">+0.5 per extra base</td><td>Runs of 3 or more</td></tr>
+        </tbody>
+      </table>
+      <p>The pair penalty is the sum of both primers' penalties, plus the Tm difference between them (1.0 per °C), the distance of the product from the optimal size (0.01 per bp), and the 3' cross-dimer penalty. The cross-dimer check looks at the 3' end of both primers, since that is the end a polymerase extends.</p>
+
+      <h2>Melting temperature</h2>
+      <p>Tm comes from the unified nearest-neighbour model of SantaLucia (1998): enthalpy and entropy are summed over each adjacent dinucleotide step, plus initiation terms for the terminal base pairs, and</p>
+      <p><code>Tm = &Delta;H / (&Delta;S + R ln(C<sub>t</sub>/4)) &minus; 273.15</code></p>
+      <p>with R = 1.987 cal/(mol·K) and C<sub>t</sub> the total oligo concentration. The result is then corrected for the buffer: the Owczarzy (2004) correction for monovalent cations, or, when magnesium is given, the Owczarzy (2008) divalent correction with free Mg<sup>2+</sup> taken as Mg<sup>2+</sup> minus dNTPs, since dNTPs chelate magnesium one to one. The implementation is checked against Biopython's <code>Tm_NN</code> reference values. Presets set the buffer: Standard PCR, GC-rich template, Long amplicon (1 to 5 kb) and qPCR with probe.</p>
+      <p>A primer's Tm at a binding site is taken against the template bases it actually faces. Internal mismatches use the Allawi and SantaLucia and the Peyret mismatch tables, and the first tail base uses the terminal-mismatch table, so a primer with a mismatch in its middle gets the lower Tm it deserves. A tailed primer has two Tms, both shown: the annealed part, which matters for the first cycles, and the whole oligo, once the tail has been copied into the product.</p>
+      <p>The same model runs behind the selection tooltip: select any 15 to 200 bp and read its Tm. Below 15 bp the tooltip uses the Wallace rule, 2 °C per A or T and 4 °C per G or C.</p>
+
+      <h2>Hairpins and dimers</h2>
+      <p>The inspector and the hover card of every primer show the Tm of its strongest hairpin and its strongest self-dimer. These use a simplified nearest-neighbour model, so they are shown as estimates:</p>
+      <ul>
+        <li><b>Self-dimer.</b> The oligo is slid antiparallel along a copy of itself. At every offset the most stable ungapped paired stretch is found (single internal mismatches allowed), and the best is scored as a duplex. Both strands are the same molecule, so the equilibrium constant is 1/C<sub>t</sub>, and the dimer's Tm rises with oligo concentration, as it does in the tube.</li>
+        <li><b>Hairpin.</b> Every loop of three or more bases is tried, the stem zipped outward from the loop for as long as the bases pair perfectly, and each fold scored with the stem's nearest-neighbour terms, a terminal mismatch across the closing pair and the hairpin-loop penalty of SantaLucia and Hicks (2004). A hairpin melts where &Delta;G is zero, independent of concentration.</li>
+      </ul>
+      <p>Each structure is graded against the Tm at which the primer itself anneals:</p>
+      <table class="doc-table">
+        <thead><tr><th>Grade</th><th>Structure Tm</th></tr></thead>
+        <tbody>
+          <tr><td>Good</td><td>At least 15 °C below the annealing Tm, or no structure</td></tr>
+          <tr><td>Ok</td><td>Between 15 and 5 °C below the annealing Tm</td></tr>
+          <tr><td>Poor</td><td>Less than 5 °C below the annealing Tm</td></tr>
+        </tbody>
+      </table>
+      <p>A structure that pairs the oligo's 3' end is graded one step worse, because a polymerase can extend it into primer-dimer or self-primed product. For a probe the card also checks the TaqMan rules: no G at the 5' end, where it would quench the reporter, and a Tm margin over the flanking primers of 6 °C or more.</p>
+
+      <h2>Defaults you can change</h2>
+      <table class="doc-table">
+        <thead><tr><th>Parameter</th><th>Default</th></tr></thead>
+        <tbody>
+          <tr><td>Tm range, optimal Tm</td><td class="num">57 to 63 °C, 60 °C</td></tr>
+          <tr><td>Primer length</td><td class="num">18 to 25 bp</td></tr>
+          <tr><td>Product size</td><td class="num">150 to 1000 bp</td></tr>
+          <tr><td>GC content</td><td class="num">40 to 60 %</td></tr>
+          <tr><td>Na<sup>+</sup></td><td class="num">50 mM</td></tr>
+          <tr><td>Mg<sup>2+</sup>, dNTPs</td><td class="num">1.5 mM, 0.8 mM</td></tr>
+          <tr><td>Primer concentration</td><td class="num">250 nM</td></tr>
+        </tbody>
+      </table>
+
+      <h2>Primers as oligos</h2>
+      <p>A primer is stored as the oligo you would order: its full 5' to 3' sequence, tails included. Where it binds is never stored. It is recomputed from the sequence: 10-mer seeds find candidate diagonals on both strands in one pass over the template, and the best-scoring run of paired bases along each diagonal is the annealed part. Whatever lies outside that run is a tail, so restriction sites, homology arms and promoters need no special handling. A primer counts as bound only where its 3' end pairs; a probe anywhere.</p>
+      <p>Oligos you keep across sequences live in the primer library, with folders, tags, notes and search. They come in by paste or file (CSV or TSV with name and sequence columns, FASTA, or bare sequences) and go out as CSV, FASTA or a tab-separated order sheet with name, sequence, scale and purification, the way vendor bulk-entry forms take them. When you open a sequence that library primers bind, the editor offers them, and each binding site is drawn on the sequence and the map. An off-target scan reports weaker sites where a primer's last 8 bases pair perfectly.</p>
+
+      <div class="doc-where">
+        <p class="label">Where to find it</p>
+        <p>Open a sequence, select the target, and open the Primers tab in the sidebar; its Design view holds the five tasks. Hover any primer on the sequence or the map for its card with Tm, GC, hairpin and dimer grades, and the restriction sites in its tail. The library is the Oligos group of the explorer.</p>
+      </div>
+
+      <h2>Limits</h2>
+      <ul>
+        <li>The hairpin and dimer model counts only ungapped helices. Bulges and internal loops are not modelled, and hairpins get no special triloop or tetraloop bonus, so these Tms are estimates, not Primer3's full thermodynamic alignment.</li>
+        <li>The hairpin salt correction uses a formula fitted on duplexes, an approximation.</li>
+        <li>Off-target sites are reported by a perfect match of the last 8 bases, not by a full thermodynamic scan of the template.</li>
+      </ul>
+
+      <h2>References</h2>
+      <ul>
+        <li>SantaLucia J Jr. (1998) A unified view of polymer, dumbbell, and oligonucleotide DNA nearest-neighbor thermodynamics. <i>Proc Natl Acad Sci USA</i> 95:1460-1465.</li>
+        <li>Owczarzy R et al. (2004) Effects of sodium ions on DNA duplex oligomers: improved predictions of melting temperatures. <i>Biochemistry</i> 43:3537-3554.</li>
+        <li>Owczarzy R et al. (2008) Predicting stability of DNA duplexes in solutions containing magnesium and monovalent cations. <i>Biochemistry</i> 47:5336-5353.</li>
+      </ul>
+
+      <div class="doc-related">
+        <p class="label">Read on</p>
+        <ul>
+          <li><a class="link" href="features.html#primers">Primers on the features page &rarr;</a></li>
+          <li><a class="link" href="https://github.com/cacat-ayy/seqnexus#primers">Primer scoring and thermodynamics in the README &rarr;</a></li>
+          <li><a class="link" href="features.html#cloning">Cloning simulation, which hands you the primers with their tails &rarr;</a></li>
+          <li><a class="link" href="snapgene-alternative.html">SeqNexus as a free SnapGene alternative &rarr;</a></li>
+        </ul>
+      </div>
+
+    </article>
+  </div>
+
+  <section class="closing">
+    <div class="wrap">
+      <p class="label">Get started</p>
+      <h2 style="margin-top:14px">Select a target and design the pair.</h2>
+      <p>No installation, no account. Your sequences are stored on your own device and never uploaded.</p>
+      <div class="hero-actions">
+        <a class="btn" href="app.html">Open the editor &rarr;</a>
+        <a class="btn btn-ghost" href="features.html">See every feature</a>
+      </div>
+    </div>
+  </section>
+
+</main>
+
+<footer class="site-foot">
+  <div class="wrap">
+    <div class="foot-grid">
+      <div class="foot-about">
+        <a class="brand" href="/">
+          <svg width="22" height="22" viewBox="-2 -2 28 28" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <circle cx="12" cy="12" r="13" stroke-width="1.5"/>
+            <g stroke-width="2">
+              <path d="m10 16 1.5 1.5"/><path d="m14 8-1.5-1.5"/>
+              <path d="M15 2c-1.798 1.998-2.518 3.995-2.807 5.993"/>
+              <path d="m16.5 10.5 1 1"/><path d="m17 6-2.891-2.891"/>
+              <path d="M2 15c6.667-6 13.333 0 20-6"/><path d="m20 9 .891.891"/>
+              <path d="M3.109 14.109 4 15"/><path d="m6.5 12.5 1 1"/>
+              <path d="m7 18 2.891 2.891"/>
+              <path d="M9 22c1.798-1.998 2.518-3.995 2.807-5.993"/>
+            </g>
+          </svg>
+          SeqNexus
+        </a>
+        <p><strong>Free to use.</strong> Open source under the GNU AGPL v3. Figures and files you make are yours for publications, theses, talks and commercial work, with no fee. If one ends up in a paper, please cite the tool.</p>
+      </div>
+      <nav class="foot-col" aria-label="Product">
+        <p class="label">Product</p>
+        <a href="app.html">Editor</a>
+        <a href="/">Overview</a>
+        <a href="features.html">Features</a>
+        <a href="/#formats">Formats</a>
+      </nav>
+      <nav class="foot-col" aria-label="Guides">
+        <p class="label">Guides</p>
+        <a href="plasmid-map.html">Plasmid map</a>
+        <a href="primer-design.html">Primer design</a>
+        <a href="crispr-guide-design.html">CRISPR guides</a>
+        <a href="codon-optimization.html">Codon optimization</a>
+        <a href="virtual-gel.html">Virtual gel</a>
+        <a href="sequence-alignment.html">Alignment</a>
+        <a href="sanger-sequencing.html">Sanger</a>
+        <a href="ngs-read-mapping.html">NGS mapping</a>
+        <a href="snapgene-alternative.html">SnapGene alternative</a>
+      </nav>
+      <nav class="foot-col" aria-label="Project">
+        <p class="label">Project</p>
+        <a href="https://github.com/cacat-ayy/seqnexus">Source on GitHub</a>
+        <a href="https://github.com/cacat-ayy/seqnexus/issues">Report an issue</a>
+        <a href="mailto:contact@seqnexus.app">Contact</a>
+      </nav>
+      <div class="foot-col">
+        <p class="label">Cite this tool</p>
+        <p class="foot-cite">Acatay, C. (2026). SeqNexus: a browser-based molecular biology sequence editor. https://seqnexus.app</p>
+      </div>
+    </div>
+    <div class="foot-base">
+      <p>&copy; 2026 Christopher Acatay <a href="https://www.gnu.org/licenses/agpl-3.0.html">AGPL v3 licence</a></p>
+      <p><a href="impressum.html">Legal notice</a> <a href="datenschutz.html">Privacy</a></p>
+    </div>
+  </div>
+</footer>
+
+<script src="site.js"></script>
+</body>
+</html>

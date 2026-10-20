@@ -1,0 +1,291 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Sequence alignment online: MAFFT, MUSCLE and Kalign in your browser | SeqNexus</title>
+<meta name="description" content="Align sequences in your browser with MAFFT, MUSCLE and Kalign compiled to WebAssembly, or pairwise with Needleman-Wunsch and Smith-Waterman. Editable viewer with conservation, translation and figure export. Free, no account, nothing uploaded.">
+<meta name="author" content="Christopher Acatay">
+<meta name="theme-color" content="#0b5f58">
+<meta name="robots" content="max-image-preview:large">
+<link rel="canonical" href="https://seqnexus.app/sequence-alignment.html">
+
+<meta property="og:type" content="article">
+<meta property="og:url" content="https://seqnexus.app/sequence-alignment.html">
+<meta property="og:title" content="Sequence alignment online: MAFFT, MUSCLE and Kalign in your browser">
+<meta property="og:description" content="Multiple alignment with the real tools compiled to WebAssembly, pairwise alignment in linear memory, and an editable viewer with conservation, translation and figure export.">
+<meta property="og:image" content="https://seqnexus.app/assets/features/alignment.png">
+<meta property="og:image:width" content="1440">
+<meta property="og:image:height" content="900">
+<meta property="og:image:alt" content="A MAFFT alignment of five GFP variants with translation rows and the statistics panel">
+<meta property="og:site_name" content="SeqNexus">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Sequence alignment online: MAFFT, MUSCLE and Kalign in your browser">
+<meta name="twitter:description" content="Multiple alignment with the real tools compiled to WebAssembly, pairwise alignment in linear memory, and an editable viewer with conservation, translation and figure export.">
+<meta name="twitter:image" content="https://seqnexus.app/assets/features/alignment.png">
+
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@graph": [
+    {
+      "@type": "TechArticle",
+      "headline": "Sequence alignment online: MAFFT, MUSCLE and Kalign in your browser",
+      "url": "https://seqnexus.app/sequence-alignment.html",
+      "description": "How SeqNexus aligns sequences: the three WebAssembly engines and when each is chosen, the alignment document and its tracks, how identity is counted, and the built-in pairwise algorithms with their size limits.",
+      "image": "https://seqnexus.app/assets/features/alignment.png",
+      "datePublished": "2026-10-20",
+      "dateModified": "2026-10-20",
+      "author": { "@type": "Person", "name": "Christopher Acatay", "url": "https://github.com/cacat-ayy" },
+      "about": { "@type": "SoftwareApplication", "name": "SeqNexus", "url": "https://seqnexus.app/app.html" },
+      "isPartOf": { "@type": "WebSite", "name": "SeqNexus", "url": "https://seqnexus.app/" }
+    },
+    {
+      "@type": "BreadcrumbList",
+      "itemListElement": [
+        { "@type": "ListItem", "position": 1, "name": "SeqNexus", "item": "https://seqnexus.app/" },
+        { "@type": "ListItem", "position": 2, "name": "Features", "item": "https://seqnexus.app/features.html" },
+        { "@type": "ListItem", "position": 3, "name": "Sequence alignment", "item": "https://seqnexus.app/sequence-alignment.html" }
+      ]
+    }
+  ]
+}
+</script>
+
+<link rel="icon" href="assets/favicon.svg" type="image/svg+xml">
+<link rel="icon" href="assets/favicon-48x48.png" sizes="48x48" type="image/png">
+<link rel="icon" href="assets/favicon-96x96.png" sizes="96x96" type="image/png">
+<link rel="icon" href="assets/favicon-144x144.png" sizes="144x144" type="image/png">
+<link rel="icon" href="assets/favicon-192x192.png" sizes="192x192" type="image/png">
+<link rel="apple-touch-icon" href="assets/favicon-192x192.png">
+
+<script>
+// Apply the stored theme before first paint. Must stay inline and in <head>.
+(function () {
+  try {
+    var stored = localStorage.getItem('seqnexus-landing-dark');
+    var dark = stored !== null
+      ? stored === '1'
+      : window.matchMedia('(prefers-color-scheme: dark)').matches;
+    if (dark) document.documentElement.classList.add('dark');
+  } catch (e) {
+    // localStorage blocked, so stay on light.
+  }
+})();
+</script>
+
+<link rel="stylesheet" href="site.css">
+</head>
+<body>
+
+<header class="masthead">
+  <div class="masthead-inner">
+    <a class="brand" href="/">
+      <svg width="22" height="22" viewBox="-2 -2 28 28" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <circle cx="12" cy="12" r="13" stroke-width="1.5"/>
+        <g stroke-width="2">
+          <path d="m10 16 1.5 1.5"/><path d="m14 8-1.5-1.5"/>
+          <path d="M15 2c-1.798 1.998-2.518 3.995-2.807 5.993"/>
+          <path d="m16.5 10.5 1 1"/><path d="m17 6-2.891-2.891"/>
+          <path d="M2 15c6.667-6 13.333 0 20-6"/><path d="m20 9 .891.891"/>
+          <path d="M3.109 14.109 4 15"/><path d="m6.5 12.5 1 1"/>
+          <path d="m7 18 2.891 2.891"/>
+          <path d="M9 22c1.798-1.998 2.518-3.995 2.807-5.993"/>
+        </g>
+      </svg>
+      SeqNexus
+    </a>
+    <nav aria-label="Primary">
+      <a href="/">Overview</a>
+      <a class="hide-sm" href="features.html">Features</a>
+      <a class="hide-sm" href="/#formats">Formats</a>
+      <a class="hide-sm" href="https://github.com/cacat-ayy/seqnexus">Source</a>
+      <a class="btn btn-small" href="app.html">Open the editor</a>
+      <button class="theme-toggle" id="theme-toggle" type="button" aria-label="Toggle dark mode" aria-pressed="false">
+        <svg class="icon-sun" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="5"/><path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/></svg>
+        <svg class="icon-moon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+      </button>
+    </nav>
+  </div>
+</header>
+
+<main>
+
+  <section class="page-head">
+    <div class="wrap">
+      <p class="label"><a class="back" href="features.html#alignment">&larr; Features</a></p>
+      <h1 style="margin-top:14px">Multiple and pairwise alignment, in a browser tab.</h1>
+      <p class="lede">MAFFT, MUSCLE and Kalign compiled to WebAssembly, chosen automatically by what the job needs, plus pairwise alignment in linear memory for sequences up to tens of kilobases. An editable viewer with conservation, translation and figure export. Free, computed on your own machine.</p>
+      <div class="hero-actions">
+        <a class="btn" href="app.html">Open the editor &rarr;</a>
+      </div>
+    </div>
+  </section>
+
+  <div class="wrap">
+    <article class="doc">
+
+      <h2>The engines</h2>
+      <p>Multiple alignment runs MAFFT, MUSCLE or Kalign: the WebAssembly builds of the real tools, one job per worker so a job can be cancelled. MAFFT runs as tbfast, which does the pairwise stage, the progressive alignment and sixteen rounds of iterative refinement itself, with the three iterative-refinement strategies the MAFFT script offers:</p>
+      <table class="doc-table">
+        <thead><tr><th>Strategy</th><th>Best when</th></tr></thead>
+        <tbody>
+          <tr><td>L-INS-i</td><td>The sequences share one alignable domain with unalignable ends</td></tr>
+          <tr><td>G-INS-i</td><td>They are similar over their whole length</td></tr>
+          <tr><td>E-INS-i</td><td>Several conserved domains are separated by long unalignable regions</td></tr>
+        </tbody>
+      </table>
+      <p><b>Automatic</b> uses the built-in pairwise aligner for exactly two sequences, MAFFT L-INS-i when its estimated running time is 20 seconds or less, and Kalign otherwise. The estimate comes from timing the builds on one thread and is good to a factor of two or three, which is enough to warn before starting something that will take minutes, which the dialog does.</p>
+      <p>Rows are sent to the tool under short generated names, because names with spaces, odd characters or duplicates can confuse the tools, and are put back in input order whatever order the tool writes them in. <b>Every row is checked to have come back with exactly its residues</b>, so a tool that dropped or changed one cannot slip a wrong alignment through. A fresh instance is started for every run, which costs milliseconds against seconds of alignment.</p>
+
+      <figure class="shot" data-file="assets/features/alignment.webp">
+        <img src="assets/features/alignment.webp" srcset="assets/features/alignment-720.webp 720w, assets/features/alignment-1080.webp 1080w, assets/features/alignment.webp 1440w" sizes="(max-width: 1080px) calc(100vw - 40px), 736px" data-light="assets/features/alignment.webp" data-dark="assets/features/alignment-dark.webp" alt="A MAFFT alignment of five GFP variants with translation rows and the statistics panel" width="1440" height="900" loading="lazy" onerror="shotError(this)">
+        <figcaption>Five GFP variants aligned with MAFFT, with conservation tracks above and the statistics panel beside.</figcaption>
+      </figure>
+
+      <h2>An alignment is a document you own</h2>
+      <p>An alignment is a stack of gapped rows that you edit. A row is a copy: it remembers which sequence it came from, for display, but editing it never reaches back into the source, and the source changing never reaches into the alignment. Extracting a row as a sequence is the way out. Every row is the same length and the document stays rectangular. How the alignment came to be, the engine and strategy or the file it was imported from, is kept with it, for display and for realigning.</p>
+      <p>Display settings live outside the undo history, since changing the colours is not an edit, and are saved with the alignment.</p>
+      <ul>
+        <li><b>Colour schemes.</b> Some colour a residue by what it is (Zappo, Taylor, nucleotides); others by its column, where Clustal X colours a residue only when its column is conserved enough, percent identity shades by how many rows share it, and BLOSUM62 compares with the consensus. The palette is blended into the theme's canvas colour, so one set of colours reads on light and dark themes.</li>
+        <li><b>Tracks.</b> Consensus with an adjustable threshold, identity and similarity graphs, a sequence logo and conservation marks, all read off the column profile.</li>
+        <li><b>Translation.</b> A DNA alignment can show a translation strip or colour bases by the amino acid they encode. Each row is read from its own first residue in the chosen frame, skipping gaps, so a codon can straddle a gap. A gap run inside the coding stretch whose length is not a multiple of three shifts the frame for the rest of that row, and those runs and any internal stops are reported, since they are usually errors to correct.</li>
+        <li><b>Search.</b> A motif is searched in each row without its gaps, so a motif split by a gap is still found, and reported as the columns it spans.</li>
+      </ul>
+
+      <h3>How identity is counted</h3>
+      <p>Mean pairwise identity for a selection is computed from the column counts rather than by comparing every pair of rows, so the statistics stay linear in the size of the selection and update on every edit. A row's end gaps, before its first residue and after its last, are missing data rather than differences: a partial sequence has nothing there to compare, so pairs with a row in its end gaps are left out. A stretch that matches a longer sequence base for base is therefore 100 % identical to it, where counting the end columns as gaps would put a 660 bp piece of EGFP at 91 %. A residue against a gap inside a row still counts as a difference. The same rule gives the identity graph, the identity matrix and the figure shown with each alignment in the explorer.</p>
+
+      <h2>The built-in pairwise algorithms</h2>
+      <p>These are plain TypeScript with no dependencies, and they are what runs for two sequences.</p>
+      <ul>
+        <li><b>Needleman-Wunsch</b> for global alignment: the standard three-matrix dynamic program for affine gaps. Above 100 million cells it switches to Hirschberg's divide and conquer, which gives the same optimal alignment in linear memory, so sequences of about 22 kb can be aligned globally without exhausting the browser.</li>
+        <li><b>Smith-Waterman</b> for local alignment: the full dynamic program up to 50 million cells, then a three-pass linear-memory approach that finds the best score and end in linear memory, finds the start in a reverse pass, and runs the full dynamic program only over the bounded region.</li>
+        <li><b>Seeded Smith-Waterman</b> for a short query against a genome. A k-mer index of the reference is built, seeds from the query are chained along diagonals, and Smith-Waterman runs only on a bounded region around the best chain. This turns a 4 kb against 4.6 Mb alignment into a hash lookup plus a small alignment. Highly repetitive k-mers are skipped to bound memory.</li>
+      </ul>
+      <p>Scoring is configurable match and mismatch scores for DNA, BLOSUM62 for protein, and an affine gap model with separate open and extend penalties.</p>
+      <table class="doc-table">
+        <thead><tr><th>Case</th><th>Strategy</th><th>Up to about</th></tr></thead>
+        <tbody>
+          <tr><td>Global pairwise</td><td>Full matrix or Hirschberg</td><td class="num">22 kb x 22 kb</td></tr>
+          <tr><td>Local pairwise, small</td><td>Full matrix</td><td class="num">7 kb x 7 kb</td></tr>
+          <tr><td>Local pairwise, large</td><td>Linear memory</td><td class="num">50 kb x 50 kb</td></tr>
+          <tr><td>Local pairwise against a genome</td><td>Seed and extend</td><td class="num">4 kb x 5 Mb and beyond</td></tr>
+        </tbody>
+      </table>
+
+      <h2>Editing, realigning and exporting</h2>
+      <p>Gaps can be inserted and deleted, blocks selected by dragging across cells, columns selected along the ruler, and rows selected by their names. Sequences can be added to an existing alignment and the whole realigned with the engine it remembers. The alignment exports as Clustal, PHYLIP, NEXUS and FASTA, and as a figure: pick the region, the line width, the tracks and the size, see it, then save SVG, PNG or PDF with the colours, highlighting and translation the current view has.</p>
+
+      <div class="doc-where">
+        <p class="label">Where to find it</p>
+        <p>Select two or more sequences in the explorer and choose Align, or open the alignment dialog from the Tools menu. Serve the folder rather than opening the editor from disk: over file:// the page cannot load the WebAssembly tools, so only the built-in pairwise aligner runs, and the dialog says so rather than starting a job that cannot finish.</p>
+      </div>
+
+      <h2>Limits</h2>
+      <ul>
+        <li>Over file:// only the built-in pairwise aligner is available. Serve the folder for MAFFT, MUSCLE and Kalign.</li>
+        <li>A global alignment too large for Hirschberg is refused with an error rather than attempted.</li>
+        <li>The running-time estimate that drives the automatic choice is good to a factor of two or three.</li>
+        <li>Profile alignment in the built-in progressive aligner scores two columns as the average of all pairwise residue scores, which is simpler than the tools' own objective functions.</li>
+      </ul>
+
+      <h2>References</h2>
+      <ul>
+        <li>Katoh K, Standley DM (2013) MAFFT multiple sequence alignment software version 7. <i>Mol Biol Evol</i> 30:772-780.</li>
+        <li>Edgar RC (2022) Muscle5: high-accuracy alignment ensembles enable unbiased assessments of sequence homology and phylogeny. <i>Nat Commun</i> 13:6968.</li>
+        <li>Lassmann T (2020) Kalign 3: multiple sequence alignment of large data sets. <i>Bioinformatics</i> 36:1928-1929.</li>
+        <li>Needleman SB, Wunsch CD (1970) A general method applicable to the search for similarities in the amino acid sequence of two proteins. <i>J Mol Biol</i> 48:443-453.</li>
+        <li>Smith TF, Waterman MS (1981) Identification of common molecular subsequences. <i>J Mol Biol</i> 147:195-197.</li>
+        <li>Hirschberg DS (1975) A linear space algorithm for computing maximal common subsequences. <i>Commun ACM</i> 18:341-343.</li>
+        <li>Henikoff S, Henikoff JG (1992) Amino acid substitution matrices from protein blocks. <i>Proc Natl Acad Sci USA</i> 89:10915-10919.</li>
+      </ul>
+
+      <div class="doc-related">
+        <p class="label">Read on</p>
+        <ul>
+          <li><a class="link" href="features.html#alignment">Alignment on the features page &rarr;</a></li>
+          <li><a class="link" href="https://github.com/cacat-ayy/seqnexus#sequence-alignment">Engines, the viewer and the algorithms in the README &rarr;</a></li>
+          <li><a class="link" href="features.html#blast">BLAST searches kept with the sequence &rarr;</a></li>
+          <li><a class="link" href="sanger-sequencing.html">Sanger assembly &rarr;</a></li>
+        </ul>
+      </div>
+
+    </article>
+  </div>
+
+  <section class="closing">
+    <div class="wrap">
+      <p class="label">Get started</p>
+      <h2 style="margin-top:14px">Align your sequences in the tab.</h2>
+      <p>No installation, no account. Your sequences are stored on your own device and never uploaded.</p>
+      <div class="hero-actions">
+        <a class="btn" href="app.html">Open the editor &rarr;</a>
+        <a class="btn btn-ghost" href="features.html">See every feature</a>
+      </div>
+    </div>
+  </section>
+
+</main>
+
+<footer class="site-foot">
+  <div class="wrap">
+    <div class="foot-grid">
+      <div class="foot-about">
+        <a class="brand" href="/">
+          <svg width="22" height="22" viewBox="-2 -2 28 28" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <circle cx="12" cy="12" r="13" stroke-width="1.5"/>
+            <g stroke-width="2">
+              <path d="m10 16 1.5 1.5"/><path d="m14 8-1.5-1.5"/>
+              <path d="M15 2c-1.798 1.998-2.518 3.995-2.807 5.993"/>
+              <path d="m16.5 10.5 1 1"/><path d="m17 6-2.891-2.891"/>
+              <path d="M2 15c6.667-6 13.333 0 20-6"/><path d="m20 9 .891.891"/>
+              <path d="M3.109 14.109 4 15"/><path d="m6.5 12.5 1 1"/>
+              <path d="m7 18 2.891 2.891"/>
+              <path d="M9 22c1.798-1.998 2.518-3.995 2.807-5.993"/>
+            </g>
+          </svg>
+          SeqNexus
+        </a>
+        <p><strong>Free to use.</strong> Open source under the GNU AGPL v3. Figures and files you make are yours for publications, theses, talks and commercial work, with no fee. If one ends up in a paper, please cite the tool.</p>
+      </div>
+      <nav class="foot-col" aria-label="Product">
+        <p class="label">Product</p>
+        <a href="app.html">Editor</a>
+        <a href="/">Overview</a>
+        <a href="features.html">Features</a>
+        <a href="/#formats">Formats</a>
+      </nav>
+      <nav class="foot-col" aria-label="Guides">
+        <p class="label">Guides</p>
+        <a href="plasmid-map.html">Plasmid map</a>
+        <a href="primer-design.html">Primer design</a>
+        <a href="crispr-guide-design.html">CRISPR guides</a>
+        <a href="codon-optimization.html">Codon optimization</a>
+        <a href="virtual-gel.html">Virtual gel</a>
+        <a href="sequence-alignment.html">Alignment</a>
+        <a href="sanger-sequencing.html">Sanger</a>
+        <a href="ngs-read-mapping.html">NGS mapping</a>
+        <a href="snapgene-alternative.html">SnapGene alternative</a>
+      </nav>
+      <nav class="foot-col" aria-label="Project">
+        <p class="label">Project</p>
+        <a href="https://github.com/cacat-ayy/seqnexus">Source on GitHub</a>
+        <a href="https://github.com/cacat-ayy/seqnexus/issues">Report an issue</a>
+        <a href="mailto:contact@seqnexus.app">Contact</a>
+      </nav>
+      <div class="foot-col">
+        <p class="label">Cite this tool</p>
+        <p class="foot-cite">Acatay, C. (2026). SeqNexus: a browser-based molecular biology sequence editor. https://seqnexus.app</p>
+      </div>
+    </div>
+    <div class="foot-base">
+      <p>&copy; 2026 Christopher Acatay <a href="https://www.gnu.org/licenses/agpl-3.0.html">AGPL v3 licence</a></p>
+      <p><a href="impressum.html">Legal notice</a> <a href="datenschutz.html">Privacy</a></p>
+    </div>
+  </div>
+</footer>
+
+<script src="site.js"></script>
+</body>
+</html>

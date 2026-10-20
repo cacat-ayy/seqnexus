@@ -1,0 +1,290 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Codon optimization tool, free in your browser | SeqNexus</title>
+<meta name="description" content="Optimize a coding sequence for expression in another host: 19 genetic codes, built-in and imported codon usage tables, restriction sites and motifs avoided, GC and repeat limits, with CAI and GC before and after. Free, no account, nothing uploaded.">
+<meta name="author" content="Christopher Acatay">
+<meta name="theme-color" content="#0b5f58">
+<meta name="robots" content="max-image-preview:large">
+<link rel="canonical" href="https://seqnexus.app/codon-optimization.html">
+
+<meta property="og:type" content="article">
+<meta property="og:url" content="https://seqnexus.app/codon-optimization.html">
+<meta property="og:title" content="Codon optimization tool, free in your browser">
+<meta property="og:description" content="Host usage tables, 19 genetic codes, and constraints for restriction sites, motifs, homopolymers, repeats and GC, with the protein guaranteed unchanged.">
+<meta property="og:image" content="https://seqnexus.app/assets/features/codon.png">
+<meta property="og:image:width" content="1440">
+<meta property="og:image:height" content="900">
+<meta property="og:image:alt" content="The codon optimization dialog with avoided restriction sites and custom motifs, and CAI and GC before and after">
+<meta property="og:site_name" content="SeqNexus">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Codon optimization tool, free in your browser">
+<meta name="twitter:description" content="Host usage tables, 19 genetic codes, and constraints for restriction sites, motifs, homopolymers, repeats and GC, with the protein guaranteed unchanged.">
+<meta name="twitter:image" content="https://seqnexus.app/assets/features/codon.png">
+
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@graph": [
+    {
+      "@type": "TechArticle",
+      "headline": "Codon optimization tool, free in your browser",
+      "url": "https://seqnexus.app/codon-optimization.html",
+      "description": "How SeqNexus optimizes codons: targets and reading frames, genetic codes and usage tables, the constraint set, why the algorithm is greedy with backtracking, and the metrics.",
+      "image": "https://seqnexus.app/assets/features/codon.png",
+      "datePublished": "2026-10-20",
+      "dateModified": "2026-10-20",
+      "author": { "@type": "Person", "name": "Christopher Acatay", "url": "https://github.com/cacat-ayy" },
+      "about": { "@type": "SoftwareApplication", "name": "SeqNexus", "url": "https://seqnexus.app/app.html" },
+      "isPartOf": { "@type": "WebSite", "name": "SeqNexus", "url": "https://seqnexus.app/" }
+    },
+    {
+      "@type": "BreadcrumbList",
+      "itemListElement": [
+        { "@type": "ListItem", "position": 1, "name": "SeqNexus", "item": "https://seqnexus.app/" },
+        { "@type": "ListItem", "position": 2, "name": "Features", "item": "https://seqnexus.app/features.html" },
+        { "@type": "ListItem", "position": 3, "name": "Codon optimization", "item": "https://seqnexus.app/codon-optimization.html" }
+      ]
+    }
+  ]
+}
+</script>
+
+<link rel="icon" href="assets/favicon.svg" type="image/svg+xml">
+<link rel="icon" href="assets/favicon-48x48.png" sizes="48x48" type="image/png">
+<link rel="icon" href="assets/favicon-96x96.png" sizes="96x96" type="image/png">
+<link rel="icon" href="assets/favicon-144x144.png" sizes="144x144" type="image/png">
+<link rel="icon" href="assets/favicon-192x192.png" sizes="192x192" type="image/png">
+<link rel="apple-touch-icon" href="assets/favicon-192x192.png">
+
+<script>
+// Apply the stored theme before first paint. Must stay inline and in <head>.
+(function () {
+  try {
+    var stored = localStorage.getItem('seqnexus-landing-dark');
+    var dark = stored !== null
+      ? stored === '1'
+      : window.matchMedia('(prefers-color-scheme: dark)').matches;
+    if (dark) document.documentElement.classList.add('dark');
+  } catch (e) {
+    // localStorage blocked, so stay on light.
+  }
+})();
+</script>
+
+<link rel="stylesheet" href="site.css">
+</head>
+<body>
+
+<header class="masthead">
+  <div class="masthead-inner">
+    <a class="brand" href="/">
+      <svg width="22" height="22" viewBox="-2 -2 28 28" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <circle cx="12" cy="12" r="13" stroke-width="1.5"/>
+        <g stroke-width="2">
+          <path d="m10 16 1.5 1.5"/><path d="m14 8-1.5-1.5"/>
+          <path d="M15 2c-1.798 1.998-2.518 3.995-2.807 5.993"/>
+          <path d="m16.5 10.5 1 1"/><path d="m17 6-2.891-2.891"/>
+          <path d="M2 15c6.667-6 13.333 0 20-6"/><path d="m20 9 .891.891"/>
+          <path d="M3.109 14.109 4 15"/><path d="m6.5 12.5 1 1"/>
+          <path d="m7 18 2.891 2.891"/>
+          <path d="M9 22c1.798-1.998 2.518-3.995 2.807-5.993"/>
+        </g>
+      </svg>
+      SeqNexus
+    </a>
+    <nav aria-label="Primary">
+      <a href="/">Overview</a>
+      <a class="hide-sm" href="features.html">Features</a>
+      <a class="hide-sm" href="/#formats">Formats</a>
+      <a class="hide-sm" href="https://github.com/cacat-ayy/seqnexus">Source</a>
+      <a class="btn btn-small" href="app.html">Open the editor</a>
+      <button class="theme-toggle" id="theme-toggle" type="button" aria-label="Toggle dark mode" aria-pressed="false">
+        <svg class="icon-sun" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="5"/><path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/></svg>
+        <svg class="icon-moon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+      </button>
+    </nav>
+  </div>
+</header>
+
+<main>
+
+  <section class="page-head">
+    <div class="wrap">
+      <p class="label"><a class="back" href="features.html#codon">&larr; Features</a></p>
+      <h1 style="margin-top:14px">Codon optimization with the constraints your cloning needs.</h1>
+      <p class="lede">Rewrite a coding region for another host, keeping the restriction sites your strategy needs free and staying inside what a synthesis vendor accepts. Nineteen genetic codes, host usage tables built in or imported, and the protein guaranteed unchanged. Free, computed on your own machine.</p>
+      <div class="hero-actions">
+        <a class="btn" href="app.html">Open the editor &rarr;</a>
+      </div>
+    </div>
+  </section>
+
+  <div class="wrap">
+    <article class="doc">
+
+      <h2>What it does</h2>
+      <p>Codon optimization rewrites a coding region for expression in another host: pick the codons the host translates well, keep the restriction sites your cloning strategy needs free, and stay inside what a synthesis vendor will accept.</p>
+      <p>The protein is the invariant. Whatever the settings, the optimizer re-translates its own output and throws if it does not match the input protein, rather than returning a sequence that codes for something else.</p>
+
+      <figure class="shot" data-file="assets/features/codon.webp">
+        <img src="assets/features/codon.webp" srcset="assets/features/codon-720.webp 720w, assets/features/codon-1080.webp 1080w, assets/features/codon.webp 1440w" sizes="(max-width: 1080px) calc(100vw - 40px), 736px" data-light="assets/features/codon.webp" data-dark="assets/features/codon-dark.webp" alt="The codon optimization dialog with avoided restriction sites and custom motifs, and CAI and GC before and after" width="1440" height="900" loading="lazy" onerror="shotError(this)">
+        <figcaption>The dialog with its constraints on the left and the metrics before and after on the right.</figcaption>
+      </figure>
+
+      <h2>What gets optimized</h2>
+      <table class="doc-table">
+        <thead><tr><th>Target</th><th>What it reads</th></tr></thead>
+        <tbody>
+          <tr><td>Selection</td><td>The selected bases, read in frame from the first one</td></tr>
+          <tr><td>Coding features</td><td>Every CDS-like feature, individually checkable</td></tr>
+          <tr><td>Whole sequence</td><td>Frame +1, from position 0</td></tr>
+        </tbody>
+      </table>
+      <p>A feature on the minus strand is read and written back in its own orientation, its codon start is honoured, and a feature spanning the origin of a circular sequence is followed round the join. Each region is reduced to a coding-strand string plus a map from every base back to its index, so those three cases share one code path. Two CDSs that share bases cannot both be optimized, since rewriting one changes the other's reading frame: the first wins and the overlap is reported.</p>
+
+      <h2>Genetic codes and usage tables</h2>
+      <p>Nineteen NCBI translation tables (1 to 6, 9 to 14, 16, 21 to 26) are stored as diffs against the standard code. This decides which codons are synonymous, so a mitochondrial gene is not truncated at a TGA that codes for tryptophan in its own code. Every translation in the app reads a codon through one function, which also handles the IUPAC ambiguity codes and U for T, though the optimizer and the usage counts read the plain table only: an ambiguous codon is left as it is and not counted.</p>
+      <table class="doc-table">
+        <thead><tr><th>Source</th><th>Notes</th></tr></thead>
+        <tbody>
+          <tr><td>Built in</td><td>E. coli K-12, B. subtilis, S. cerevisiae, P. pastoris, H. sapiens, CHO, Sf9, A. thaliana</td></tr>
+          <tr><td>Imported</td><td>EMBOSS cusp and GCG CodonFrequency files, kept in the browser's database</td></tr>
+        </tbody>
+      </table>
+      <p>The built-in tables are written from published genome-wide averages and are flagged as approximate in the data and in the interface: the rankings and rare-codon calls are right, the low-order digits may differ from a particular reference. Import a table when the exact figures matter. Both file formats are whitespace-aligned tables that order their columns differently, so the header is read and the columns taken by name, preferring the fraction, then the per-thousand frequency, then the raw count, since some files ship with the count column zeroed. Anything else with one codon and one number per line is accepted as a plain list, which covers a quick paste. A family with no usage stays at zero rather than being spread evenly, so the dialog can report an amino acid the table cannot encode instead of the optimizer silently inventing a preference.</p>
+
+      <h2>Constraints</h2>
+      <table class="doc-table">
+        <thead><tr><th>Constraint</th><th>Detail</th></tr></thead>
+        <tbody>
+          <tr><td>Forbidden motifs</td><td>Enzyme groups, saved enzyme sets, individual enzymes, custom IUPAC motifs, and presets for Type IIS sites, internal Shine-Dalgarno sequences, polyA signals, cryptic splice sites and E. coli promoter boxes. Checked on both strands.</td></tr>
+          <tr><td>Homopolymers</td><td>Separate limits for A/T and G/C runs</td></tr>
+          <tr><td>GC content</td><td>Global bounds plus a sliding local window</td></tr>
+          <tr><td>Repeats</td><td>Direct repeats over a length you set</td></tr>
+          <tr><td>Hairpins</td><td>Inverted repeats with a stem over a length you set, within a loop distance</td></tr>
+          <tr><td>CpG</td><td>Avoided when asked, for mammalian constructs</td></tr>
+          <tr><td>Locked codons</td><td>Start, stop, the first few codons, and anything under a protected non-coding feature</td></tr>
+        </tbody>
+      </table>
+      <p>Constraints are checked across the region boundary into the untouched flanks, so a site that would straddle the edge is still avoided. Codons are chosen either as the most frequent synonym or sampled from the host distribution; sampling is seeded, so a run reproduces exactly, and it avoids the long identical runs that always taking the most frequent codon produces. A rare-codons-only mode changes only codons below a within-family threshold.</p>
+
+      <h2>Why greedy with backtracking, not a dynamic program</h2>
+      <p>The walk goes left to right. Each codon takes the best synonym that leaves the window it can affect free of violations; when nothing fits, it steps back and tries the previous codon's next choice. Past a step budget it keeps the best remaining option and reports the violation rather than failing the whole run.</p>
+      <p>A full dynamic program is not an option here. The state would have to be the last K bases, where K is the longest constraint window, so the table is 4<sup>K</sup> wide. Direct repeats are the one constraint that is not local, since the other copy can be anywhere; they are tracked in an index built as the walk proceeds and rolled back on backtracking, which keeps the run linear where re-scanning per codon would make it quadratic.</p>
+      <p>Optimization runs on the main thread. A few thousand codons take milliseconds, and the dialog previews on a short debounce; past 60 kb of target it waits for an explicit run instead.</p>
+
+      <h2>Metrics, and applying the result</h2>
+      <p>CAI, GC, GC3, the rare codon count and the longest A/T and G/C runs are shown before and after. CAI is the geometric mean of relative adaptiveness over the region, skipping single-codon families (methionine and tryptophan), which carry no information about adaptation and would only drag every score toward 1.</p>
+      <p>Applying is an equal-length substitution: one undo entry, and no annotation moves, because no coordinate changes. The result can also be opened as a new sequence, leaving the original untouched.</p>
+
+      <div class="doc-where">
+        <p class="label">Where to find it</p>
+        <p>Select a coding region or a CDS feature, then Codon optimization from the Tools menu or the command palette. Host tables are imported in the same dialog. Back-translation of a protein to a host's codon usage is in the protein view.</p>
+      </div>
+
+      <h2>Limits</h2>
+      <ul>
+        <li>The built-in usage tables are approximate by design. Import a cusp or CodonFrequency file when exact figures matter.</li>
+        <li>Two coding features that share bases cannot both be optimized; the first wins and the overlap is reported.</li>
+        <li>Hairpin avoidance looks for inverted repeats by length and loop distance. It is not a folding energy calculation.</li>
+        <li>Past the backtracking budget the optimizer reports the violation it could not avoid rather than searching exhaustively.</li>
+      </ul>
+
+      <h2>References</h2>
+      <ul>
+        <li>Sharp PM, Li WH (1987) The codon adaptation index, a measure of directional synonymous codon usage bias, and its potential applications. <i>Nucleic Acids Res</i> 15:1281-1295.</li>
+        <li>Nakamura Y, Gojobori T, Ikemura T (2000) Codon usage tabulated from international DNA sequence databases. <i>Nucleic Acids Res</i> 28:292.</li>
+        <li>Rice P, Longden I, Bleasby A (2000) EMBOSS: The European Molecular Biology Open Software Suite. <i>Trends in Genetics</i> 16:276-277.</li>
+      </ul>
+
+      <div class="doc-related">
+        <p class="label">Read on</p>
+        <ul>
+          <li><a class="link" href="features.html#codon">Codon optimization on the features page &rarr;</a></li>
+          <li><a class="link" href="https://github.com/cacat-ayy/seqnexus#codon-optimization">The algorithm and its constraints in the README &rarr;</a></li>
+          <li><a class="link" href="primer-design.html">Primer design &rarr;</a></li>
+          <li><a class="link" href="features.html#cloning">Cloning simulation &rarr;</a></li>
+        </ul>
+      </div>
+
+    </article>
+  </div>
+
+  <section class="closing">
+    <div class="wrap">
+      <p class="label">Get started</p>
+      <h2 style="margin-top:14px">Optimize a gene for your host.</h2>
+      <p>No installation, no account. Your sequences are stored on your own device and never uploaded.</p>
+      <div class="hero-actions">
+        <a class="btn" href="app.html">Open the editor &rarr;</a>
+        <a class="btn btn-ghost" href="features.html">See every feature</a>
+      </div>
+    </div>
+  </section>
+
+</main>
+
+<footer class="site-foot">
+  <div class="wrap">
+    <div class="foot-grid">
+      <div class="foot-about">
+        <a class="brand" href="/">
+          <svg width="22" height="22" viewBox="-2 -2 28 28" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <circle cx="12" cy="12" r="13" stroke-width="1.5"/>
+            <g stroke-width="2">
+              <path d="m10 16 1.5 1.5"/><path d="m14 8-1.5-1.5"/>
+              <path d="M15 2c-1.798 1.998-2.518 3.995-2.807 5.993"/>
+              <path d="m16.5 10.5 1 1"/><path d="m17 6-2.891-2.891"/>
+              <path d="M2 15c6.667-6 13.333 0 20-6"/><path d="m20 9 .891.891"/>
+              <path d="M3.109 14.109 4 15"/><path d="m6.5 12.5 1 1"/>
+              <path d="m7 18 2.891 2.891"/>
+              <path d="M9 22c1.798-1.998 2.518-3.995 2.807-5.993"/>
+            </g>
+          </svg>
+          SeqNexus
+        </a>
+        <p><strong>Free to use.</strong> Open source under the GNU AGPL v3. Figures and files you make are yours for publications, theses, talks and commercial work, with no fee. If one ends up in a paper, please cite the tool.</p>
+      </div>
+      <nav class="foot-col" aria-label="Product">
+        <p class="label">Product</p>
+        <a href="app.html">Editor</a>
+        <a href="/">Overview</a>
+        <a href="features.html">Features</a>
+        <a href="/#formats">Formats</a>
+      </nav>
+      <nav class="foot-col" aria-label="Guides">
+        <p class="label">Guides</p>
+        <a href="plasmid-map.html">Plasmid map</a>
+        <a href="primer-design.html">Primer design</a>
+        <a href="crispr-guide-design.html">CRISPR guides</a>
+        <a href="codon-optimization.html">Codon optimization</a>
+        <a href="virtual-gel.html">Virtual gel</a>
+        <a href="sequence-alignment.html">Alignment</a>
+        <a href="sanger-sequencing.html">Sanger</a>
+        <a href="ngs-read-mapping.html">NGS mapping</a>
+        <a href="snapgene-alternative.html">SnapGene alternative</a>
+      </nav>
+      <nav class="foot-col" aria-label="Project">
+        <p class="label">Project</p>
+        <a href="https://github.com/cacat-ayy/seqnexus">Source on GitHub</a>
+        <a href="https://github.com/cacat-ayy/seqnexus/issues">Report an issue</a>
+        <a href="mailto:contact@seqnexus.app">Contact</a>
+      </nav>
+      <div class="foot-col">
+        <p class="label">Cite this tool</p>
+        <p class="foot-cite">Acatay, C. (2026). SeqNexus: a browser-based molecular biology sequence editor. https://seqnexus.app</p>
+      </div>
+    </div>
+    <div class="foot-base">
+      <p>&copy; 2026 Christopher Acatay <a href="https://www.gnu.org/licenses/agpl-3.0.html">AGPL v3 licence</a></p>
+      <p><a href="impressum.html">Legal notice</a> <a href="datenschutz.html">Privacy</a></p>
+    </div>
+  </div>
+</footer>
+
+<script src="site.js"></script>
+</body>
+</html>

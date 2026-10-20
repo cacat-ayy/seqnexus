@@ -1,0 +1,84 @@
+      <h2>What it does</h2>
+      <p>Codon optimization rewrites a coding region for expression in another host: pick the codons the host translates well, keep the restriction sites your cloning strategy needs free, and stay inside what a synthesis vendor will accept.</p>
+      <p>The protein is the invariant. Whatever the settings, the optimizer re-translates its own output and throws if it does not match the input protein, rather than returning a sequence that codes for something else.</p>
+
+      <figure class="shot" data-file="assets/features/codon.webp">
+        <img src="assets/features/codon.webp" srcset="assets/features/codon-720.webp 720w, assets/features/codon-1080.webp 1080w, assets/features/codon.webp 1440w" sizes="(max-width: 1080px) calc(100vw - 40px), 736px" data-light="assets/features/codon.webp" data-dark="assets/features/codon-dark.webp" alt="The codon optimization dialog with avoided restriction sites and custom motifs, and CAI and GC before and after" width="1440" height="900" loading="lazy" onerror="shotError(this)">
+        <figcaption>The dialog with its constraints on the left and the metrics before and after on the right.</figcaption>
+      </figure>
+
+      <h2>What gets optimized</h2>
+      <table class="doc-table">
+        <thead><tr><th>Target</th><th>What it reads</th></tr></thead>
+        <tbody>
+          <tr><td>Selection</td><td>The selected bases, read in frame from the first one</td></tr>
+          <tr><td>Coding features</td><td>Every CDS-like feature, individually checkable</td></tr>
+          <tr><td>Whole sequence</td><td>Frame +1, from position 0</td></tr>
+        </tbody>
+      </table>
+      <p>A feature on the minus strand is read and written back in its own orientation, its codon start is honoured, and a feature spanning the origin of a circular sequence is followed round the join. Each region is reduced to a coding-strand string plus a map from every base back to its index, so those three cases share one code path. Two CDSs that share bases cannot both be optimized, since rewriting one changes the other's reading frame: the first wins and the overlap is reported.</p>
+
+      <h2>Genetic codes and usage tables</h2>
+      <p>Nineteen NCBI translation tables (1 to 6, 9 to 14, 16, 21 to 26) are stored as diffs against the standard code. This decides which codons are synonymous, so a mitochondrial gene is not truncated at a TGA that codes for tryptophan in its own code. Every translation in the app reads a codon through one function, which also handles the IUPAC ambiguity codes and U for T, though the optimizer and the usage counts read the plain table only: an ambiguous codon is left as it is and not counted.</p>
+      <table class="doc-table">
+        <thead><tr><th>Source</th><th>Notes</th></tr></thead>
+        <tbody>
+          <tr><td>Built in</td><td>E. coli K-12, B. subtilis, S. cerevisiae, P. pastoris, H. sapiens, CHO, Sf9, A. thaliana</td></tr>
+          <tr><td>Imported</td><td>EMBOSS cusp and GCG CodonFrequency files, kept in the browser's database</td></tr>
+        </tbody>
+      </table>
+      <p>The built-in tables are written from published genome-wide averages and are flagged as approximate in the data and in the interface: the rankings and rare-codon calls are right, the low-order digits may differ from a particular reference. Import a table when the exact figures matter. Both file formats are whitespace-aligned tables that order their columns differently, so the header is read and the columns taken by name, preferring the fraction, then the per-thousand frequency, then the raw count, since some files ship with the count column zeroed. Anything else with one codon and one number per line is accepted as a plain list, which covers a quick paste. A family with no usage stays at zero rather than being spread evenly, so the dialog can report an amino acid the table cannot encode instead of the optimizer silently inventing a preference.</p>
+
+      <h2>Constraints</h2>
+      <table class="doc-table">
+        <thead><tr><th>Constraint</th><th>Detail</th></tr></thead>
+        <tbody>
+          <tr><td>Forbidden motifs</td><td>Enzyme groups, saved enzyme sets, individual enzymes, custom IUPAC motifs, and presets for Type IIS sites, internal Shine-Dalgarno sequences, polyA signals, cryptic splice sites and E. coli promoter boxes. Checked on both strands.</td></tr>
+          <tr><td>Homopolymers</td><td>Separate limits for A/T and G/C runs</td></tr>
+          <tr><td>GC content</td><td>Global bounds plus a sliding local window</td></tr>
+          <tr><td>Repeats</td><td>Direct repeats over a length you set</td></tr>
+          <tr><td>Hairpins</td><td>Inverted repeats with a stem over a length you set, within a loop distance</td></tr>
+          <tr><td>CpG</td><td>Avoided when asked, for mammalian constructs</td></tr>
+          <tr><td>Locked codons</td><td>Start, stop, the first few codons, and anything under a protected non-coding feature</td></tr>
+        </tbody>
+      </table>
+      <p>Constraints are checked across the region boundary into the untouched flanks, so a site that would straddle the edge is still avoided. Codons are chosen either as the most frequent synonym or sampled from the host distribution; sampling is seeded, so a run reproduces exactly, and it avoids the long identical runs that always taking the most frequent codon produces. A rare-codons-only mode changes only codons below a within-family threshold.</p>
+
+      <h2>Why greedy with backtracking, not a dynamic program</h2>
+      <p>The walk goes left to right. Each codon takes the best synonym that leaves the window it can affect free of violations; when nothing fits, it steps back and tries the previous codon's next choice. Past a step budget it keeps the best remaining option and reports the violation rather than failing the whole run.</p>
+      <p>A full dynamic program is not an option here. The state would have to be the last K bases, where K is the longest constraint window, so the table is 4<sup>K</sup> wide. Direct repeats are the one constraint that is not local, since the other copy can be anywhere; they are tracked in an index built as the walk proceeds and rolled back on backtracking, which keeps the run linear where re-scanning per codon would make it quadratic.</p>
+      <p>Optimization runs on the main thread. A few thousand codons take milliseconds, and the dialog previews on a short debounce; past 60 kb of target it waits for an explicit run instead.</p>
+
+      <h2>Metrics, and applying the result</h2>
+      <p>CAI, GC, GC3, the rare codon count and the longest A/T and G/C runs are shown before and after. CAI is the geometric mean of relative adaptiveness over the region, skipping single-codon families (methionine and tryptophan), which carry no information about adaptation and would only drag every score toward 1.</p>
+      <p>Applying is an equal-length substitution: one undo entry, and no annotation moves, because no coordinate changes. The result can also be opened as a new sequence, leaving the original untouched.</p>
+
+      <div class="doc-where">
+        <p class="label">Where to find it</p>
+        <p>Select a coding region or a CDS feature, then Codon optimization from the Tools menu or the command palette. Host tables are imported in the same dialog. Back-translation of a protein to a host's codon usage is in the protein view.</p>
+      </div>
+
+      <h2>Limits</h2>
+      <ul>
+        <li>The built-in usage tables are approximate by design. Import a cusp or CodonFrequency file when exact figures matter.</li>
+        <li>Two coding features that share bases cannot both be optimized; the first wins and the overlap is reported.</li>
+        <li>Hairpin avoidance looks for inverted repeats by length and loop distance. It is not a folding energy calculation.</li>
+        <li>Past the backtracking budget the optimizer reports the violation it could not avoid rather than searching exhaustively.</li>
+      </ul>
+
+      <h2>References</h2>
+      <ul>
+        <li>Sharp PM, Li WH (1987) The codon adaptation index, a measure of directional synonymous codon usage bias, and its potential applications. <i>Nucleic Acids Res</i> 15:1281-1295.</li>
+        <li>Nakamura Y, Gojobori T, Ikemura T (2000) Codon usage tabulated from international DNA sequence databases. <i>Nucleic Acids Res</i> 28:292.</li>
+        <li>Rice P, Longden I, Bleasby A (2000) EMBOSS: The European Molecular Biology Open Software Suite. <i>Trends in Genetics</i> 16:276-277.</li>
+      </ul>
+
+      <div class="doc-related">
+        <p class="label">Read on</p>
+        <ul>
+          <li><a class="link" href="features.html#codon">Codon optimization on the features page &rarr;</a></li>
+          <li><a class="link" href="https://github.com/cacat-ayy/seqnexus#codon-optimization">The algorithm and its constraints in the README &rarr;</a></li>
+          <li><a class="link" href="primer-design.html">Primer design &rarr;</a></li>
+          <li><a class="link" href="features.html#cloning">Cloning simulation &rarr;</a></li>
+        </ul>
+      </div>

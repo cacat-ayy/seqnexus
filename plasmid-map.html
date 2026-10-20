@@ -1,0 +1,295 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Plasmid map viewer and editor, free in your browser | SeqNexus</title>
+<meta name="description" content="Draw a plasmid map from a GenBank or SnapGene file in your browser: features, cut sites, primers and GC tracks on rings, labels that never cross, two layouts, and SVG, PNG and PDF export that matches the screen. Free, no account, nothing uploaded.">
+<meta name="author" content="Christopher Acatay">
+<meta name="theme-color" content="#0b5f58">
+<meta name="robots" content="max-image-preview:large">
+<link rel="canonical" href="https://seqnexus.app/plasmid-map.html">
+
+<meta property="og:type" content="article">
+<meta property="og:url" content="https://seqnexus.app/plasmid-map.html">
+<meta property="og:title" content="Plasmid map viewer and editor, free in your browser">
+<meta property="og:description" content="Features, cut sites, primers and tracks on rings, labels that never cross, and figures exported as SVG, PNG or PDF. Free, open source, computed on your machine.">
+<meta property="og:image" content="https://seqnexus.app/assets/features/map.png">
+<meta property="og:image:width" content="1440">
+<meta property="og:image:height" content="900">
+<meta property="og:image:alt" content="A circular plasmid map of pEGFP-C1 with features, cut sites and labels">
+<meta property="og:site_name" content="SeqNexus">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Plasmid map viewer and editor, free in your browser">
+<meta name="twitter:description" content="Features, cut sites, primers and tracks on rings, labels that never cross, and figures exported as SVG, PNG or PDF. Free, open source, computed on your machine.">
+<meta name="twitter:image" content="https://seqnexus.app/assets/features/map.png">
+
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@graph": [
+    {
+      "@type": "TechArticle",
+      "headline": "Plasmid map viewer and editor, free in your browser",
+      "url": "https://seqnexus.app/plasmid-map.html",
+      "description": "How SeqNexus draws a plasmid map: features, cut sites, primers and tracks on rings, two layouts, label placement, styles and figure export.",
+      "image": "https://seqnexus.app/assets/features/map.png",
+      "datePublished": "2026-10-20",
+      "dateModified": "2026-10-20",
+      "author": { "@type": "Person", "name": "Christopher Acatay", "url": "https://github.com/cacat-ayy" },
+      "about": { "@type": "SoftwareApplication", "name": "SeqNexus", "url": "https://seqnexus.app/app.html" },
+      "isPartOf": { "@type": "WebSite", "name": "SeqNexus", "url": "https://seqnexus.app/" }
+    },
+    {
+      "@type": "BreadcrumbList",
+      "itemListElement": [
+        { "@type": "ListItem", "position": 1, "name": "SeqNexus", "item": "https://seqnexus.app/" },
+        { "@type": "ListItem", "position": 2, "name": "Features", "item": "https://seqnexus.app/features.html" },
+        { "@type": "ListItem", "position": 3, "name": "Plasmid map", "item": "https://seqnexus.app/plasmid-map.html" }
+      ]
+    }
+  ]
+}
+</script>
+
+<link rel="icon" href="assets/favicon.svg" type="image/svg+xml">
+<link rel="icon" href="assets/favicon-48x48.png" sizes="48x48" type="image/png">
+<link rel="icon" href="assets/favicon-96x96.png" sizes="96x96" type="image/png">
+<link rel="icon" href="assets/favicon-144x144.png" sizes="144x144" type="image/png">
+<link rel="icon" href="assets/favicon-192x192.png" sizes="192x192" type="image/png">
+<link rel="apple-touch-icon" href="assets/favicon-192x192.png">
+
+<script>
+// Apply the stored theme before first paint. Must stay inline and in <head>.
+(function () {
+  try {
+    var stored = localStorage.getItem('seqnexus-landing-dark');
+    var dark = stored !== null
+      ? stored === '1'
+      : window.matchMedia('(prefers-color-scheme: dark)').matches;
+    if (dark) document.documentElement.classList.add('dark');
+  } catch (e) {
+    // localStorage blocked, so stay on light.
+  }
+})();
+</script>
+
+<link rel="stylesheet" href="site.css">
+</head>
+<body>
+
+<header class="masthead">
+  <div class="masthead-inner">
+    <a class="brand" href="/">
+      <svg width="22" height="22" viewBox="-2 -2 28 28" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <circle cx="12" cy="12" r="13" stroke-width="1.5"/>
+        <g stroke-width="2">
+          <path d="m10 16 1.5 1.5"/><path d="m14 8-1.5-1.5"/>
+          <path d="M15 2c-1.798 1.998-2.518 3.995-2.807 5.993"/>
+          <path d="m16.5 10.5 1 1"/><path d="m17 6-2.891-2.891"/>
+          <path d="M2 15c6.667-6 13.333 0 20-6"/><path d="m20 9 .891.891"/>
+          <path d="M3.109 14.109 4 15"/><path d="m6.5 12.5 1 1"/>
+          <path d="m7 18 2.891 2.891"/>
+          <path d="M9 22c1.798-1.998 2.518-3.995 2.807-5.993"/>
+        </g>
+      </svg>
+      SeqNexus
+    </a>
+    <nav aria-label="Primary">
+      <a href="/">Overview</a>
+      <a class="hide-sm" href="features.html">Features</a>
+      <a class="hide-sm" href="/#formats">Formats</a>
+      <a class="hide-sm" href="https://github.com/cacat-ayy/seqnexus">Source</a>
+      <a class="btn btn-small" href="app.html">Open the editor</a>
+      <button class="theme-toggle" id="theme-toggle" type="button" aria-label="Toggle dark mode" aria-pressed="false">
+        <svg class="icon-sun" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="5"/><path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/></svg>
+        <svg class="icon-moon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+      </button>
+    </nav>
+  </div>
+</header>
+
+<main>
+
+  <section class="page-head">
+    <div class="wrap">
+      <p class="label"><a class="back" href="features.html#map">&larr; Features</a></p>
+      <h1 style="margin-top:14px">Plasmid map viewer and editor, in your browser.</h1>
+      <p class="lede">Open a GenBank, SnapGene or Geneious file and get a circular map with its features, cut sites, primers and tracks, names placed so they never cross, and a figure exported as SVG, PNG or PDF that matches what you saw on screen. Free, no account, and the file never leaves your machine.</p>
+      <div class="hero-actions">
+        <a class="btn" href="app.html">Open the editor &rarr;</a>
+      </div>
+    </div>
+  </section>
+
+  <div class="wrap">
+    <article class="doc">
+
+      <h2>What the map shows</h2>
+      <p>The circular view draws the sequence as a ring. Around it, on rings of their own:</p>
+      <ul>
+        <li><b>Features</b>, stacked so that overlapping ones never cover each other, with an arrow for the strand and the name written in the arc when it fits.</li>
+        <li><b>Cut sites</b> of the enzymes you have switched on in the enzyme panel, each with a mark on the backbone and its name. The enzyme set comes from REBASE, with overhangs, methylation sensitivity and suppliers.</li>
+        <li><b>Primer binding sites</b> from your primer library, found on the sequence automatically.</li>
+        <li><b>Dam and Dcm methylation sites</b> (GATC and CCWGG), when switched on, so you can see which cuts a methylated prep will block.</li>
+        <li><b>GC content and GC skew</b> as a ring, sampled into a fixed number of windows (one per half degree) rather than a fixed window size, so a 3 kb plasmid and a 5 Mb genome cost the same to draw.</li>
+        <li><b>ORFs and coverage</b> as further tracks, and a legend.</li>
+      </ul>
+      <p>A linear sequence is drawn on the same ring, broken at the origin with an end bar on each side, so it does not read as a circle. The map view, the split view (sequence beside map), the cloning workspace, the explorer thumbnails and the PDF export all draw from the same code, so they always agree.</p>
+
+      <figure class="shot" data-file="assets/features/map.webp">
+        <img src="assets/features/map.webp" srcset="assets/features/map-720.webp 720w, assets/features/map-1080.webp 1080w, assets/features/map.webp 1440w" sizes="(max-width: 1080px) calc(100vw - 40px), 736px" data-light="assets/features/map.webp" data-dark="assets/features/map-dark.webp" alt="A circular plasmid map of pEGFP-C1 with features, cut sites and labels outside the ring" width="1440" height="900" loading="lazy" onerror="shotError(this)">
+        <figcaption>pEGFP-C1 in the default layout: features outside the backbone, the single cutters named, and the crowded cloning site listed beside the circle.</figcaption>
+      </figure>
+
+      <h2>Two layouts</h2>
+      <p>The Display menu offers two ways to arrange the map, independent of the style, so any style can be drawn either way.</p>
+      <h3>Features outside the backbone</h3>
+      <p>The default. Feature arcs sit on rings outside the backbone. A feature name that does not fit inside its own arc goes inside the ring on tiers, or outside with a leader line, depending on the style. Ruler numbers and cut-site names share one tier map inside the circle, lower tiers filled first, and a name pushed inward gets a leader back to the backbone.</p>
+      <h3>Sites outside</h3>
+      <p>The ring layout many cloning tools draw: features inside the backbone, on rings stepping inward, and every cut site named outside with its position beside it, <code>BamHI (975)</code> right of the circle and <code>(975) BamHI</code> left of it, so the name is always the end the leader reaches. Feature names that fit their arrow are written in it; the rest are written curved just inside the innermost ring, centred on their feature, with at most two names stacked at any spot. There are no leader lines inside the ring, since a line from a feature to a name further in would run through the names between.</p>
+
+      <figure class="shot" data-file="assets/features/map-ring.webp">
+        <img src="assets/features/map-ring.webp" srcset="assets/features/map-ring-720.webp 720w, assets/features/map-ring-1080.webp 1080w, assets/features/map-ring.webp 1440w" sizes="(max-width: 1080px) calc(100vw - 40px), 736px" data-light="assets/features/map-ring.webp" data-dark="assets/features/map-ring-dark.webp" alt="The same map in the sites-outside layout, every cut site named with its position" width="1440" height="900" loading="lazy" onerror="shotError(this)">
+        <figcaption>The same plasmid in the sites-outside layout: every cut site named round the circle with its position.</figcaption>
+      </figure>
+
+      <h2>How the names are placed</h2>
+      <p>Most of the work in a plasmid map is in the labels. Three rules hold on every map:</p>
+      <ul>
+        <li><b>Nothing is written off the canvas.</b> A name that would climb off the top or bottom edge is held at the edge and spread sideways instead, and names are kept inside the left and right edges whichever way the text runs.</li>
+        <li><b>No leader crosses another, and no leader runs through a name.</b> Names hung round the circle are horizontal text touching a circle just outside the ticks, in the order of their sites, so their leaders are chords that cannot cross. Where a check fails, the circle moves out a few pixels and the side is laid out again.</li>
+        <li><b>Every placed name is checked against every other</b>, not only against those on its own tier, since a long name on an outer tier reaches back under a short one further in.</li>
+      </ul>
+      <p>Down each side of the circle the names are spread as near their own sites as non-overlapping names allow. That is a least-squares fit, solved by pooling neighbours that push into each other into one block and centring each block on its sites (pool adjacent violators, the standard method for isotonic regression). A side that cannot hold every name is thinned where it is most crowded, sites before feature names, and a site you chose or the one under the pointer last. A hundred and fifty sites on a large map lay out in a few milliseconds.</p>
+      <p><b>Crowded spots.</b> A multiple cloning site, a run of five or more cut sites each closer to the next than a row of text, or three or more feature names bunched together, is named beside the circle rather than on the inner tiers, where such names used to be turned every which way or dropped. The names are split by side, hung round the circle where they fit, and listed in columns beside the stack where the circle would push them too far out. The order round the circle, which for a cloning site is the site's own order, is kept wherever it leaves no two leaders crossing.</p>
+      <p><b>What is left to the hover card.</b> A cut-site name is no use shortened (<code>EcoR…</code> could be several enzymes), so a site with no room for its whole name is left to its hover card, unless it is a site you chose, which always stays named. A feature name wider than the room beside it is shortened with an ellipsis. On a small map, under 500 px across as in the split view, a feature whose arc is shorter than 24 px gets no name outside the circle, since those names were most of the clutter. Hovering it still names it.</p>
+      <p><b>Text grows with the map.</b> Past 600 px across its shorter side, names, ruler numbers and the title scale up in proportion, to half as large again at 900 px, and no further, so a figure exported at full size does not turn into a poster of names. Below 600 px the style's own sizes are used, and crowding is met with placement, not smaller letters: the cut-site names are already at 9 px, about as small as text stays readable.</p>
+
+      <h2>Styles</h2>
+      <p>Four presets set the backbone radius, feature fill opacity, outline colour, fonts and where feature names go when they do not fit inside their own arc:</p>
+      <table class="doc-table">
+        <thead><tr><th>Style</th><th>Use for</th></tr></thead>
+        <tbody>
+          <tr><td>Modern</td><td>The default: solid features, names outside the ring, a subtle ruler.</td></tr>
+          <tr><td>Classic</td><td>A heavier backbone, feature names inside the ring on leader lines.</td></tr>
+          <tr><td>Minimal</td><td>No ruler or cut-site names, thin bars. For slides.</td></tr>
+          <tr><td>Publication</td><td>White background and black ink whatever the theme, for a figure that prints.</td></tr>
+        </tbody>
+      </table>
+      <p>Feature colours are part of the file: a GenBank or SnapGene colour comes in and goes back out unchanged, and the map draws it as given. Base colours follow one convention across the whole editor.</p>
+
+      <h2>Export a figure that matches the screen</h2>
+      <p>The map is built in two passes. A layout pass turns the document into a backend-neutral display list (arcs, labels, leader lines, ticks), using only a text-measurement callback. An emitter then walks that list: one issues Canvas 2D calls for the screen, the other writes SVG. Because both consume the same list with the same measurer, the exported figure matches the screen down to the label positions.</p>
+      <ul>
+        <li><b>SVG</b> writes real <code>&lt;text&gt;</code> elements, with curved feature names on <code>&lt;textPath&gt;</code>, so the figure stays editable and searchable in Illustrator or Inkscape.</li>
+        <li><b>PNG</b> is rendered at 3x, roughly 300 dpi for a figure placed at 2.5 inches.</li>
+        <li><b>PDF</b> puts the map on its own page, with the sequence, a feature table and an enzyme table as further pages if you want them.</li>
+      </ul>
+      <p>Both exports render at fit scale whatever the zoom on screen, so a figure is never cropped to the viewport you happened to be looking at. The Publication style gives the fixed black-on-white palette a journal expects.</p>
+
+      <h2>Working on the map</h2>
+      <p>The map is a place to work, not only a picture. Click a feature to select it, drag round the ring to select a range (in the direction the pointer turned, so a drag past the origin keeps going), and right-click for the same actions as in the sequence view. Ctrl+wheel zooms around the pointer, with a visible button to reset to fit. Clicking a cut site puts the caret there, and in a crowded cloning site the name under the pointer is the first thing hit, since the layout has already spread the names apart.</p>
+      <p>In the <a class="link" href="features.html#cloning">cloning workspace</a>, each part is shown on its own map and you click the sites to cut it; the reaction strip then shows what goes into the ligation. The maps there fill their panel, so the room a wide panel has goes to the names.</p>
+
+      <div class="doc-where">
+        <p class="label">Where to find it</p>
+        <p>Open or drag in a file, then switch to the map view or the split view with the view buttons in the toolbar. The Display menu holds the layouts, the styles and the rings (enzyme sites, ORFs, GC, methylation). Export gives SVG, PNG and PDF.</p>
+        <p>Files: GenBank, SnapGene (.dna), Geneious, EMBL, FASTA (no features) and GFF3, or a record fetched by accession from NCBI. See <a class="link" href="/#formats">the formats</a>.</p>
+      </div>
+
+      <h2>Limits</h2>
+      <ul>
+        <li>A name with no room on the map is left to its hover card rather than drawn over another; the thinning order above decides which.</li>
+        <li>The Publication style ignores the theme; the other three follow it, so a dark-theme screenshot is not a print figure. Export in Publication for print.</li>
+        <li>The map is tested on sequences to around 5 Mb. On a genome that size the features and the GC ring still draw, but a map of thousands of features is a picture of density, not of names.</li>
+      </ul>
+
+      <div class="doc-related">
+        <p class="label">Read on</p>
+        <ul>
+          <li><a class="link" href="features.html#map">The plasmid map on the features page &rarr;</a></li>
+          <li><a class="link" href="https://github.com/cacat-ayy/seqnexus#plasmid-map">The full account of the layout in the README &rarr;</a></li>
+          <li><a class="link" href="features.html#enzymes">Restriction site analysis &rarr;</a></li>
+          <li><a class="link" href="snapgene-alternative.html">SeqNexus as a free SnapGene alternative &rarr;</a></li>
+        </ul>
+      </div>
+
+    </article>
+  </div>
+
+  <section class="closing">
+    <div class="wrap">
+      <p class="label">Get started</p>
+      <h2 style="margin-top:14px">Drag in a plasmid and see its map.</h2>
+      <p>No installation, no account. Your sequences are stored on your own device and never uploaded.</p>
+      <div class="hero-actions">
+        <a class="btn" href="app.html">Open the editor &rarr;</a>
+        <a class="btn btn-ghost" href="features.html">See every feature</a>
+      </div>
+    </div>
+  </section>
+
+</main>
+
+<footer class="site-foot">
+  <div class="wrap">
+    <div class="foot-grid">
+      <div class="foot-about">
+        <a class="brand" href="/">
+          <svg width="22" height="22" viewBox="-2 -2 28 28" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <circle cx="12" cy="12" r="13" stroke-width="1.5"/>
+            <g stroke-width="2">
+              <path d="m10 16 1.5 1.5"/><path d="m14 8-1.5-1.5"/>
+              <path d="M15 2c-1.798 1.998-2.518 3.995-2.807 5.993"/>
+              <path d="m16.5 10.5 1 1"/><path d="m17 6-2.891-2.891"/>
+              <path d="M2 15c6.667-6 13.333 0 20-6"/><path d="m20 9 .891.891"/>
+              <path d="M3.109 14.109 4 15"/><path d="m6.5 12.5 1 1"/>
+              <path d="m7 18 2.891 2.891"/>
+              <path d="M9 22c1.798-1.998 2.518-3.995 2.807-5.993"/>
+            </g>
+          </svg>
+          SeqNexus
+        </a>
+        <p><strong>Free to use.</strong> Open source under the GNU AGPL v3. Figures and files you make are yours for publications, theses, talks and commercial work, with no fee. If one ends up in a paper, please cite the tool.</p>
+      </div>
+      <nav class="foot-col" aria-label="Product">
+        <p class="label">Product</p>
+        <a href="app.html">Editor</a>
+        <a href="/">Overview</a>
+        <a href="features.html">Features</a>
+        <a href="/#formats">Formats</a>
+      </nav>
+      <nav class="foot-col" aria-label="Guides">
+        <p class="label">Guides</p>
+        <a href="plasmid-map.html">Plasmid map</a>
+        <a href="primer-design.html">Primer design</a>
+        <a href="crispr-guide-design.html">CRISPR guides</a>
+        <a href="codon-optimization.html">Codon optimization</a>
+        <a href="virtual-gel.html">Virtual gel</a>
+        <a href="sequence-alignment.html">Alignment</a>
+        <a href="sanger-sequencing.html">Sanger</a>
+        <a href="ngs-read-mapping.html">NGS mapping</a>
+        <a href="snapgene-alternative.html">SnapGene alternative</a>
+      </nav>
+      <nav class="foot-col" aria-label="Project">
+        <p class="label">Project</p>
+        <a href="https://github.com/cacat-ayy/seqnexus">Source on GitHub</a>
+        <a href="https://github.com/cacat-ayy/seqnexus/issues">Report an issue</a>
+        <a href="mailto:contact@seqnexus.app">Contact</a>
+      </nav>
+      <div class="foot-col">
+        <p class="label">Cite this tool</p>
+        <p class="foot-cite">Acatay, C. (2026). SeqNexus: a browser-based molecular biology sequence editor. https://seqnexus.app</p>
+      </div>
+    </div>
+    <div class="foot-base">
+      <p>&copy; 2026 Christopher Acatay <a href="https://www.gnu.org/licenses/agpl-3.0.html">AGPL v3 licence</a></p>
+      <p><a href="impressum.html">Legal notice</a> <a href="datenschutz.html">Privacy</a></p>
+    </div>
+  </div>
+</footer>
+
+<script src="site.js"></script>
+</body>
+</html>

@@ -1,0 +1,271 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Virtual agarose gel: simulate a restriction digest online | SeqNexus</title>
+<meta name="description" content="Run a digest, a PCR product or a whole plasmid on a simulated agarose gel in your browser, against the ladder you use, with a migration model fitted to real gels, and design a diagnostic digest that tells your clones apart. Free, no account.">
+<meta name="author" content="Christopher Acatay">
+<meta name="theme-color" content="#0b5f58">
+<meta name="robots" content="max-image-preview:large">
+<link rel="canonical" href="https://seqnexus.app/virtual-gel.html">
+
+<meta property="og:type" content="article">
+<meta property="og:url" content="https://seqnexus.app/virtual-gel.html">
+<meta property="og:title" content="Virtual agarose gel: simulate a restriction digest online">
+<meta property="og:description" content="Digests, PCR products and whole plasmids on a simulated gel with real ladders and a migration model fitted to real gels, plus a diagnostic digest designer. Free, in your browser.">
+<meta property="og:image" content="https://seqnexus.app/assets/features/gel.png">
+<meta property="og:image:width" content="1440">
+<meta property="og:image:height" content="900">
+<meta property="og:image:alt" content="A virtual agarose gel of pEGFP-C1 digests beside a ladder, with the fragment table of the selected lane">
+<meta property="og:site_name" content="SeqNexus">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Virtual agarose gel: simulate a restriction digest online">
+<meta name="twitter:description" content="Digests, PCR products and whole plasmids on a simulated gel with real ladders and a migration model fitted to real gels, plus a diagnostic digest designer. Free, in your browser.">
+<meta name="twitter:image" content="https://seqnexus.app/assets/features/gel.png">
+
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@graph": [
+    {
+      "@type": "TechArticle",
+      "headline": "Virtual agarose gel: simulate a restriction digest online",
+      "url": "https://seqnexus.app/virtual-gel.html",
+      "description": "How SeqNexus simulates an agarose gel: lanes and mass, the migration model, how bands spread and merge, ladders, looks and export, and the diagnostic digest designer.",
+      "image": "https://seqnexus.app/assets/features/gel.png",
+      "datePublished": "2026-10-20",
+      "dateModified": "2026-10-20",
+      "author": { "@type": "Person", "name": "Christopher Acatay", "url": "https://github.com/cacat-ayy" },
+      "about": { "@type": "SoftwareApplication", "name": "SeqNexus", "url": "https://seqnexus.app/app.html" },
+      "isPartOf": { "@type": "WebSite", "name": "SeqNexus", "url": "https://seqnexus.app/" }
+    },
+    {
+      "@type": "BreadcrumbList",
+      "itemListElement": [
+        { "@type": "ListItem", "position": 1, "name": "SeqNexus", "item": "https://seqnexus.app/" },
+        { "@type": "ListItem", "position": 2, "name": "Features", "item": "https://seqnexus.app/features.html" },
+        { "@type": "ListItem", "position": 3, "name": "Virtual gel", "item": "https://seqnexus.app/virtual-gel.html" }
+      ]
+    }
+  ]
+}
+</script>
+
+<link rel="icon" href="assets/favicon.svg" type="image/svg+xml">
+<link rel="icon" href="assets/favicon-48x48.png" sizes="48x48" type="image/png">
+<link rel="icon" href="assets/favicon-96x96.png" sizes="96x96" type="image/png">
+<link rel="icon" href="assets/favicon-144x144.png" sizes="144x144" type="image/png">
+<link rel="icon" href="assets/favicon-192x192.png" sizes="192x192" type="image/png">
+<link rel="apple-touch-icon" href="assets/favicon-192x192.png">
+
+<script>
+// Apply the stored theme before first paint. Must stay inline and in <head>.
+(function () {
+  try {
+    var stored = localStorage.getItem('seqnexus-landing-dark');
+    var dark = stored !== null
+      ? stored === '1'
+      : window.matchMedia('(prefers-color-scheme: dark)').matches;
+    if (dark) document.documentElement.classList.add('dark');
+  } catch (e) {
+    // localStorage blocked, so stay on light.
+  }
+})();
+</script>
+
+<link rel="stylesheet" href="site.css">
+</head>
+<body>
+
+<header class="masthead">
+  <div class="masthead-inner">
+    <a class="brand" href="/">
+      <svg width="22" height="22" viewBox="-2 -2 28 28" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <circle cx="12" cy="12" r="13" stroke-width="1.5"/>
+        <g stroke-width="2">
+          <path d="m10 16 1.5 1.5"/><path d="m14 8-1.5-1.5"/>
+          <path d="M15 2c-1.798 1.998-2.518 3.995-2.807 5.993"/>
+          <path d="m16.5 10.5 1 1"/><path d="m17 6-2.891-2.891"/>
+          <path d="M2 15c6.667-6 13.333 0 20-6"/><path d="m20 9 .891.891"/>
+          <path d="M3.109 14.109 4 15"/><path d="m6.5 12.5 1 1"/>
+          <path d="m7 18 2.891 2.891"/>
+          <path d="M9 22c1.798-1.998 2.518-3.995 2.807-5.993"/>
+        </g>
+      </svg>
+      SeqNexus
+    </a>
+    <nav aria-label="Primary">
+      <a href="/">Overview</a>
+      <a class="hide-sm" href="features.html">Features</a>
+      <a class="hide-sm" href="/#formats">Formats</a>
+      <a class="hide-sm" href="https://github.com/cacat-ayy/seqnexus">Source</a>
+      <a class="btn btn-small" href="app.html">Open the editor</a>
+      <button class="theme-toggle" id="theme-toggle" type="button" aria-label="Toggle dark mode" aria-pressed="false">
+        <svg class="icon-sun" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="5"/><path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/></svg>
+        <svg class="icon-moon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+      </button>
+    </nav>
+  </div>
+</header>
+
+<main>
+
+  <section class="page-head">
+    <div class="wrap">
+      <p class="label"><a class="back" href="features.html#gel">&larr; Features</a></p>
+      <h1 style="margin-top:14px">A virtual agarose gel that behaves like the real one.</h1>
+      <p class="lede">Load a digest, a PCR product or an uncut plasmid, pick your ladder and your agarose percentage, and read the bands before you pour the gel. The migration model is fitted to real gels, the brightness follows the mass, and a designer finds the digest that tells your clones apart. Free, no account, computed on your own machine.</p>
+      <div class="hero-actions">
+        <a class="btn" href="app.html">Open the editor &rarr;</a>
+      </div>
+    </div>
+  </section>
+
+  <div class="wrap">
+    <article class="doc">
+
+      <h2>What goes in a lane</h2>
+      <p>A gel is an item in the explorer: a set of running conditions and an ordered row of up to 20 lanes, each holding one sample, the way a real comb leaves wells empty. There is no Run button. The gel is re-simulated on every change, and every change is an undo step. A lane holds:</p>
+      <ul>
+        <li><b>A ladder</b>, from the built-in set or one you add.</li>
+        <li><b>A sequence</b>, uncut or cut with any enzymes. The digest dialog's "Run on gel" starts a gel from the current digest.</li>
+        <li><b>A PCR product</b>: a template and two primers from the primer library. Any other product the pair could make is shown fainter.</li>
+        <li><b>Typed-in band sizes</b>, to compare against a photo of a real gel.</li>
+        <li><b>A protein</b>, on an SDS-PAGE gel, with its predicted band.</li>
+      </ul>
+      <p>Mass is tracked from the load (500 ng for a digest, 100 ng for a PCR, 50 ng per typed band) down to every fragment, which gets the share of the load its length is of the whole. So brightness means something: a 300 bp fragment of a 6 kb digest is faint because it would be. Uncut circular DNA splits into its forms with their different mobilities: a clean miniprep is 80 % supercoiled, 17 % nicked and 3 % linear by default, with other presets offered. A circular sequence cut once is one full-length linear molecule. Sites that Dam or Dcm methylation blocks are skipped, by the same rule the cloning digest uses, so the two always agree.</p>
+
+      <figure class="shot" data-file="assets/features/gel.webp">
+        <img src="assets/features/gel.webp" srcset="assets/features/gel-720.webp 720w, assets/features/gel-1080.webp 1080w, assets/features/gel.webp 1440w" sizes="(max-width: 1080px) calc(100vw - 40px), 736px" data-light="assets/features/gel.webp" data-dark="assets/features/gel-dark.webp" alt="A virtual agarose gel of pEGFP-C1 digests beside a ladder, with the fragment table of the selected lane" width="1440" height="900" loading="lazy" onerror="shotError(this)">
+        <figcaption>Digests of pEGFP-C1 beside a ladder. The inspector lists every molecule in the selected lane with its size, form and mass.</figcaption>
+      </figure>
+
+      <h2>The migration model</h2>
+      <p>Mobility relative to free DNA follows a sigmoid in log size:</p>
+      <p><code>r(L) = m + (1 &minus; m) / (1 + (L / L<sub>c</sub>)<sup>&alpha;</sup>)</code></p>
+      <p>Small fragments slip through the pores and approach a relative mobility of 1. Large ones reptate at a limiting mobility m, so everything above the resolution window piles into a compression zone below the wells instead of spreading out, as it does on a real gel. L<sub>c</sub> is the size the gel separates best: 1,900 bp at 1 % agarose in TAE, falling with the agarose percentage to the power 1.8 as the pores shrink. TBE sieves a little harder, which is why it resolves small fragments better. Agarose runs from 0.5 % to 3 %.</p>
+      <p>The run is timed by the bromophenol blue front, as it is at the bench ("run until the dye is three quarters down"), which stands in for voltage times time. The dye has a fixed relative mobility, so the DNA size it co-migrates with falls out of the model: about 350 bp in 1 % TAE and 100 bp in 2 %, matching loading-dye charts. Fragments that would travel past the end of the gel have run off and are listed as such. Three formats set the run length: mini at 60 mm, midi at 130 mm and large at 180 mm.</p>
+      <p>The parameters were tuned against published ladder images and dye co-migration tables. The model is approximate by design: good enough to judge whether two bands will separate, not a substitute for a real gel.</p>
+
+      <h2>How bands spread and merge</h2>
+      <p>Each molecule lands at a distance from the well with a Gaussian spread, in millimetres, from three sources: stacking out of the well, since DNA entering the gel stacks into a layer much thinner than the well; diffusion, which grows with distance and hits small fragments hardest; and overloading, where a band holding hundreds of nanograms is visibly fatter.</p>
+      <p>Molecules whose centres are closer than 1.6 mean sigmas merge into one band, so 3,000 and 2,950 bp read as a single, brighter band, as they would for real. The merged band's centre is mass-weighted and its spread follows the law of total variance. Bands under 2 ng are below what ethidium bromide shows and are drawn faint.</p>
+
+      <h2>Ladders</h2>
+      <p>Each ladder band carries a mass. Most commercial ladders load roughly equal mass per band, with one or two reference bands at about 2.5x to orient by eye, and the built-in ladders follow that pattern for a 500 ng load. They are representative, not any one vendor's datasheet. Lambda cut with HindIII is a digest of a single molecule, so its fragments are equimolar and their masses scale with size, which is why its 125 bp band is barely visible on a real gel too. You can add your own ladder with its sizes and masses. Protein ladders, the common 10 to 250 kDa and broad-range sets, load about 2.5 µg.</p>
+
+      <h2>Looks and export</h2>
+      <p>The gel is imaged through a look: ultraviolet with ethidium bromide, the same inverted, blue light with SYBR Safe or GelGreen, or a schematic of flat vector bands for figures. A look is a colour ramp from bare gel to saturated band, and exposure is adjustable over four stops. The canvas on screen, the high-resolution PNG, the SVG and the PDF all paint the same scene, so they cannot drift apart. The lane table exports as CSV, and the PDF carries it under the image.</p>
+      <p>Hover a band to see what is in it, read the size at any height off the cursor line, and cut a band out: the fragment opens as a new sequence with its features carried over and its ends described, the way a band is cut from a gel and purified.</p>
+
+      <h2>The diagnostic digest designer</h2>
+      <p>Given the sequences a sample might be, the clone you wanted, the empty vector, the insert backwards, the designer finds the enzymes that tell them apart on this gel. Every single enzyme and, optionally, every pair from a pool is tried on every candidate, and each digest is run through the same migration and band model the gel draws. So "distinct" means distinct at this agarose percentage and this run length, not distinct in a table of fragment sizes.</p>
+      <p>A design scores well on three things. The candidates' band patterns sit far apart, measured as the smallest, over all pairs of candidates, of the largest gap between a band in one lane and the nearest band in the other; under 1 mm is hard to tell by eye and 3 mm counts as fully distinct. Each pattern is readable, meaning at most seven bands, inside the gel's useful range, none merged and none under 250 bp. And it needs one familiar enzyme rather than two.</p>
+      <p>Pairs are only tried among enzymes that cut every candidate at most four times, and no design may cut a candidate more than eight times, which keeps a full search over the 6-cutters fast. With a single candidate only readability counts: a clean confirmatory digest. Applying a design lays the gel out for it, a ladder that fits and then a lane per candidate. The <a class="link" href="features.html#cloning">cloning workspace</a> hands its product and the wrong outcomes to the designer directly.</p>
+
+      <div class="doc-where">
+        <p class="label">Where to find it</p>
+        <p>New gel from the explorer, or "Run on gel" in the restriction digest dialog. Click a lane to select it, drag wells to reorder, and click the empty well after the last lane to add one. Left and Right pick a lane, Alt with them moves it, Delete removes it. The inspector on the right holds the running conditions and the selected lane.</p>
+      </div>
+
+      <h2>Limits</h2>
+      <ul>
+        <li>The model is fitted by eye to published images and dye tables, not derived from a physical theory of the gel. It predicts whether bands separate, not their exact positions to the millimetre.</li>
+        <li>Supercoiled and nicked forms use fixed relative mobilities per preset. Real supercoiled mobility depends on the plasmid, the buffer and the voltage.</li>
+        <li>Built-in ladders are representative mass patterns, not any vendor's datasheet. Add your own for an exact match.</li>
+      </ul>
+
+      <h2>References</h2>
+      <ul>
+        <li>Stellwagen NC (2009) Electrophoresis of DNA in agarose gels, polyacrylamide gels and in free solution. <i>Electrophoresis</i> 30 Suppl 1:S188-S195. The sigmoid in log size and the reptation limit the model follows.</li>
+      </ul>
+
+      <div class="doc-related">
+        <p class="label">Read on</p>
+        <ul>
+          <li><a class="link" href="features.html#gel">The virtual gel on the features page &rarr;</a></li>
+          <li><a class="link" href="https://github.com/cacat-ayy/seqnexus#virtual-gel">The gel model in the README &rarr;</a></li>
+          <li><a class="link" href="features.html#enzymes">Restriction site analysis &rarr;</a></li>
+          <li><a class="link" href="snapgene-alternative.html">SeqNexus as a free SnapGene alternative &rarr;</a></li>
+        </ul>
+      </div>
+
+    </article>
+  </div>
+
+  <section class="closing">
+    <div class="wrap">
+      <p class="label">Get started</p>
+      <h2 style="margin-top:14px">Run the digest before you pour the gel.</h2>
+      <p>No installation, no account. Your sequences are stored on your own device and never uploaded.</p>
+      <div class="hero-actions">
+        <a class="btn" href="app.html">Open the editor &rarr;</a>
+        <a class="btn btn-ghost" href="features.html">See every feature</a>
+      </div>
+    </div>
+  </section>
+
+</main>
+
+<footer class="site-foot">
+  <div class="wrap">
+    <div class="foot-grid">
+      <div class="foot-about">
+        <a class="brand" href="/">
+          <svg width="22" height="22" viewBox="-2 -2 28 28" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <circle cx="12" cy="12" r="13" stroke-width="1.5"/>
+            <g stroke-width="2">
+              <path d="m10 16 1.5 1.5"/><path d="m14 8-1.5-1.5"/>
+              <path d="M15 2c-1.798 1.998-2.518 3.995-2.807 5.993"/>
+              <path d="m16.5 10.5 1 1"/><path d="m17 6-2.891-2.891"/>
+              <path d="M2 15c6.667-6 13.333 0 20-6"/><path d="m20 9 .891.891"/>
+              <path d="M3.109 14.109 4 15"/><path d="m6.5 12.5 1 1"/>
+              <path d="m7 18 2.891 2.891"/>
+              <path d="M9 22c1.798-1.998 2.518-3.995 2.807-5.993"/>
+            </g>
+          </svg>
+          SeqNexus
+        </a>
+        <p><strong>Free to use.</strong> Open source under the GNU AGPL v3. Figures and files you make are yours for publications, theses, talks and commercial work, with no fee. If one ends up in a paper, please cite the tool.</p>
+      </div>
+      <nav class="foot-col" aria-label="Product">
+        <p class="label">Product</p>
+        <a href="app.html">Editor</a>
+        <a href="/">Overview</a>
+        <a href="features.html">Features</a>
+        <a href="/#formats">Formats</a>
+      </nav>
+      <nav class="foot-col" aria-label="Guides">
+        <p class="label">Guides</p>
+        <a href="plasmid-map.html">Plasmid map</a>
+        <a href="primer-design.html">Primer design</a>
+        <a href="crispr-guide-design.html">CRISPR guides</a>
+        <a href="codon-optimization.html">Codon optimization</a>
+        <a href="virtual-gel.html">Virtual gel</a>
+        <a href="sequence-alignment.html">Alignment</a>
+        <a href="sanger-sequencing.html">Sanger</a>
+        <a href="ngs-read-mapping.html">NGS mapping</a>
+        <a href="snapgene-alternative.html">SnapGene alternative</a>
+      </nav>
+      <nav class="foot-col" aria-label="Project">
+        <p class="label">Project</p>
+        <a href="https://github.com/cacat-ayy/seqnexus">Source on GitHub</a>
+        <a href="https://github.com/cacat-ayy/seqnexus/issues">Report an issue</a>
+        <a href="mailto:contact@seqnexus.app">Contact</a>
+      </nav>
+      <div class="foot-col">
+        <p class="label">Cite this tool</p>
+        <p class="foot-cite">Acatay, C. (2026). SeqNexus: a browser-based molecular biology sequence editor. https://seqnexus.app</p>
+      </div>
+    </div>
+    <div class="foot-base">
+      <p>&copy; 2026 Christopher Acatay <a href="https://www.gnu.org/licenses/agpl-3.0.html">AGPL v3 licence</a></p>
+      <p><a href="impressum.html">Legal notice</a> <a href="datenschutz.html">Privacy</a></p>
+    </div>
+  </div>
+</footer>
+
+<script src="site.js"></script>
+</body>
+</html>

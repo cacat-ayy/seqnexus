@@ -1,0 +1,308 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Map NGS reads and call variants in your browser | SeqNexus</title>
+<meta name="description" content="Import FASTQ, read a FastQC-style quality report, trim with fastp, map with minimap2 and call variants with their effect on every coding feature, all in the browser with nothing uploaded. De novo assembly and BAM in and out. Free, no account.">
+<meta name="author" content="Christopher Acatay">
+<meta name="theme-color" content="#0b5f58">
+<meta name="robots" content="max-image-preview:large">
+<link rel="canonical" href="https://seqnexus.app/ngs-read-mapping.html">
+
+<meta property="og:type" content="article">
+<meta property="og:url" content="https://seqnexus.app/ngs-read-mapping.html">
+<meta property="og:title" content="Map NGS reads and call variants in your browser">
+<meta property="og:description" content="FASTQ quality control, trimming with fastp, mapping with minimap2, variant calling with HGVS-named coding effects, and de novo assembly, all computed on your own machine.">
+<meta property="og:image" content="https://seqnexus.app/assets/features/mapping.png">
+<meta property="og:image:width" content="1440">
+<meta property="og:image:height" content="900">
+<meta property="og:image:alt" content="A read mapping with coverage track, reads and called variants">
+<meta property="og:site_name" content="SeqNexus">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Map NGS reads and call variants in your browser">
+<meta name="twitter:description" content="FASTQ quality control, trimming with fastp, mapping with minimap2, variant calling with HGVS-named coding effects, and de novo assembly, all computed on your own machine.">
+<meta name="twitter:image" content="https://seqnexus.app/assets/features/mapping.png">
+
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@graph": [
+    {
+      "@type": "TechArticle",
+      "headline": "Map NGS reads and call variants in your browser",
+      "url": "https://seqnexus.app/ngs-read-mapping.html",
+      "description": "How SeqNexus handles NGS reads: read set storage and quality control, trimming, mapping with two passes for circular references, variant effects, samples, de novo assembly and measured scale.",
+      "image": "https://seqnexus.app/assets/features/mapping.png",
+      "datePublished": "2026-10-20",
+      "dateModified": "2026-10-20",
+      "author": { "@type": "Person", "name": "Christopher Acatay", "url": "https://github.com/cacat-ayy" },
+      "about": { "@type": "SoftwareApplication", "name": "SeqNexus", "url": "https://seqnexus.app/app.html" },
+      "isPartOf": { "@type": "WebSite", "name": "SeqNexus", "url": "https://seqnexus.app/" }
+    },
+    {
+      "@type": "BreadcrumbList",
+      "itemListElement": [
+        { "@type": "ListItem", "position": 1, "name": "SeqNexus", "item": "https://seqnexus.app/" },
+        { "@type": "ListItem", "position": 2, "name": "Features", "item": "https://seqnexus.app/features.html" },
+        { "@type": "ListItem", "position": 3, "name": "NGS read mapping", "item": "https://seqnexus.app/ngs-read-mapping.html" }
+      ]
+    }
+  ]
+}
+</script>
+
+<link rel="icon" href="assets/favicon.svg" type="image/svg+xml">
+<link rel="icon" href="assets/favicon-48x48.png" sizes="48x48" type="image/png">
+<link rel="icon" href="assets/favicon-96x96.png" sizes="96x96" type="image/png">
+<link rel="icon" href="assets/favicon-144x144.png" sizes="144x144" type="image/png">
+<link rel="icon" href="assets/favicon-192x192.png" sizes="192x192" type="image/png">
+<link rel="apple-touch-icon" href="assets/favicon-192x192.png">
+
+<script>
+// Apply the stored theme before first paint. Must stay inline and in <head>.
+(function () {
+  try {
+    var stored = localStorage.getItem('seqnexus-landing-dark');
+    var dark = stored !== null
+      ? stored === '1'
+      : window.matchMedia('(prefers-color-scheme: dark)').matches;
+    if (dark) document.documentElement.classList.add('dark');
+  } catch (e) {
+    // localStorage blocked, so stay on light.
+  }
+})();
+</script>
+
+<link rel="stylesheet" href="site.css">
+</head>
+<body>
+
+<header class="masthead">
+  <div class="masthead-inner">
+    <a class="brand" href="/">
+      <svg width="22" height="22" viewBox="-2 -2 28 28" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <circle cx="12" cy="12" r="13" stroke-width="1.5"/>
+        <g stroke-width="2">
+          <path d="m10 16 1.5 1.5"/><path d="m14 8-1.5-1.5"/>
+          <path d="M15 2c-1.798 1.998-2.518 3.995-2.807 5.993"/>
+          <path d="m16.5 10.5 1 1"/><path d="m17 6-2.891-2.891"/>
+          <path d="M2 15c6.667-6 13.333 0 20-6"/><path d="m20 9 .891.891"/>
+          <path d="M3.109 14.109 4 15"/><path d="m6.5 12.5 1 1"/>
+          <path d="m7 18 2.891 2.891"/>
+          <path d="M9 22c1.798-1.998 2.518-3.995 2.807-5.993"/>
+        </g>
+      </svg>
+      SeqNexus
+    </a>
+    <nav aria-label="Primary">
+      <a href="/">Overview</a>
+      <a class="hide-sm" href="features.html">Features</a>
+      <a class="hide-sm" href="/#formats">Formats</a>
+      <a class="hide-sm" href="https://github.com/cacat-ayy/seqnexus">Source</a>
+      <a class="btn btn-small" href="app.html">Open the editor</a>
+      <button class="theme-toggle" id="theme-toggle" type="button" aria-label="Toggle dark mode" aria-pressed="false">
+        <svg class="icon-sun" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="5"/><path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/></svg>
+        <svg class="icon-moon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+      </button>
+    </nav>
+  </div>
+</header>
+
+<main>
+
+  <section class="page-head">
+    <div class="wrap">
+      <p class="label"><a class="back" href="features.html#mapping">&larr; Features</a></p>
+      <h1 style="margin-top:14px">Map a FASTQ and call its variants, in a browser tab.</h1>
+      <p class="lede">Import a read set, read its quality report, trim it, map it with minimap2 compiled to WebAssembly, and read what every variant does to the coding features it falls in. De novo assembly, several samples per mapping, and BAM in and out. Nothing is uploaded: it all runs on your own machine.</p>
+      <div class="hero-actions">
+        <a class="btn" href="app.html">Open the editor &rarr;</a>
+      </div>
+    </div>
+  </section>
+
+  <div class="wrap">
+    <article class="doc">
+
+      <h2>Read sets in the browser</h2>
+      <p>A read set holds the reads of one sample: a FASTQ file, an R1 and R2 pair, or a long-read run. Only its description, meaning its name, technology and quality figures, is kept with the session. The reads themselves go into the browser's database and are read a chunk at a time by workers, so a sample of millions of reads never has to be held in memory.</p>
+      <p>Gzipped files are inflated with a reader that handles several gzip members back to back, which is what Illumina's BGZF files are. Two files whose names differ only in a mate marker are taken as a pair, read in lockstep, and must carry the same read ID in the same order, or the import stops and says at which read. A single file whose consecutive reads come in twos with the same ID is offered as interleaved. The technology is guessed from the read headers first, then from read lengths, and a guess from lengths is marked as such so you can change it. The technology decides which quality rules apply and how reads are trimmed.</p>
+      <p>Reads are stored in compressed chunks: each read's length, the IDs as one joined text, the bases two to a byte in the 4-bit code BAM uses so N and the IUPAC letters survive, and one byte of quality per base. A test chunk of Illumina reads comes out under an eighth of its FASTQ text.</p>
+
+      <h2>Quality control, with verdicts</h2>
+      <p>Figures are gathered while the reads are imported, a read at a time: the share of bases at Q20 and Q30, quality by position per mate over the zones FastQC uses, read length with its N50, GC content per read and the share of N calls.</p>
+      <p>A read's mean quality is computed from error probabilities, not by averaging the scores. Averaging overstates it: one Q5 base, a 32 % chance of error, costs far more accuracy than one Q40 base gains, so a read of Q40 and Q5 bases half and half has a mean score of 22.5 but an expected error rate of 16 %, which is Q8. This is how Nanopore and PacBio tools report read quality, and the read set shows the median over reads.</p>
+      <p>Each module says pass, check or fail, against rules of thumb set from what current instruments deliver rather than a standard:</p>
+      <table class="doc-table">
+        <thead><tr><th>Measure</th><th>Good</th><th>Check</th><th>Fail</th></tr></thead>
+        <tbody>
+          <tr><td>Short reads, bases at Q30 and up</td><td class="num">75 % and up</td><td class="num">60 to 75 %</td><td class="num">below 60 %</td></tr>
+          <tr><td>Nanopore, median read quality</td><td class="num">Q12 and up</td><td class="num">Q9 to 12</td><td class="num">below Q9</td></tr>
+          <tr><td>PacBio, median read quality</td><td class="num">Q20 and up</td><td class="num">Q15 to 20</td><td class="num">below Q15</td></tr>
+          <tr><td>N calls</td><td class="num">1 % or less</td><td class="num">over 1 %</td><td class="num">over 5 %</td></tr>
+        </tbody>
+      </table>
+
+      <figure class="shot" data-file="assets/features/ngs.webp">
+        <img src="assets/features/ngs.webp" srcset="assets/features/ngs-720.webp 720w, assets/features/ngs-1080.webp 1080w, assets/features/ngs.webp 1440w" sizes="(max-width: 1080px) calc(100vw - 40px), 736px" data-light="assets/features/ngs.webp" data-dark="assets/features/ngs-dark.webp" alt="The FastQC-style quality report for a paired read set with per-module verdicts" width="1440" height="900" loading="lazy" onerror="shotError(this)">
+        <figcaption>The quality report for a paired read set, with a verdict per module and a table view behind every chart.</figcaption>
+      </figure>
+
+      <h2>Trimming</h2>
+      <p>Trimming makes a new read set and keeps the original. Short reads go through fastp compiled to WebAssembly, in batches of 100,000 reads, with adapters trimmed (for pairs, where the two mates overlap and run past the insert), both ends cut while a 4-base window's mean quality is below the threshold, and reads shorter than the minimum dropped with their mate. Fastp's own defaults stay on, so reads with more than 40 % of bases below Q15 or more than 5 N are dropped, and poly-G tails are cut on the two-colour chemistries that call G where there is no signal.</p>
+      <p>Long reads are filtered rather than trimmed, by minimum length and minimum mean read quality. Fastp's short-read model does not fit them, and current basecallers already cut the sequencing adapters.</p>
+
+      <h2>Mapping to a reference</h2>
+      <p>A read set is mapped to one or more open sequences with minimap2 compiled to WebAssembly, with the preset for its technology. Several references, a chromosome and its plasmids, go into one run, so each read lands on whichever fits it best rather than being forced onto the only one offered. The result is an assembly holding the mapping.</p>
+      <p><b>Circular references get two passes.</b> The first is against the sequences as they are. The reads that may lie across an origin, meaning unmapped, split, stopped at an end with bases left over, or a pair that is not proper, go to a second pass against the references with their start appended, so a read across the origin maps in one piece and positions past the end are folded back. The second pass is taken only where it placed the read better.</p>
+      <p>This matters more than it sounds. In the appended stretch the sequence is there twice, so minimap2 gives a read mapped inside it a mapping quality of zero. Mapping every read against the extended references, as was done at first, gave every read lying wholly in the first kilobase of a plasmid a mapping quality of zero, a third of pUC19's reads, and since variant calling leaves out such reads, a planted deletion and insertion there were not even candidate sites. With two passes only the reads that need the origin see the appended stretch, and a test checks that rotating the reference shifts every variant and nothing else.</p>
+      <p>Coverage counts the aligned bases of every primary and supplementary alignment whatever its mapping quality, so the origin of a circular reference is not left uncovered, and deletions are not counted, as samtools depth does by default. The report gives reads mapped, the share in proper pairs, mean depth, the share of bases covered once and ten times, coverage along each reference, fragment lengths and mapping qualities.</p>
+
+      <figure class="shot" data-file="assets/features/mapping.webp">
+        <img src="assets/features/mapping.webp" srcset="assets/features/mapping-720.webp 720w, assets/features/mapping-1080.webp 1080w, assets/features/mapping.webp 1440w" sizes="(max-width: 1080px) calc(100vw - 40px), 736px" data-light="assets/features/mapping.webp" data-dark="assets/features/mapping-dark.webp" alt="A read mapping with coverage track, reads and called variants" width="1440" height="900" loading="lazy" onerror="shotError(this)">
+        <figcaption>A mapping from the whole reference down to single bases: coverage, reads coloured by strand or pair, and the variants called.</figcaption>
+      </figure>
+
+      <h2>Variants and their effect on the protein</h2>
+      <p>Calling and judging are separate. Every candidate site is kept with its evidence, meaning where it is, what it changes, how many reads cover it and how many carry the change on each strand, and how likely that many reads would show it by sequencing error alone. The thresholds are applied on top, so the table changes as you type them and a VCF can name the thresholds a variant failed.</p>
+      <p>A coding feature is read as the ribosome reads it: a spliced CDS through its exons only, on its own strand, from its codon start, and on past its end into what follows, translated with its own genetic code. With the standard code a mitochondrial gene's TGA reads as a stop, so a harmless change would be reported as nonsense; the mitochondrial tables read it as tryptophan. The first codon of a CDS that starts whole counts as methionine when it is one of its code's start codons, so a change from one start to another is synonymous and a change to anything else is a lost start.</p>
+      <p>The effect is computed by applying the variant and translating both versions, rather than by judging an indel on its length. That catches an in-frame insertion that brings a stop, a deletion of the stop codon, and where a frameshift ends, all with one rule. Severity runs from start lost, nonsense, frameshift and stop lost down through splice site, in-frame indels, missense, synonymous and intron. Names follow the HGVS recommendations, counting through exons only, moving indels as far 3' as their exon allows, and giving the protein change in both the one-letter and the recommended three-letter form.</p>
+
+      <h2>Several samples, and the guided pipeline</h2>
+      <p>A mapping holds one or more samples: read sets, or an imported SAM or BAM file, mapped to the same references. The samples page shows a matrix of variants against samples, where a cell is the share of that sample's reads carrying the variant. A blank cell means too few reads cover the position for the sample to say, which is kept apart from 0 %. Clone verification runs per sample with the same verdict a Sanger contig gets.</p>
+      <p>Analyse reads goes from read sets to a mapping with its variants in one pass: trim and filter, map with the right preset and, for amplicons, primer clipping, then call the variants and find the soft-clip junctions if asked. Each step is the same background job the separate dialogs run, so the results are the same, and a step that fails stops only its own sample. Switched to de novo, each read set is cleaned up, assembled with the method for its reads, and mapped back to its own contigs.</p>
+
+      <h2>De novo assembly</h2>
+      <p>Three methods, picked by what the reads are.</p>
+      <ul>
+        <li><b>Whole plasmids and amplicons from long reads.</b> When a plasmid or amplicon is sequenced whole, many reads are its full length and make a sharp peak in the read lengths. Each peak is taken as a product. A peak must hold enough reads above what its flanks would give by chance that a Poisson tail puts the chance of it below one in a million, because thousands of windows are looked at and at an ordinary threshold a broad spread of broken molecules would show peaks that are not there.</li>
+        <li><b>A genome from long reads.</b> Reads are overlapped against each other with minimap2, laid out and polished, as miniasm does. The longest reads of at least 1 kb are used, leaving out the tenth with the lowest quality, up to about 40x, since past that more reads add overlaps to compute but no contiguity.</li>
+        <li><b>Short reads.</b> Illumina reads are far shorter than a plasmid, so they are assembled from their k-mers, as Velvet and SPAdes do. The k-mer spectrum gives the genome length and coverage, reads are sampled down to about 100x, and k-mers below the solid threshold, the bottom of the valley between the error peak and the genome's peak, are dropped.</li>
+      </ul>
+      <p>Either way every read is mapped back to the contigs and the candidate sites recounted, so the contigs open in the same reads view with coverage, variants, report, BAM export and figures. Reads that disagree with a contig are its variants, which is how a minority of the population shows up. A contig can be checked against the sequence it was meant to be, and the assembly graph is kept with it.</p>
+
+      <h2>Scale</h2>
+      <p>Measured on a simulated bacterial genome of 5 Mb with 850,000 read pairs of 150 bases, about 50x, on one core:</p>
+      <table class="doc-table">
+        <thead><tr><th>Step</th><th>Time</th></tr></thead>
+        <tbody>
+          <tr><td>Import 1.7 million reads with their statistics</td><td class="num">29 s</td></tr>
+          <tr><td>Store the mapping: sort, pages, coverage, candidate sites</td><td class="num">28 s</td></tr>
+          <tr><td>Call variants over 2,630 candidate sites</td><td class="num">2 s</td></tr>
+          <tr><td>Export BAM with its index</td><td class="num">17 s</td></tr>
+          <tr><td>Open the view on a 100 kb window with its pileup</td><td class="num">under 0.5 s</td></tr>
+        </tbody>
+      </table>
+      <p>All 2,000 planted SNPs were found. In the browser itself, 100,000 pairs from lambda phage imported with their quality report in about 5 seconds, mapped to the 48.5 kb genome in about 38 seconds, and exported as a 9 MB BAM with its index in about 7 seconds, with the page's own heap under 160 MB throughout.</p>
+
+      <div class="doc-where">
+        <p class="label">Where to find it</p>
+        <p>Drag in FASTQ or FASTQ.gz files, which pair themselves. The read set page holds the quality report, trimming, mapping and Analyse reads. Serve the folder rather than opening the file from disk: a page opened over file:// may not load the WebAssembly tools, so fastp and minimap2 cannot run. Double-click serve.bat in the SeqNexus folder and open the editor over localhost.</p>
+      </div>
+
+      <h2>Limits</h2>
+      <ul>
+        <li>Phred+64 qualities from older Illumina pipelines are not detected.</li>
+        <li>The wider splice region that VEP flags is not flagged here, and UTR consequences are not named.</li>
+        <li>De novo contigs are a majority consensus of raw reads. On nanopore data that leaves residual errors, so polishing elsewhere is the usual next step; an import round trip is provided for it.</li>
+        <li>Opened from disk rather than served, import and export still run but the WebAssembly tools cannot.</li>
+      </ul>
+
+      <h2>References</h2>
+      <ul>
+        <li>Li H (2018) Minimap2: pairwise alignment for nucleotide sequences. <i>Bioinformatics</i> 34:3094-3100.</li>
+        <li>Chen S, Zhou Y, Chen Y, Gu J (2018) fastp: an ultra-fast all-in-one FASTQ preprocessor. <i>Bioinformatics</i> 34:i884-i890.</li>
+        <li>Andrews S (2010) FastQC: a quality control tool for high throughput sequence data. Babraham Bioinformatics.</li>
+        <li>Li H, Handsaker B, Wysoker A, et al. (2009) The Sequence Alignment/Map format and SAMtools. <i>Bioinformatics</i> 25:2078-2079.</li>
+        <li>den Dunnen JT, Dalgleish R, Maglott DR, et al. (2016) HGVS recommendations for the description of sequence variants. <i>Human Mutation</i> 37:564-569.</li>
+      </ul>
+
+      <div class="doc-related">
+        <p class="label">Read on</p>
+        <ul>
+          <li><a class="link" href="features.html#mapping">Mapping on the features page &rarr;</a></li>
+          <li><a class="link" href="https://github.com/cacat-ayy/seqnexus#ngs-mapping-and-assembly">Mapping, variants and assembly in the README &rarr;</a></li>
+          <li><a class="link" href="sanger-sequencing.html">Sanger chromatograms and clone verification &rarr;</a></li>
+          <li><a class="link" href="crispr-guide-design.html">CRISPR guide design, including reading an edit back &rarr;</a></li>
+        </ul>
+      </div>
+
+    </article>
+  </div>
+
+  <section class="closing">
+    <div class="wrap">
+      <p class="label">Get started</p>
+      <h2 style="margin-top:14px">Drag in a FASTQ and map it.</h2>
+      <p>No installation, no account. Your sequences are stored on your own device and never uploaded.</p>
+      <div class="hero-actions">
+        <a class="btn" href="app.html">Open the editor &rarr;</a>
+        <a class="btn btn-ghost" href="features.html">See every feature</a>
+      </div>
+    </div>
+  </section>
+
+</main>
+
+<footer class="site-foot">
+  <div class="wrap">
+    <div class="foot-grid">
+      <div class="foot-about">
+        <a class="brand" href="/">
+          <svg width="22" height="22" viewBox="-2 -2 28 28" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <circle cx="12" cy="12" r="13" stroke-width="1.5"/>
+            <g stroke-width="2">
+              <path d="m10 16 1.5 1.5"/><path d="m14 8-1.5-1.5"/>
+              <path d="M15 2c-1.798 1.998-2.518 3.995-2.807 5.993"/>
+              <path d="m16.5 10.5 1 1"/><path d="m17 6-2.891-2.891"/>
+              <path d="M2 15c6.667-6 13.333 0 20-6"/><path d="m20 9 .891.891"/>
+              <path d="M3.109 14.109 4 15"/><path d="m6.5 12.5 1 1"/>
+              <path d="m7 18 2.891 2.891"/>
+              <path d="M9 22c1.798-1.998 2.518-3.995 2.807-5.993"/>
+            </g>
+          </svg>
+          SeqNexus
+        </a>
+        <p><strong>Free to use.</strong> Open source under the GNU AGPL v3. Figures and files you make are yours for publications, theses, talks and commercial work, with no fee. If one ends up in a paper, please cite the tool.</p>
+      </div>
+      <nav class="foot-col" aria-label="Product">
+        <p class="label">Product</p>
+        <a href="app.html">Editor</a>
+        <a href="/">Overview</a>
+        <a href="features.html">Features</a>
+        <a href="/#formats">Formats</a>
+      </nav>
+      <nav class="foot-col" aria-label="Guides">
+        <p class="label">Guides</p>
+        <a href="plasmid-map.html">Plasmid map</a>
+        <a href="primer-design.html">Primer design</a>
+        <a href="crispr-guide-design.html">CRISPR guides</a>
+        <a href="codon-optimization.html">Codon optimization</a>
+        <a href="virtual-gel.html">Virtual gel</a>
+        <a href="sequence-alignment.html">Alignment</a>
+        <a href="sanger-sequencing.html">Sanger</a>
+        <a href="ngs-read-mapping.html">NGS mapping</a>
+        <a href="snapgene-alternative.html">SnapGene alternative</a>
+      </nav>
+      <nav class="foot-col" aria-label="Project">
+        <p class="label">Project</p>
+        <a href="https://github.com/cacat-ayy/seqnexus">Source on GitHub</a>
+        <a href="https://github.com/cacat-ayy/seqnexus/issues">Report an issue</a>
+        <a href="mailto:contact@seqnexus.app">Contact</a>
+      </nav>
+      <div class="foot-col">
+        <p class="label">Cite this tool</p>
+        <p class="foot-cite">Acatay, C. (2026). SeqNexus: a browser-based molecular biology sequence editor. https://seqnexus.app</p>
+      </div>
+    </div>
+    <div class="foot-base">
+      <p>&copy; 2026 Christopher Acatay <a href="https://www.gnu.org/licenses/agpl-3.0.html">AGPL v3 licence</a></p>
+      <p><a href="impressum.html">Legal notice</a> <a href="datenschutz.html">Privacy</a></p>
+    </div>
+  </div>
+</footer>
+
+<script src="site.js"></script>
+</body>
+</html>

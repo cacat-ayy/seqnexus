@@ -3,17 +3,18 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>SeqNexus: a free molecular biology bench that runs in your browser</title>
+<title>SeqNexus: free plasmid editor and molecular biology tools in your browser</title>
 <meta name="description" content="A free, open-source molecular biology sequence editor that runs entirely in your browser: plasmid maps, cloning, primers, CRISPR, alignment, Sanger and NGS. No installation, no account, nothing uploaded.">
 <meta name="author" content="Christopher Acatay">
 <meta name="theme-color" content="#0b5f58">
+<meta name="robots" content="max-image-preview:large">
 
 <link rel="canonical" href="https://seqnexus.app/">
 
 <!-- Open Graph -->
 <meta property="og:type" content="website">
 <meta property="og:url" content="https://seqnexus.app/">
-<meta property="og:title" content="SeqNexus: a free molecular biology bench that runs in your browser">
+<meta property="og:title" content="SeqNexus: free plasmid editor and molecular biology tools in your browser">
 <meta property="og:description" content="Plasmid maps, cloning, primers, CRISPR, alignment, Sanger and NGS, computed on your own machine. Free and open source. No installation, no account, nothing uploaded.">
 <meta property="og:image" content="https://seqnexus.app/og-image.png">
 <meta property="og:image:width" content="1200">
@@ -23,7 +24,7 @@
 
 <!-- Twitter -->
 <meta name="twitter:card" content="summary_large_image">
-<meta name="twitter:title" content="SeqNexus: a free molecular biology bench that runs in your browser">
+<meta name="twitter:title" content="SeqNexus: free plasmid editor and molecular biology tools in your browser">
 <meta name="twitter:description" content="Plasmid maps, cloning, primers, CRISPR, alignment, Sanger and NGS, computed on your own machine. Free and open source. No installation, no account, nothing uploaded.">
 <meta name="twitter:image" content="https://seqnexus.app/og-image.png">
 
@@ -36,7 +37,8 @@
       "@type": "WebSite",
       "name": "SeqNexus",
       "url": "https://seqnexus.app/",
-      "description": "A free, open-source molecular biology sequence editor that runs entirely in your browser."
+      "description": "A free, open-source molecular biology sequence editor that runs entirely in your browser.",
+      "publisher": { "@type": "Person", "name": "Christopher Acatay", "url": "https://github.com/cacat-ayy" }
     },
     {
       "@type": "SoftwareApplication",
@@ -51,6 +53,15 @@
       "isAccessibleForFree": true,
       "author": { "@type": "Person", "name": "Christopher Acatay", "url": "https://github.com/cacat-ayy" },
       "softwareVersion": "1.0",
+      "datePublished": "2026-10-20",
+      "image": "https://seqnexus.app/og-image.png",
+      "screenshot": [
+        { "@type": "ImageObject", "contentUrl": "https://seqnexus.app/assets/features/map.webp", "caption": "A circular plasmid map with features, cut sites and labels" },
+        { "@type": "ImageObject", "contentUrl": "https://seqnexus.app/assets/features/cloning.webp", "caption": "The cloning workspace with a vector, an insert and the reaction strip" },
+        { "@type": "ImageObject", "contentUrl": "https://seqnexus.app/assets/features/primers.webp", "caption": "The primer design workbench with ranked pairs" },
+        { "@type": "ImageObject", "contentUrl": "https://seqnexus.app/assets/features/crispr.webp", "caption": "The CRISPR guide designer with scored guides on the sequence" },
+        { "@type": "ImageObject", "contentUrl": "https://seqnexus.app/assets/features/mapping.webp", "caption": "A read mapping with coverage, reads and called variants" }
+      ],
       "codeRepository": "https://github.com/cacat-ayy/seqnexus",
       "featureList": [
         "DNA and protein sequence editing with annotations",
@@ -106,7 +117,7 @@
 
 <header class="masthead">
   <div class="masthead-inner">
-    <a class="brand" href="index.html">
+    <a class="brand" href="/">
       <svg width="22" height="22" viewBox="-2 -2 28 28" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
         <circle cx="12" cy="12" r="13" stroke-width="1.5"/>
         <g stroke-width="2">
@@ -122,7 +133,7 @@
       SeqNexus
     </a>
     <nav aria-label="Primary">
-      <a class="hide-sm" href="index.html" aria-current="page">Overview</a>
+      <a class="hide-sm" href="/" aria-current="page">Overview</a>
       <a class="hide-sm" href="features.html">Features</a>
       <a class="hide-sm" href="#formats">Formats</a>
       <a class="hide-sm" href="https://github.com/cacat-ayy/seqnexus">Source</a>
@@ -144,7 +155,7 @@
         <li>Open source</li>
         <li>Runs in the browser</li>
       </ul>
-      <h1>The molecular biology bench, <em>in a browser tab.</em></h1>
+      <h1>A free plasmid editor and molecular biology bench, <em>in a browser tab.</em></h1>
       <p class="lede">
         Edit and annotate sequences, draw plasmid maps, plan a cloning strategy,
         design primers and guides, align, read chromatograms, map NGS reads.
@@ -902,7 +913,7 @@
           <a class="link" href="features.html#cloning">About cloning &rarr;</a>
         </div>
         <figure class="shot" data-file="assets/features/cloning.webp">
-          <img src="assets/features/cloning.webp" data-light="assets/features/cloning.webp" data-dark="assets/features/cloning-dark.webp" alt="The cloning workspace with a vector and an insert map and the reaction strip" width="1440" height="900" loading="lazy" onerror="shotError(this)">
+          <img src="assets/features/cloning.webp" srcset="assets/features/cloning-720.webp 720w, assets/features/cloning-1080.webp 1080w, assets/features/cloning.webp 1440w" sizes="(max-width: 960px) calc(100vw - 40px), 700px" data-light="assets/features/cloning.webp" data-dark="assets/features/cloning-dark.webp" alt="The cloning workspace with a vector and an insert map and the reaction strip" width="1440" height="900" loading="lazy" onerror="shotError(this)">
         </figure>
       </article>
 
@@ -914,7 +925,7 @@
           <a class="link" href="features.html#mapping">About mapping &rarr;</a>
         </div>
         <figure class="shot" data-file="assets/features/mapping.webp">
-          <img src="assets/features/mapping.webp" data-light="assets/features/mapping.webp" data-dark="assets/features/mapping-dark.webp" alt="A read mapping with coverage track, reads and called variants" width="1440" height="900" loading="lazy" onerror="shotError(this)">
+          <img src="assets/features/mapping.webp" srcset="assets/features/mapping-720.webp 720w, assets/features/mapping-1080.webp 1080w, assets/features/mapping.webp 1440w" sizes="(max-width: 960px) calc(100vw - 40px), 700px" data-light="assets/features/mapping.webp" data-dark="assets/features/mapping-dark.webp" alt="A read mapping with coverage track, reads and called variants" width="1440" height="900" loading="lazy" onerror="shotError(this)">
         </figure>
       </article>
 
@@ -926,7 +937,7 @@
           <a class="link" href="features.html#crispr">About guide design &rarr;</a>
         </div>
         <figure class="shot" data-file="assets/features/crispr.webp">
-          <img src="assets/features/crispr.webp" data-light="assets/features/crispr.webp" data-dark="assets/features/crispr-dark.webp" alt="The CRISPR guide designer with scored guides drawn on the sequence" width="1440" height="900" loading="lazy" onerror="shotError(this)">
+          <img src="assets/features/crispr.webp" srcset="assets/features/crispr-720.webp 720w, assets/features/crispr-1080.webp 1080w, assets/features/crispr.webp 1440w" sizes="(max-width: 960px) calc(100vw - 40px), 700px" data-light="assets/features/crispr.webp" data-dark="assets/features/crispr-dark.webp" alt="The CRISPR guide designer with scored guides drawn on the sequence" width="1440" height="900" loading="lazy" onerror="shotError(this)">
         </figure>
       </article>
     </div>
@@ -1053,7 +1064,7 @@
           <h2>Free to use.<br><em>Not a trial, not a tier.</em></h2>
           <div class="free-cols">
             <div>
-              <p><strong>There is nothing to pay and nothing to unlock.</strong> Every tool on this page is available to everyone, for academic and commercial work alike, and all output may be used in publications, theses, presentations and products without restriction or fee.</p>
+              <p><strong>There is nothing to pay and nothing to unlock.</strong> Every tool on this page is available to everyone, for academic and commercial work alike, and all output may be used in publications, theses, presentations and products without restriction or fee. If it ends up in a paper, a citation is the one thing asked in return; the reference is beside this.</p>
               <p>SeqNexus is open source under the <a class="link" href="https://www.gnu.org/licenses/agpl-3.0.html">GNU AGPL v3</a>, with the full source on <a class="link" href="https://github.com/cacat-ayy/seqnexus">GitHub</a>. Bug reports and suggestions are welcome there.</p>
             </div>
             <div>
@@ -1084,7 +1095,7 @@
   <div class="wrap">
     <div class="foot-grid">
       <div class="foot-about">
-        <a class="brand" href="index.html">
+        <a class="brand" href="/">
           <svg width="22" height="22" viewBox="-2 -2 28 28" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
             <circle cx="12" cy="12" r="13" stroke-width="1.5"/>
             <g stroke-width="2">
@@ -1099,14 +1110,26 @@
           </svg>
           SeqNexus
         </a>
-        <p><strong>Free to use.</strong> Open source under the GNU AGPL v3. Figures and files you make are yours for publications, theses, talks and commercial work, with no fee.</p>
+        <p><strong>Free to use.</strong> Open source under the GNU AGPL v3. Figures and files you make are yours for publications, theses, talks and commercial work, with no fee. If one ends up in a paper, please cite the tool.</p>
       </div>
       <nav class="foot-col" aria-label="Product">
         <p class="label">Product</p>
         <a href="app.html">Editor</a>
-        <a href="index.html">Overview</a>
+        <a href="/">Overview</a>
         <a href="features.html">Features</a>
-        <a href="index.html#formats">Formats</a>
+        <a href="/#formats">Formats</a>
+      </nav>
+      <nav class="foot-col" aria-label="Guides">
+        <p class="label">Guides</p>
+        <a href="plasmid-map.html">Plasmid map</a>
+        <a href="primer-design.html">Primer design</a>
+        <a href="crispr-guide-design.html">CRISPR guides</a>
+        <a href="codon-optimization.html">Codon optimization</a>
+        <a href="virtual-gel.html">Virtual gel</a>
+        <a href="sequence-alignment.html">Alignment</a>
+        <a href="sanger-sequencing.html">Sanger</a>
+        <a href="ngs-read-mapping.html">NGS mapping</a>
+        <a href="snapgene-alternative.html">SnapGene alternative</a>
       </nav>
       <nav class="foot-col" aria-label="Project">
         <p class="label">Project</p>

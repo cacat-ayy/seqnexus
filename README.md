@@ -208,6 +208,7 @@ short version.
   - [Primer clipping](#primer-clipping)
   - [Junctions](#junctions-1)
   - [Guided pipeline](#guided-pipeline)
+  - [Verifying a whole plasmid](#verifying-a-whole-plasmid)
   - [De novo assembly](#de-novo-assembly)
   - [Figures](#figures-1)
   - [Scale](#scale)
@@ -235,6 +236,17 @@ short version.
 ```
 .                        the published site (GitHub Pages → seqnexus.app)
 ├── index.html               landing page (hand-written, not built)
+├── features.html            the feature overview
+├── <topic>.html             guide pages, one per search a reader might make:
+│                            snapgene-alternative, plasmid-map, primer-design,
+│                            crispr-guide-design, codon-optimization, virtual-gel,
+│                            sequence-alignment, sanger-sequencing, ngs-read-mapping.
+│                            Built from plasmid-map.html as the template, so the
+│                            masthead and footer stay identical; drawn from the
+│                            matching section of this README.
+├── 404.html                 GitHub Pages serves it for a missing path
+├── site.css / site.js       shared by every page of the site
+├── sitemap.xml / robots.txt
 ├── app.html                 the built editor (generated, commit it)
 ├── *.worker-<hash>.js       the editor's Web Workers (generated, commit them)
 ├── 3Dmol-<version>.min.js   the structure viewer, copied from app/vendor by the build (commit it)
@@ -5567,6 +5579,150 @@ reads; short reads: fastp as for mapping), assembled with the method for its
 reads, mapped back to its own contigs with their variants, and made an
 assembly of its own.
 
+### Verifying a whole plasmid
+
+Whole-plasmid sequencing services (Plasmidsaurus is the reference layout)
+return a folder or ZIP per order: for each sample a consensus FASTA, the
+same consensus as GenBank, a chromatogram drawn from the reads (.ab1), the
+raw nanopore reads (.fastq.gz, often in a ZIP of their own) and pictures,
+maps and tables. Dropping that folder, or the ZIPs, gives one page that
+says for each sample whether it is the construct it was meant to be,
+whether the tube holds more than one plasmid, and every difference, with
+a PDF report and a CSV (`plasmidverify/`).
+
+**Detection.** ZIP archives are unpacked first (fflate, a ZIP inside a ZIP
+too), their files under a folder named after the archive. Files are then
+grouped by name without extensions, wherever they lie in the drop, since
+the vendor spreads one sample over a folder per file kind
+(`<order>_fasta-files/`, `<order>_ab1-files/`, ...). Each file gets a role
+by its extension: consensus (FASTA), GenBank, reads (FASTQ, gzipped or
+not), trace (.ab1), or an extra that is passed over (.png, .html, .tsv,
+.txt, .csv, .pdf). A name is a sample when it has a consensus and more
+evidence beside it: reads, a trace, or both FASTA and GenBank. A lone
+consensus joins only in a drop that already holds samples, and only from
+the folder of the other samples' consensus files (or, dropped loose, named
+with the same order prefix). The vendor's name is never looked for, and a
+construct file dropped with the results has a name of its own, so it opens
+as an ordinary file and can be chosen. The offer is a dialog before
+anything is imported; declining imports the files as any drop would.
+
+**The construct.** Each consensus is seeded (k-mers of 12, as in mapping) on
+both strands against every open DNA sequence up to 200 kb, written out twice
+so that any rotation of a circle lies on one diagonal. The best diagonal's
+votes choose the construct (at least 20 votes, about 30 matching bases).
+When another sequence comes within a fifth of the best (CLOSE_VOTES, as for
+a plate of clones), the consensus is aligned to each and the one it agrees
+with best is kept (a match counts one, a mismatch or a gapped base costs
+two); the dialog says the choice was close. Any open sequence can be chosen
+instead, and a construct can be opened from a file in the dialog. The
+GenBank file's features are never used: they are the vendor's annotation of
+what it found, not the design.
+
+**Rotation.** The service starts its consensus at an origin of its own, and
+may give the reverse strand. The strand comes from the seeds. Then every
+16-mer found exactly once in the construct and once in the consensus is an
+anchor, and anchors on consecutive positions of both make runs. Both circles
+are cut at the start of the longest run, so the two linear sequences begin
+with the same bases and, going round, end where they began. A global
+alignment of the two then has no special case at the junction: its ends are
+anchored in identical sequence. (Writing the construct out twice and
+aligning the consensus into it would also work, but it doubles the
+alignment and still leaves the ends to guess.) The columns are then turned
+so the construct's first base is the first column, and the rotation is
+reported as the consensus base that lines up with it ("consensus base 600 is
+pUC19 base 1, on the reverse strand"). The rotation is called uncertain when
+less than half of the construct lies in anchored runs, or when its first
+base falls in a stretch that could not be aligned; the verdict is then "not
+fully covered".
+
+**Consensus tier.** It always runs, a page opened from disk included. The
+runs are chained (the heaviest chain in which each run starts after the one
+before on both sequences, overlaps trimmed) and only the gaps between them
+are aligned, globally, with the assembly scoring (match 2, mismatch 4, gap
+open 6, extend 2). A point mutation leaves a gap of about 31 bases on each
+side and a 1 kb insertion a 1 kb strip a few bases wide, so a 20 kb plasmid
+aligns in milliseconds where a full dynamic program would fill 400 million
+cells. A gap of more than 4 million cells, even within a band around its
+diagonal, is taken as a replaced block (its construct bases deleted, its
+consensus bases inserted). The result is a contig of one row on the
+construct, so the Sanger variant caller, coding effects and clone verdict
+read it unchanged (every consensus base at Q40, the services quoting Q50 to
+Q60 for theirs). A deletion that takes the construct's last bases and its
+first comes out of a contig in the construct's numbering as two pieces, and
+is joined into one, its effect being that of the whole on a feature across
+the origin.
+
+**Read tier.** With reads and SeqNexus served from a web address, the reads
+are imported as a read set (nanopore), mapped to the construct with minimap2
+`map-ont` (circular, two passes, see [Mapping to a reference](#mapping-to-a-reference)),
+and their variants called, the same jobs as the [guided
+pipeline](#guided-pipeline). This tier gives the verdict when it runs: covered
+means at least 10 reads over a base, and a difference is what at least half
+of the reads carry (`verifySample`). A deleted base counts as read for the
+deletion's reads, since the mapping's coverage, like `samtools depth`, does
+not count deletions, and a clean deletion would otherwise read as a stretch
+nobody sequenced. The read set and the mapping stay in the session, in one
+explorer folder with the verification. Opened from disk, minimap2 cannot be
+loaded; the dialog and each sample say so, and the verdict comes from the
+consensus.
+
+**Verdict.** The clone verification verdict (`assembly/verify.ts`), with one
+change: every difference counts, inside a feature or not, since a whole
+plasmid is read end to end and a point mutation in an unannotated stretch of
+backbone still makes the prep something other than the construct. Verified:
+no difference and every base covered; differences found; or not fully
+covered (fewer than 10 reads somewhere, or an uncertain rotation). Each
+sample says in one sentence what to do next: keep the prep, streak for single
+colonies, confirm a doubtful difference by Sanger, or pick another clone when
+a protein changes.
+
+**Mixed population.** A prep from one colony gives reads that agree at every
+position. With the reads, a site is mixed when 20 to 80% of at least 20 reads
+carry the other allele and the call passes the nanopore settings otherwise
+(P-value 1e-6, 5 reads, no indel in a homopolymer of 4 or more); 20x is
+where the service itself says its consensus becomes accurate. Without the
+reads, the service's chromatogram stands in: it is drawn from the reads'
+base counts at each position, so a second peak at least a quarter the height
+of the first (the same 20 to 80% as heights) marks a mixed position, found
+with the Sanger mixed-base caller (`sanger/mixed.ts`) and placed on the
+construct by aligning the chromatogram's calls the same way as the
+consensus. Second peaks in a run of 5 or more of one base, or at a
+methylation site, are passed over there. A mixed position is flagged whether
+or not it is at a difference: the minor allele of a mixture is, by
+definition, not in the consensus, so looking only at the differences would
+miss the case the flag is for.
+
+**Low confidence.** The service names two systematic nanopore error modes:
+homopolymers longer than 9 bases, whose length is miscounted, and
+methylation sites (Dam GATC and Dcm CCWGG in plasmids grown in *E. coli*),
+where modified bases are miscalled. A difference in either is flagged, not
+dropped, and when every difference is one, the next step is a Sanger read
+across them rather than throwing the clone away.
+
+**What is kept.** The verification is an assembly with one contig per sample
+(the consensus aligned to the construct, with a copy of the construct's
+features), and the verdicts as they were reached on that date: rotation,
+identity, evidence, differences, mixed positions and doubtful differences.
+It opens on its own page even with one sample; each sample links to its
+alignment, its reads and its construct. The construct is marked with its
+latest verification (`metadata.verifiedBy`: the item, the date, the best
+verdict a sample got), which the explorer shows as a shield. Reports: a PDF
+for the drop or one sample (counts, a row per sample, then per sample the
+facts, differences with protein changes and notes, mixed positions, and how
+it was checked) and a CSV for the drop (a row per sample, then a row per
+difference) or one sample (its facts, then the clone verification CSV).
+
+**Limits.** No de novo assembly here: a consensus that matches no open
+sequence is listed as not verified, with the way to assemble its reads de
+novo. Constructs up to 200 kb are looked at. A multimer consensus (the
+service returns the monomer by default) reads as a large insertion. A
+consensus with N bases counts them as covered and not as differences.
+Paired short reads in a result folder are not used for the read tier, which
+assumes nanopore. Tested on pUC19 with a synthetic order (a SNP, a 3 bp
+deletion, a 30% minor allele, the consensus rotated and reverse
+complemented) in both tiers, and on rotated, reverse-complemented and
+origin-crossing changes of pUC19 in the unit tests.
+
 ### De novo assembly
 
 "Assemble de novo" (on a read set's page, or in the guided pipeline) makes
@@ -6296,6 +6452,10 @@ trace's base calls and would put every read in twice.
   half megabyte (decompressed) opens as sequences; anything else goes to the
   read set import, as before. Gzipped GenBank, EMBL and GFF3 are unpacked
   and read as themselves.
+- **ZIP archives.** A `.zip` is unpacked (fflate, a ZIP inside a ZIP too)
+  and its files import as a dropped folder would, under a folder named
+  after the archive. A sequencing service's results, unpacked or not, are
+  first offered for verification (see [Verifying a whole plasmid](#verifying-a-whole-plasmid)).
 - **Paste.** Ctrl+V on the start screen, or with the explorer focused,
   imports what was copied through the same reader as a text file: FASTA,
   GenBank, EMBL, GFF3, an alignment or bare sequence. With a sequence open
@@ -7449,6 +7609,13 @@ saved, so nothing is written without a word.
 - McGuffie MJ, Barrick JE (2021) "pLannotate: engineered plasmid
   annotation." *Nucleic Acids Res* 49:W516-W522. (Searching a circular
   plasmid with its start repeated, and reporting partial hits.)
+
+- Plasmidsaurus, "Whole plasmid sequencing: technical documentation" and
+  "Plasmid FAQ", plasmidsaurus.com/technical-documentation/plasmid and
+  plasmidsaurus.com/faq/plasmid (read 2026-10-20). (The result folder's
+  layout and names, the chromatogram drawn from the reads, consensus
+  accuracy above about 20x, and the two systematic nanopore error modes:
+  homopolymers longer than 9 bases and methylation sites.)
 
 ## License
 

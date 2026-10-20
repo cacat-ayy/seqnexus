@@ -1,0 +1,281 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Free SnapGene alternative that runs in your browser | SeqNexus</title>
+<meta name="description" content="Looking for a free alternative to SnapGene? SeqNexus opens .dna files, draws plasmid maps, simulates restriction, Gibson, Golden Gate and Gateway cloning, designs primers and CRISPR guides, aligns and reads Sanger traces. Open source, no account, nothing uploaded.">
+<meta name="author" content="Christopher Acatay">
+<meta name="theme-color" content="#0b5f58">
+<meta name="robots" content="max-image-preview:large">
+<link rel="canonical" href="https://seqnexus.app/snapgene-alternative.html">
+
+<meta property="og:type" content="article">
+<meta property="og:url" content="https://seqnexus.app/snapgene-alternative.html">
+<meta property="og:title" content="Free SnapGene alternative that runs in your browser">
+<meta property="og:description" content="SeqNexus opens .dna files, draws plasmid maps, simulates cloning, designs primers and CRISPR guides, aligns and reads Sanger traces. Open source, no account, nothing uploaded.">
+<meta property="og:image" content="https://seqnexus.app/og-image.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="SeqNexus: the molecular biology bench, in a browser tab. A plasmid map in the editor.">
+<meta property="og:site_name" content="SeqNexus">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Free SnapGene alternative that runs in your browser">
+<meta name="twitter:description" content="SeqNexus opens .dna files, draws plasmid maps, simulates cloning, designs primers and CRISPR guides, aligns and reads Sanger traces. Open source, no account, nothing uploaded.">
+<meta name="twitter:image" content="https://seqnexus.app/og-image.png">
+
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@graph": [
+    {
+      "@type": "Article",
+      "headline": "Free SnapGene alternative that runs in your browser",
+      "url": "https://seqnexus.app/snapgene-alternative.html",
+      "description": "What SeqNexus does for someone who would otherwise use SnapGene: the files it opens, the cloning, primer and CRISPR tools, and where the two differ.",
+      "image": "https://seqnexus.app/og-image.png",
+      "datePublished": "2026-10-20",
+      "dateModified": "2026-10-20",
+      "author": { "@type": "Person", "name": "Christopher Acatay", "url": "https://github.com/cacat-ayy" },
+      "about": { "@type": "SoftwareApplication", "name": "SeqNexus", "url": "https://seqnexus.app/app.html" },
+      "isPartOf": { "@type": "WebSite", "name": "SeqNexus", "url": "https://seqnexus.app/" }
+    },
+    {
+      "@type": "BreadcrumbList",
+      "itemListElement": [
+        { "@type": "ListItem", "position": 1, "name": "SeqNexus", "item": "https://seqnexus.app/" },
+        { "@type": "ListItem", "position": 2, "name": "SnapGene alternative", "item": "https://seqnexus.app/snapgene-alternative.html" }
+      ]
+    }
+  ]
+}
+</script>
+
+<link rel="icon" href="assets/favicon.svg" type="image/svg+xml">
+<link rel="icon" href="assets/favicon-48x48.png" sizes="48x48" type="image/png">
+<link rel="icon" href="assets/favicon-96x96.png" sizes="96x96" type="image/png">
+<link rel="icon" href="assets/favicon-144x144.png" sizes="144x144" type="image/png">
+<link rel="icon" href="assets/favicon-192x192.png" sizes="192x192" type="image/png">
+<link rel="apple-touch-icon" href="assets/favicon-192x192.png">
+
+<script>
+// Apply the stored theme before first paint. Must stay inline and in <head>.
+(function () {
+  try {
+    var stored = localStorage.getItem('seqnexus-landing-dark');
+    var dark = stored !== null
+      ? stored === '1'
+      : window.matchMedia('(prefers-color-scheme: dark)').matches;
+    if (dark) document.documentElement.classList.add('dark');
+  } catch (e) {
+    // localStorage blocked, so stay on light.
+  }
+})();
+</script>
+
+<link rel="stylesheet" href="site.css">
+</head>
+<body>
+
+<header class="masthead">
+  <div class="masthead-inner">
+    <a class="brand" href="/">
+      <svg width="22" height="22" viewBox="-2 -2 28 28" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <circle cx="12" cy="12" r="13" stroke-width="1.5"/>
+        <g stroke-width="2">
+          <path d="m10 16 1.5 1.5"/><path d="m14 8-1.5-1.5"/>
+          <path d="M15 2c-1.798 1.998-2.518 3.995-2.807 5.993"/>
+          <path d="m16.5 10.5 1 1"/><path d="m17 6-2.891-2.891"/>
+          <path d="M2 15c6.667-6 13.333 0 20-6"/><path d="m20 9 .891.891"/>
+          <path d="M3.109 14.109 4 15"/><path d="m6.5 12.5 1 1"/>
+          <path d="m7 18 2.891 2.891"/>
+          <path d="M9 22c1.798-1.998 2.518-3.995 2.807-5.993"/>
+        </g>
+      </svg>
+      SeqNexus
+    </a>
+    <nav aria-label="Primary">
+      <a href="/">Overview</a>
+      <a class="hide-sm" href="features.html">Features</a>
+      <a class="hide-sm" href="/#formats">Formats</a>
+      <a class="hide-sm" href="https://github.com/cacat-ayy/seqnexus">Source</a>
+      <a class="btn btn-small" href="app.html">Open the editor</a>
+      <button class="theme-toggle" id="theme-toggle" type="button" aria-label="Toggle dark mode" aria-pressed="false">
+        <svg class="icon-sun" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="5"/><path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/></svg>
+        <svg class="icon-moon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+      </button>
+    </nav>
+  </div>
+</header>
+
+<main>
+
+  <section class="page-head">
+    <div class="wrap">
+      <p class="label"><a class="back" href="/">&larr; Overview</a></p>
+      <h1 style="margin-top:14px">A free SnapGene alternative, in a browser tab.</h1>
+      <p class="lede">SeqNexus opens the .dna files you already have, draws the map, simulates the cloning, designs the primers and reads the sequencing back. It is free for everyone, open source, and runs entirely on your own machine: no installation, no account, and no sequence is ever uploaded.</p>
+      <div class="hero-actions">
+        <a class="btn" href="app.html">Open the editor &rarr;</a>
+        <a class="btn btn-ghost" href="features.html">See every feature</a>
+      </div>
+    </div>
+  </section>
+
+  <div class="wrap">
+    <article class="doc">
+
+      <h2>Who this is for</h2>
+      <p>SnapGene is good software, and if your lab has licences and everyone is happy, there is no reason to read on. People come looking for an alternative for a few recurring reasons: a licence that ran out or was never there (a student, a teaching lab, a small company, a collaborator in another institute), a shared or locked-down machine where nothing can be installed, a requirement for open-source tools, or a workflow that reaches past plasmid design into Sanger assembly, NGS mapping or CRISPR editing and needs a second or third program. SeqNexus is built for those cases.</p>
+
+      <h2>Your SnapGene files open as they are</h2>
+      <p>Drag a .dna file onto the editor and it opens with its features, their colours and directions, its primers, its topology and its notes. The parser was written for this project and has tests of its own. Collections of files open together, so a folder of constructs becomes a folder in the explorer, with tags, search and grouping.</p>
+      <p>Files go back out as SnapGene .dna too, as well as GenBank, so a colleague who stays on SnapGene can open what you made. Geneious files and whole Geneious folder exports open the same way.</p>
+
+      <h2>What you would use it for</h2>
+      <table class="doc-table">
+        <thead><tr><th>Task</th><th>In SeqNexus</th></tr></thead>
+        <tbody>
+          <tr><td>Plasmid maps</td><td>Features, cut sites, primers and GC on rings, two layouts, four styles, names that never cross, and SVG, PNG and PDF export that matches the screen. <a class="link" href="plasmid-map.html">How the map is drawn &rarr;</a></td></tr>
+          <tr><td>Restriction cloning</td><td>Each part on its own map; click the sites to cut, and the reaction strip shows what goes into the ligation. Compatible ends are checked and methylation-blocked sites are marked.</td></tr>
+          <tr><td>Gibson, HiFi, In-Fusion, SLIC</td><td>Seamless assembly with the primers and homology arms designed for every part that needs them.</td></tr>
+          <tr><td>Golden Gate, Gateway, TOPO</td><td>Golden Gate with overhang fidelity, Gateway BP and LR, and TOPO, on the same path as restriction cloning. Several parts per slot give a combinatorial library.</td></tr>
+          <tr><td>Primers</td><td>PCR, qPCR with a probe, cloning tails, mutagenesis and sequencing primers, with nearest-neighbour Tm, hairpin and dimer grades and a primer library. <a class="link" href="primer-design.html">How primers are designed &rarr;</a></td></tr>
+          <tr><td>Restriction analysis and gels</td><td>The REBASE enzyme set with overhangs, methylation and suppliers, sets of the enzymes you own, and a virtual agarose gel with a diagnostic digest designer.</td></tr>
+          <tr><td>Codon optimization</td><td>Nineteen genetic codes and host usage tables, with restriction sites, homopolymers, repeats and GC extremes avoided while the protein stays as it was.</td></tr>
+          <tr><td>CRISPR</td><td>Guides for a dozen nucleases, scored, with off-target search, donors that will not be re-cut, base and prime editing, the oligos to order and the edit read back from a chromatogram.</td></tr>
+          <tr><td>Alignment and BLAST</td><td>Pairwise and multiple alignment with MAFFT, MUSCLE and Kalign in an editable viewer, and BLAST searches kept with the sequence.</td></tr>
+          <tr><td>Sanger sequencing</td><td>AB1 and SCF traces, trimming, assembly into contigs, and a whole plate of clones verified against several references at once.</td></tr>
+          <tr><td>NGS</td><td>FASTQ read sets with a FastQC-style report, trimming with fastp, mapping with minimap2, variant calling with coding effects, and BAM in and out, all in the browser. Not something a plasmid editor usually does.</td></tr>
+          <tr><td>Proteins</td><td>Protein sequences with mass, pI, extinction coefficient, domains, proteolysis, a predicted SDS-PAGE band and the 3D structure from the PDB or AlphaFold.</td></tr>
+          <tr><td>Figures</td><td>Every view exports as SVG or PDF in a print palette, with text kept as text for Illustrator or Inkscape.</td></tr>
+        </tbody>
+      </table>
+
+      <figure class="shot" data-file="assets/features/cloning.webp">
+        <img src="assets/features/cloning.webp" srcset="assets/features/cloning-720.webp 720w, assets/features/cloning-1080.webp 1080w, assets/features/cloning.webp 1440w" sizes="(max-width: 1080px) calc(100vw - 40px), 736px" data-light="assets/features/cloning.webp" data-dark="assets/features/cloning-dark.webp" alt="The cloning workspace with a vector and an insert map and the reaction strip" width="1440" height="900" loading="lazy" onerror="shotError(this)">
+        <figcaption>The cloning workspace: a vector and an insert on their own maps, the sites clicked, and the reaction strip showing the product.</figcaption>
+      </figure>
+
+      <h2>Where the two differ</h2>
+      <p>The differences are in how the programs are built and paid for, not only in their feature lists.</p>
+      <ul>
+        <li><b>Price and licence.</b> SnapGene is commercial software sold under paid licences; its free viewer is for viewing and annotating, not for designing. SeqNexus is free for everyone, academic and commercial, with nothing to unlock, and it is open source under the GNU AGPL v3, so you can read how every number is computed and fix what is wrong.</li>
+        <li><b>Where it runs.</b> SnapGene is a desktop program you install. SeqNexus is a web page: open it in any modern browser on any operating system, and it keeps working offline once loaded. There is nothing to install and nothing to update.</li>
+        <li><b>Where your data lives.</b> Both keep your sequences on your own machine. SeqNexus stores them in the browser's own database, and nothing you open is sent anywhere, since there is no server to send it to. The only network requests are the ones you ask for: fetching a record from NCBI or UniProt, or a BLAST search.</li>
+        <li><b>Where it reaches.</b> SeqNexus goes further into the data that comes back from the sequencer: Sanger clone verification by the plate, FASTQ quality control, read mapping and variant calling, and CRISPR edit read-back. These usually take other programs.</li>
+        <li><b>Maturity.</b> SnapGene has been in labs for well over a decade. SeqNexus is new. Its algorithms are checked against reference implementations (Biopython for enzymes and Tm, ENA's own validator, GenomeTools and Picard for exports, independent implementations of the published models for CRISPR scoring), and the <a class="link" href="https://github.com/cacat-ayy/seqnexus#readme">README</a> says what each tool does and what it leaves out. But you will find rough edges, and <a class="link" href="https://github.com/cacat-ayy/seqnexus/issues">reports</a> are welcome.</li>
+        <li><b>Collaboration.</b> SeqNexus has no shared server or team workspace. Sequences are shared as files: a .dna or GenBank export, or a session file holding everything in the explorer.</li>
+      </ul>
+
+      <h2>Moving over</h2>
+      <ol>
+        <li>Open the editor and drag your .dna files, or a folder of them, onto the window. They open with their features, primers and notes.</li>
+        <li>Open your primer list the same way: a CSV or TSV with name and sequence columns, or a FASTA. The primers are found on every sequence they bind.</li>
+        <li>Keep working. The map, the cloning workspace and the primer workbench are where you would expect them, and the command palette finds anything else by name.</li>
+        <li>Share back as .dna or GenBank for colleagues who stay on SnapGene, or as a session file for someone else on SeqNexus.</li>
+      </ol>
+
+      <h2>Other alternatives</h2>
+      <p>SeqNexus is not the only option, and the right one depends on what you need. ApE (A plasmid Editor) is a free desktop program that many labs use for plasmid maps and restriction analysis. Benchling is a web platform with a free academic tier that keeps your sequences in an account on its servers, which some labs want and some cannot allow. Geneious Prime is a commercial desktop suite with a wide range of analysis tools, whose files SeqNexus also reads. The free SnapGene Viewer lets you open and annotate .dna files without a licence. If you need a free tool that simulates cloning, designs primers and keeps your data on your own machine, SeqNexus is built for exactly that.</p>
+
+      <h2>Questions people ask</h2>
+      <h3>Is it really free, also for a company?</h3>
+      <p>Yes. There is no trial, no tier and no fee for commercial use. Figures and files you make are yours for publications, theses, talks and products; if they end up in a paper, please cite the tool (the reference is in the footer). The software is licensed under the AGPL v3, which concerns the source code of the program, not what you make with it.</p>
+      <h3>Does it upload my sequences?</h3>
+      <p>No. There is no server. The page you open is the whole program, and every alignment, digest and mapping is computed in your browser. Sequences are stored in the browser's own database on your device.</p>
+      <h3>Does it open .dna files from SnapGene?</h3>
+      <p>Yes, with features, primers, topology and notes, and it writes them too. GenBank, FASTA, Geneious, EMBL, GFF3, AB1, SCF, FASTQ, SAM and BAM are read as well. See <a class="link" href="/#formats">the full list</a>.</p>
+      <h3>Does it work offline?</h3>
+      <p>Once the editor page has loaded it keeps working without a connection, and your sequences are on your device. Only fetching records and BLAST need the network.</p>
+      <h3>Can I use the figures in a paper?</h3>
+      <p>Yes. Export as SVG or PDF in the Publication style, which draws black on white whatever your theme, with text kept as text so the figure can be finished in Illustrator or Inkscape. A citation in the methods is welcome; the reference is in the footer.</p>
+
+      <div class="doc-related">
+        <p class="label">Read on</p>
+        <ul>
+          <li><a class="link" href="features.html">Every feature, with screenshots &rarr;</a></li>
+          <li><a class="link" href="plasmid-map.html">The plasmid map &rarr;</a></li>
+          <li><a class="link" href="primer-design.html">Primer design &rarr;</a></li>
+          <li><a class="link" href="/#local">Your sequences never leave your machine &rarr;</a></li>
+        </ul>
+      </div>
+
+    </article>
+  </div>
+
+  <section class="closing">
+    <div class="wrap">
+      <p class="label">Get started</p>
+      <h2 style="margin-top:14px">Drag in a .dna file and keep working.</h2>
+      <p>No installation, no account. Your sequences are stored on your own device and never uploaded.</p>
+      <div class="hero-actions">
+        <a class="btn" href="app.html">Open the editor &rarr;</a>
+        <a class="btn btn-ghost" href="features.html">See every feature</a>
+      </div>
+    </div>
+  </section>
+
+</main>
+
+<footer class="site-foot">
+  <div class="wrap">
+    <div class="foot-grid">
+      <div class="foot-about">
+        <a class="brand" href="/">
+          <svg width="22" height="22" viewBox="-2 -2 28 28" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <circle cx="12" cy="12" r="13" stroke-width="1.5"/>
+            <g stroke-width="2">
+              <path d="m10 16 1.5 1.5"/><path d="m14 8-1.5-1.5"/>
+              <path d="M15 2c-1.798 1.998-2.518 3.995-2.807 5.993"/>
+              <path d="m16.5 10.5 1 1"/><path d="m17 6-2.891-2.891"/>
+              <path d="M2 15c6.667-6 13.333 0 20-6"/><path d="m20 9 .891.891"/>
+              <path d="M3.109 14.109 4 15"/><path d="m6.5 12.5 1 1"/>
+              <path d="m7 18 2.891 2.891"/>
+              <path d="M9 22c1.798-1.998 2.518-3.995 2.807-5.993"/>
+            </g>
+          </svg>
+          SeqNexus
+        </a>
+        <p><strong>Free to use.</strong> Open source under the GNU AGPL v3. Figures and files you make are yours for publications, theses, talks and commercial work, with no fee. If one ends up in a paper, please cite the tool.</p>
+      </div>
+      <nav class="foot-col" aria-label="Product">
+        <p class="label">Product</p>
+        <a href="app.html">Editor</a>
+        <a href="/">Overview</a>
+        <a href="features.html">Features</a>
+        <a href="/#formats">Formats</a>
+      </nav>
+      <nav class="foot-col" aria-label="Guides">
+        <p class="label">Guides</p>
+        <a href="plasmid-map.html">Plasmid map</a>
+        <a href="primer-design.html">Primer design</a>
+        <a href="crispr-guide-design.html">CRISPR guides</a>
+        <a href="codon-optimization.html">Codon optimization</a>
+        <a href="virtual-gel.html">Virtual gel</a>
+        <a href="sequence-alignment.html">Alignment</a>
+        <a href="sanger-sequencing.html">Sanger</a>
+        <a href="ngs-read-mapping.html">NGS mapping</a>
+        <a href="snapgene-alternative.html">SnapGene alternative</a>
+      </nav>
+      <nav class="foot-col" aria-label="Project">
+        <p class="label">Project</p>
+        <a href="https://github.com/cacat-ayy/seqnexus">Source on GitHub</a>
+        <a href="https://github.com/cacat-ayy/seqnexus/issues">Report an issue</a>
+        <a href="mailto:contact@seqnexus.app">Contact</a>
+      </nav>
+      <div class="foot-col">
+        <p class="label">Cite this tool</p>
+        <p class="foot-cite">Acatay, C. (2026). SeqNexus: a browser-based molecular biology sequence editor. https://seqnexus.app</p>
+      </div>
+    </div>
+    <div class="foot-base">
+      <p>&copy; 2026 Christopher Acatay <a href="https://www.gnu.org/licenses/agpl-3.0.html">AGPL v3 licence</a></p>
+      <p><a href="impressum.html">Legal notice</a> <a href="datenschutz.html">Privacy</a></p>
+    </div>
+  </div>
+</footer>
+
+<script src="site.js"></script>
+</body>
+</html>

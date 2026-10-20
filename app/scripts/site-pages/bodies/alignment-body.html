@@ -1,0 +1,85 @@
+      <h2>The engines</h2>
+      <p>Multiple alignment runs MAFFT, MUSCLE or Kalign: the WebAssembly builds of the real tools, one job per worker so a job can be cancelled. MAFFT runs as tbfast, which does the pairwise stage, the progressive alignment and sixteen rounds of iterative refinement itself, with the three iterative-refinement strategies the MAFFT script offers:</p>
+      <table class="doc-table">
+        <thead><tr><th>Strategy</th><th>Best when</th></tr></thead>
+        <tbody>
+          <tr><td>L-INS-i</td><td>The sequences share one alignable domain with unalignable ends</td></tr>
+          <tr><td>G-INS-i</td><td>They are similar over their whole length</td></tr>
+          <tr><td>E-INS-i</td><td>Several conserved domains are separated by long unalignable regions</td></tr>
+        </tbody>
+      </table>
+      <p><b>Automatic</b> uses the built-in pairwise aligner for exactly two sequences, MAFFT L-INS-i when its estimated running time is 20 seconds or less, and Kalign otherwise. The estimate comes from timing the builds on one thread and is good to a factor of two or three, which is enough to warn before starting something that will take minutes, which the dialog does.</p>
+      <p>Rows are sent to the tool under short generated names, because names with spaces, odd characters or duplicates can confuse the tools, and are put back in input order whatever order the tool writes them in. <b>Every row is checked to have come back with exactly its residues</b>, so a tool that dropped or changed one cannot slip a wrong alignment through. A fresh instance is started for every run, which costs milliseconds against seconds of alignment.</p>
+
+      <figure class="shot" data-file="assets/features/alignment.webp">
+        <img src="assets/features/alignment.webp" srcset="assets/features/alignment-720.webp 720w, assets/features/alignment-1080.webp 1080w, assets/features/alignment.webp 1440w" sizes="(max-width: 1080px) calc(100vw - 40px), 736px" data-light="assets/features/alignment.webp" data-dark="assets/features/alignment-dark.webp" alt="A MAFFT alignment of five GFP variants with translation rows and the statistics panel" width="1440" height="900" loading="lazy" onerror="shotError(this)">
+        <figcaption>Five GFP variants aligned with MAFFT, with conservation tracks above and the statistics panel beside.</figcaption>
+      </figure>
+
+      <h2>An alignment is a document you own</h2>
+      <p>An alignment is a stack of gapped rows that you edit. A row is a copy: it remembers which sequence it came from, for display, but editing it never reaches back into the source, and the source changing never reaches into the alignment. Extracting a row as a sequence is the way out. Every row is the same length and the document stays rectangular. How the alignment came to be, the engine and strategy or the file it was imported from, is kept with it, for display and for realigning.</p>
+      <p>Display settings live outside the undo history, since changing the colours is not an edit, and are saved with the alignment.</p>
+      <ul>
+        <li><b>Colour schemes.</b> Some colour a residue by what it is (Zappo, Taylor, nucleotides); others by its column, where Clustal X colours a residue only when its column is conserved enough, percent identity shades by how many rows share it, and BLOSUM62 compares with the consensus. The palette is blended into the theme's canvas colour, so one set of colours reads on light and dark themes.</li>
+        <li><b>Tracks.</b> Consensus with an adjustable threshold, identity and similarity graphs, a sequence logo and conservation marks, all read off the column profile.</li>
+        <li><b>Translation.</b> A DNA alignment can show a translation strip or colour bases by the amino acid they encode. Each row is read from its own first residue in the chosen frame, skipping gaps, so a codon can straddle a gap. A gap run inside the coding stretch whose length is not a multiple of three shifts the frame for the rest of that row, and those runs and any internal stops are reported, since they are usually errors to correct.</li>
+        <li><b>Search.</b> A motif is searched in each row without its gaps, so a motif split by a gap is still found, and reported as the columns it spans.</li>
+      </ul>
+
+      <h3>How identity is counted</h3>
+      <p>Mean pairwise identity for a selection is computed from the column counts rather than by comparing every pair of rows, so the statistics stay linear in the size of the selection and update on every edit. A row's end gaps, before its first residue and after its last, are missing data rather than differences: a partial sequence has nothing there to compare, so pairs with a row in its end gaps are left out. A stretch that matches a longer sequence base for base is therefore 100 % identical to it, where counting the end columns as gaps would put a 660 bp piece of EGFP at 91 %. A residue against a gap inside a row still counts as a difference. The same rule gives the identity graph, the identity matrix and the figure shown with each alignment in the explorer.</p>
+
+      <h2>The built-in pairwise algorithms</h2>
+      <p>These are plain TypeScript with no dependencies, and they are what runs for two sequences.</p>
+      <ul>
+        <li><b>Needleman-Wunsch</b> for global alignment: the standard three-matrix dynamic program for affine gaps. Above 100 million cells it switches to Hirschberg's divide and conquer, which gives the same optimal alignment in linear memory, so sequences of about 22 kb can be aligned globally without exhausting the browser.</li>
+        <li><b>Smith-Waterman</b> for local alignment: the full dynamic program up to 50 million cells, then a three-pass linear-memory approach that finds the best score and end in linear memory, finds the start in a reverse pass, and runs the full dynamic program only over the bounded region.</li>
+        <li><b>Seeded Smith-Waterman</b> for a short query against a genome. A k-mer index of the reference is built, seeds from the query are chained along diagonals, and Smith-Waterman runs only on a bounded region around the best chain. This turns a 4 kb against 4.6 Mb alignment into a hash lookup plus a small alignment. Highly repetitive k-mers are skipped to bound memory.</li>
+      </ul>
+      <p>Scoring is configurable match and mismatch scores for DNA, BLOSUM62 for protein, and an affine gap model with separate open and extend penalties.</p>
+      <table class="doc-table">
+        <thead><tr><th>Case</th><th>Strategy</th><th>Up to about</th></tr></thead>
+        <tbody>
+          <tr><td>Global pairwise</td><td>Full matrix or Hirschberg</td><td class="num">22 kb x 22 kb</td></tr>
+          <tr><td>Local pairwise, small</td><td>Full matrix</td><td class="num">7 kb x 7 kb</td></tr>
+          <tr><td>Local pairwise, large</td><td>Linear memory</td><td class="num">50 kb x 50 kb</td></tr>
+          <tr><td>Local pairwise against a genome</td><td>Seed and extend</td><td class="num">4 kb x 5 Mb and beyond</td></tr>
+        </tbody>
+      </table>
+
+      <h2>Editing, realigning and exporting</h2>
+      <p>Gaps can be inserted and deleted, blocks selected by dragging across cells, columns selected along the ruler, and rows selected by their names. Sequences can be added to an existing alignment and the whole realigned with the engine it remembers. The alignment exports as Clustal, PHYLIP, NEXUS and FASTA, and as a figure: pick the region, the line width, the tracks and the size, see it, then save SVG, PNG or PDF with the colours, highlighting and translation the current view has.</p>
+
+      <div class="doc-where">
+        <p class="label">Where to find it</p>
+        <p>Select two or more sequences in the explorer and choose Align, or open the alignment dialog from the Tools menu. Serve the folder rather than opening the editor from disk: over file:// the page cannot load the WebAssembly tools, so only the built-in pairwise aligner runs, and the dialog says so rather than starting a job that cannot finish.</p>
+      </div>
+
+      <h2>Limits</h2>
+      <ul>
+        <li>Over file:// only the built-in pairwise aligner is available. Serve the folder for MAFFT, MUSCLE and Kalign.</li>
+        <li>A global alignment too large for Hirschberg is refused with an error rather than attempted.</li>
+        <li>The running-time estimate that drives the automatic choice is good to a factor of two or three.</li>
+        <li>Profile alignment in the built-in progressive aligner scores two columns as the average of all pairwise residue scores, which is simpler than the tools' own objective functions.</li>
+      </ul>
+
+      <h2>References</h2>
+      <ul>
+        <li>Katoh K, Standley DM (2013) MAFFT multiple sequence alignment software version 7. <i>Mol Biol Evol</i> 30:772-780.</li>
+        <li>Edgar RC (2022) Muscle5: high-accuracy alignment ensembles enable unbiased assessments of sequence homology and phylogeny. <i>Nat Commun</i> 13:6968.</li>
+        <li>Lassmann T (2020) Kalign 3: multiple sequence alignment of large data sets. <i>Bioinformatics</i> 36:1928-1929.</li>
+        <li>Needleman SB, Wunsch CD (1970) A general method applicable to the search for similarities in the amino acid sequence of two proteins. <i>J Mol Biol</i> 48:443-453.</li>
+        <li>Smith TF, Waterman MS (1981) Identification of common molecular subsequences. <i>J Mol Biol</i> 147:195-197.</li>
+        <li>Hirschberg DS (1975) A linear space algorithm for computing maximal common subsequences. <i>Commun ACM</i> 18:341-343.</li>
+        <li>Henikoff S, Henikoff JG (1992) Amino acid substitution matrices from protein blocks. <i>Proc Natl Acad Sci USA</i> 89:10915-10919.</li>
+      </ul>
+
+      <div class="doc-related">
+        <p class="label">Read on</p>
+        <ul>
+          <li><a class="link" href="features.html#alignment">Alignment on the features page &rarr;</a></li>
+          <li><a class="link" href="https://github.com/cacat-ayy/seqnexus#sequence-alignment">Engines, the viewer and the algorithms in the README &rarr;</a></li>
+          <li><a class="link" href="features.html#blast">BLAST searches kept with the sequence &rarr;</a></li>
+          <li><a class="link" href="sanger-sequencing.html">Sanger assembly &rarr;</a></li>
+        </ul>
+      </div>

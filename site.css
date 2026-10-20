@@ -853,8 +853,8 @@ h1 em { font-style: normal; color: var(--accent); }
 
 .foot-grid {
   display: grid;
-  grid-template-columns: minmax(0, 1.6fr) minmax(0, .8fr) minmax(0, .8fr) minmax(0, 1.3fr);
-  gap: 48px;
+  grid-template-columns: minmax(0, 1.4fr) minmax(0, .7fr) minmax(0, .9fr) minmax(0, .7fr) minmax(0, 1.2fr);
+  gap: 40px;
   padding-bottom: 56px;
 }
 
@@ -1043,7 +1043,8 @@ h1 em { font-style: normal; color: var(--accent); }
 @media (max-width: 600px) {
   :root { --gutter: 20px; }
   .masthead nav { gap: 16px; font-size: 13.5px; }
-  .masthead nav a.hide-sm { display: none; }
+  /* The brand is the home link, so the text links go; the button and the toggle stay. */
+  .masthead nav a:not(.btn) { display: none; }
   .bench { grid-template-columns: 1fr; }
   .bench-col:nth-child(2n) { border-left: 0; padding-left: 0; margin-left: 0; }
   .bench-col:nth-child(n+2) { border-top: 1px solid var(--rule); }
@@ -1054,4 +1055,85 @@ h1 em { font-style: normal; color: var(--accent); }
 @media (prefers-reduced-motion: reduce) {
   * { transition: none !important; animation: none !important; }
   html { scroll-behavior: auto; }
+}
+
+/* --- Guide pages ---------------------------------------------------------------------
+   plasmid-map.html, primer-design.html and snapgene-alternative.html: one column of
+   prose under a .page-head, with the features page's figures and the formats table's
+   hairlines. */
+
+.doc { max-width: 46em; padding: 56px 0 96px; }
+
+.doc > h2 {
+  font-size: clamp(1.45rem, 2.2vw, 1.85rem);
+  letter-spacing: -.02em;
+  margin: 64px 0 18px;
+}
+.doc > h2:first-child { margin-top: 0; }
+
+.doc h3 { font-size: 1.1rem; font-weight: 650; margin: 36px 0 10px; letter-spacing: -.01em; }
+
+.doc p, .doc li { color: var(--ink-2); font-size: 16px; line-height: 1.65; }
+.doc p { margin: 0 0 18px; }
+.doc ul, .doc ol { margin: 0 0 18px; padding-left: 1.4em; }
+.doc li { margin: 6px 0; }
+.doc li::marker { color: var(--muted); }
+.doc b, .doc strong { color: var(--ink); font-weight: 600; }
+.doc code { font-family: var(--mono); font-size: .92em; }
+
+.doc .shot { margin: 28px 0; }
+.doc .shot figcaption { margin-top: 10px; font-size: 13.5px; color: var(--muted); }
+
+.doc-table {
+  width: 100%;
+  border-collapse: collapse;
+  border-top: 1px solid var(--rule);
+  margin: 20px 0 28px;
+  font-size: 14.5px;
+  line-height: 1.5;
+}
+.doc-table th, .doc-table td {
+  text-align: left;
+  padding: 10px 16px 10px 0;
+  border-bottom: 1px solid var(--rule);
+  vertical-align: top;
+  color: var(--ink-2);
+}
+.doc-table th {
+  font-family: var(--mono);
+  font-weight: 400;
+  font-size: 11px;
+  letter-spacing: .13em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.doc-table td:first-child { color: var(--ink); }
+.doc-table td.num { font-family: var(--mono); font-size: 13.5px; }
+
+/* A short list of where to find the tool in the editor. */
+.doc-where {
+  margin: 28px 0;
+  padding: 18px 22px;
+  border: 1px solid var(--rule);
+  border-radius: var(--radius);
+  background: var(--surface);
+}
+.doc-where .label { margin-bottom: 8px; }
+.doc-where p { margin: 0; font-size: 15px; }
+.doc-where p + p { margin-top: 8px; }
+
+.doc-related {
+  margin-top: 64px;
+  padding-top: 24px;
+  border-top: 1px solid var(--rule);
+}
+.doc-related .label { margin-bottom: 10px; }
+.doc-related ul { list-style: none; padding: 0; margin: 0; }
+.doc-related li { margin: 8px 0; }
+
+/* A guide link under a features page section. */
+.feat .more { margin: 24px 0 0; font-size: 15px; }
+
+@media (max-width: 600px) {
+  .doc-table th, .doc-table td { padding-right: 10px; font-size: 13.5px; }
 }

@@ -1,0 +1,104 @@
+      <h2>Finding sites</h2>
+      <p>There is no Run button: the settings are the scan. The PAM is matched as an IUPAC pattern on both strands and the spacer taken from the side the nuclease expects it, which makes the scan linear in the length of the sequence. A circular molecule is searched across its origin, so a site spanning the origin is found once and its coordinates wrapped back. On a linear molecule a PAM with no room for its spacer is not a site; a site whose cut falls off the end is reported and flagged, since the recognition is real but nothing is cut.</p>
+      <p>A spacer holding anything other than A, C, G or T is not returned. It could not be ordered and its scores would be meaningless, so the scan counts those instead and the panel says how many, which is what makes an unfinished contig explain itself rather than look empty.</p>
+
+      <h3>Nucleases are data</h3>
+      <p>A nuclease is a record, like a restriction enzyme. It carries its PAM as an IUPAC pattern, which side of the protospacer the PAM sits on, the spacer lengths it accepts, where it cuts and whether it cuts at all. Adding one is a row in a table, and the same record can be built from what you type, so a PAM published this month can be scanned today. The shipped set covers the SpCas9 family and its PAM variants, both single-strand nickases and a catalytically dead version, SaCas9 and its KKH variant, St1, Nme and Cj Cas9, and the Cas12a proteins with their 5' PAM and staggered cut.</p>
+      <table class="doc-table">
+        <thead><tr><th>Nuclease</th><th>PAM</th><th>Spacer</th><th>Cut offsets</th><th>End</th></tr></thead>
+        <tbody>
+          <tr><td>SpCas9</td><td class="num">NGG, after</td><td class="num">20</td><td class="num">3 and 3</td><td>blunt</td></tr>
+          <tr><td>SaCas9</td><td class="num">NNGRRT, after</td><td class="num">21</td><td class="num">3 and 3</td><td>blunt</td></tr>
+          <tr><td>Cas12a</td><td class="num">TTTV, before</td><td class="num">23</td><td class="num">18 and 23</td><td>5' overhang</td></tr>
+        </tbody>
+      </table>
+      <p>Cut offsets are stored as distances in bases from the PAM edge of the protospacer, so they do not change when the spacer length does. The two nickases are not interchangeable, and which one a row names decides which strand carries the free 3' end: D10A kills the RuvC domain, leaving HNH to cut the strand the guide pairs with, while H840A kills HNH, leaving RuvC to cut the PAM-bearing strand. Prime editing needs the second, and the pegRNA designer is written for it. A nuclease you describe may leave both cut positions empty, which is a claim withheld rather than a missing field: the row finds and scores sites and reports no cut, so nothing downstream pretends to know where the break is.</p>
+
+      <figure class="shot" data-file="assets/features/crispr.webp">
+        <img src="assets/features/crispr.webp" srcset="assets/features/crispr-720.webp 720w, assets/features/crispr-1080.webp 1080w, assets/features/crispr.webp 1440w" sizes="(max-width: 1080px) calc(100vw - 40px), 736px" data-light="assets/features/crispr.webp" data-dark="assets/features/crispr-dark.webp" alt="The CRISPR guide designer with scored guides and the PAM and cut drawn on the sequence" width="1440" height="900" loading="lazy" onerror="shotError(this)">
+        <figcaption>Scored guides in the panel, with every protospacer, its PAM and its cut drawn in the sequence view.</figcaption>
+      </figure>
+
+      <h2>Three score columns, not one number</h2>
+      <p>A single figure of merit would hide which property a guide fails on, so three kinds of claim are kept apart and sorted one at a time.</p>
+
+      <h3>Activity</h3>
+      <p>What ships is a transparent heuristic over sequence properties consistently reported to track SpCas9 activity: GC against an optimum of 55 %, T at the four bases next to the PAM, which base sits against the PAM, the first base of an NGG PAM, and penalties for a terminator run, a long homopolymer and self-folding. It is not one of the published fitted models, and it says so. Those are regressions over thousands of measured guides whose coefficients belong in a data file, and the model registry exists so such a table can be added as data later. Because the number is a heuristic, every term is returned with its contribution and the inspector shows the arithmetic. Only the SpCas9 family carries a model; every other nuclease reports no score rather than borrowing one fitted for a different protein.</p>
+
+      <h3>Repair outlook</h3>
+      <p>End joining often uses a short identical stretch on either side of the break, deleting what lies between the two copies and keeping one. Which deletions are available is a property of the sequence, so it can be predicted, and the share of them that shift the reading frame is the most useful single number when the goal is a knockout. Following Bae and colleagues, every pair of identical stretches flanking the cut within a 40-base window is enumerated and scored</p>
+      <p><code>pattern = 100 &times; exp(&minus;deletionLength / 20) &times; (length + gcCount)</code></p>
+      <p>so short deletions and GC-rich microhomologies dominate, and the out-of-frame score is the share of the total carried by deletions whose length is not a multiple of three. The formula, the window and the enumeration are the published ones, and the test suite checks the microhomology score and the out-of-frame share against the authors' reference implementation, which they match exactly. A cut too close to the end of a linear molecule returns nothing rather than a number from a short window. A nickase reports no out-of-frame score at all, since microhomology-mediated repair follows a double-strand break and a nick is repaired without deleting anything.</p>
+
+      <h3>Flags</h3>
+      <p>Properties of the sequence that hold whatever the nuclease, each a named chip with a sentence of detail: GC outside 35 % to 75 %, and badly outside 25 % to 85 %; four or more T in a row, which reads as a terminator and cuts a transcribed guide short; a homopolymer of five or more; a self-folding stem of seven bases or more; and the promoter's start base, where U6 transcribes best from a G and T7 from two. The last is drawn as a note in quiet type rather than in the warning colour, because three spacers in four do not start on a G, so as a warning it would crowd out the chips that mean a guide is a poor one.</p>
+
+      <h2>Off-target search</h2>
+      <p><b>What is searched is always named.</b> The app ships no genome. Pretending otherwise would be the worst thing this feature could do, because a specificity score from a 5 kb plasmid reads exactly like one from a chromosome. The scope is the first control in the section, not a buried setting, and every result carries the names and the total size of what was read. Three scopes: the open sequence, every open sequence, or a FASTA file loaded for the purpose.</p>
+      <p>The search is the site finder run the other way round: PAM positions first, which is cheap, then the spacer compared from its PAM-proximal end outward, so a site that cannot qualify is abandoned after a few bases. The mismatch budget goes up to six and defaults to four rather than three, because at three the search misses more than a third of the sites GUIDE-seq confirms for real guides on mismatch count alone. Bulges, meaning one unpaired base in the target or the guide, are off by default because they multiply the work, not because they do not happen; with them on, the gap position is enumerated so the result stays exact rather than heuristic.</p>
+      <p>Weaker PAMs are a separate switch. The SpCas9 rows carry every PAM the fitted table scores above zero, each with its own activity, because a list of NAG alone would leave out twice as many measured off-target sites as it caught.</p>
+
+      <h3>Two scoring models, and the panel says which it used</h3>
+      <p>The first is CFD, the Cutting Frequency Determination score of Doench and colleagues: two fitted tables, one giving what a site keeps when one base of the guide meets the wrong base of the target, by which of the twelve pairings it is and where along the spacer it falls, and one giving how often each PAM is bound at all. A site's score is the product of a factor per mismatch and its PAM's activity. The tables are read from the authors' own distribution rather than retyped, and the tests check both the tables and the arithmetic against that source. CFD was fitted for SpCas9 reading a 20-base spacer, so that is where it is offered, and it is the default there.</p>
+      <p>The second is a transparent heuristic, used for every other nuclease and available as a choice everywhere. A mismatch leaves most of the site's activity at the far end of the spacer and almost none against the PAM, so each mismatch multiplies the score by a factor interpolated between the two:</p>
+      <table class="doc-table">
+        <thead><tr><th>Where the mismatch falls</th><th>Factor</th></tr></thead>
+        <tbody>
+          <tr><td>Against the PAM</td><td class="num">0.08</td></tr>
+          <tr><td>At the far end of the spacer</td><td class="num">0.85</td></tr>
+          <tr><td>An unpaired base</td><td class="num">0.25</td></tr>
+          <tr><td>A weaker PAM</td><td class="num">its own measured activity</td></tr>
+        </tbody>
+      </table>
+      <p>The line between the two ends is deliberately straight. The real profile is bumpy and sequence-dependent, and smoothing it is more honest than inventing the bumps. The aggregate takes the shape the field uses, the aggregation Hsu and colleagues defined: a guide with nothing else to bind scores 100, and the score falls as credible hits accumulate.</p>
+      <p><code>specificity = 100 / (1 + sum of hit scores)</code></p>
+      <p>The sum is taken over every hit found, including any left out of the list. The list is capped so a relaxed search cannot fill the panel, but the cap does not stop the search: keeping the first hits met and stopping there kept an arbitrary stretch of the first sequence, which could leave out the one site that mattered and report a better specificity than the truth. The guide's own site is excluded and counted separately, and a second perfect match elsewhere is reported and marked, since a spacer that matches two places exactly cannot tell them apart. When the target has features, the smallest feature covering a hit is named on its row and one in a coding feature is marked.</p>
+
+      <h2>Designing for a goal</h2>
+      <p>Finding sites is the start of the job, not the job. The panel's tasks each take the same scan and turn it into the answer to one question.</p>
+      <ul>
+        <li><b>Knock out.</b> Guides are ranked by where they cut along the coding sequence, measured by walking the exons in translation order, and each row says which codon it cuts in and how much of the gene lies behind it. Too near the start codon and translation can restart past the damage; too near the stop and a frameshifted protein keeps almost all of itself. The ranking is lexicographic rather than a weighted sum: inside the preferred stretch first, then no disqualifying flag, then the out-of-frame share, then activity, then earlier in the gene.</li>
+        <li><b>Delete.</b> Two cuts, one each side of a region. A pair is judged on what it costs beyond the region asked for, so the overshoot on each side is the first number on the row and the junction the join would leave is next to it. Opening the result builds a real document, with every feature moved and the ones that straddle the deletion marked truncated.</li>
+        <li><b>Knock in.</b> The interesting part of a donor is whether the nuclease can still find its site once repair is done. So the donor is built, then scanned, and only then edited: if the payload broke the site, nothing is changed and the panel says so; otherwise one base is changed to stop the repaired copy being cut again, preferring the PAM over the seed, and inside a coding sequence preferring a change that leaves the protein alone. The edited donor is scanned again, so the claim that it cannot be cut is checked rather than asserted.</li>
+        <li><b>Base edit.</b> A base editor changes every base of its kind inside a short stretch of the protospacer, so the bystanders are the whole difficulty and they are listed, not summarised. Positions are counted the way the literature counts them. Four editors ship, two cytosine and two adenine, with editable windows, and every edit in the window gets its codon consequence marked silent, missense or nonsense.</li>
+        <li><b>Tile.</b> A greedy pick down the quality order with a spacing rule, which gives even coverage instead of the cluster you get from the best few guides in a region. The gaps are reported as plainly as the picks, since a gap is what a tiling set is judged on.</li>
+      </ul>
+      <p>Prime editing builds the pegRNA in its pieces and adds the second nick that waits for the edit. Every task works from the selection or from a feature of the document, and the inspector and the off-target search stay available throughout.</p>
+
+      <h2>Ordering and reading the result back</h2>
+      <p>The oligos to order come out with every added base marked, alongside a screening amplicon and the enzyme that reads it out; when no enzyme qualifies the panel says so, meaning that guide needs sequencing rather than a gel. Afterwards the edit is read back by either route the bench provides.</p>
+      <p><b>From two chromatograms.</b> An edited pool is a mixture: most molecules carry one of a handful of small insertions or deletions and the rest are untouched, so downstream of the break the trace is the same sequence read at several offsets at once. Given the same amplicon from an unedited control, the traces are lined up on their base calls before the cut and the agreement reported; if they disagree the comparison is not valid and the panel says so rather than fitting anyway. Over a window after the cut, one column is built per candidate offset and the edited signal is fitted as a non-negative mixture of them, solved by the active-set method of Lawson and Hanson. Non-negativity is what makes the answer mean anything, since a mixture cannot have negative parts and ordinary least squares happily returns them. The result is a spectrum of length changes with their shares and the share that shifts the frame.</p>
+      <p><b>From amplicon reads.</b> Each read is aligned to the amplicon and judged on a window around the break. Reads that agree are one allele, and the table of alleles with their shares is the result. The window is narrow and centred on the cut, because a change at the far end of an amplicon is a sequencing error or a polymorphism rather than an edit. A read that does not span the whole window is not counted at all rather than counted as unmodified, and both counts of discarded reads are reported.</p>
+
+      <div class="doc-where">
+        <p class="label">Where to find it</p>
+        <p>The Guides tab in the right sidebar holds all of it: the scan settings, the three score columns, the task picker, the off-target section and the guide library. Clicking a guide selects its protospacer in the sequence, and guides worth keeping become features.</p>
+      </div>
+
+      <h2>Limits</h2>
+      <ul>
+        <li>The off-target search reads what you give it and nothing else. There is no built-in genome, and a specificity score is only as good as the scope you named.</li>
+        <li>The activity model is a stated heuristic rather than a fitted table, and has never been measured against cutting data.</li>
+        <li>CFD scores off-target sites for SpCas9 only. Every other nuclease falls back to the position heuristic, because no fitted table exists for it.</li>
+        <li>The knock-in donor changes one base at most to stop re-cutting. A site that survives every single change is reported rather than worked around.</li>
+        <li>Reading a result back decomposes a trace or counts reads. It does not genotype a plate of clones well by well.</li>
+      </ul>
+
+      <h2>References</h2>
+      <ul>
+        <li>Bae S, Kweon J, Kim HS, Kim JS (2014) Microhomology-based choice of Cas9 nuclease target sites. <i>Nature Methods</i> 11:705-706.</li>
+        <li>Doench JG, Fusi N, Sullender M, et al. (2016) Optimized sgRNA design to maximize activity and minimize off-target effects of CRISPR-Cas9. <i>Nature Biotechnology</i> 34:184-191.</li>
+        <li>Hsu PD, Scott DA, Weinstein JA, et al. (2013) DNA targeting specificity of RNA-guided Cas9 nucleases. <i>Nature Biotechnology</i> 31:827-832.</li>
+        <li>Tsai SQ, Zheng Z, Nguyen NT, et al. (2015) GUIDE-seq enables genome-wide profiling of off-target cleavage by CRISPR-Cas nucleases. <i>Nature Biotechnology</i> 33:187-197.</li>
+        <li>Lawson CL, Hanson RJ (1974) <i>Solving Least Squares Problems</i>. Prentice-Hall.</li>
+      </ul>
+
+      <div class="doc-related">
+        <p class="label">Read on</p>
+        <ul>
+          <li><a class="link" href="features.html#crispr">CRISPR on the features page &rarr;</a></li>
+          <li><a class="link" href="https://github.com/cacat-ayy/seqnexus#crispr-guide-design">The whole module in the README, with what each model was checked against &rarr;</a></li>
+          <li><a class="link" href="sanger-sequencing.html">Reading the edit back from a chromatogram &rarr;</a></li>
+          <li><a class="link" href="ngs-read-mapping.html">Counting alleles in amplicon reads &rarr;</a></li>
+        </ul>
+      </div>

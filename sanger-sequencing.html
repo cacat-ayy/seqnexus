@@ -1,0 +1,274 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Sanger sequence analysis online: AB1 viewer, assembly, clone checks | SeqNexus</title>
+<meta name="description" content="Open AB1 and SCF chromatograms in your browser, trim them, assemble reads into contigs against a reference or de novo, and verify a whole plate of clones at once with every mismatch named. Free, no account, nothing uploaded.">
+<meta name="author" content="Christopher Acatay">
+<meta name="theme-color" content="#0b5f58">
+<meta name="robots" content="max-image-preview:large">
+<link rel="canonical" href="https://seqnexus.app/sanger-sequencing.html">
+
+<meta property="og:type" content="article">
+<meta property="og:url" content="https://seqnexus.app/sanger-sequencing.html">
+<meta property="og:title" content="Sanger sequence analysis online: AB1 viewer, assembly, clone checks">
+<meta property="og:description" content="Chromatograms with quality scores, trimming, contig assembly and plate-scale clone verification, all in the browser with nothing uploaded.">
+<meta property="og:image" content="https://seqnexus.app/assets/features/sanger.png">
+<meta property="og:image:width" content="1440">
+<meta property="og:image:height" content="900">
+<meta property="og:image:alt" content="Two Sanger traces of a pEGFP-C1 clone assembled on the plasmid, with a variant called as a missense change">
+<meta property="og:site_name" content="SeqNexus">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Sanger sequence analysis online: AB1 viewer, assembly, clone checks">
+<meta name="twitter:description" content="Chromatograms with quality scores, trimming, contig assembly and plate-scale clone verification, all in the browser with nothing uploaded.">
+<meta name="twitter:image" content="https://seqnexus.app/assets/features/sanger.png">
+
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@graph": [
+    {
+      "@type": "TechArticle",
+      "headline": "Sanger sequence analysis online: AB1 viewer, assembly, clone checks",
+      "url": "https://seqnexus.app/sanger-sequencing.html",
+      "description": "How SeqNexus reads Sanger data: trimming rules, assemblies and contigs, assembling a plate by name against several references, editing inside a contig, and variant effects.",
+      "image": "https://seqnexus.app/assets/features/sanger.png",
+      "datePublished": "2026-10-20",
+      "dateModified": "2026-10-20",
+      "author": { "@type": "Person", "name": "Christopher Acatay", "url": "https://github.com/cacat-ayy" },
+      "about": { "@type": "SoftwareApplication", "name": "SeqNexus", "url": "https://seqnexus.app/app.html" },
+      "isPartOf": { "@type": "WebSite", "name": "SeqNexus", "url": "https://seqnexus.app/" }
+    },
+    {
+      "@type": "BreadcrumbList",
+      "itemListElement": [
+        { "@type": "ListItem", "position": 1, "name": "SeqNexus", "item": "https://seqnexus.app/" },
+        { "@type": "ListItem", "position": 2, "name": "Features", "item": "https://seqnexus.app/features.html" },
+        { "@type": "ListItem", "position": 3, "name": "Sanger sequencing", "item": "https://seqnexus.app/sanger-sequencing.html" }
+      ]
+    }
+  ]
+}
+</script>
+
+<link rel="icon" href="assets/favicon.svg" type="image/svg+xml">
+<link rel="icon" href="assets/favicon-48x48.png" sizes="48x48" type="image/png">
+<link rel="icon" href="assets/favicon-96x96.png" sizes="96x96" type="image/png">
+<link rel="icon" href="assets/favicon-144x144.png" sizes="144x144" type="image/png">
+<link rel="icon" href="assets/favicon-192x192.png" sizes="192x192" type="image/png">
+<link rel="apple-touch-icon" href="assets/favicon-192x192.png">
+
+<script>
+// Apply the stored theme before first paint. Must stay inline and in <head>.
+(function () {
+  try {
+    var stored = localStorage.getItem('seqnexus-landing-dark');
+    var dark = stored !== null
+      ? stored === '1'
+      : window.matchMedia('(prefers-color-scheme: dark)').matches;
+    if (dark) document.documentElement.classList.add('dark');
+  } catch (e) {
+    // localStorage blocked, so stay on light.
+  }
+})();
+</script>
+
+<link rel="stylesheet" href="site.css">
+</head>
+<body>
+
+<header class="masthead">
+  <div class="masthead-inner">
+    <a class="brand" href="/">
+      <svg width="22" height="22" viewBox="-2 -2 28 28" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <circle cx="12" cy="12" r="13" stroke-width="1.5"/>
+        <g stroke-width="2">
+          <path d="m10 16 1.5 1.5"/><path d="m14 8-1.5-1.5"/>
+          <path d="M15 2c-1.798 1.998-2.518 3.995-2.807 5.993"/>
+          <path d="m16.5 10.5 1 1"/><path d="m17 6-2.891-2.891"/>
+          <path d="M2 15c6.667-6 13.333 0 20-6"/><path d="m20 9 .891.891"/>
+          <path d="M3.109 14.109 4 15"/><path d="m6.5 12.5 1 1"/>
+          <path d="m7 18 2.891 2.891"/>
+          <path d="M9 22c1.798-1.998 2.518-3.995 2.807-5.993"/>
+        </g>
+      </svg>
+      SeqNexus
+    </a>
+    <nav aria-label="Primary">
+      <a href="/">Overview</a>
+      <a class="hide-sm" href="features.html">Features</a>
+      <a class="hide-sm" href="/#formats">Formats</a>
+      <a class="hide-sm" href="https://github.com/cacat-ayy/seqnexus">Source</a>
+      <a class="btn btn-small" href="app.html">Open the editor</a>
+      <button class="theme-toggle" id="theme-toggle" type="button" aria-label="Toggle dark mode" aria-pressed="false">
+        <svg class="icon-sun" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="5"/><path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/></svg>
+        <svg class="icon-moon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+      </button>
+    </nav>
+  </div>
+</header>
+
+<main>
+
+  <section class="page-head">
+    <div class="wrap">
+      <p class="label"><a class="back" href="features.html#sanger">&larr; Features</a></p>
+      <h1 style="margin-top:14px">Sanger chromatograms, assembly and clone verification.</h1>
+      <p class="lede">Open AB1 and SCF traces with their quality scores, trim them by the rule you choose, assemble them against a reference or de novo, and verify a whole plate of clones in one run with every mismatch named and its protein change worked out. Free, no account, computed on your own machine.</p>
+      <div class="hero-actions">
+        <a class="btn" href="app.html">Open the editor &rarr;</a>
+      </div>
+    </div>
+  </section>
+
+  <div class="wrap">
+    <article class="doc">
+
+      <h2>Traces in, trimmed and called</h2>
+      <p>AB1 and SCF chromatograms open with their quality scores and their four traces. A freshly imported trace is trimmed at once by the Q20 cumulative score: each base scores its quality minus 20 and the stretch with the highest total is kept, which is Mott's algorithm on scores rather than error probabilities. On the real 3730 and 3130 traces in Biopython's test suite, and on synthetic ones, this gives the same stretch as the Q20 computation done independently in Python, and an exported FASTQ carries the instrument's own calls and qualities unchanged.</p>
+      <p>The read page names the rule that set the trim, "trimmed by the Q20 score", "by an error limit of 0.05", or "by hand", since the dialog's default rule keeps a few more bases than the import's and the number would otherwise change on Apply without a word. The Trim and call dialog re-trims by error probability (Mott's algorithm with a limit of 0.05, as Geneious and phred do), by a quality cut-off, or not at all, then by fixed cuts, primers and vector sequence. A read without qualities keeps its longest stretch with at most a set number of ambiguous calls, so the noisy ends where the base caller writes N go and a clean read keeps everything.</p>
+      <p>Mixed-base calling, turning strong second peaks into IUPAC codes, is on by default. With it off, a 50/50 heterozygous position that the instrument called as one base in both reads is invisible to the assembly and to the verification. The Assemble dialog shows, per read, how many mixed calls will go in, or how many strong second peaks were left uncalled.</p>
+
+      <figure class="shot" data-file="assets/features/sanger.webp">
+        <img src="assets/features/sanger.webp" srcset="assets/features/sanger-720.webp 720w, assets/features/sanger-1080.webp 1080w, assets/features/sanger.webp 1440w" sizes="(max-width: 1080px) calc(100vw - 40px), 736px" data-light="assets/features/sanger.webp" data-dark="assets/features/sanger-dark.webp" alt="Two Sanger traces of a pEGFP-C1 clone assembled on the plasmid, with a G to C variant in EGFP called as a D130H missense" width="1440" height="900" loading="lazy" onerror="shotError(this)">
+        <figcaption>Two reads of a clone assembled on its plasmid, with the trace under each base of the consensus and a missense change named.</figcaption>
+      </figure>
+
+      <h2>Assemblies and contigs</h2>
+      <p>One run of the assembler, whether reads are mapped to a reference or joined de novo, is kept as one assembly. It holds its contigs, one when mapping to a reference and one per group of overlapping reads de novo; the reads that went in and the reference mapped to; the settings used, meaning the lowest identity, shortest overlap and seed length; and the reads left out, each with the reason the assembler gave, such as too short after trimming, no match to the reference, below the identity threshold with the figure reached, or no overlap with any other read.</p>
+      <p>Keeping those together answers which contigs came from the same reads and why a read is missing, and makes a run repeatable. Run again starts from the same reads, reference and settings, and its result replaces the contigs with an undo step. An assembly with a single contig is shown and opened as that contig; one with several opens an overview.</p>
+
+      <h2>A plate of clones in one run</h2>
+      <p>A plate of clones, each sequenced with two or more reads, is assembled in one run: one assembly with a contig per clone, every clone verified at once.</p>
+      <h3>Grouping by name</h3>
+      <p>The clone is written into each read's name, with what tells its reads apart after it, as in <code>A03.1</code> and <code>A03.2</code>, or <code>pX12_M13F</code> and <code>pX12_M13R</code>. A name is split at a separator (underscore, hyphen, full stop or space) and the clone is its first n parts, or all but its last n, the way Geneious's assemble-by-name takes a delimiter and a part. The grouping is suggested from the names: every separator and choice of up to four parts is tried, and each read in a clone of two or more counts, up to four per clone, the shape of a plate read from both ends or with a primer walk. One clone holding every read, or clones of one read each, score little. The dialog shows each read's clone as the grouping is changed, and marks clones left with a single read.</p>
+      <h3>Several references</h3>
+      <p>When mapping, all reads of a clone go to one reference, the one they match best: a clone is one construct, and letting each read choose would split a clone whose reads cover different parts of near-identical designs. Each read is seeded on both strands against every reference and its best diagonal's votes are summed per reference. A read across the junction of a shared vector and its insert lines up on one diagonal only in the construct it came from, so the insert decides.</p>
+      <p>When other references come within a fifth of the best one's votes, as point mutants of one design do, the clone is mapped to each of them and the one its reads agree with best is kept, a matching base counting one and a mismatch or gap costing two. Seeds cannot tell designs a base or two apart; an alignment can. A clone with no seed on any reference is listed with the reads not placed. De novo, each clone is assembled on its own, so reads of two clones are never joined however alike they are.</p>
+      <h3>The verdict</h3>
+      <p>The overview lists the clones with their verification verdict: verified when every feature checked is covered from end to end and the reads' consensus matches the design there, differences found, or not fully covered. Each row carries the share of the construct covered, the fewest reads over a checked feature, and the differences with their protein changes. One set of settings serves the whole plate: the reads needed over a base, whether both strands are needed, and which feature types are checked. Types rather than single features, since clones may be mapped to different constructs; primer sites and miscellaneous features are left out by default, since a primer site is where a read starts, rarely what the clone is checked for. A construct with no feature left to check is checked whole.</p>
+      <p>The table filters by verdict and exports a PDF report with counts, a row per clone and every difference; a CSV summary; and the consensus sequences of every clone, or of the verified ones, as FASTA. A row opens its contig, where the detail for that one clone shows.</p>
+
+      <h2>Working inside a contig</h2>
+      <p>A contig opens on its first read rather than on the reference's first base, since two reads of a plasmid mapped from position 255 would otherwise open on a screen of empty columns. A read goes into an assembly trimmed, and the contig keeps its own copy of the bases inside the trim; the rest is still in the trace, so each row's trimmed-off bases are drawn faded beyond its ends, as Geneious shows soft-trimmed regions, with a tick at each trim edge.</p>
+      <ul>
+        <li><b>Extend the read to here</b>, on a faded base, places the read again with the trim moved to that base. Its row is taken out, the read with its new trim is aligned to the contig's backbone and laid out in the columns already there, and the row goes back where it was. Below the assembly's lowest identity the change is refused with the figure reached.</li>
+        <li><b>Trim the read before or after this base</b> needs no alignment: the bases past the cut are dropped and the rest keep their columns and their edits.</li>
+      </ul>
+      <p>Each is an undo step of the contig, and every other row stays exactly as it was. Only the contig changes: the read's own trim stays as it is, so running the assembly again starts from the reads' own trims.</p>
+
+      <h2>Variants and what they do to the protein</h2>
+      <p>Sanger contigs and NGS mappings call variants with one shared core, and one function describes every variant the same way: its codon and protein change inside a coding feature, the features it falls in, Fisher's exact test for strand bias, the short tandem repeat it falls in, and the homopolymer an insertion or deletion touches. Calling and judging are separate: every candidate is kept and the thresholds are applied on top, so the table changes as you type them.</p>
+      <p>A coding feature is read as the ribosome reads it: a spliced CDS through its exons only, on its own strand, from its codon start, with its own genetic code, and on past its end into the sequence that follows. The variant is applied and both versions translated, so the effect is what actually changed between the two proteins. A frameshift is followed to the first residue that differs and on to the stop the new frame meets. Names follow the HGVS recommendations, with indels moved as far 3' as their exon allows before they are named.</p>
+
+      <h2>Overview figures</h2>
+      <p>Mean depth is the mean number of reads over the columns some read spans, counting a deletion inside a read as covered. Reference covered is the share of the reference's bases some read spans, with the circular extension folded back onto the start. The consensus length is measured with the contig's own consensus settings, gaps removed. All of it exports for the lab book.</p>
+
+      <div class="doc-where">
+        <p class="label">Where to find it</p>
+        <p>Drag in AB1 or SCF files, or a folder of them, then Assemble from the explorer or the command palette. The dialog holds the grouping, the references and the settings. A finished assembly opens as its contig, or as an overview when it has several.</p>
+      </div>
+
+      <h2>Limits</h2>
+      <ul>
+        <li>Quality-based trimming needs qualities. A FASTA read or a trace saved without them is trimmed by its ambiguous calls instead.</li>
+        <li>Placing a read again lays its bases out afresh, so its own edits in the contig are dropped. The message says so, and undo puts them back.</li>
+        <li>Verification checks coverage and agreement against the design. It is not a replacement for reading the trace at a position that matters.</li>
+      </ul>
+
+      <h2>References</h2>
+      <ul>
+        <li>Ewing B, Green P (1998) Base-calling of automated sequencer traces using phred. II. Error probabilities. <i>Genome Res</i> 8:186-194.</li>
+        <li>Dear S, Staden R (1992) A standard file format for data from DNA sequencing instruments. <i>DNA Sequence</i> 3:107-110.</li>
+        <li>den Dunnen JT, Dalgleish R, Maglott DR, et al. (2016) HGVS recommendations for the description of sequence variants. <i>Human Mutation</i> 37:564-569.</li>
+      </ul>
+
+      <div class="doc-related">
+        <p class="label">Read on</p>
+        <ul>
+          <li><a class="link" href="features.html#sanger">Sanger on the features page &rarr;</a></li>
+          <li><a class="link" href="https://github.com/cacat-ayy/seqnexus#sanger-assembly">Sanger assembly in the README &rarr;</a></li>
+          <li><a class="link" href="ngs-read-mapping.html">Read mapping and variant calling &rarr;</a></li>
+          <li><a class="link" href="sequence-alignment.html">Sequence alignment &rarr;</a></li>
+        </ul>
+      </div>
+
+    </article>
+  </div>
+
+  <section class="closing">
+    <div class="wrap">
+      <p class="label">Get started</p>
+      <h2 style="margin-top:14px">Drag in your traces and verify the plate.</h2>
+      <p>No installation, no account. Your sequences are stored on your own device and never uploaded.</p>
+      <div class="hero-actions">
+        <a class="btn" href="app.html">Open the editor &rarr;</a>
+        <a class="btn btn-ghost" href="features.html">See every feature</a>
+      </div>
+    </div>
+  </section>
+
+</main>
+
+<footer class="site-foot">
+  <div class="wrap">
+    <div class="foot-grid">
+      <div class="foot-about">
+        <a class="brand" href="/">
+          <svg width="22" height="22" viewBox="-2 -2 28 28" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <circle cx="12" cy="12" r="13" stroke-width="1.5"/>
+            <g stroke-width="2">
+              <path d="m10 16 1.5 1.5"/><path d="m14 8-1.5-1.5"/>
+              <path d="M15 2c-1.798 1.998-2.518 3.995-2.807 5.993"/>
+              <path d="m16.5 10.5 1 1"/><path d="m17 6-2.891-2.891"/>
+              <path d="M2 15c6.667-6 13.333 0 20-6"/><path d="m20 9 .891.891"/>
+              <path d="M3.109 14.109 4 15"/><path d="m6.5 12.5 1 1"/>
+              <path d="m7 18 2.891 2.891"/>
+              <path d="M9 22c1.798-1.998 2.518-3.995 2.807-5.993"/>
+            </g>
+          </svg>
+          SeqNexus
+        </a>
+        <p><strong>Free to use.</strong> Open source under the GNU AGPL v3. Figures and files you make are yours for publications, theses, talks and commercial work, with no fee. If one ends up in a paper, please cite the tool.</p>
+      </div>
+      <nav class="foot-col" aria-label="Product">
+        <p class="label">Product</p>
+        <a href="app.html">Editor</a>
+        <a href="/">Overview</a>
+        <a href="features.html">Features</a>
+        <a href="/#formats">Formats</a>
+      </nav>
+      <nav class="foot-col" aria-label="Guides">
+        <p class="label">Guides</p>
+        <a href="plasmid-map.html">Plasmid map</a>
+        <a href="primer-design.html">Primer design</a>
+        <a href="crispr-guide-design.html">CRISPR guides</a>
+        <a href="codon-optimization.html">Codon optimization</a>
+        <a href="virtual-gel.html">Virtual gel</a>
+        <a href="sequence-alignment.html">Alignment</a>
+        <a href="sanger-sequencing.html">Sanger</a>
+        <a href="ngs-read-mapping.html">NGS mapping</a>
+        <a href="snapgene-alternative.html">SnapGene alternative</a>
+      </nav>
+      <nav class="foot-col" aria-label="Project">
+        <p class="label">Project</p>
+        <a href="https://github.com/cacat-ayy/seqnexus">Source on GitHub</a>
+        <a href="https://github.com/cacat-ayy/seqnexus/issues">Report an issue</a>
+        <a href="mailto:contact@seqnexus.app">Contact</a>
+      </nav>
+      <div class="foot-col">
+        <p class="label">Cite this tool</p>
+        <p class="foot-cite">Acatay, C. (2026). SeqNexus: a browser-based molecular biology sequence editor. https://seqnexus.app</p>
+      </div>
+    </div>
+    <div class="foot-base">
+      <p>&copy; 2026 Christopher Acatay <a href="https://www.gnu.org/licenses/agpl-3.0.html">AGPL v3 licence</a></p>
+      <p><a href="impressum.html">Legal notice</a> <a href="datenschutz.html">Privacy</a></p>
+    </div>
+  </div>
+</footer>
+
+<script src="site.js"></script>
+</body>
+</html>
