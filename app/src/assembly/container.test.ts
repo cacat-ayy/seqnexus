@@ -132,3 +132,19 @@ describe('assemblyName', () => {
     expect(assemblyName(['sample1'], null, day)).toBe('Assembly 2026-10-05')
   })
 })
+
+describe('sanitizeAssembly and whole-plasmid verifications', () => {
+  it('keeps the verification it was saved with, and drops a damaged one', () => {
+    const report = { verdict: 'verified', reference: { name: 'pUC19', length: 4, circular: true }, reads: 1, covered: 1, bothStrands: 0, uncovered: [], differences: [], features: [], settings: { minDepth: 1, bothStrands: false, featureIds: null } }
+    const sample = {
+      contigId: '1', name: 's1', files: ['s1.fasta'], construct: { tabId: 't1', name: 'pUC19', length: 4 }, closeTo: [],
+      rotation: { startInFile: 3, reversed: true, ambiguous: false }, consensusLength: 4, identity: 1, tier: 'consensus',
+      readsNote: null, reads: null, report, mixed: { flagged: false, source: null, sites: [] }, lowConfidence: [],
+    }
+    const a = { ...assembly('x', ['1']), method: 'reference', plasmid: { checkedAt: 9, samples: [sample], unmatched: [] } }
+    const back = sanitizeAssembly(JSON.parse(JSON.stringify(a)))!
+    expect(back.plasmid?.samples[0].rotation).toEqual({ startInFile: 3, reversed: true, ambiguous: false })
+    expect(back.plasmid?.checkedAt).toBe(9)
+    expect(sanitizeAssembly({ ...a, plasmid: { samples: [{ name: 'broken' }] } })!.plasmid).toBeUndefined()
+  })
+})

@@ -36,6 +36,8 @@ import { notify } from '../toast'
 import { directoryOf, folderMaker, type Place } from '../import/folders'
 import { batchReporter, directReporter, type Reporter } from '../import/report'
 import { openTwin } from '../import/duplicates'
+import { expandZips, ZIP_FILE } from '../import/unzip'
+import { findResultSets, type ResultSample } from '../plasmidverify/detect'
 
 /**
  * Every file extension that opens directly, besides alignments. One list
@@ -67,12 +69,12 @@ const escapeExt = (ext: string) => ext.slice(1).replace(/[.*+?^${}()|[\]\\]/g, '
 export const SUPPORTED_EXTENSIONS = new RegExp(`\\.(${[...new Set(OPEN_EXTENSIONS)].map(escapeExt).join('|')})$`, 'i')
 
 /** The `accept` list for file pickers. `.gz` stands for every gzipped format, which the picker cannot spell out. */
-export const OPEN_ACCEPT = [...new Set([...OPEN_EXTENSIONS, '.gz', '.bam', '.sam'])].join(',')
+export const OPEN_ACCEPT = [...new Set([...OPEN_EXTENSIONS, '.gz', '.bam', '.sam', '.zip'])].join(',')
 
 /** Can this file be opened, by name? Sequences, alignments, reads (gzipped too) and read alignments. */
 export function canOpen(name: string): boolean {
   return SUPPORTED_EXTENSIONS.test(name) || isReadFile(name) || MAPPED_READS.test(name)
-    || COMPRESSED_RECORDS.test(name) || COMPRESSED_FASTA.test(name)
+    || COMPRESSED_RECORDS.test(name) || COMPRESSED_FASTA.test(name) || ZIP_FILE.test(name)
 }
 
 /** Files an operating system leaves in folders (.DS_Store, Thumbs.db): never data, so passed over without a word. */
@@ -117,7 +119,7 @@ export const SUPPORTED_FORMATS_HINT =
   'Supported: GenBank (.gb, .gbff), GenPept (.gp), EMBL (.embl), GFF3 (.gff3), SnapGene (.dna), Geneious (.geneious), ApE (.ape), '
   + 'FASTA (.fasta, .fa, .faa), FASTQ (.fastq, .fq), AB1 (.ab1), SCF (.scf), plain text (.txt), structures (.pdb, .cif), '
   + 'read alignments (.bam, .sam), alignments in Clustal (.aln), PHYLIP (.phy), NEXUS (.nex), MEGA (.meg), Stockholm (.sto), '
-  + 'PIR (.pir) and MSF (.msf), and any of these gzipped.'
+  + 'PIR (.pir) and MSF (.msf), any of these gzipped, and ZIP archives of them.'
 
 /**
  * A file with more records than this asks before opening: each record is a
@@ -218,6 +220,13 @@ export interface FileImportHandlers {
   onAlignmentFiles: (files: File[], placeOf: (file: File) => Place) => void
   /** Genome links a Geneious file listed: show them, each to be fetched on request. */
   onGenomeLinks: (source: string, links: GeneiousSkipped[]) => void
+  /**
+   * The drop holds the results of whole-plasmid sequencing (plasmidverify/detect.ts):
+   * offer to verify them. `importFiles` imports files the ordinary way, for
+   * the files of the drop that are no sample's and for declining the offer.
+   * Without this handler, every drop is imported the ordinary way.
+   */
+  onResultSets?: (samples: ResultSample[], rest: File[], importFiles: (files: File[]) => void) => void
 }
 
 export function useFileImport(h: FileImportHandlers) {
@@ -534,7 +543,7 @@ export function useFileImport(h: FileImportHandlers) {
     // Named, so a gzipped file can open what is inside it the same way.
     const run = async (file: File): Promise<void> => {
       const fail = (err?: unknown) => report.error(`Could not read "${file.name}"`, { detail: errorDetail(err) })
-      if (!canOpen(file.name)) {
+      if (!canOpen(file.name) || ZIP_FILE.test(file.name)) {
         report.error(`Can't open "${file.name}"`, { detail: SUPPORTED_FORMATS_HINT })
         return
       }
@@ -640,7 +649,7 @@ export function useFileImport(h: FileImportHandlers) {
    * lands in one folder with one summary instead of a toast per well; the
    * rest report once, in one summary, when there is more than one.
    */
-  const handleFilesOpen = useCallback((given: File[], opts: ImportOptions = {}) => {
+  const openFiles = useCallback((given: File[], opts: ImportOptions = {}) => {
     let all = withoutCompanions(given.filter(f => !isSystemFile(f.name)))
     // Several files at once (a folder, most often) get one notice for what
     // could not be opened: a toast per file pushed the import's own summary
@@ -708,6 +717,33 @@ export function useFileImport(h: FileImportHandlers) {
     }
     if (batch) void Promise.allSettled(jobs).then(() => batch.finish(opened))
   }, [handleFileOpen])
+
+  /**
+   * Open what was dropped or picked. ZIP archives are unpacked first
+   * (import/unzip.ts). A drop holding the results of whole-plasmid
+   * sequencing is offered for verification before anything is imported;
+   * the rest goes to openFiles.
+   */
+  const handleFilesOpen = useCallback((given: File[], opts: ImportOptions = {}) => {
+    const route = (files: File[], paths: Map<File, string> | undefined) => {
+      const o: ImportOptions = { ...opts, paths }
+      const offer = handlers.current.onResultSets
+      if (offer) {
+        const pathOf = (f: File) => paths?.get(f) ?? (f.webkitRelativePath || f.name)
+        const sets = findResultSets(files.filter(f => !isSystemFile(f.name)), pathOf)
+        if (sets.samples.length > 0) {
+          offer(sets.samples, sets.rest.filter(f => canOpen(f.name) && !isSystemFile(f.name)), list => { if (list.length) openFiles(list, o) })
+          return
+        }
+      }
+      openFiles(files, o)
+    }
+    if (!given.some(f => ZIP_FILE.test(f.name))) { route(given, opts.paths); return }
+    void expandZips(given, opts.paths).then(out => {
+      for (const f of out.failed) notify.error(`Could not open "${f.name}"`, { detail: f.reason })
+      if (out.files.length) route(out.files, out.paths)
+    })
+  }, [openFiles])
 
   /** Answered: the next file's question, if any, comes up. */
   const closeManyRecords = useCallback(() => setManyQueue(q => q.slice(1)), [])

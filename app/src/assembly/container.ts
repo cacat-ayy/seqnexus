@@ -18,6 +18,7 @@ import type { MappingReport } from '../ngs/builder'
 import type { DeNovoReport } from '../ngs/denovo/types'
 import { sanitizeGrouping, type NameGrouping } from './groups'
 import { sanitizePlateVerify, type PlateVerifySettings } from './plate'
+import { sanitizePlasmidVerification, type PlasmidVerification } from '../plasmidverify/result'
 
 /** What went into an assembly. */
 export interface AssemblyInputs {
@@ -109,6 +110,12 @@ export interface AssemblyRecord extends AssemblyRun {
   denovo?: DeNovoReport
   /** How its clones are verified on the overview (plate.ts), once changed from the default. */
   verify?: PlateVerifySettings
+  /**
+   * A whole-plasmid sequencing result verified against its constructs
+   * (plasmidverify/): one contig per sample, the consensus aligned to the
+   * construct, and the verdicts as they were reached.
+   */
+  plasmid?: PlasmidVerification
 }
 
 /** The fields of a contig that linking looks at. */
@@ -240,6 +247,7 @@ export function sanitizeAssembly(raw: unknown): AssemblyRecord | null {
     },
     ...(grouping ? { grouping } : {}),
     ...(sanitizePlateVerify(x.verify) ? { verify: sanitizePlateVerify(x.verify)! } : {}),
+    ...(sanitizePlasmidVerification(x.plasmid) ? { plasmid: sanitizePlasmidVerification(x.plasmid)! } : {}),
     unplaced: Array.isArray(x.unplaced)
       ? x.unplaced
         .filter(u => u && isString(u.name) && isString(u.reason))

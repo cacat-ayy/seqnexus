@@ -534,7 +534,7 @@ export default function ContigWorkspace({ contig, onClose, onExportPrompt, findR
         />
         <span className="aw-chip">{doc.method === 'reference' ? `Mapped to ${doc.reference?.name ?? 'reference'}` : 'De novo'}</span>
         <span className="aw-muted">
-          {nf.format(doc.rows.length)} reads · {nf.format(consensusBases().length)} bp consensus · {nf.format(cons.disagreements.length)} disagreements
+          {nf.format(doc.rows.length)} {doc.rows.length === 1 ? 'read' : 'reads'} · {nf.format(consensusBases().length)} bp consensus · {nf.format(cons.disagreements.length)} {cons.disagreements.length === 1 ? 'disagreement' : 'disagreements'}
         </span>
         <span className="aw-spacer" />
         <button className="aw-icon-btn" onClick={() => useEditorStore.getState().undoContig(contig.id)} disabled={!undoTop} title={undoTop ? `Undo ${undoTop.label} (Ctrl+Z)` : 'Nothing to undo'} aria-label="Undo"><Undo2 size={14} /></button>

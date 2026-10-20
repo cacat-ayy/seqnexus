@@ -5598,10 +5598,12 @@ the vendor spreads one sample over a folder per file kind
 by its extension: consensus (FASTA), GenBank, reads (FASTQ, gzipped or
 not), trace (.ab1), or an extra that is passed over (.png, .html, .tsv,
 .txt, .csv, .pdf). A name is a sample when it has a consensus and more
-evidence beside it: reads, a trace, or both FASTA and GenBank. A lone
-consensus joins only in a drop that already holds samples, and only from
-the folder of the other samples' consensus files (or, dropped loose, named
-with the same order prefix). The vendor's name is never looked for, and a
+evidence beside it: reads, or both FASTA and GenBank. A FASTA beside a
+chromatogram alone is not enough, since that is how Sanger results come
+(`A01.ab1` with its calls as `A01.fasta`); a sample's chromatogram joins it
+by name. A lone consensus joins only in a drop that already holds samples,
+and only from the folder of the other samples' consensus files (or,
+dropped loose, named with the same order prefix). The vendor's name is never looked for, and a
 construct file dropped with the results has a name of its own, so it opens
 as an ordinary file and can be chosen. The offer is a dialog before
 anything is imported; declining imports the files as any drop would.

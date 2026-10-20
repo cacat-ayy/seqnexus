@@ -97,6 +97,19 @@ export interface SequenceMetadata {
    * survives edits that move the bases, and a re-scan does not bring it back.
    */
   rejectedSuggestions?: RejectedSuggestion[]
+  /**
+   * The last time a sequencing result was verified against this construct
+   * (plasmidverify/): the verification item, when, and the best verdict a
+   * sample got. Shown as a badge in the explorer.
+   */
+  verifiedBy?: VerifiedBy
+}
+
+export interface VerifiedBy {
+  /** The assembly that holds the verification. */
+  itemId: string
+  date: number
+  status: 'verified' | 'differences' | 'incomplete'
 }
 
 /** A library element auto-annotation is not to suggest in a document. */

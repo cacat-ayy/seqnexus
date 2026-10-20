@@ -6,13 +6,13 @@
  * works on `ExplorerItem` and never branches on kind again.
  */
 
-import { Lock, TriangleAlert, Globe, FlaskConical, Wand2, Activity, TestTube, Link2, Scissors, Atom, Database, Crosshair } from 'lucide-react'
+import { Lock, TriangleAlert, Globe, FlaskConical, Wand2, Activity, TestTube, Link2, Scissors, Atom, Database, Crosshair, ShieldCheck, ShieldAlert } from 'lucide-react'
 import type { LibraryOligo } from '../primers/oligo'
 import { oligoTm } from '../primers/display'
 import type {
   DocumentTab, SequencingRead, ReadSet, SavedAlignment, Assembly, Contig, GelDoc, CloneDoc,
 } from '../store'
-import type { DocumentOrigin } from '../models/Document'
+import type { DocumentOrigin, VerifiedBy } from '../models/Document'
 import type { ExplorerItem, ItemBadge, ItemKind } from './types'
 import { documentKind, toUid } from './types'
 import { formatPercent, formatCount, meanQuality } from './format'
@@ -77,6 +77,22 @@ const ORIGIN_BADGE: Partial<Record<NonNullable<DocumentOrigin>, ItemBadge>> = {
 }
 
 /**
+ * A construct's latest verification by whole-plasmid sequencing: a shield,
+ * plain when a sample matched it, warning otherwise. The date says how old
+ * the evidence is.
+ */
+function verifiedBadge(v: VerifiedBy): ItemBadge {
+  const date = new Date(v.date).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })
+  if (v.status === 'verified') return { key: 'verified', label: `Verified by sequencing on ${date}`, icon: ShieldCheck, tone: 'neutral' }
+  return {
+    key: 'verified',
+    label: `Sequenced on ${date}: ${v.status === 'differences' ? 'differences found' : 'not fully covered'}`,
+    icon: ShieldAlert,
+    tone: 'warn',
+  }
+}
+
+/**
  * A library oligo. It is never "open"; the useful fact about it is whether
  * it binds the sequence that is, which is what the badge says.
  */
@@ -121,6 +137,7 @@ export function sequenceToItem(tab: DocumentTab, ctx: AdapterContext): ExplorerI
   const originBadge = tab.doc.metadata?.origin && ORIGIN_BADGE[tab.doc.metadata.origin]
   if (originBadge) badges.push(originBadge)
   if (tab.readOnly) badges.push(READ_ONLY_BADGE)
+  if (tab.doc.metadata?.verifiedBy) badges.push(verifiedBadge(tab.doc.metadata.verifiedBy))
 
   return {
     uid: toUid(kind, tab.id),
@@ -302,6 +319,26 @@ export function assemblyToItem(assembly: Assembly, contigs: readonly Contig[], c
         : [`${reads ? Math.round((mapped / reads) * 100) : 0}% mapped`, `vs ${r.references.map(x => x.name).join(', ')}`, samples.length > 1 ? formatCount(samples.length, 'sample') : ngs.readSetName],
       badges: [],
       derivedFrom: [...samples.flatMap(x => (x.readSetId ? [toUid('readset', x.readSetId)] : [])), ...r.references.flatMap(x => (x.tabId ? [toUid('sequence', x.tabId)] : []))],
+    }
+  }
+  if (assembly.plasmid) {
+    const ps = assembly.plasmid.samples
+    const verified = ps.filter(s => s.report.verdict === 'verified').length
+    const constructs = [...new Set(ps.map(s => s.construct.name))]
+    const badges: ItemBadge[] = []
+    if (ps.some(s => s.mixed.flagged)) badges.push({ key: 'mixed', label: 'A sample looks like a mixed population', icon: TriangleAlert, tone: 'warn' })
+    return {
+      uid: toUid('assembly', assembly.id), kind: 'assembly', id: assembly.id, name: assembly.name,
+      createdAt: assembly.createdAt, modifiedAt: assembly.modifiedAt, size: ps.length,
+      isOpen: isOpen(ctx, 'assembly', assembly.id) || contigs.some(c => isOpen(ctx, 'contig', c.id)),
+      isIncluded: false, isDirty: false, isReadOnly: false, isCircular: true, canDuplicate: false,
+      stats: [
+        ps.length === 1 ? ps[0].name : formatCount(ps.length, 'plasmid'),
+        ps.length === 1 ? (verified ? 'verified' : ps[0].report.verdict === 'differences' ? 'differences' : 'not fully covered') : `${verified} verified`,
+        constructs.length === 1 ? `vs ${constructs[0]}` : `vs ${constructs.length} constructs`,
+      ],
+      badges,
+      derivedFrom: [...new Set(ps.flatMap(s => (s.construct.tabId ? [toUid('sequence', s.construct.tabId)] : [])))],
     }
   }
   const reads = contigs.reduce((n, c) => n + c.doc.rows.length, 0)

@@ -117,11 +117,13 @@ const AnalyseReadsDialog = lazy(() => import('./components/ngs/AnalyseReadsDialo
 const AssemblyOverview = lazy(() => import('./components/contig/AssemblyOverview'))
 const ReadSetWorkspace = lazy(() => import('./components/ngs/ReadSetWorkspace'))
 const ImportReadsDialog = lazy(() => import('./components/ngs/ImportReadsDialog'))
+const VerifyPlasmidsDialog = lazy(() => import('./components/plasmidverify/VerifyPlasmidsDialog'))
 const ImportAlignmentsDialog = lazy(() => import('./components/ngs/ImportAlignmentsDialog'))
 
 import { STORAGE_KEYS } from './storage/keys'
 import { THEMES, type ThemeName } from './theme'
 import { useFileImport, OPEN_ACCEPT, canOpen, errorDetail, MANY_RECORDS } from './hooks/useFileImport'
+import type { ResultSample } from './plasmidverify/detect'
 
 /**
  * Detail line for the "can't open this" error. Kept out of the headline: the
@@ -573,6 +575,8 @@ export default function App() {
   const analyseRequest = useAnalyseRequest()
   // NGS read files waiting in the import dialog.
   const [readImportFiles, setReadImportFiles] = useState<File[] | null>(null)
+  // A dropped whole-plasmid sequencing result, offered for verification.
+  const [resultDrop, setResultDrop] = useState<{ samples: ResultSample[]; importFiles: (files: File[]) => void } | null>(null)
   /** SAM/BAM files waiting to be imported, one dialog at a time. */
   const [alignmentImports, setAlignmentImports] = useState<File[]>([])
 
@@ -1156,6 +1160,11 @@ export default function App() {
       setAlignmentImports(q => [...q, ...files])
     },
     onGenomeLinks: (source, links) => setGenomeLinks({ source, links }),
+    // The files that are no sample's (a construct dropped with the results) open at once, so they can be chosen.
+    onResultSets: (samples, rest, importFiles) => {
+      importFiles(rest)
+      setResultDrop({ samples, importFiles })
+    },
   })
 
   // --- File menu actions ---
@@ -2925,6 +2934,11 @@ export default function App() {
       {readImportFiles && (
         <Suspense fallback={null}>
           <ImportReadsDialog files={readImportFiles} placeOf={placeOfImport} onClose={() => setReadImportFiles(null)} />
+        </Suspense>
+      )}
+      {resultDrop && (
+        <Suspense fallback={null}>
+          <VerifyPlasmidsDialog samples={resultDrop.samples} importFiles={resultDrop.importFiles} onClose={() => setResultDrop(null)} />
         </Suspense>
       )}
       {analyseRequest && (

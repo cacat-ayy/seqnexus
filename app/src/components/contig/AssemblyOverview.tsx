@@ -27,6 +27,7 @@ import MappingReport from '../ngs/MappingReport'
 import { revealOnOpen } from '../ngs/reveal'
 import { describeGrouping } from '../../assembly/groups'
 import ClonesSection from './ClonesSection'
+import PlasmidVerifyPage from '../plasmidverify/PlasmidVerifyPage'
 
 const AssembleDialog = lazy(() => import('./AssembleDialog'))
 const MappingViewer = lazy(() => import('../ngs/MappingViewer'))
@@ -132,9 +133,11 @@ export default function AssemblyOverview({ assembly, onClose, onExportPrompt }: 
           }}
           size={Math.max(6, (nameDraft ?? assembly.name).length)}
         />
-        <span className="aw-chip">{ngs && samples.length === 1 && ngs.report.importedFrom ? 'Imported' : assembly.method === 'reference' ? (refList.length > 1 ? `Mapped to ${refList.length} references` : `Mapped to ${ref?.name ?? 'a reference'}`) : 'De novo'}</span>
+        <span className="aw-chip">{assembly.plasmid ? 'Whole-plasmid sequencing' : ngs && samples.length === 1 && ngs.report.importedFrom ? 'Imported' : assembly.method === 'reference' ? (refList.length > 1 ? `Mapped to ${refList.length} references` : `Mapped to ${ref?.name ?? 'a reference'}`) : 'De novo'}</span>
         <span className="aw-muted">
-          {ngs && assembly.denovo && samples.length === 1
+          {assembly.plasmid
+            ? `${nf.format(assembly.plasmid.samples.length + assembly.plasmid.unmatched.length)} ${assembly.plasmid.samples.length + assembly.plasmid.unmatched.length === 1 ? 'sample' : 'samples'} · checked ${new Date(assembly.plasmid.checkedAt).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' })}`
+            : ngs && assembly.denovo && samples.length === 1
             ? <>{nf.format(assembly.denovo.contigs.length)} {assembly.denovo.contigs.length === 1 ? 'contig' : 'contigs'} · {nf.format(ngs.report.mapped)} of {nf.format(ngs.report.reads)} reads mapped back</>
             : ngs
             ? samples.length > 1
@@ -160,7 +163,7 @@ export default function AssemblyOverview({ assembly, onClose, onExportPrompt }: 
           </select>
         )}
         <span className="aw-spacer" />
-        {!ngs && <button className="aw-btn" onClick={() => setDialog({ readIds: assembly.inputs.readIds, rerun: true })}
+        {!ngs && !assembly.plasmid && <button className="aw-btn" onClick={() => setDialog({ readIds: assembly.inputs.readIds, rerun: true })}
           disabled={present === 0}
           title={present === 0 ? 'None of the reads that went in are in the session any more' : 'Assemble the same reads again, with changed settings. The new contigs replace these.'}>
           <RotateCcw size={13} /> Run again…
@@ -185,7 +188,9 @@ export default function AssemblyOverview({ assembly, onClose, onExportPrompt }: 
         <button className="aw-icon-btn" onClick={onClose} title="Close the assembly" aria-label="Close the assembly"><X size={15} /></button>
       </div>
 
-      {ngs && page === 'contigs' && assembly.denovo ? (
+      {assembly.plasmid ? (
+        <div className="ao-body"><PlasmidVerifyPage assembly={assembly} plasmid={assembly.plasmid} contigs={contigs} /></div>
+      ) : ngs && page === 'contigs' && assembly.denovo ? (
         <div className="ao-body">
           <Suspense fallback={null}>
             <DeNovoPage assembly={assembly} onShowReads={i => showMapping({ page: 'reads', ref: i, sample: samples[0]?.storageId ?? null })} />

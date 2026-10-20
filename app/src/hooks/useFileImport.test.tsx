@@ -218,3 +218,28 @@ describe('importing files', () => {
     expect(h.onReadFiles.mock.calls[0][0][0].name).toBe('reads.fa.gz')
   })
 })
+
+describe('whole-plasmid sequencing results', () => {
+  it('offers a drop that holds a result set before importing it, and imports the rest straight away', () => {
+    const h = { ...handlers(), onResultSets: vi.fn() }
+    const { result } = renderHook(() => useFileImport(h))
+    const drop = [file('ORD_1_a.fasta', '>a\nACGT\n'), file('ORD_1_a.fastq.gz'), file('ORD_1_a.png'), file('pX12.gb', 'LOCUS')]
+    act(() => { result.current.handleFilesOpen(drop) })
+    expect(h.onResultSets).toHaveBeenCalledTimes(1)
+    const [samples, rest] = h.onResultSets.mock.calls[0]
+    expect(samples.map((s: { name: string }) => s.name)).toEqual(['ORD_1_a'])
+    expect(rest.map((f: File) => f.name)).toEqual(['pX12.gb'])
+    // Nothing went down the ordinary path yet.
+    expect(h.onReadFiles).not.toHaveBeenCalled()
+  })
+
+  it('imports a drop the ordinary way when it holds no result set', async () => {
+    const h = { ...handlers(), onResultSets: vi.fn() }
+    const { result } = renderHook(() => useFileImport(h))
+    act(() => { result.current.handleFilesOpen([file('pX12.fasta', '>pX12\nACGTACGT\n')]) })
+    expect(h.onResultSets).not.toHaveBeenCalled()
+    await waitFor(() => expect(store().tabs.map(t => t.doc.name)).toContain('pX12'))
+    expect(canOpen('ORD_results.zip')).toBe(true)
+    expect(OPEN_ACCEPT.split(',')).toContain('.zip')
+  })
+})

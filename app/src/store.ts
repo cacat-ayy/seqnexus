@@ -27,7 +27,9 @@ import {
   removePrimers,
   displayPosition,
   type RejectedSuggestion,
+  type VerifiedBy,
 } from './models/Document'
+import type { PlasmidVerification } from './plasmidverify/result'
 import { newPrimerId, primerOligoFromFeature, type PrimerData, type LibraryOligo, type OligoRole } from './primers/oligo'
 import { reverseComplement } from './models/complement'
 import {
@@ -1285,6 +1287,14 @@ interface EditorStore {
   renameAssembly: (id: string, name: string) => void
   /** How an assembly's clones are verified on its overview. Not an undo step, like a view setting. */
   setAssemblyVerify: (id: string, verify: PlateVerifySettings) => void
+  /**
+   * Keep a whole-plasmid verification as an assembly: a contig per sample,
+   * in the order of `verification.samples` (their contig ids are filled in),
+   * and open its page. Returns the assembly's id, or null with no samples.
+   */
+  addPlasmidVerification: (name: string, contigs: { name: string; doc: ContigDoc }[], verification: PlasmidVerification) => string | null
+  /** Mark a construct with its latest verification. Not an undo step: it records a check, not an edit. */
+  setVerifiedBy: (tabId: string, verifiedBy: VerifiedBy) => void
   /** Delete an assembly with its contigs, into the Recently deleted buffer. */
   removeAssembly: (id: string) => void
   /**
@@ -4543,7 +4553,8 @@ export const useEditorStore = create<EditorStore>((set, get) => {
     openAssembly(id) {
       const a = get().assemblies.find(x => x.id === id)
       if (!a) return
-      if (a.contigIds.length === 1) get().setActiveContig(a.contigIds[0])
+      // A plasmid verification opens on its verdicts, even for one sample.
+      if (a.contigIds.length === 1 && !a.plasmid) get().setActiveContig(a.contigIds[0])
       else get().setActiveAssembly(id)
     },
 
@@ -4575,6 +4586,36 @@ export const useEditorStore = create<EditorStore>((set, get) => {
 
     setAssemblyVerify(id, verify) {
       set(s => ({ assemblies: s.assemblies.map(a => (a.id === id ? { ...a, verify } : a)) }))
+    },
+
+    addPlasmidVerification(name, docs, verification) {
+      if (docs.length === 0) return null
+      const now = Date.now()
+      const assemblyId = nextAssemblyId()
+      const made: Contig[] = docs.map(it => ({
+        id: nextContigId(), assemblyId, name: it.name, doc: it.doc, createdAt: now, modifiedAt: now,
+        view: DEFAULT_CONTIG_VIEW, undoStack: [], redoStack: [],
+      }))
+      const refs = verification.samples.map(x => ({ tabId: x.construct.tabId, name: x.construct.name }))
+      const distinct = refs.filter((r, i) => refs.findIndex(o => o.name === r.name && o.tabId === r.tabId) === i)
+      const assembly: Assembly = {
+        id: assemblyId, name, createdAt: now, modifiedAt: now,
+        contigIds: made.map(c => c.id),
+        method: 'reference',
+        settings: null,
+        inputs: { readIds: [], reference: distinct[0] ?? null, ...(distinct.length > 1 ? { references: distinct } : {}) },
+        unplaced: [],
+        plasmid: { ...verification, samples: verification.samples.map((x, i) => ({ ...x, contigId: made[i]?.id ?? x.contigId })) },
+      }
+      set(s => ({ assemblies: [...s.assemblies, assembly], contigs: [...s.contigs, ...made] }))
+      get().setActiveAssembly(assemblyId)
+      return assemblyId
+    },
+
+    setVerifiedBy(tabId, verifiedBy) {
+      set(s => ({
+        tabs: s.tabs.map(t => (t.id === tabId ? { ...t, doc: { ...t.doc, metadata: { ...t.doc.metadata, verifiedBy } } } : t)),
+      }))
     },
 
     removeAssembly(id) {

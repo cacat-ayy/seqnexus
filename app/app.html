@@ -1,6 +1,6 @@
 <!doctype html>
 <!--
-  Vite's HTML entry point — source, not a build artifact.
+  Vite's HTML entry point: source, not a build artifact.
 
   `npm run build` inlines the compiled app into this shell and writes the
   result to ../app.html (1.2 MB, committed, served by GitHub Pages). This is
@@ -29,7 +29,16 @@
     <meta name="twitter:card" content="summary_large_image" />
   </head>
   <body>
-    <div id="root"></div>
+    <div id="root">
+      <!-- Shown until the editor mounts (React replaces it on the first render),
+           and the only content a crawler without JavaScript sees. Plain inline
+           styles, since the app stylesheet is not loaded yet. -->
+      <div style="max-width: 36em; margin: 15vh auto 0; padding: 0 24px; font: 15px/1.6 system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif; opacity: .75">
+        <p style="margin: 0 0 8px; font-weight: 600">SeqNexus is loading.</p>
+        <p style="margin: 0">A free, open-source DNA sequence and plasmid editor that runs in your browser: plasmid maps, restriction and seamless cloning, primer and CRISPR guide design, alignment, Sanger chromatograms and NGS read mapping, all computed on your own machine with nothing uploaded. <a href="index.html" style="color: inherit">About SeqNexus</a>, <a href="features.html" style="color: inherit">every feature</a>.</p>
+        <noscript><p style="margin: 12px 0 0"><b>The editor needs JavaScript.</b> Everything runs in your browser, so with JavaScript switched off there is nothing to run. Turn it on for this site and reload.</p></noscript>
+      </div>
+    </div>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>
