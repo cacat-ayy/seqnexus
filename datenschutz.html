@@ -3,194 +3,229 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Datenschutzerkl&auml;rung / Privacy Policy – SeqNexus</title>
 <meta name="robots" content="noindex, nofollow">
-<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='-2 -2 28 28' fill='none' stroke='%230d9488' stroke-linecap='round' stroke-linejoin='round'><circle cx='12' cy='12' r='13' stroke-width='1.5'/><g stroke-width='2'><path d='m10 16 1.5 1.5'/><path d='m14 8-1.5-1.5'/><path d='M15 2c-1.798 1.998-2.518 3.995-2.807 5.993'/><path d='m16.5 10.5 1 1'/><path d='m17 6-2.891-2.891'/><path d='M2 15c6.667-6 13.333 0 20-6'/><path d='m20 9 .891.891'/><path d='M3.109 14.109 4 15'/><path d='m6.5 12.5 1 1'/><path d='m7 18 2.891 2.891'/><path d='M9 22c1.798-1.998 2.518-3.995 2.807-5.993'/></g></svg>">
-<style>
-*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-body {
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
-  color: #1e293b; background: #ffffff; line-height: 1.7;
-  -webkit-font-smoothing: antialiased;
-}
-a { color: #0d9488; text-decoration: none; }
-a:hover { color: #0f766e; }
-.container { max-width: 720px; margin: 0 auto; padding: 0 24px; }
-header {
-  border-bottom: 1px solid #e2e8f0; padding: 16px 0;
-}
-.nav-inner {
-  display: flex; align-items: center; justify-content: space-between;
-  max-width: 720px; margin: 0 auto; padding: 0 24px;
-}
-.nav-logo {
-  display: flex; align-items: center; gap: 10px;
-  font-size: 18px; font-weight: 800; color: #1e293b;
-  letter-spacing: -.3px; text-decoration: none;
-}
-.back-link { font-size: 14px; font-weight: 500; color: #64748b; display: inline-flex; align-items: center; gap: 4px; }
-.back-link:hover { color: #0d9488; }
-main { padding: 48px 0 80px; }
-h1 { font-size: 28px; font-weight: 800; margin-bottom: 32px; letter-spacing: -.5px; }
-h2 { font-size: 18px; font-weight: 700; margin: 32px 0 12px; }
-h3 { font-size: 15px; font-weight: 600; margin: 20px 0 8px; }
-p { margin-bottom: 12px; font-size: 15px; color: #334155; }
-ul { margin: 0 0 12px 20px; font-size: 15px; color: #334155; }
-li { margin-bottom: 4px; }
-.updated { font-size: 13px; color: #64748b; margin-bottom: 24px; }
-.lang-divider { border: none; border-top: 2px solid #e2e8f0; margin: 56px 0 48px; }
-.lang-nav { display: flex; gap: 12px; margin-bottom: 24px; font-size: 13px; font-weight: 600; }
-.lang-nav a { padding: 4px 12px; border-radius: 6px; border: 1px solid #e2e8f0; color: #64748b; }
-.lang-nav a:hover { border-color: #0d9488; color: #0d9488; }
-</style>
+<meta name="theme-color" content="#0b5f58">
+<link rel="icon" href="assets/favicon.svg" type="image/svg+xml">
+<link rel="icon" href="assets/favicon-48x48.png" sizes="48x48" type="image/png">
+<link rel="icon" href="assets/favicon-96x96.png" sizes="96x96" type="image/png">
+<link rel="icon" href="assets/favicon-144x144.png" sizes="144x144" type="image/png">
+<link rel="icon" href="assets/favicon-192x192.png" sizes="192x192" type="image/png">
+<link rel="apple-touch-icon" href="assets/favicon-192x192.png">
+
+<title>Datenschutzerkl&auml;rung / Privacy Policy | SeqNexus</title>
+
+<script>
+// Apply the stored theme before first paint. Must stay inline and in <head>.
+(function () {
+  try {
+    var stored = localStorage.getItem('seqnexus-landing-dark');
+    var dark = stored !== null
+      ? stored === '1'
+      : window.matchMedia('(prefers-color-scheme: dark)').matches;
+    if (dark) document.documentElement.classList.add('dark');
+  } catch (e) {
+    // localStorage blocked, so stay on light.
+  }
+})();
+</script>
+
+<link rel="stylesheet" href="site.css">
 </head>
 <body>
-<header>
-  <div class="nav-inner">
-    <a href="/" class="nav-logo">
-      <svg width="24" height="24" viewBox="-2 -2 28 28" fill="none" stroke="#0d9488" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="13" stroke-width="1.5"/><g stroke-width="2"><path d="m10 16 1.5 1.5"/><path d="m14 8-1.5-1.5"/><path d="M15 2c-1.798 1.998-2.518 3.995-2.807 5.993"/><path d="m16.5 10.5 1 1"/><path d="m17 6-2.891-2.891"/><path d="M2 15c6.667-6 13.333 0 20-6"/><path d="m20 9 .891.891"/><path d="M3.109 14.109 4 15"/><path d="m6.5 12.5 1 1"/><path d="m7 18 2.891 2.891"/><path d="M9 22c1.798-1.998 2.518-3.995 2.807-5.993"/></g></svg>
-      <span>Seq<span style="color:#0d9488">Nexus</span></span>
+
+<header class="masthead">
+  <div class="masthead-inner">
+    <a class="brand" href="/">
+      <svg width="22" height="22" viewBox="-2 -2 28 28" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <circle cx="12" cy="12" r="13" stroke-width="1.5"/>
+        <g stroke-width="2">
+          <path d="m10 16 1.5 1.5"/><path d="m14 8-1.5-1.5"/>
+          <path d="M15 2c-1.798 1.998-2.518 3.995-2.807 5.993"/>
+          <path d="m16.5 10.5 1 1"/><path d="m17 6-2.891-2.891"/>
+          <path d="M2 15c6.667-6 13.333 0 20-6"/><path d="m20 9 .891.891"/>
+          <path d="M3.109 14.109 4 15"/><path d="m6.5 12.5 1 1"/>
+          <path d="m7 18 2.891 2.891"/>
+          <path d="M9 22c1.798-1.998 2.518-3.995 2.807-5.993"/>
+        </g>
+      </svg>
+      <span class="brand-name">Seq<b>Nexus</b></span>
     </a>
-    <a href="/" class="back-link"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 12H5"/><path d="M12 19l-7-7 7-7"/></svg> Back</a>
+    <nav aria-label="Primary">
+      <div class="nav-links" id="nav-links">
+        <a href="/">Overview</a>
+        <a href="features.html">Features</a>
+        <a href="/#formats">Formats</a>
+        <a href="https://github.com/cacat-ayy/seqnexus" rel="noopener"><svg width="15" height="15" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0 0 16 8c0-4.42-3.58-8-8-8z"/></svg> Source</a>
+      </div>
+      <a class="btn btn-small" href="app.html">Open the editor</a>
+      <button class="theme-toggle" id="theme-toggle" type="button" aria-label="Switch to dark theme">
+        <svg class="icon-sun" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="5"/><path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/></svg>
+        <svg class="icon-moon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+      </button>
+      <button class="menu-toggle" id="menu-toggle" type="button" aria-label="Menu" aria-expanded="false" aria-controls="nav-links">
+        <svg class="icon-menu" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M3 6h18M3 12h18M3 18h18"/></svg>
+        <svg class="icon-close" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"/></svg>
+      </button>
+    </nav>
   </div>
 </header>
 
 <main>
-<div class="container">
-  <h1>Datenschutzerkl&auml;rung / Privacy Policy</h1>
-  <nav class="lang-nav" aria-label="Language">
-    <a href="#deutsch">Deutsch</a>
-    <a href="#english">English</a>
-  </nav>
+  <section class="page-head">
+    <div class="wrap">
+      <p class="label"><a class="back" href="/">&larr; SeqNexus</a></p>
+      <h1 style="margin-top:14px">Datenschutzerkl&auml;rung / Privacy Policy</h1>
+      <p class="lede">SeqNexus l&auml;uft vollst&auml;ndig in Ihrem Browser. Diese Seite beschreibt, welche Daten dennoch anfallen und wo. The English version follows the German one.</p>
+      <nav class="hero-actions" aria-label="Sprache / Language">
+        <a class="btn btn-ghost btn-small" href="#deutsch">Deutsch</a>
+        <a class="btn btn-ghost btn-small" href="#english">English</a>
+      </nav>
+    </div>
+  </section>
 
-  <div id="deutsch">
-  <h2 style="margin-top:0">Datenschutzerkl&auml;rung</h2>
-  <p class="updated">Stand: April 2026</p>
+  <div class="wrap">
+    <article class="doc">
+      <section id="deutsch">
+        <h2>Datenschutzerkl&auml;rung</h2>
+        <p class="muted">Stand: April 2026</p>
 
-  <h2>1. Verantwortlicher</h2>
-  <p>Christopher Acatay<br>
-  E-Mail: <a href="mailto:contact@seqnexus.app">contact@seqnexus.app</a></p>
-  <p>Weitere Angaben finden Sie im <a href="impressum.html">Impressum</a>.</p>
+        <h2>1. Verantwortlicher</h2>
+        <p>Christopher Acatay<br>
+        E-Mail: <a class="link" href="mailto:contact@seqnexus.app">contact@seqnexus.app</a></p>
+        <p>Weitere Angaben finden Sie im <a class="link" href="impressum.html">Impressum</a>.</p>
 
-  <h2>2. &Uuml;bersicht</h2>
-  <p>SeqNexus ist eine clientseitige Webanwendung. Alle Daten (Sequenzen, Annotationen, Einstellungen) werden ausschlie&szlig;lich lokal in Ihrem Browser verarbeitet und gespeichert. Es werden keine Nutzerdaten an unsere Server &uuml;bermittelt, da die Anwendung keinen eigenen Backend-Server betreibt.</p>
+        <h2>2. &Uuml;bersicht</h2>
+        <p>SeqNexus ist eine clientseitige Webanwendung. Alle Daten (Sequenzen, Annotationen, Einstellungen) werden ausschlie&szlig;lich lokal in Ihrem Browser verarbeitet und gespeichert. Es werden keine Nutzerdaten an unsere Server &uuml;bermittelt, da die Anwendung keinen eigenen Backend-Server betreibt.</p>
 
-  <h2>3. Hosting</h2>
-  <p>Diese Website wird &uuml;ber <strong>GitHub Pages</strong> bereitgestellt, einen Dienst der GitHub Inc. (bzw. GitHub B.V. f&uuml;r europ&auml;ische Nutzer), 88 Colin P. Kelly Jr. Street, San Francisco, CA 94107, USA.</p>
-  <p>Beim Aufruf dieser Website erhebt GitHub automatisch technische Zugriffsdaten, insbesondere:</p>
-  <ul>
-    <li>IP-Adresse</li>
-    <li>Datum und Uhrzeit des Zugriffs</li>
-    <li>Aufgerufene Seite</li>
-    <li>Browser-Typ und Betriebssystem</li>
-    <li>Referrer-URL</li>
-  </ul>
-  <p>Diese Datenverarbeitung erfolgt durch GitHub als Auftragsverarbeiter. Die Rechtsgrundlage ist Art. 6 Abs. 1 lit. f DSGVO (berechtigtes Interesse an der sicheren Bereitstellung der Website). GitHub verarbeitet diese Daten gem&auml;&szlig; der <a href="https://docs.github.com/en/site-policy/privacy-policies/github-general-privacy-statement" target="_blank" rel="noopener">GitHub Privacy Statement</a> und hat sich den EU-Standardvertragsklauseln unterworfen.</p>
+        <h2>3. Hosting</h2>
+        <p>Diese Website wird &uuml;ber <strong>GitHub Pages</strong> bereitgestellt, einen Dienst der GitHub Inc. (bzw. GitHub B.V. f&uuml;r europ&auml;ische Nutzer), 88 Colin P. Kelly Jr. Street, San Francisco, CA 94107, USA.</p>
+        <p>Beim Aufruf dieser Website erhebt GitHub automatisch technische Zugriffsdaten, insbesondere:</p>
+        <ul>
+          <li>IP-Adresse</li>
+          <li>Datum und Uhrzeit des Zugriffs</li>
+          <li>Aufgerufene Seite</li>
+          <li>Browser-Typ und Betriebssystem</li>
+          <li>Referrer-URL</li>
+        </ul>
+        <p>Diese Datenverarbeitung erfolgt durch GitHub als Auftragsverarbeiter. Die Rechtsgrundlage ist Art. 6 Abs. 1 lit. f DSGVO (berechtigtes Interesse an der sicheren Bereitstellung der Website). GitHub verarbeitet diese Daten gem&auml;&szlig; der <a class="link" href="https://docs.github.com/en/site-policy/privacy-policies/github-general-privacy-statement" target="_blank" rel="noopener">GitHub Privacy Statement</a> und hat sich den EU-Standardvertragsklauseln unterworfen.</p>
 
-  <h2>4. Lokale Datenspeicherung (IndexedDB / localStorage)</h2>
-  <p>SeqNexus speichert folgende Daten lokal in Ihrem Browser:</p>
-  <ul>
-    <li>DNA-Sequenzen und Annotationen</li>
-    <li>Editor-Einstellungen und Theme-Pr&auml;ferenzen</li>
-    <li>Projektdaten und ge&ouml;ffnete Dateien</li>
-  </ul>
-  <p>Diese Daten verlassen Ihren Browser nicht und werden nicht an Dritte &uuml;bermittelt. Die Rechtsgrundlage ist Art. 6 Abs. 1 lit. f DSGVO (berechtigtes Interesse an der Funktionsf&auml;higkeit der Anwendung). Sie k&ouml;nnen diese Daten jederzeit &uuml;ber die Browser-Einstellungen l&ouml;schen.</p>
+        <h2>4. Lokale Datenspeicherung (IndexedDB / localStorage)</h2>
+        <p>SeqNexus speichert folgende Daten lokal in Ihrem Browser:</p>
+        <ul>
+          <li>DNA-Sequenzen und Annotationen</li>
+          <li>Editor-Einstellungen und Theme-Pr&auml;ferenzen</li>
+          <li>Projektdaten und ge&ouml;ffnete Dateien</li>
+        </ul>
+        <p>Diese Daten verlassen Ihren Browser nicht und werden nicht an Dritte &uuml;bermittelt. Die Rechtsgrundlage ist Art. 6 Abs. 1 lit. f DSGVO (berechtigtes Interesse an der Funktionsf&auml;higkeit der Anwendung). Sie k&ouml;nnen diese Daten jederzeit &uuml;ber die Browser-Einstellungen l&ouml;schen.</p>
 
-  <h2>5. Externe Verbindungen</h2>
+        <h2>5. Externe Verbindungen</h2>
 
-  <h3>5.1 NCBI (BLAST &amp; Sequenzabruf)</h3>
-  <p>Wenn Sie die BLAST-Suchfunktion oder den Sequenzimport von NCBI nutzen, stellt Ihr Browser eine direkte Verbindung zu den Servern des National Center for Biotechnology Information (NCBI, USA) her. Dabei wird Ihre IP-Adresse an diesen Dienst &uuml;bermittelt. Diese Verbindung erfolgt nur auf Ihre ausdr&uuml;ckliche Anforderung.</p>
+        <h3>5.1 NCBI (BLAST &amp; Sequenzabruf)</h3>
+        <p>Wenn Sie die BLAST-Suchfunktion oder den Sequenzimport von NCBI nutzen, stellt Ihr Browser eine direkte Verbindung zu den Servern des National Center for Biotechnology Information (NCBI, USA) her. Dabei wird Ihre IP-Adresse an diesen Dienst &uuml;bermittelt. Diese Verbindung erfolgt nur auf Ihre ausdr&uuml;ckliche Anforderung.</p>
 
-  <h3>5.2 UniProt (Proteinabruf)</h3>
-  <p>Wenn Sie einen Proteineintrag aus UniProt importieren, stellt Ihr Browser eine direkte Verbindung zu den Servern des UniProt-Konsortiums her (betrieben vom European Bioinformatics Institute, EMBL-EBI, Vereinigtes K&ouml;nigreich, gemeinsam mit dem SIB Swiss Institute of Bioinformatics und der Protein Information Resource, USA). Dabei werden Ihre IP-Adresse und die angefragte Kennung (Accession) &uuml;bermittelt, nicht Ihre Sequenzen. Diese Verbindung erfolgt nur auf Ihre ausdr&uuml;ckliche Anforderung.</p>
+        <h3>5.2 UniProt (Proteinabruf)</h3>
+        <p>Wenn Sie einen Proteineintrag aus UniProt importieren, stellt Ihr Browser eine direkte Verbindung zu den Servern des UniProt-Konsortiums her (betrieben vom European Bioinformatics Institute, EMBL-EBI, Vereinigtes K&ouml;nigreich, gemeinsam mit dem SIB Swiss Institute of Bioinformatics und der Protein Information Resource, USA). Dabei werden Ihre IP-Adresse und die angefragte Kennung (Accession) &uuml;bermittelt, nicht Ihre Sequenzen. Diese Verbindung erfolgt nur auf Ihre ausdr&uuml;ckliche Anforderung.</p>
 
-  <h3>5.3 RCSB PDB und AlphaFold-Datenbank (3D-Strukturen)</h3>
-  <p>Wenn Sie eine 3D-Struktur abrufen, stellt Ihr Browser eine direkte Verbindung zur RCSB Protein Data Bank (Rutgers University und UC San Diego, USA) bzw. zur AlphaFold Protein Structure Database (EMBL-EBI, Vereinigtes K&ouml;nigreich; Modelldateien werden &uuml;ber Google Cloud Storage ausgeliefert) her. Dabei werden Ihre IP-Adresse und die angefragte Kennung (PDB-ID bzw. UniProt-Accession) &uuml;bermittelt, nicht Ihre Sequenzen. Abgerufene Strukturen werden lokal in Ihrem Browser gespeichert (siehe Abschnitt 4). Diese Verbindung erfolgt nur auf Ihre ausdr&uuml;ckliche Anforderung.</p>
+        <h3>5.3 RCSB PDB und AlphaFold-Datenbank (3D-Strukturen)</h3>
+        <p>Wenn Sie eine 3D-Struktur abrufen, stellt Ihr Browser eine direkte Verbindung zur RCSB Protein Data Bank (Rutgers University und UC San Diego, USA) bzw. zur AlphaFold Protein Structure Database (EMBL-EBI, Vereinigtes K&ouml;nigreich; Modelldateien werden &uuml;ber Google Cloud Storage ausgeliefert) her. Dabei werden Ihre IP-Adresse und die angefragte Kennung (PDB-ID bzw. UniProt-Accession) &uuml;bermittelt, nicht Ihre Sequenzen. Abgerufene Strukturen werden lokal in Ihrem Browser gespeichert (siehe Abschnitt 4). Diese Verbindung erfolgt nur auf Ihre ausdr&uuml;ckliche Anforderung.</p>
 
-  <h2>6. Keine Cookies, kein Tracking</h2>
-  <p>SeqNexus verwendet keine Cookies, keine Analyse-Tools und kein Tracking. Es werden keine Werbenetzwerke eingebunden.</p>
+        <h2>6. Keine Cookies, kein Tracking</h2>
+        <p>SeqNexus verwendet keine Cookies, keine Analyse-Tools und kein Tracking. Es werden keine Werbenetzwerke eingebunden.</p>
 
-  <h2>7. Ihre Rechte</h2>
-  <p>Sie haben gem&auml;&szlig; DSGVO folgende Rechte:</p>
-  <ul>
-    <li><strong>Auskunft</strong> (Art. 15 DSGVO) &ndash; Sie k&ouml;nnen Auskunft &uuml;ber Ihre verarbeiteten Daten verlangen.</li>
-    <li><strong>Berichtigung</strong> (Art. 16 DSGVO) &ndash; Sie k&ouml;nnen die Berichtigung unrichtiger Daten verlangen.</li>
-    <li><strong>L&ouml;schung</strong> (Art. 17 DSGVO) &ndash; Sie k&ouml;nnen die L&ouml;schung Ihrer Daten verlangen.</li>
-    <li><strong>Einschr&auml;nkung</strong> (Art. 18 DSGVO) &ndash; Sie k&ouml;nnen die Einschr&auml;nkung der Verarbeitung verlangen.</li>
-    <li><strong>Widerspruch</strong> (Art. 21 DSGVO) &ndash; Sie k&ouml;nnen der Verarbeitung widersprechen.</li>
-    <li><strong>Beschwerde</strong> &ndash; Sie haben das Recht, sich bei einer Datenschutz-Aufsichtsbeh&ouml;rde zu beschweren.</li>
-  </ul>
-  <p>Da SeqNexus keine personenbezogenen Daten serverseitig speichert, beziehen sich diese Rechte im Wesentlichen auf die durch GitHub Pages erhobenen Zugriffsdaten.</p>
+        <h2>7. Ihre Rechte</h2>
+        <p>Sie haben gem&auml;&szlig; DSGVO folgende Rechte:</p>
+        <ul>
+          <li><strong>Auskunft</strong> (Art. 15 DSGVO): Sie k&ouml;nnen Auskunft &uuml;ber Ihre verarbeiteten Daten verlangen.</li>
+          <li><strong>Berichtigung</strong> (Art. 16 DSGVO): Sie k&ouml;nnen die Berichtigung unrichtiger Daten verlangen.</li>
+          <li><strong>L&ouml;schung</strong> (Art. 17 DSGVO): Sie k&ouml;nnen die L&ouml;schung Ihrer Daten verlangen.</li>
+          <li><strong>Einschr&auml;nkung</strong> (Art. 18 DSGVO): Sie k&ouml;nnen die Einschr&auml;nkung der Verarbeitung verlangen.</li>
+          <li><strong>Widerspruch</strong> (Art. 21 DSGVO): Sie k&ouml;nnen der Verarbeitung widersprechen.</li>
+          <li><strong>Beschwerde</strong>: Sie haben das Recht, sich bei einer Datenschutz-Aufsichtsbeh&ouml;rde zu beschweren.</li>
+        </ul>
+        <p>Da SeqNexus keine personenbezogenen Daten serverseitig speichert, beziehen sich diese Rechte im Wesentlichen auf die durch GitHub Pages erhobenen Zugriffsdaten.</p>
 
-  <h2>8. &Auml;nderungen</h2>
-  <p>Diese Datenschutzerkl&auml;rung kann bei Bedarf aktualisiert werden. Die aktuelle Version ist stets auf dieser Seite verf&uuml;gbar.</p>
+        <h2>8. &Auml;nderungen</h2>
+        <p>Diese Datenschutzerkl&auml;rung kann bei Bedarf aktualisiert werden. Die aktuelle Version ist stets auf dieser Seite verf&uuml;gbar.</p>
+      </section>
+
+      <hr>
+
+      <section id="english" lang="en">
+        <h2>Privacy Policy</h2>
+        <p class="muted">Last updated: April 2026</p>
+
+        <h2>1. Controller</h2>
+        <p>Christopher Acatay<br>
+        Email: <a class="link" href="mailto:contact@seqnexus.app">contact@seqnexus.app</a></p>
+        <p>Further details can be found in the <a class="link" href="impressum.html">Impressum</a> (legal notice).</p>
+
+        <h2>2. Overview</h2>
+        <p>SeqNexus is a client-side web application. All data (sequences, annotations, settings) is processed and stored exclusively in your browser. No user data is transmitted to our servers, as the application does not operate a backend server.</p>
+
+        <h2>3. Hosting</h2>
+        <p>This website is hosted on <strong>GitHub Pages</strong>, a service of GitHub Inc. (or GitHub B.V. for European users), 88 Colin P. Kelly Jr. Street, San Francisco, CA 94107, USA.</p>
+        <p>When you visit this website, GitHub automatically collects technical access data, including:</p>
+        <ul>
+          <li>IP address</li>
+          <li>Date and time of access</li>
+          <li>Page visited</li>
+          <li>Browser type and operating system</li>
+          <li>Referrer URL</li>
+        </ul>
+        <p>This data processing is carried out by GitHub as a data processor. The legal basis is Art. 6(1)(f) GDPR (legitimate interest in the secure provision of the website). GitHub processes this data in accordance with the <a class="link" href="https://docs.github.com/en/site-policy/privacy-policies/github-general-privacy-statement" target="_blank" rel="noopener">GitHub Privacy Statement</a> and has committed to EU Standard Contractual Clauses.</p>
+
+        <h2>4. Local Data Storage (IndexedDB / localStorage)</h2>
+        <p>SeqNexus stores the following data locally in your browser:</p>
+        <ul>
+          <li>DNA sequences and annotations</li>
+          <li>Editor settings and theme preferences</li>
+          <li>Project data and opened files</li>
+        </ul>
+        <p>This data never leaves your browser and is not shared with third parties. The legal basis is Art. 6(1)(f) GDPR (legitimate interest in the functionality of the application). You can delete this data at any time via your browser settings.</p>
+
+        <h2>5. External Connections</h2>
+
+        <h3>5.1 NCBI (BLAST &amp; Sequence Fetch)</h3>
+        <p>When you use the BLAST search feature or import sequences from NCBI, your browser connects directly to the servers of the National Center for Biotechnology Information (NCBI, USA). Your IP address is transmitted to this service. This connection is made only at your explicit request.</p>
+
+        <h3>5.2 UniProt (Protein Fetch)</h3>
+        <p>When you import a protein entry from UniProt, your browser connects directly to the servers of the UniProt Consortium (run by the European Bioinformatics Institute, EMBL-EBI, United Kingdom, together with the SIB Swiss Institute of Bioinformatics and the Protein Information Resource, USA). Your IP address and the requested identifier (accession) are transmitted, not your sequences. This connection is made only at your explicit request.</p>
+
+        <h3>5.3 RCSB PDB and AlphaFold Database (3D Structures)</h3>
+        <p>When you fetch a 3D structure, your browser connects directly to the RCSB Protein Data Bank (Rutgers University and UC San Diego, USA) or to the AlphaFold Protein Structure Database (EMBL-EBI, United Kingdom; model files are served through Google Cloud Storage). Your IP address and the requested identifier (PDB id or UniProt accession) are transmitted, not your sequences. Fetched structures are stored locally in your browser (see section 4). This connection is made only at your explicit request.</p>
+
+        <h2>6. No Cookies, No Tracking</h2>
+        <p>SeqNexus does not use cookies, analytics tools, or tracking. No advertising networks are integrated.</p>
+
+        <h2>7. Your Rights</h2>
+        <p>Under the GDPR, you have the following rights:</p>
+        <ul>
+          <li><strong>Access</strong> (Art. 15 GDPR): You may request information about your processed data.</li>
+          <li><strong>Rectification</strong> (Art. 16 GDPR): You may request correction of inaccurate data.</li>
+          <li><strong>Erasure</strong> (Art. 17 GDPR): You may request deletion of your data.</li>
+          <li><strong>Restriction</strong> (Art. 18 GDPR): You may request restriction of processing.</li>
+          <li><strong>Objection</strong> (Art. 21 GDPR): You may object to processing.</li>
+          <li><strong>Complaint</strong>: You have the right to lodge a complaint with a data protection supervisory authority.</li>
+        </ul>
+        <p>Since SeqNexus does not store personal data on the server side, these rights primarily relate to the access data collected by GitHub Pages.</p>
+
+        <h2>8. Changes</h2>
+        <p>This privacy policy may be updated as needed. The current version is always available on this page.</p>
+      </section>
+    </article>
   </div>
-
-  <hr class="lang-divider">
-
-  <div id="english" lang="en">
-  <h2 style="margin-top:0">Privacy Policy</h2>
-  <p class="updated">Last updated: April 2026</p>
-
-  <h2>1. Controller</h2>
-  <p>Christopher Acatay<br>
-  Email: <a href="mailto:contact@seqnexus.app">contact@seqnexus.app</a></p>
-  <p>Further details can be found in the <a href="impressum.html">Impressum</a> (legal notice).</p>
-
-  <h2>2. Overview</h2>
-  <p>SeqNexus is a client-side web application. All data (sequences, annotations, settings) is processed and stored exclusively in your browser. No user data is transmitted to our servers, as the application does not operate a backend server.</p>
-
-  <h2>3. Hosting</h2>
-  <p>This website is hosted on <strong>GitHub Pages</strong>, a service of GitHub Inc. (or GitHub B.V. for European users), 88 Colin P. Kelly Jr. Street, San Francisco, CA 94107, USA.</p>
-  <p>When you visit this website, GitHub automatically collects technical access data, including:</p>
-  <ul>
-    <li>IP address</li>
-    <li>Date and time of access</li>
-    <li>Page visited</li>
-    <li>Browser type and operating system</li>
-    <li>Referrer URL</li>
-  </ul>
-  <p>This data processing is carried out by GitHub as a data processor. The legal basis is Art. 6(1)(f) GDPR (legitimate interest in the secure provision of the website). GitHub processes this data in accordance with the <a href="https://docs.github.com/en/site-policy/privacy-policies/github-general-privacy-statement" target="_blank" rel="noopener">GitHub Privacy Statement</a> and has committed to EU Standard Contractual Clauses.</p>
-
-  <h2>4. Local Data Storage (IndexedDB / localStorage)</h2>
-  <p>SeqNexus stores the following data locally in your browser:</p>
-  <ul>
-    <li>DNA sequences and annotations</li>
-    <li>Editor settings and theme preferences</li>
-    <li>Project data and opened files</li>
-  </ul>
-  <p>This data never leaves your browser and is not shared with third parties. The legal basis is Art. 6(1)(f) GDPR (legitimate interest in the functionality of the application). You can delete this data at any time via your browser settings.</p>
-
-  <h2>5. External Connections</h2>
-
-  <h3>5.1 NCBI (BLAST &amp; Sequence Fetch)</h3>
-  <p>When you use the BLAST search feature or import sequences from NCBI, your browser connects directly to the servers of the National Center for Biotechnology Information (NCBI, USA). Your IP address is transmitted to this service. This connection is made only at your explicit request.</p>
-
-  <h3>5.2 UniProt (Protein Fetch)</h3>
-  <p>When you import a protein entry from UniProt, your browser connects directly to the servers of the UniProt Consortium (run by the European Bioinformatics Institute, EMBL-EBI, United Kingdom, together with the SIB Swiss Institute of Bioinformatics and the Protein Information Resource, USA). Your IP address and the requested identifier (accession) are transmitted, not your sequences. This connection is made only at your explicit request.</p>
-
-  <h3>5.3 RCSB PDB and AlphaFold Database (3D Structures)</h3>
-  <p>When you fetch a 3D structure, your browser connects directly to the RCSB Protein Data Bank (Rutgers University and UC San Diego, USA) or to the AlphaFold Protein Structure Database (EMBL-EBI, United Kingdom; model files are served through Google Cloud Storage). Your IP address and the requested identifier (PDB id or UniProt accession) are transmitted, not your sequences. Fetched structures are stored locally in your browser (see section 4). This connection is made only at your explicit request.</p>
-
-  <h2>6. No Cookies, No Tracking</h2>
-  <p>SeqNexus does not use cookies, analytics tools, or tracking. No advertising networks are integrated.</p>
-
-  <h2>7. Your Rights</h2>
-  <p>Under the GDPR, you have the following rights:</p>
-  <ul>
-    <li><strong>Access</strong> (Art. 15 GDPR) &ndash; You may request information about your processed data.</li>
-    <li><strong>Rectification</strong> (Art. 16 GDPR) &ndash; You may request correction of inaccurate data.</li>
-    <li><strong>Erasure</strong> (Art. 17 GDPR) &ndash; You may request deletion of your data.</li>
-    <li><strong>Restriction</strong> (Art. 18 GDPR) &ndash; You may request restriction of processing.</li>
-    <li><strong>Objection</strong> (Art. 21 GDPR) &ndash; You may object to processing.</li>
-    <li><strong>Complaint</strong> &ndash; You have the right to lodge a complaint with a data protection supervisory authority.</li>
-  </ul>
-  <p>Since SeqNexus does not store personal data on the server side, these rights primarily relate to the access data collected by GitHub Pages.</p>
-
-  <h2>8. Changes</h2>
-  <p>This privacy policy may be updated as needed. The current version is always available on this page.</p>
-  </div>
-</div>
 </main>
+
+<footer class="site-foot">
+  <div class="wrap">
+    <div class="foot-base">
+      <p>&copy; 2026 Christopher Acatay <a href="https://www.gnu.org/licenses/agpl-3.0.html">AGPL v3 licence</a></p>
+      <p>Research use only. Results come with no warranty.</p>
+      <p><a href="impressum.html">Legal notice</a> <a href="datenschutz.html">Privacy</a></p>
+    </div>
+  </div>
+</footer>
+
+<script src="site.js"></script>
 </body>
 </html>

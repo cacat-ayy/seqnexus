@@ -26,6 +26,8 @@
   --accent-ink:#f5f4f0;
   --accent-soft: rgba(11, 95, 88, .09);
   --shadow:    0 1px 2px rgba(20, 22, 26, .06), 0 30px 60px -36px rgba(20, 22, 26, .35);
+  /* Under the masthead once the page has scrolled, and under the phone menu. */
+  --shadow-bar: 0 8px 24px -16px rgba(20, 22, 26, .35);
 
   /* Base colours follow the editor's convention (utils/color.ts). */
   --base-a: #2d8a4e;
@@ -68,6 +70,7 @@ html.dark {
   --accent-ink:#0c1312;
   --accent-soft: rgba(92, 198, 184, .12);
   --shadow:    0 1px 2px rgba(0, 0, 0, .4), 0 30px 60px -36px rgba(0, 0, 0, .8);
+  --shadow-bar: 0 8px 24px -16px rgba(0, 0, 0, .9);
 
   --base-a: #4fb77a;
   --base-c: #e0b23a;
@@ -193,7 +196,12 @@ h2 {
   z-index: 10;
   background: var(--paper);
   border-bottom: 1px solid var(--rule);
+  transition: border-color .2s, box-shadow .2s;
 }
+
+/* Once the page has scrolled under it, the bar casts a shadow so it reads as
+   floating over the content. site.js toggles the class. */
+.masthead.scrolled { border-bottom-color: var(--rule-2); box-shadow: var(--shadow-bar); }
 
 .masthead-inner {
   max-width: var(--measure);
@@ -219,6 +227,9 @@ h2 {
 }
 
 .brand svg { display: block; color: var(--accent); }
+/* The wordmark is one flex item (the text would split from the span otherwise);
+   its second half takes the accent. */
+.brand b { font-weight: inherit; color: var(--accent); }
 
 .masthead nav {
   display: flex;
@@ -227,7 +238,14 @@ h2 {
   font-size: 14.5px;
 }
 
+/* On wide screens the links sit inline in the bar. On phones the same
+   element becomes the panel that the menu button opens (below). */
+.nav-links { display: contents; }
+
 .masthead nav a:not(.btn) {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
   text-decoration: none;
   color: var(--ink-2);
   transition: color .15s;
@@ -235,8 +253,10 @@ h2 {
 
 .masthead nav a:not(.btn):hover,
 .masthead nav a[aria-current="page"] { color: var(--ink); }
+.masthead nav a svg { display: block; }
 
-.theme-toggle {
+.theme-toggle,
+.menu-toggle {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -251,11 +271,19 @@ h2 {
   transition: color .15s, border-color .15s;
 }
 
-.theme-toggle:hover { color: var(--ink); border-color: var(--rule-2); }
-.theme-toggle svg { display: block; }
+.theme-toggle:hover,
+.menu-toggle:hover { color: var(--ink); border-color: var(--rule-2); }
+.theme-toggle svg,
+.menu-toggle svg { display: block; }
 .theme-toggle .icon-moon { display: none; }
 html.dark .theme-toggle .icon-sun  { display: none; }
 html.dark .theme-toggle .icon-moon { display: block; }
+
+/* The menu button exists only on phones. */
+.menu-toggle { display: none; }
+.menu-toggle .icon-close { display: none; }
+.masthead.menu-open .menu-toggle .icon-menu { display: none; }
+.masthead.menu-open .menu-toggle .icon-close { display: block; }
 
 /* --- Sequence rule ---------------------------------------------------------
    A single line of real sequence, coloured by base, used as a divider
@@ -1042,9 +1070,29 @@ h1 em { font-style: normal; color: var(--accent); }
 
 @media (max-width: 600px) {
   :root { --gutter: 20px; }
-  .masthead nav { gap: 16px; font-size: 13.5px; }
-  /* The brand is the home link, so the text links go; the button and the toggle stay. */
-  .masthead nav a:not(.btn) { display: none; }
+  .masthead nav { gap: 12px; }
+  /* The text links move into a panel under the bar that the menu button
+     opens; the editor button and the theme toggle stay in the bar. */
+  .menu-toggle { display: inline-flex; }
+  .nav-links {
+    display: none;
+    position: absolute;
+    top: 100%;
+    left: 0;
+    right: 0;
+    flex-direction: column;
+    padding: 4px var(--gutter) 10px;
+    background: var(--paper);
+    border-bottom: 1px solid var(--rule);
+    box-shadow: var(--shadow-bar);
+  }
+  .masthead.menu-open .nav-links { display: flex; }
+  .masthead .nav-links a:not(.btn) {
+    padding: 13px 0;
+    font-size: 16px;
+    border-top: 1px solid var(--rule);
+  }
+  .masthead .nav-links a:first-child { border-top: 0; }
   .bench { grid-template-columns: 1fr; }
   .bench-col:nth-child(2n) { border-left: 0; padding-left: 0; margin-left: 0; }
   .bench-col:nth-child(n+2) { border-top: 1px solid var(--rule); }
@@ -1064,12 +1112,12 @@ h1 em { font-style: normal; color: var(--accent); }
 
 .doc { max-width: 46em; padding: 56px 0 96px; }
 
-.doc > h2 {
+.doc h2 {
   font-size: clamp(1.45rem, 2.2vw, 1.85rem);
   letter-spacing: -.02em;
   margin: 64px 0 18px;
 }
-.doc > h2:first-child { margin-top: 0; }
+.doc h2:first-child { margin-top: 0; }
 
 .doc h3 { font-size: 1.1rem; font-weight: 650; margin: 36px 0 10px; letter-spacing: -.01em; }
 
@@ -1079,6 +1127,11 @@ h1 em { font-style: normal; color: var(--accent); }
 .doc li { margin: 6px 0; }
 .doc li::marker { color: var(--muted); }
 .doc b, .doc strong { color: var(--ink); font-weight: 600; }
+.doc address { font-style: normal; color: var(--ink-2); line-height: 1.65; margin: 0 0 18px; }
+.doc .muted { color: var(--muted); }
+.doc hr { border: 0; border-top: 1px solid var(--rule); margin: 64px 0; }
+/* An anchored section (the languages on the privacy page) stops below the sticky bar. */
+.doc section[id] { scroll-margin-top: 80px; }
 .doc code { font-family: var(--mono); font-size: .92em; }
 
 .doc .shot { margin: 28px 0; }

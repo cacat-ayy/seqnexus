@@ -1,8 +1,9 @@
 // SeqNexus site script, shared by every page of the site (index.html,
-// features.html, the guide pages and 404.html).
+// features.html, the guide pages, the legal pages and 404.html).
 // The initial dark class is set by an inline script in <head> of each page;
-// this file handles the toggle, the themed screenshots, the sequence rules
-// and the features page table of contents.
+// this file handles the toggle, the masthead (its scrolled state and the
+// phone menu), the themed screenshots, the sequence rules and the features
+// page table of contents.
 (function () {
   var KEY = 'seqnexus-landing-dark';
   var root = document.documentElement;
@@ -43,9 +44,13 @@
     if (fig) fig.classList.add('missing');
   };
 
+  // The button says what it will do, so its label follows the theme.
   var btn = document.getElementById('theme-toggle');
   function syncBtn() {
-    if (btn) btn.setAttribute('aria-pressed', String(isDark()));
+    if (!btn) return;
+    var label = isDark() ? 'Switch to light theme' : 'Switch to dark theme';
+    btn.setAttribute('aria-label', label);
+    btn.setAttribute('title', label);
   }
 
   if (btn) {
@@ -58,6 +63,50 @@
   }
   syncBtn();
   syncShots();
+
+  // Masthead: a shadow once the page has scrolled under it, and on phones a
+  // menu button that opens the links in a panel below the bar.
+  var head = document.querySelector('.masthead');
+  var menu = document.getElementById('menu-toggle');
+  if (head) {
+    var scrolled = false, headTick = false;
+    function syncHead() {
+      headTick = false;
+      var now = window.scrollY > 4;
+      if (now === scrolled) return;
+      scrolled = now;
+      head.classList.toggle('scrolled', now);
+    }
+    window.addEventListener('scroll', function () {
+      if (!headTick) { headTick = true; requestAnimationFrame(syncHead); }
+    }, { passive: true });
+    syncHead();
+  }
+  if (head && menu) {
+    function menuOpen() { return head.classList.contains('menu-open'); }
+    function setMenu(open) {
+      head.classList.toggle('menu-open', open);
+      menu.setAttribute('aria-expanded', String(open));
+    }
+    menu.addEventListener('click', function () { setMenu(!menuOpen()); });
+    // A tap outside the bar, Escape, or following a link closes it.
+    document.addEventListener('click', function (e) {
+      if (menuOpen() && !head.contains(e.target)) setMenu(false);
+    });
+    document.addEventListener('keydown', function (e) {
+      if (e.key === 'Escape' && menuOpen()) { setMenu(false); menu.focus(); }
+    });
+    var navLinks = head.querySelectorAll('.nav-links a');
+    for (var n = 0; n < navLinks.length; n++) {
+      navLinks[n].addEventListener('click', function () { setMenu(false); });
+    }
+    // Turning the phone sideways past the breakpoint puts the links back in
+    // the bar; the panel must not stay open underneath.
+    var wide = window.matchMedia('(min-width: 601px)');
+    if (wide.addEventListener) {
+      wide.addEventListener('change', function (e) { if (e.matches) setMenu(false); });
+    }
+  }
 
   // Sequence rules: a stretch of pDONR221 (GenBank JA808046.1) starting at
   // the position in data-from, one span per base so each takes its colour.

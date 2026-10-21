@@ -3,85 +3,126 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Impressum – SeqNexus</title>
 <meta name="robots" content="noindex, nofollow">
-<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='-2 -2 28 28' fill='none' stroke='%230d9488' stroke-linecap='round' stroke-linejoin='round'><circle cx='12' cy='12' r='13' stroke-width='1.5'/><g stroke-width='2'><path d='m10 16 1.5 1.5'/><path d='m14 8-1.5-1.5'/><path d='M15 2c-1.798 1.998-2.518 3.995-2.807 5.993'/><path d='m16.5 10.5 1 1'/><path d='m17 6-2.891-2.891'/><path d='M2 15c6.667-6 13.333 0 20-6'/><path d='m20 9 .891.891'/><path d='M3.109 14.109 4 15'/><path d='m6.5 12.5 1 1'/><path d='m7 18 2.891 2.891'/><path d='M9 22c1.798-1.998 2.518-3.995 2.807-5.993'/></g></svg>">
-<style>
-*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-body {
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
-  color: #1e293b; background: #ffffff; line-height: 1.7;
-  -webkit-font-smoothing: antialiased;
-}
-a { color: #0d9488; text-decoration: none; }
-a:hover { color: #0f766e; }
-.container { max-width: 720px; margin: 0 auto; padding: 0 24px; }
-header {
-  border-bottom: 1px solid #e2e8f0; padding: 16px 0;
-}
-.nav-inner {
-  display: flex; align-items: center; justify-content: space-between;
-  max-width: 720px; margin: 0 auto; padding: 0 24px;
-}
-.nav-logo {
-  display: flex; align-items: center; gap: 10px;
-  font-size: 18px; font-weight: 800; color: #1e293b;
-  letter-spacing: -.3px; text-decoration: none;
-}
-.back-link { font-size: 14px; font-weight: 500; color: #64748b; display: inline-flex; align-items: center; gap: 4px; }
-.back-link:hover { color: #0d9488; }
-main { padding: 48px 0 80px; }
-h1 { font-size: 28px; font-weight: 800; margin-bottom: 32px; letter-spacing: -.5px; }
-h2 { font-size: 18px; font-weight: 700; margin: 28px 0 12px; }
-p, address { margin-bottom: 12px; font-size: 15px; color: #334155; }
-address { font-style: normal; }
+<meta name="theme-color" content="#0b5f58">
+<link rel="icon" href="assets/favicon.svg" type="image/svg+xml">
+<link rel="icon" href="assets/favicon-48x48.png" sizes="48x48" type="image/png">
+<link rel="icon" href="assets/favicon-96x96.png" sizes="96x96" type="image/png">
+<link rel="icon" href="assets/favicon-144x144.png" sizes="144x144" type="image/png">
+<link rel="icon" href="assets/favicon-192x192.png" sizes="192x192" type="image/png">
+<link rel="apple-touch-icon" href="assets/favicon-192x192.png">
 
-</style>
+<title>Impressum | SeqNexus</title>
+
+<script>
+// Apply the stored theme before first paint. Must stay inline and in <head>.
+(function () {
+  try {
+    var stored = localStorage.getItem('seqnexus-landing-dark');
+    var dark = stored !== null
+      ? stored === '1'
+      : window.matchMedia('(prefers-color-scheme: dark)').matches;
+    if (dark) document.documentElement.classList.add('dark');
+  } catch (e) {
+    // localStorage blocked, so stay on light.
+  }
+})();
+</script>
+
+<link rel="stylesheet" href="site.css">
 </head>
 <body>
-<header>
-  <div class="nav-inner">
-    <a href="/" class="nav-logo">
-      <svg width="24" height="24" viewBox="-2 -2 28 28" fill="none" stroke="#0d9488" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="13" stroke-width="1.5"/><g stroke-width="2"><path d="m10 16 1.5 1.5"/><path d="m14 8-1.5-1.5"/><path d="M15 2c-1.798 1.998-2.518 3.995-2.807 5.993"/><path d="m16.5 10.5 1 1"/><path d="m17 6-2.891-2.891"/><path d="M2 15c6.667-6 13.333 0 20-6"/><path d="m20 9 .891.891"/><path d="M3.109 14.109 4 15"/><path d="m6.5 12.5 1 1"/><path d="m7 18 2.891 2.891"/><path d="M9 22c1.798-1.998 2.518-3.995 2.807-5.993"/></g></svg>
-      <span>Seq<span style="color:#0d9488">Nexus</span></span>
+
+<header class="masthead">
+  <div class="masthead-inner">
+    <a class="brand" href="/">
+      <svg width="22" height="22" viewBox="-2 -2 28 28" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <circle cx="12" cy="12" r="13" stroke-width="1.5"/>
+        <g stroke-width="2">
+          <path d="m10 16 1.5 1.5"/><path d="m14 8-1.5-1.5"/>
+          <path d="M15 2c-1.798 1.998-2.518 3.995-2.807 5.993"/>
+          <path d="m16.5 10.5 1 1"/><path d="m17 6-2.891-2.891"/>
+          <path d="M2 15c6.667-6 13.333 0 20-6"/><path d="m20 9 .891.891"/>
+          <path d="M3.109 14.109 4 15"/><path d="m6.5 12.5 1 1"/>
+          <path d="m7 18 2.891 2.891"/>
+          <path d="M9 22c1.798-1.998 2.518-3.995 2.807-5.993"/>
+        </g>
+      </svg>
+      <span class="brand-name">Seq<b>Nexus</b></span>
     </a>
-    <a href="/" class="back-link"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 12H5"/><path d="M12 19l-7-7 7-7"/></svg> Back</a>
+    <nav aria-label="Primary">
+      <div class="nav-links" id="nav-links">
+        <a href="/">Overview</a>
+        <a href="features.html">Features</a>
+        <a href="/#formats">Formats</a>
+        <a href="https://github.com/cacat-ayy/seqnexus" rel="noopener"><svg width="15" height="15" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0 0 16 8c0-4.42-3.58-8-8-8z"/></svg> Source</a>
+      </div>
+      <a class="btn btn-small" href="app.html">Open the editor</a>
+      <button class="theme-toggle" id="theme-toggle" type="button" aria-label="Switch to dark theme">
+        <svg class="icon-sun" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="5"/><path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/></svg>
+        <svg class="icon-moon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+      </button>
+      <button class="menu-toggle" id="menu-toggle" type="button" aria-label="Menu" aria-expanded="false" aria-controls="nav-links">
+        <svg class="icon-menu" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M3 6h18M3 12h18M3 18h18"/></svg>
+        <svg class="icon-close" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"/></svg>
+      </button>
+    </nav>
   </div>
 </header>
 
 <main>
-<div class="container">
-  <h1>Impressum</h1>
+  <section class="page-head">
+    <div class="wrap">
+      <p class="label"><a class="back" href="/">&larr; SeqNexus</a></p>
+      <h1 style="margin-top:14px">Impressum</h1>
+      <p class="lede">Anbieterkennzeichnung f&uuml;r seqnexus.app.</p>
+    </div>
+  </section>
 
-  <h2>Angaben gem&auml;&szlig; &sect; 5 DDG</h2>
-  <address>
-    Christopher Acatay<br>
-    Bahnhofstr. 31<br>
-    82377 Penzberg<br>
-    Deutschland
-  </address>
+  <div class="wrap">
+    <article class="doc">
+      <h2>Angaben gem&auml;&szlig; &sect; 5 DDG</h2>
+      <address>
+        Christopher Acatay<br>
+        Bahnhofstr. 31<br>
+        82377 Penzberg<br>
+        Deutschland
+      </address>
 
-  <h2>Kontakt</h2>
-  <p>E-Mail: <a href="mailto:contact@seqnexus.app">contact@seqnexus.app</a></p>
+      <h2>Kontakt</h2>
+      <p>E-Mail: <a class="link" href="mailto:contact@seqnexus.app">contact@seqnexus.app</a></p>
 
-  <h2>Verantwortlich f&uuml;r den Inhalt gem&auml;&szlig; &sect; 18 Abs. 2 MStV</h2>
-  <address>
-    Christopher Acatay<br>
-    Bahnhofstr. 31<br>
-    82377 Penzberg
-  </address>
+      <h2>Verantwortlich f&uuml;r den Inhalt gem&auml;&szlig; &sect; 18 Abs. 2 MStV</h2>
+      <address>
+        Christopher Acatay<br>
+        Bahnhofstr. 31<br>
+        82377 Penzberg
+      </address>
 
-  <h2>Haftungsausschluss</h2>
+      <h2>Haftungsausschluss</h2>
 
-  <h2>Haftung f&uuml;r Inhalte</h2>
-  <p>Die Inhalte dieser Website wurden mit gr&ouml;&szlig;tm&ouml;glicher Sorgfalt erstellt. F&uuml;r die Richtigkeit, Vollst&auml;ndigkeit und Aktualit&auml;t der Inhalte wird jedoch keine Gew&auml;hr &uuml;bernommen. Als Diensteanbieter sind wir gem&auml;&szlig; &sect; 7 Abs. 1 DDG f&uuml;r eigene Inhalte auf diesen Seiten nach den allgemeinen Gesetzen verantwortlich. Nach &sect;&sect; 8 bis 10 DDG sind wir als Diensteanbieter jedoch nicht verpflichtet, &uuml;bermittelte oder gespeicherte fremde Informationen zu &uuml;berwachen.</p>
+      <h3>Haftung f&uuml;r Inhalte</h3>
+      <p>Die Inhalte dieser Website wurden mit gr&ouml;&szlig;tm&ouml;glicher Sorgfalt erstellt. F&uuml;r die Richtigkeit, Vollst&auml;ndigkeit und Aktualit&auml;t der Inhalte wird jedoch keine Gew&auml;hr &uuml;bernommen. Als Diensteanbieter sind wir gem&auml;&szlig; &sect; 7 Abs. 1 DDG f&uuml;r eigene Inhalte auf diesen Seiten nach den allgemeinen Gesetzen verantwortlich. Nach &sect;&sect; 8 bis 10 DDG sind wir als Diensteanbieter jedoch nicht verpflichtet, &uuml;bermittelte oder gespeicherte fremde Informationen zu &uuml;berwachen.</p>
 
-  <h2>Haftung f&uuml;r Links</h2>
-  <p>Diese Website enth&auml;lt Links zu externen Websites Dritter, auf deren Inhalte wir keinen Einfluss haben. F&uuml;r die Inhalte der verlinkten Seiten ist stets der jeweilige Anbieter oder Betreiber verantwortlich. Eine permanente inhaltliche Kontrolle der verlinkten Seiten ist ohne konkrete Anhaltspunkte einer Rechtsverletzung nicht zumutbar. Bei Bekanntwerden von Rechtsverletzungen werden wir derartige Links umgehend entfernen.</p>
+      <h3>Haftung f&uuml;r Links</h3>
+      <p>Diese Website enth&auml;lt Links zu externen Websites Dritter, auf deren Inhalte wir keinen Einfluss haben. F&uuml;r die Inhalte der verlinkten Seiten ist stets der jeweilige Anbieter oder Betreiber verantwortlich. Eine permanente inhaltliche Kontrolle der verlinkten Seiten ist ohne konkrete Anhaltspunkte einer Rechtsverletzung nicht zumutbar. Bei Bekanntwerden von Rechtsverletzungen werden wir derartige Links umgehend entfernen.</p>
 
-  <h2>Urheberrecht</h2>
-  <p>Die durch den Seitenbetreiber erstellten Inhalte und Werke auf diesen Seiten unterliegen der <a href="https://www.gnu.org/licenses/agpl-3.0.html" target="_blank" rel="noopener">GNU Affero General Public License, Version 3 (AGPL-3.0)</a>. Der Quellcode ist frei verf&uuml;gbar unter <a href="https://github.com/cacat-ayy/seqnexus" target="_blank" rel="noopener">github.com/cacat-ayy/seqnexus</a>.</p>
-</div>
+      <h3>Urheberrecht</h3>
+      <p>Die durch den Seitenbetreiber erstellten Inhalte und Werke auf diesen Seiten unterliegen der <a class="link" href="https://www.gnu.org/licenses/agpl-3.0.html" target="_blank" rel="noopener">GNU Affero General Public License, Version 3 (AGPL-3.0)</a>. Der Quellcode ist frei verf&uuml;gbar unter <a class="link" href="https://github.com/cacat-ayy/seqnexus" target="_blank" rel="noopener">github.com/cacat-ayy/seqnexus</a>.</p>
+    </article>
+  </div>
 </main>
+
+<footer class="site-foot">
+  <div class="wrap">
+    <div class="foot-base">
+      <p>&copy; 2026 Christopher Acatay <a href="https://www.gnu.org/licenses/agpl-3.0.html">AGPL v3 licence</a></p>
+      <p>Research use only. Results come with no warranty.</p>
+      <p><a href="impressum.html">Legal notice</a> <a href="datenschutz.html">Privacy</a></p>
+    </div>
+  </div>
+</footer>
+
+<script src="site.js"></script>
 </body>
 </html>
