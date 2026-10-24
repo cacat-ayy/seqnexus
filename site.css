@@ -24,7 +24,6 @@
   --accent:    #0b5f58;
   --accent-2:  #09504a;
   --accent-ink:#f5f4f0;
-  --accent-soft: rgba(11, 95, 88, .09);
   --shadow:    0 1px 2px rgba(20, 22, 26, .06), 0 30px 60px -36px rgba(20, 22, 26, .35);
   /* Under the masthead once the page has scrolled, and under the phone menu. */
   --shadow-bar: 0 8px 24px -16px rgba(20, 22, 26, .35);
@@ -68,7 +67,6 @@ html.dark {
   --accent:    #5cc6b8;
   --accent-2:  #82d6ca;
   --accent-ink:#0c1312;
-  --accent-soft: rgba(92, 198, 184, .12);
   --shadow:    0 1px 2px rgba(0, 0, 0, .4), 0 30px 60px -36px rgba(0, 0, 0, .8);
   --shadow-bar: 0 8px 24px -16px rgba(0, 0, 0, .9);
 
@@ -379,26 +377,6 @@ html.dark .theme-toggle .icon-moon { display: block; }
    Headline on top, then one annotated stretch of real sequence across the
    page: the strip is an inline SVG (see the comment in index.html) that
    draws itself layer by layer, each layer being one tool of the bench. */
-
-.hero-tags {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  margin: 0 0 28px;
-  padding: 0;
-  list-style: none;
-}
-
-.hero-tags li {
-  font-family: var(--mono);
-  font-size: 11px;
-  letter-spacing: .1em;
-  text-transform: uppercase;
-  color: var(--accent);
-  background: var(--accent-soft);
-  padding: 5px 10px;
-  border-radius: 999px;
-}
 
 h1 {
   font-weight: 700;
