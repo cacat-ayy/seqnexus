@@ -10,4 +10,4 @@ export function openedAsFile(): boolean {
   return typeof location !== 'undefined' && location.protocol === 'file:'
 }
 
-export const NEEDS_WEB = (tool: string) => `${tool} cannot run while SeqNexus is opened as a file (file://): the browser does not let such a page load the program. Start serve.bat in the SeqNexus folder and open http://localhost:8080/app.html, or open SeqNexus from its web address.`
+export const NEEDS_WEB = (tool: string) => `${tool} cannot run while SeqNexus is opened as a file (file://): the browser does not let such a page load the program. Open SeqNexus from its web address instead.`

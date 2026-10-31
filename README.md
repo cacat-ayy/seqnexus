@@ -5033,9 +5033,7 @@ throughout.
 - Opened as a file (`file://`), Chrome starts no module workers, so import,
   export and the long-read filter run on the page instead (in chunk-sized
   steps). fastp and minimap2 cannot run there: such a page may not fetch
-  `wasm/`. Double-click `serve.bat` in the SeqNexus folder (PowerShell's
-  built-in web server, nothing to install) and open
-  http://localhost:8080/app.html instead.
+  `wasm/`. Open SeqNexus from its web address instead.
 
 ---
 
@@ -5821,7 +5819,7 @@ sequence when they matter. Two products whose lengths are within about 2% of
 each other fall in one peak and come out as one contig, the other's
 differences as variants. A circular contig starts wherever its seed read
 began. minimap2 is WebAssembly, so like mapping this needs SeqNexus opened
-from a web address (or serve.bat), not from disk.
+from a web address, not from disk.
 
 **A genome from long reads (overlaps, layout, consensus).** When nanopore or
 PacBio reads come from a genome, no read spans it. They are assembled by

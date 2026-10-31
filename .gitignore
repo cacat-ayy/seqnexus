@@ -28,3 +28,7 @@ CLAUDE.md
 
 # Third-party downloads the CRISPR oracle caches (see app/scripts/crispr-oracle)
 app/scripts/crispr-oracle/cache/
+
+# Local web server for opening the app from disk, not part of the hosted site
+serve.bat
+serve.ps1
