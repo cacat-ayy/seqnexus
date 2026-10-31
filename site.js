@@ -195,3 +195,15 @@
     visible = true; started = true; play(false);
   }
 })();
+
+// Visitor counting with GoatCounter (datenschutz.html, section 6). No cookies,
+// nothing stored in the browser; the service keeps aggregate counts only.
+// Loaded from here so one line covers every page of the site. count.js skips
+// localhost and file:// by itself, so local checks are not counted.
+(function () {
+  var s = document.createElement("script");
+  s.async = true;
+  s.src = "https://gc.zgo.at/count.js";
+  s.setAttribute("data-goatcounter", "https://seqnexus.goatcounter.com/count");
+  document.body.appendChild(s);
+})();
