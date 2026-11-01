@@ -1048,7 +1048,13 @@ h1 em { font-style: normal; color: var(--accent); }
 
 @media (max-width: 600px) {
   :root { --gutter: 20px; }
-  .masthead nav { gap: 12px; }
+  /* The bar has to fit a 360px phone: brand, editor button, theme and menu
+     buttons. Tighter gaps and a shorter button label get it to about 355px. */
+  .masthead-inner { gap: 12px; }
+  .masthead nav { gap: 10px; }
+  .wide-only { display: none; }
+  .brand { white-space: nowrap; }
+  .masthead nav { flex-shrink: 0; }
   /* The text links move into a panel under the bar that the menu button
      opens; the editor button and the theme toggle stay in the bar. */
   .menu-toggle { display: inline-flex; }
@@ -1167,4 +1173,9 @@ h1 em { font-style: normal; color: var(--accent); }
 
 @media (max-width: 600px) {
   .doc-table th, .doc-table td { padding-right: 10px; font-size: 13.5px; }
+}
+
+/* Below 340px even that is too wide, so the brand is its icon alone. */
+@media (max-width: 340px) {
+  .brand-name { display: none; }
 }
