@@ -108,7 +108,7 @@ export function plasmidReportPdf(name: string, v: PlasmidVerification, only?: Pl
   const date = new Date(v.checkedAt || Date.now()).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' })
   return writeReportPdf({
     title: `${only ? only.name : name}: whole-plasmid verification`,
-    subtitle: `Checked with SeqNexus on ${date}.`,
+    subtitle: `Made with SeqNexus on ${date}.`,
     blocks,
   })
 }

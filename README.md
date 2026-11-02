@@ -7021,6 +7021,18 @@ image, the 3D structure, the report PDFs) say the same in their toast,
 with a button to copy the citation. Every other export confirms that it
 saved, so nothing is written without a word.
 
+The citation itself is one text everywhere: the About panel (with a
+BibTeX copy), the figure dialogs, the export toasts, the file metadata,
+the report footers and the website. It is APA 7 for software, "Acatay, C.
+(year). SeqNexus: a browser-based molecular biology sequence editor
+[Computer software]. https://seqnexus.app". The copy in the app adds the
+version, which is the build date, because Tm values, alignments and
+cloning products can change between builds and a reader should be able to
+name the build that produced a figure. The website has no build to name,
+so its copy leaves the version out. The request that goes with it is the
+same sentence in every place, "Using this in a publication? Please cite
+SeqNexus", and every report says "Made with SeqNexus" and the date.
+
 ---
 
 ## References

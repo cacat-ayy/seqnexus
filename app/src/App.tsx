@@ -2174,7 +2174,7 @@ export default function App() {
               <p>Figures you make may be used freely in publications, theses and commercial work.</p>
             </div>
             <hr />
-            <div className="info-section-title">How to Cite</div>
+            <div className="info-section-title">Cite SeqNexus</div>
             <div className="info-cite">{CITATION_TEXT}</div>
             <div className="info-cite-actions">
               <button className="info-copy-cite" onClick={() => { void copyText(CITATION_TEXT, 'Citation copied') }}>

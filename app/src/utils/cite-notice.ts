@@ -12,7 +12,7 @@ export const copyCitation = (): void => { void copyText(CITATION_TEXT, 'Citation
 
 export function notifyFigureSaved(filename: string): void {
   notify.success(`Exported ${filename}`, {
-    detail: 'Using it in a publication? Please cite SeqNexus.',
+    detail: 'Using this in a publication? Please cite SeqNexus.',
     action: { label: 'Copy citation', onClick: copyCitation },
   })
 }
