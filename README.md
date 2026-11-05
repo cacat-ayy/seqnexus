@@ -3002,7 +3002,7 @@ MAFFT L-INS-i when its estimated running time is 20 seconds or less, and
 Kalign otherwise. Opened from disk (`file://`), the page can load none of the
 three tools (see the [Limits](#limits-5) of NGS read sets), so only the
 built-in pairwise aligner runs; for more sequences the dialog says why and
-how to serve the folder, rather than starting a job that cannot finish. The estimate comes from timing the WebAssembly builds on
+to open SeqNexus from its web address, rather than starting a job that cannot finish. The estimate comes from timing the WebAssembly builds on
 one thread and is good to a factor of two or three: enough to warn before
 starting something that will take minutes, which the dialog does.
 

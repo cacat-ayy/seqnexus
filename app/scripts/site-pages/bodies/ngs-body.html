@@ -71,7 +71,7 @@
 
       <div class="doc-where">
         <p class="label">Where to find it</p>
-        <p>Drag in FASTQ or FASTQ.gz files, which pair themselves. The read set page holds the quality report, trimming, mapping and Analyse reads. Open the editor from its web address rather than from a file on disk: a page opened over file:// may not load the WebAssembly tools, so fastp and minimap2 cannot run.</p>
+        <p>Drag in FASTQ or FASTQ.gz files, which pair themselves. The read set page holds the quality report, trimming, mapping and Analyse reads.</p>
       </div>
 
       <h2>Limits</h2>
@@ -79,7 +79,6 @@
         <li>Phred+64 qualities from older Illumina pipelines are not detected.</li>
         <li>The wider splice region that VEP flags is not flagged here, and UTR consequences are not named.</li>
         <li>De novo contigs are a majority consensus of raw reads. On nanopore data that leaves residual errors, so polishing elsewhere is the usual next step; an import round trip is provided for it.</li>
-        <li>Opened from disk rather than served, import and export still run but the WebAssembly tools cannot.</li>
       </ul>
 
       <h2>References</h2>

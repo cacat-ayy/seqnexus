@@ -52,12 +52,11 @@
 
       <div class="doc-where">
         <p class="label">Where to find it</p>
-        <p>Select two or more sequences in the explorer and choose Align, or open the alignment dialog from the Tools menu. Serve the folder rather than opening the editor from disk: over file:// the page cannot load the WebAssembly tools, so only the built-in pairwise aligner runs, and the dialog says so rather than starting a job that cannot finish.</p>
+        <p>Select two or more sequences in the explorer and choose Align, or open the alignment dialog from the Tools menu.</p>
       </div>
 
       <h2>Limits</h2>
       <ul>
-        <li>Over file:// only the built-in pairwise aligner is available. Serve the folder for MAFFT, MUSCLE and Kalign.</li>
         <li>A global alignment too large for Hirschberg is refused with an error rather than attempted.</li>
         <li>The running-time estimate that drives the automatic choice is good to a factor of two or three.</li>
         <li>Profile alignment in the built-in progressive aligner scores two columns as the average of all pairwise residue scores, which is simpler than the tools' own objective functions.</li>
